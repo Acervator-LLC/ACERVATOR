@@ -2617,6 +2617,23 @@ is_bullish = direction in (BULLISH, NEUTRAL) and confidence >= floor
 is_bearish = direction in (BEARISH, NEUTRAL) and confidence >= floor
 ```
 
+**Current reading, how low the floor goes.** The bot relaxes the floor no
+further than what two indicators reach. The engine runs the vote again with the
+two heaviest voters at full confidence and the rest at none, at the bot's
+weights on that tick. A relaxed floor stays above that figure and never rises
+above 0.25, so a vote needs a third agreeing indicator wherever the plain floor
+needs one. The DIST sale and the hedge top-up read a second floor, the same one
+without hunger.
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+if denominator <= 1.0:
+    return floor / denominator
+past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
+return min(floor, max(floor / denominator, past_two))
+```
+
 ### The band position
 
 **Functional.** The band position is %B: zero at the lower band, one at the

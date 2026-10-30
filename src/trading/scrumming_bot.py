@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from typing import Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ..exchange.base import ExchangeInterface
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
@@ -36,6 +38,7 @@ from .bot_container import (
 )
 from .ta_engine import (
     MIN_CANDLES_FOR_TA,
+    Signal,
     VotingEngine,
     VotingSummary,
     SignalDirection,
@@ -43,6 +46,7 @@ from .ta_engine import (
     detect_bb_proximity,
     BBProximityResult,
     detect_landing_strip_v2,
+    two_indicator_ceiling,
     weights_from_settings,
 )
 from .container.config import (
@@ -200,9 +204,10 @@ actively-contradicting TA still refuses. The non-priority arm keeps
 THIS CONSTANT IS NO LONGER THE WHOLE FLOOR ON THE ARM. Two further
 favours were found in the same shape and repaired the same way, so the
 arm's skew is now one term of a sum that
-``_skewed_confidence_floor`` divides by. With the other two at zero the
-answer is still exactly this number, which is why it is kept and still
-quoted in the log line.
+``_skewed_confidence_floor`` divides by. With the other favours at zero the
+arm's floor is this number while ``two_indicator_ceiling`` reads under it,
+and otherwise the next number above that ceiling, never over
+``_TA_CONFIDENCE_FLOOR``.
 """
 
 _STRONG_TREND_MIN_BULL_SHARE = _STRONG_TREND_MIN_BULL_CANDLES / _STRONG_TREND_CANDLES
@@ -234,12 +239,68 @@ exception is about, so that is the reading the exception uses.
 """
 
 
-def _skewed_confidence_floor(skew: float, floor: float = _TA_CONFIDENCE_FLOOR) -> float:
-    """``floor`` relaxed by ``skew`` proportionally; a skew <= -1 returns infinity."""
+def _skewed_confidence_floor(
+    skew: float, signals: Sequence[Signal], floor: float = _TA_CONFIDENCE_FLOOR
+) -> float:
+    """``floor`` over one plus ``skew``, an eased result kept above
+    ``two_indicator_ceiling(signals)`` up to ``floor``; skew <= -1 gives infinity."""
     denominator = 1.0 + skew
     if denominator <= 0.0:
         return math.inf
-    return floor / denominator
+    if denominator <= 1.0:
+        return floor / denominator
+    past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
+    return min(floor, max(floor / denominator, past_two))
+
+
+def _favour_skew(
+    position_boost: float, band_boost: float, hunger_skew: float, *, priority_arm: bool
+) -> float:
+    """``position_boost`` plus ``band_boost`` and ``hunger_skew``, and
+    ``_BB_PRIORITY_SKEW`` on ``priority_arm``."""
+    skew = position_boost + band_boost
+    if hunger_skew:
+        skew += hunger_skew
+    if priority_arm:
+        skew += _BB_PRIORITY_SKEW
+    return skew
+
+
+def _vote_sides(
+    direction: SignalDirection | None,
+    confidence: float,
+    floor: float,
+    band: BBProximityResult | None,
+) -> tuple[bool, bool]:
+    """``(is_bullish, is_bearish)`` for ``direction`` at ``confidence`` against
+    ``floor``; a ``band`` landing strip sets its own side."""
+    strip = band.landing_strip_side if band is not None and band.landing_strip else ""
+    clears = confidence >= floor
+    is_bullish = strip == "upper" or (
+        direction in (SignalDirection.BULLISH, SignalDirection.NEUTRAL) and clears
+    )
+    is_bearish = strip == "lower" or (
+        direction in (SignalDirection.BEARISH, SignalDirection.NEUTRAL) and clears
+    )
+    return is_bullish, is_bearish
+
+
+def _in_hunger_zone(
+    delta: float,
+    price: float,
+    band: BBProximityResult | None,
+    *,
+    distance_clear: bool,
+) -> bool:
+    """Report whether ``distance_clear`` holds and ``price`` sits inside ``band`` on
+    the side ``delta`` needs: under ``upper``, over ``lower``."""
+    if not distance_clear or band is None:
+        return False
+    if delta > 0:
+        return price < band.upper
+    if delta < 0:
+        return price > band.lower
+    return False
 
 
 def _hunger_skew(idle_candles: int, gain_per_candle: object, skew_max: object) -> float:
@@ -2666,11 +2727,13 @@ class ScrummingBot(
             self.config.hunger_skew_max,
         )
 
-    def _count_hunger_candle(self, candles: list) -> None:
-        """Add one to ``_hunger_candles`` each time ``candles`` ends on a newer candle.
-
-        ``_hunger_candle_ts`` holds the timestamp of the last candle counted.
-        """
+    def _count_hunger_candle(
+        self, candles: list, signals: Sequence[Signal], *, in_zone: bool
+    ) -> None:
+        """Add one to ``_hunger_candles`` for each newer candle ``candles`` ends on
+        while ``in_zone``; ``_hunger_candle_ts`` holds the last one."""
+        if not in_zone:
+            return
         try:
             stamp = float(getattr(candles[-1], "timestamp", 0) or 0) if candles else 0.0
         except (TypeError, ValueError):
@@ -2689,10 +2752,11 @@ class ScrummingBot(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"HUNGER: {self._hunger_candles} candle(s) off target "
-                    f"with no fill. Hunger adds {after:+.2f} to the floor "
-                    f"skew, which alone moves the {_TA_CONFIDENCE_FLOOR:.2f} "
-                    f"confidence floor to {_skewed_confidence_floor(after):.4f}."
+                    f"HUNGER: {self._hunger_candles} candle(s) past the "
+                    f"opposing trade distance and inside the band, with no "
+                    f"fill. Hunger adds {after:+.2f} to the floor skew, which "
+                    f"alone moves the {_TA_CONFIDENCE_FLOOR:.2f} confidence "
+                    f"floor to {_skewed_confidence_floor(after, signals):.4f}."
                 ),
             )
 
@@ -3357,7 +3421,6 @@ class ScrummingBot(
         if self._cb_hard_tripped:
             self._emit_gate_decision_at_quiet_tick("cb-hard-tripped")
             return
-        self._count_hunger_candle(candles)
 
         summary = None
         bb_result = None
@@ -3639,6 +3702,27 @@ class ScrummingBot(
             elif bb_result.near_lower:
                 bb_near = ", near the lower band"
 
+        _eff_hyst_pct = _distance.distance_pct() / 100.0
+        _hyst_ok_scrum_side = True
+        if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side > 0:
+            _hyst_ok_scrum_side = ticker.last >= self._hyst_ref_scrum_side * (
+                1.0 + _eff_hyst_pct
+            )
+        _hyst_ok_fold_side = True
+        if self._hyst_armed_fold_side and self._hyst_ref_fold_side > 0:
+            _hyst_ok_fold_side = ticker.last <= self._hyst_ref_fold_side * (
+                1.0 - _eff_hyst_pct
+            )
+        _distance_clear = not below_interval and (
+            _hyst_ok_scrum_side if delta > 0 else _hyst_ok_fold_side
+        )
+        self._count_hunger_candle(
+            candles,
+            summary.signals,
+            in_zone=_in_hunger_zone(
+                delta, ticker.last, bb_result, distance_clear=_distance_clear
+            ),
+        )
         hunger_skew = self._hunger_floor_skew()
         # The favours and hunger skew the floor, so the confidence prints alone.
         if self._refusal_is_new(
@@ -3692,17 +3776,6 @@ class ScrummingBot(
         if bb_override_direction and eff_direction == SignalDirection.NEUTRAL:
             eff_direction = bb_override_direction
 
-        _eff_hyst_pct = _distance.distance_pct() / 100.0
-        _hyst_ok_scrum_side = True
-        if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side > 0:
-            _hyst_ok_scrum_side = ticker.last >= self._hyst_ref_scrum_side * (
-                1.0 + _eff_hyst_pct
-            )
-        _hyst_ok_fold_side = True
-        if self._hyst_armed_fold_side and self._hyst_ref_fold_side > 0:
-            _hyst_ok_fold_side = ticker.last <= self._hyst_ref_fold_side * (
-                1.0 - _eff_hyst_pct
-            )
         _bb_lower_dt_pre, _bb_upper_dt_pre = self._bb_detect_thresholds()
         _be_upper = False
         _be_upper_wick = False
@@ -3758,18 +3831,33 @@ class ScrummingBot(
             and delta < 0
         )
         _bb_priority_arm = _bb_priority_scrum_skew or _bb_priority_fold_skew
-        # All three favours and hunger sum into one skew applied to the floor.
-        _ta_conf_skew = position_boost + bb_confidence_boost
-        if hunger_skew:
-            _ta_conf_skew += hunger_skew
-        if _bb_priority_arm:
-            _ta_conf_skew += _BB_PRIORITY_SKEW
-        _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
+        # _eff_conf_floor carries hunger for both chains; _floor_no_hunger serves
+        # the DIST sale and the hedge top-up.
+        _ta_conf_skew = _favour_skew(
+            position_boost,
+            bb_confidence_boost,
+            hunger_skew,
+            priority_arm=_bb_priority_arm,
+        )
+        _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew, summary.signals)
+        _floor_no_hunger = _skewed_confidence_floor(
+            _favour_skew(
+                position_boost, bb_confidence_boost, 0.0, priority_arm=_bb_priority_arm
+            ),
+            summary.signals,
+        )
         _bb_skew_side = "scrum" if _bb_priority_scrum_skew else "fold"
         if _bb_priority_arm and self._refusal_is_new(
             f"state_bb_skew_{_bb_skew_side}", ticker.last
         ):
             _hunger_note = "" if not hunger_skew else f", hunger {hunger_skew:+.2f}"
+            _two_reach = two_indicator_ceiling(summary.signals)
+            _line_note = (
+                f"and the floor stays over that, at {_eff_conf_floor:.4f}"
+                if _two_reach < _TA_CONFIDENCE_FLOOR
+                else f"at or over {_TA_CONFIDENCE_FLOOR:.2f}, so the floor "
+                f"stays at {_eff_conf_floor:.4f}"
+            )
             try:
                 self._bus.emit(
                     "bot.log",
@@ -3779,13 +3867,14 @@ class ScrummingBot(
                         f"[{'SCRUM' if _bb_priority_scrum_skew else 'FOLD'}] "
                         f"at BB position {bb_pos:.1%}, delta "
                         f"${abs(delta):.2f} at or over the interval. "
-                        f"Confidence stays {eff_confidence:.2f}. The floor "
-                        f"drops from {_TA_CONFIDENCE_FLOOR:.2f} to "
-                        f"{_eff_conf_floor:.4f}, divided by "
+                        f"Confidence stays {eff_confidence:.2f}. The skew "
+                        f"divides the {_TA_CONFIDENCE_FLOOR:.2f} floor by "
                         f"{1.0 + _ta_conf_skew:.2f}: BB priority "
                         f"{_BB_PRIORITY_SKEW:+.2f}, position "
                         f"{position_boost:+.2f}, BB confidence "
-                        f"{bb_confidence_boost:+.2f}{_hunger_note}. The direction is "
+                        f"{bb_confidence_boost:+.2f}{_hunger_note}. Two "
+                        f"indicators reach {_two_reach:.4f} at this vote's "
+                        f"weights, {_line_note}. The direction is "
                         f"untouched, so a contradicting TA still refuses "
                         f"the trade."
                     ),
@@ -3795,27 +3884,12 @@ class ScrummingBot(
                     "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                 )
 
-        is_bullish = (
-            eff_direction in (SignalDirection.BULLISH, SignalDirection.NEUTRAL)
-            and eff_confidence >= _eff_conf_floor
+        is_bullish, is_bearish = _vote_sides(
+            eff_direction, eff_confidence, _eff_conf_floor, bb_result
         )
-        is_bearish = (
-            eff_direction in (SignalDirection.BEARISH, SignalDirection.NEUTRAL)
-            and eff_confidence >= _eff_conf_floor
+        _bullish_no_hunger, _ = _vote_sides(
+            eff_direction, eff_confidence, _floor_no_hunger, bb_result
         )
-
-        if (
-            bb_result
-            and bb_result.landing_strip
-            and bb_result.landing_strip_side == "upper"
-        ):
-            is_bullish = True
-        if (
-            bb_result
-            and bb_result.landing_strip
-            and bb_result.landing_strip_side == "lower"
-        ):
-            is_bearish = True
 
         self._refresh_phantom_lock()
         if self.config.bb_midline_gate:
@@ -4606,7 +4680,7 @@ class ScrummingBot(
             self.config.hedge_rebalance_active
             and self._hedge_bal > 0.01
             and _hedge_gap_usd > 0
-            and not is_bullish
+            and not _bullish_no_hunger
             and bb_pos < 0.40
         ):
             _gap = _hedge_gap_usd
@@ -4646,7 +4720,7 @@ class ScrummingBot(
                             ),
                         )
 
-        await self._tick_distribute(ticker, summary, bb_result, is_bullish)
+        await self._tick_distribute(ticker, summary, bb_result, _bullish_no_hunger)
 
         self._last_price = ticker.last
 
