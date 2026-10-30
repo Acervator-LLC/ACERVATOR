@@ -1045,6 +1045,22 @@ confidence bar starts at 0.50, and one 240-candle tape put the highest
 consensus at 0.1242 with the figures declared and 0.1016 with all twelve at
 0.30.
 
+**Current reading, the first buy.** The initial-entry check still votes at the
+published figures. Its bearish vote now needs three agreeing indicators on that
+same vote, more than the 0.1966 two reach with all twelve voting. A bot whose own
+twelve figures are all zero, which every new bot holds until Save, buys on the
+direction alone as before.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_initial_entry`
+
+```python
+if not three_agree(
+    summary.consensus_confidence,
+    summary.signals,
+    self._voting_engine.indicator_weights,
+):
+```
+
 #### A phantom keeps the figures its set was created with
 
 A phantom set is built from the parent's weights at the moment it is created.

@@ -46,7 +46,9 @@ from .ta_engine import (
     detect_bb_proximity,
     BBProximityResult,
     detect_landing_strip_v2,
+    three_indicator_floor,
     two_indicator_ceiling,
+    vote_sides,
     weights_from_settings,
 )
 from .container.config import (
@@ -206,8 +208,7 @@ favours were found in the same shape and repaired the same way, so the
 arm's skew is now one term of a sum that
 ``_skewed_confidence_floor`` divides by. With the other favours at zero the
 arm's floor is this number while ``two_indicator_ceiling`` reads under it,
-and otherwise the next number above that ceiling, never over
-``_TA_CONFIDENCE_FLOOR``.
+and otherwise the next number above that ceiling.
 """
 
 _STRONG_TREND_MIN_BULL_SHARE = _STRONG_TREND_MIN_BULL_CANDLES / _STRONG_TREND_CANDLES
@@ -242,15 +243,13 @@ exception is about, so that is the reading the exception uses.
 def _skewed_confidence_floor(
     skew: float, signals: Sequence[Signal], floor: float = _TA_CONFIDENCE_FLOOR
 ) -> float:
-    """``floor`` over one plus ``skew``, an eased result kept above
-    ``two_indicator_ceiling(signals)`` up to ``floor``; skew <= -1 gives infinity."""
+    """``three_indicator_floor`` of ``floor`` over one plus ``skew``, or of ``floor``
+    for a NaN skew; skew <= -1 gives infinity."""
     denominator = 1.0 + skew
     if denominator <= 0.0:
         return math.inf
-    if denominator <= 1.0:
-        return floor / denominator
-    past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
-    return min(floor, max(floor / denominator, past_two))
+    eased = floor if math.isnan(denominator) else floor / denominator
+    return three_indicator_floor(eased, signals)
 
 
 def _favour_skew(
@@ -264,25 +263,6 @@ def _favour_skew(
     if priority_arm:
         skew += _BB_PRIORITY_SKEW
     return skew
-
-
-def _vote_sides(
-    direction: SignalDirection | None,
-    confidence: float,
-    floor: float,
-    band: BBProximityResult | None,
-) -> tuple[bool, bool]:
-    """``(is_bullish, is_bearish)`` for ``direction`` at ``confidence`` against
-    ``floor``; a ``band`` landing strip sets its own side."""
-    strip = band.landing_strip_side if band is not None and band.landing_strip else ""
-    clears = confidence >= floor
-    is_bullish = strip == "upper" or (
-        direction in (SignalDirection.BULLISH, SignalDirection.NEUTRAL) and clears
-    )
-    is_bearish = strip == "lower" or (
-        direction in (SignalDirection.BEARISH, SignalDirection.NEUTRAL) and clears
-    )
-    return is_bullish, is_bearish
 
 
 def _in_hunger_zone(
@@ -2755,8 +2735,8 @@ class ScrummingBot(
                     f"HUNGER: {self._hunger_candles} candle(s) past the "
                     f"opposing trade distance and inside the band, with no "
                     f"fill. Hunger adds {after:+.2f} to the floor skew, which "
-                    f"alone moves the {_TA_CONFIDENCE_FLOOR:.2f} confidence "
-                    f"floor to {_skewed_confidence_floor(after, signals):.4f}."
+                    f"alone puts the confidence floor at "
+                    f"{_skewed_confidence_floor(after, signals):.4f}."
                 ),
             )
 
@@ -3852,12 +3832,7 @@ class ScrummingBot(
         ):
             _hunger_note = "" if not hunger_skew else f", hunger {hunger_skew:+.2f}"
             _two_reach = two_indicator_ceiling(summary.signals)
-            _line_note = (
-                f"and the floor stays over that, at {_eff_conf_floor:.4f}"
-                if _two_reach < _TA_CONFIDENCE_FLOOR
-                else f"at or over {_TA_CONFIDENCE_FLOOR:.2f}, so the floor "
-                f"stays at {_eff_conf_floor:.4f}"
-            )
+            _line_note = f"and the floor stays over that, at {_eff_conf_floor:.4f}"
             try:
                 self._bus.emit(
                     "bot.log",
@@ -3884,11 +3859,11 @@ class ScrummingBot(
                     "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                 )
 
-        is_bullish, is_bearish = _vote_sides(
-            eff_direction, eff_confidence, _eff_conf_floor, bb_result
+        is_bullish, is_bearish = vote_sides(
+            eff_direction, eff_confidence, _eff_conf_floor, bb_result, summary.signals
         )
-        _bullish_no_hunger, _ = _vote_sides(
-            eff_direction, eff_confidence, _floor_no_hunger, bb_result
+        _bullish_no_hunger, _ = vote_sides(
+            eff_direction, eff_confidence, _floor_no_hunger, bb_result, summary.signals
         )
 
         self._refresh_phantom_lock()

@@ -32,6 +32,8 @@ from ..ta_engine import (
     VotingEngine,
     candles_from_raw,
     detect_bb_proximity,
+    three_agree,
+    two_indicator_ceiling,
 )
 from .distribution import (
     DIST_FOLD_PRICE_KEY,
@@ -164,6 +166,7 @@ class TickPhaseMixin:
     _tranches_created_lifetime: int
     _underfunded_log_counter: int
     _verify_buy_safe_or_refuse: Callable[..., Any]
+    _voting_engine: VotingEngine
     bot_id: Any
     config: Any
     exchange: Any
@@ -1177,6 +1180,23 @@ class TickPhaseMixin:
                     f"thesis: buy decline, not rally). "
                     f"BB OK (pos={_init_bb_pos:.2f}, "
                     f"dist={_dist_down:.0%})."
+                    f"{_wallet}",
+                )
+                return
+
+            if not three_agree(
+                summary.consensus_confidence,
+                summary.signals,
+                self._voting_engine.indicator_weights,
+            ):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"INITIAL ENTRY BLOCKED: TA=BEARISH at confidence "
+                    f"{summary.consensus_confidence:.4f}, and two indicators "
+                    f"reach {two_indicator_ceiling(summary.signals):.4f} on this "
+                    f"vote, so the first buy waits for a third to agree. "
+                    f"BB OK (pos={_init_bb_pos:.2f}, dist={_dist_down:.0%})."
                     f"{_wallet}",
                 )
                 return

@@ -247,6 +247,31 @@ are described in [Part 6, the Trading tab](06-trading-tab.md).
 Which gate each override covers is on the gate table in
 [Part 7, Indicators](07-indicators.md).
 
+#### The first buy reads three agreeing indicators
+
+**Current reading.** The entry above places the first buy in the lower extent of
+the band. The first buy also reads the vote, at the twelve published weights.
+Before this change one bearish indicator was enough. Now the bearish vote must
+top what two indicators reach on that same vote, which is 0.1966 with all twelve
+voting. A bot whose own twelve weights are all zero still buys on the direction
+alone. Every new bot starts that way.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_initial_entry`
+
+```python
+if not three_agree(
+    summary.consensus_confidence,
+    summary.signals,
+    self._voting_engine.indicator_weights,
+):
+```
+
+Driven on a stand-in exchange, against the code before this change taken from
+git. One MACD reading at 0.1 gave a bearish vote of 0.0103. It bought before and
+it waits now. Two agreeing indicators read 0.1966 and wait now. Three read 0.2821
+and buy on both. A bot with every weight at zero bought on the one and on the
+two, before and after.
+
 ## 2 - The Phantom Bot
 
 While the Harvest-Fold method housed with the Scrumming Bot addresses several persistent and nagging questions around any given investment position (Should I buy more? Should I sell some? When? How much?), it does have the weakness of operating on a single timeframe. The Phantom Bot is another feature intended to optimize trade execution position. In this specific case, it allows a single Scrumming Bot to be inhibited by a higher timeframe signal with the intention of capturing alignments or disagreements so that trades are not being executed prematurely. The design intention here is that, for example, a 5m TF bot can be inhibited by a 15m, 30m or 1hr signal while maintaining a volatility watch on its primary TF. The intention is to build out this feature so that it obviates or reduces the need for multi-screen monitoring of individual assets.
@@ -851,6 +876,26 @@ src/trading/container/config.py, in BotConfig   bb_landing_strip_candles: int = 
 src/trading/scrumming_bot.py                    the call passes the four constants
 ```
 
+**Current reading, when a strip sets the side.** A detected strip still names
+a side, but it sets the side of the vote only when three indicators agree. The
+vote must top what the two heaviest voters reach at full confidence, at the bot's
+weights on that tick. A bot with every weight at zero has no line, so its strip
+sets the side as before. Live, the Market Inspector scan, Paper and the Simulator
+all call the one function below.
+
+`src/trading/ta_engine.py` — `vote_sides`
+
+```python
+strip = band.landing_strip_side if band is not None and band.landing_strip else ""
+if strip and not three_agree(confidence, signals):
+    strip = ""
+```
+
+Driven on a stand-in exchange at a lower strip, with the twelve published
+weights. Two agreeing indicators read 0.1966 and the fold waited. Three read
+0.2821 and the fold went through. The code before this change, taken from git,
+folded on both.
+
 ## 4 - Bollinger Band Travel Detection
 
 Allowing a strategy to “see” where it is in relation to local width of the Bollinger Band is another aspect of treating the immediate market as a region on a map through which a stack of tokens is traveling. Along the route, we are able to offload surplus at the peaks and pick up additional supplies in the next valley. This is used in combination with Minimum Opposing Trade Distance. The complete question then becomes “Has the market traveled 70% (default), is current price X% distant from the most recent trade event, and is Target Delta not zero? When combining these gates with the (Technical Analysis) Indicator Voting Panel and Landing Strip Detection, you have a full market structure detection suite that is able to incrementally adjust a position’s size and generate recurring profits or growth with each market cycle.
@@ -994,6 +1039,24 @@ tally = [
     for sig in signals
 ]
 return VotingEngine._aggregate(tally, "").consensus_confidence
+```
+
+**Current reading, the line at the plain floor.** The line now holds at every
+floor, the plain 0.25 included, so a floor can rise over 0.25. Where two
+indicators already reach 0.25, through voters that abstain or weights that lean
+on two, the floor sits just above what they reach. At equal weights that starts
+when four of the twelve abstain. At the published weights it starts when the
+three lightest abstain. A bot with every weight at zero reads a line of 0.0, so
+its floor does not move.
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+denominator = 1.0 + skew
+if denominator <= 0.0:
+    return math.inf
+eased = floor if math.isnan(denominator) else floor / denominator
+return three_indicator_floor(eased, signals)
 ```
 
 ## 6 - Market Inspector
@@ -2159,6 +2222,22 @@ if require_tier_alignment and not {1, 2} <= _lead:
 ```
 
 Issue #433 carries the build.
+
+**Current reading, what a trade needs from the vote today.** The tiers are still
+not built. What a trade the vote decides needs today is three agreeing
+indicators: the vote must top what the two heaviest voters reach at full
+confidence. That holds at every floor, where a landing strip sets the side, and
+on a bot's first buy. A bot with every weight at zero is outside the rule and
+trades as it did.
+
+`src/trading/ta_engine.py` — `three_agree`
+
+```python
+held = [sig.weight for sig in signals] if weights is None else list(weights)
+if not any(weight > 0.0 for weight in held):
+    return True
+return confidence > two_indicator_ceiling(signals)
+```
 
 ## 13 - Initial-Purchase-Price Floor on Folds
 

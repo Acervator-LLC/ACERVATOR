@@ -41,6 +41,9 @@ _GATE_ORDER_FOLD: tuple[str, ...] = (
 # LS is an override, not a pass/fail gate, and never appears in a blocker list.
 _GATE_OVERRIDE = "LS"
 
+# LS lights a bank only while that bank's TA label is neither blocked nor overridden.
+_GATE_TA = "TA"
+
 # One sentence of the module docstring above is overtaken. Quoted whole:
 #   "The labels and the blocker prefixes are the ones ScrummingBot writes into
 #   ``_last_gate_state.{scrum,fold}_blockers``."
@@ -195,6 +198,8 @@ def gate_light_row(
     fold_blocked = _labels_for(fold_blockers or [])
     scrum_replaced = _labels_for(scrum_overridden or [])
     fold_replaced = _labels_for(fold_overridden or [])
+    scrum_ta_held = _GATE_TA in scrum_blocked | scrum_replaced
+    fold_ta_held = _GATE_TA in fold_blocked | fold_replaced
     side = str(landing_strip_side or "").lower()
     out: list[dict] = []
     for bank, gates, armed, blocked, ls_active, replaced, unread in (
@@ -203,7 +208,7 @@ def gate_light_row(
             _GATE_ORDER_SCRUM,
             bool(scrum_armed),
             scrum_blocked,
-            side == "upper",
+            side == "upper" and not scrum_ta_held,
             scrum_replaced,
             _labels_for(scrum_not_run or []),
         ),
@@ -212,7 +217,7 @@ def gate_light_row(
             _GATE_ORDER_FOLD,
             bool(fold_armed),
             fold_blocked,
-            side == "lower",
+            side == "lower" and not fold_ta_held,
             fold_replaced,
             _labels_for(fold_not_run or []),
         ),
