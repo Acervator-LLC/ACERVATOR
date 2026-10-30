@@ -5062,6 +5062,21 @@ where two indicators reach 0.3362.
 _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew, summary.signals)
 ```
 
+**Current reading, the floor over 0.25.** The floor no longer stops at 0.25.
+With the five lightest published weights abstaining, two indicators reach 0.3151.
+The floor read 0.25 there before this change, with or without a favour. It now
+reads just above 0.3151. Driven on a stand-in exchange with four of twelve equal
+weights abstaining, two agreeing indicators read 0.2500 and the fold waited. The
+code before this change, taken from git, folded. Three read 0.3750 and folded on
+both.
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`, the last two lines
+
+```python
+eased = floor if math.isnan(denominator) else floor / denominator
+return three_indicator_floor(eased, signals)
+```
+
 Wire Inflow Stack - To be re-evaluated.
 
 A percentage from 0.00 to 100.00, at 1.00 % to start. The wizard writes it as
@@ -6057,6 +6072,17 @@ published weights it sits just above 0.1966.
 ```python
 past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
 return min(floor, max(floor / denominator, past_two))
+```
+
+**Current reading, the band-priority floor over 0.25.** At the published weights
+with all twelve voting, the arm's floor still sits just above 0.1966. Where two
+indicators reach 0.25 or more, the floor now sits just above what they reach,
+not at 0.25.
+
+`src/trading/ta_engine.py` — `three_indicator_floor`
+
+```python
+return max(floor, math.nextafter(two_indicator_ceiling(signals), math.inf))
 ```
 
 **Design intention.** Two repairs are possible and both change what a live bot
@@ -7465,6 +7491,18 @@ one gate and each chain ends in an override gate that runs in its own pass.
 | amber | the gate was read and something else is blocking |
 | grey | the gate was not read on this tick |
 | cyan | the landing strip is overriding that bank |
+
+**Current reading, the cyan LS light.** The LS light now reads cyan only while a
+strip sits on that side and the TA light on that bank shows neither a refusal nor
+an override. A strip that waits for a third agreeing indicator leaves the LS
+light grey.
+
+`src/trading/gate_vocabulary.py` — `gate_light_row`
+
+```python
+scrum_ta_held = _GATE_TA in scrum_blocked | scrum_replaced
+fold_ta_held = _GATE_TA in fold_blocked | fold_replaced
+```
 
 A tick draws its line when the lights are not the same as the last line's. A tick
 whose gate state has not moved spends no line, which is what stops the spool. A

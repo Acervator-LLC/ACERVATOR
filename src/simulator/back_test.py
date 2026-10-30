@@ -105,7 +105,11 @@ from ..trading.stone_tablets.registry import (
     StoneTabletsRegistry,
     _rollup,
 )
-from ..trading.ta_engine import MIN_CANDLES_FOR_TA
+from ..trading.ta_engine import (
+    MIN_CANDLES_FOR_TA,
+    three_indicator_floor,
+    vote_sides,
+)
 from .fleet_source import NEW_ORIGIN, SimBot
 from .portfolios import asset_class, trading_venue
 from .sim_bus import (
@@ -137,8 +141,8 @@ TABLET_SUFFIX = ".json"
 WINDOW_CANDLES = RERUN_WINDOW_CANDLES
 MIN_CANDLES = MIN_RERUN_CANDLES
 
-#: ``_TA_CONFIDENCE_FLOOR`` in ``scrumming_bot``, unskewed. A simulated bot
-#: carries no arm and no favour, so the skew is zero and the floor is this.
+#: ``_TA_CONFIDENCE_FLOOR`` in ``scrumming_bot``, unskewed; ``ta_direction`` reads it
+#: through ``three_indicator_floor``.
 TA_CONFIDENCE_FLOOR = 0.25
 
 #: ``scrum_detect_pct`` when a stored config names none.
@@ -159,9 +163,6 @@ TREND_MIN_BULL_SHARE = TREND_MIN_BULL_CANDLES / TREND_CANDLES
 BULLISH = "BULLISH"
 BEARISH = "BEARISH"
 NEUTRAL = "NEUTRAL"
-
-UPPER = "upper"
-LOWER = "lower"
 
 NO_TABLET = "no_tablet"
 SHORT_TABLET = "short_tablet"
@@ -1041,22 +1042,17 @@ def signal_detail(summary: Any, indicator: str, key: str) -> float:
 
 
 def ta_direction(summary: Any, reading: Any) -> tuple[bool, bool, str, float]:
-    """``(is_bullish, is_bearish, direction_name, confidence)`` for one window.
-
-    A ``landing_strip`` forces its own side true.
-    """
+    """``(is_bullish, is_bearish, direction_name, confidence)`` for one window,
+    ``vote_sides`` against ``three_indicator_floor`` of ``TA_CONFIDENCE_FLOOR``."""
     if summary is None:
         return False, False, NEUTRAL, 0.0
-    name = summary.consensus_direction.name
+    direction = summary.consensus_direction
     confidence = float(summary.consensus_confidence)
-    above_floor = confidence >= TA_CONFIDENCE_FLOOR
-    is_bullish = name in (BULLISH, NEUTRAL) and above_floor
-    is_bearish = name in (BEARISH, NEUTRAL) and above_floor
-    if reading is not None and getattr(reading, "landing_strip", False):
-        side = getattr(reading, "landing_strip_side", "")
-        is_bullish = is_bullish or side == UPPER
-        is_bearish = is_bearish or side == LOWER
-    return is_bullish, is_bearish, name, confidence
+    floor = three_indicator_floor(TA_CONFIDENCE_FLOOR, summary.signals)
+    is_bullish, is_bearish = vote_sides(
+        direction, confidence, floor, reading, summary.signals
+    )
+    return is_bullish, is_bearish, direction.name, confidence
 
 
 def tape_context(
