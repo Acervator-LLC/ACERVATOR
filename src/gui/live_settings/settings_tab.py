@@ -345,6 +345,42 @@ class SettingsTabMixin:
         )
         rf.addRow("Expiry Horizon:", self._expiry_horizon)
 
+    def _add_hunger_rows(self, gf: Any, cfg: Any) -> None:
+        """Add the Hunger tick box and the Hunger Pace box to the Strategy Gate
+        Flags form ``gf``."""
+        from ...trading.container.config import (
+            HUNGER_PACE_MAX_CANDLES,
+            HUNGER_PACE_NONE,
+            hunger_pace,
+            hunger_switched_on,
+        )
+        from ..main_tabs.live_settings_tab_surface import (
+            HUNGER_PACE_LABEL,
+            HUNGER_PACE_NONE_TEXT,
+            HUNGER_PACE_SUFFIX,
+            HUNGER_SWITCH_TEXT,
+            TOOLTIPS,
+        )
+
+        self._hunger_enabled = QCheckBox(HUNGER_SWITCH_TEXT)
+        self._hunger_enabled.setChecked(hunger_switched_on(cfg))
+        set_description(self._hunger_enabled, TOOLTIPS["hunger_enabled"])
+        self._hunger_enabled.toggled.connect(
+            lambda v: self._mark_changed("hunger_enabled", v)
+        )
+        gf.addRow(self._hunger_enabled)
+
+        self._hunger_pace = QSpinBox()
+        self._hunger_pace.setRange(HUNGER_PACE_NONE, HUNGER_PACE_MAX_CANDLES)
+        self._hunger_pace.setSuffix(HUNGER_PACE_SUFFIX)
+        self._hunger_pace.setSpecialValueText(HUNGER_PACE_NONE_TEXT)
+        self._hunger_pace.setValue(hunger_pace(cfg))
+        set_description(self._hunger_pace, TOOLTIPS["hunger_pace"])
+        self._hunger_pace.valueChanged.connect(
+            lambda v: self._mark_changed("hunger_pace_candles", v)
+        )
+        gf.addRow(HUNGER_PACE_LABEL, self._hunger_pace)
+
     # Tab 2: Settings (editable)
     def _create_settings_tab(self) -> QWidget:
         w = QWidget()
@@ -1086,6 +1122,9 @@ class SettingsTabMixin:
             lambda v: self._mark_changed("fold_defer_to_htf", v)
         )
         gf.addRow(self._gate_fold_htf)
+
+        if is_scrumming:
+            self._add_hunger_rows(gf, cfg)
 
         layout.addWidget(gates_group)
 

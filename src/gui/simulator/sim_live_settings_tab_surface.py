@@ -23,6 +23,10 @@ BUDGET_TEXT_FORMAT = "{budget} — consumed ${consumed:,.4f}"
 class SimLiveSettingsTabModel(live.LiveSettingsTabModel):
     """Live's Settings tab model over ``denom_rates``."""
 
+    #: ``src.simulator.back_test.ta_direction`` reads no hunger, so no Hunger row
+    #: is drawn.
+    runs_hunger = False
+
     def __init__(
         self,
         bot: Any = None,

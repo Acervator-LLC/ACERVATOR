@@ -135,6 +135,15 @@ CEILING_MULTIPLE_MAX: float = 10.0
 FOLD_RATIO_MIN_PCT: int = 1
 FOLD_RATIO_MAX_PCT: int = 100
 
+#: ``hunger_pace_candles`` holding no typed pace; ``hunger_gain_per_candle`` then
+#: reads 0.0.
+HUNGER_PACE_NONE: int = 0
+
+#: The span every Hunger Pace box offers and ``hunger_pace`` admits; 2**31 - 1 is a
+#: spin box's top.
+HUNGER_PACE_MIN_CANDLES: int = 1
+HUNGER_PACE_MAX_CANDLES: int = 2**31 - 1
+
 
 @dataclass
 class BotConfig:
@@ -213,8 +222,10 @@ class BotConfig:
     fold_require_ta_bearish: bool = True  # Requires is_bearish for auto-fold
     fold_defer_to_htf: bool = True  # Refuses fold when higher-TF phantom is BEARISH
 
-    # Floor skew each idle candle off target adds; 0.0 is off.
-    hunger_gain_per_candle: float = 0.0
+    # Read through hunger_switched_on(); False keeps every floor unskewed by hunger.
+    hunger_enabled: bool = False
+    # Idle candles to full hunger, read through hunger_pace().
+    hunger_pace_candles: int = HUNGER_PACE_NONE
     # The most hunger_gain_per_candle may add to the floor skew.
     hunger_skew_max: float = 0.20
 
@@ -320,6 +331,18 @@ class BotConfig:
             shorter,
             self.symbol,
         )
+
+    @property
+    def hunger_gain_per_candle(self) -> float:
+        """Return one float step above ``hunger_skew_max`` over ``hunger_pace``, so
+        that many candles reach it; 0.0 while off."""
+        pace = hunger_pace(self)
+        ceiling = as_finite_float(self.hunger_skew_max)
+        if not hunger_switched_on(self) or pace == HUNGER_PACE_NONE:
+            return 0.0
+        if ceiling is None or ceiling <= 0.0:
+            return 0.0
+        return math.nextafter(ceiling / pace, math.inf)
 
     def validate_mode_shape(self) -> list:
         """Return mode-shape violations as human-readable strings.
@@ -441,7 +464,8 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "fold_require_ta_bearish",
         "fold_defer_to_htf",
         # ScrummingBot.tick alone counts idle candles into its floor skew.
-        "hunger_gain_per_candle",
+        "hunger_enabled",
+        "hunger_pace_candles",
         "hunger_skew_max",
         # risk-control fields
         "position_ceiling_enabled",
@@ -654,6 +678,21 @@ def fold_ratio_pct(config) -> int:
     if read is None:
         return FOLD_RATIO_PCT_DEFAULT
     return int(read)
+
+
+def hunger_switched_on(config) -> bool:
+    """True only while ``config.hunger_enabled`` is the boolean True, the Hunger
+    tick box's ticked state."""
+    return getattr(config, "hunger_enabled", False) is True
+
+
+def hunger_pace(config) -> int:
+    """Return ``config.hunger_pace_candles`` when ``as_whole_count`` admits it
+    inside the Hunger Pace span, else ``HUNGER_PACE_NONE``."""
+    pace = as_whole_count(getattr(config, "hunger_pace_candles", HUNGER_PACE_NONE))
+    if pace is None or not HUNGER_PACE_MIN_CANDLES <= pace <= HUNGER_PACE_MAX_CANDLES:
+        return HUNGER_PACE_NONE
+    return pace
 
 
 def target_growth_pct(config):

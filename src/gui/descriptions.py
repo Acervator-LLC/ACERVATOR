@@ -70,6 +70,8 @@ SETTINGS_TAB_DESCRIPTIONS = {
     "gate_scrum_uptrend": "ON: the bot holds when 65% of the last 20 candles are bullish. Distance from target or Band Travel overrides.",
     "hedge_active": "Ticking this fills the reserve to Hedge Balance at once. Unticking keeps it and refuses every hedge buy and refill.",
     "hedge_balance": "USD reserve for hedge buys, separate from Target Balance. 0.00 stops refills; any reserve held stays spendable.",
+    "hunger_enabled": "ON: idle candles in the dead zone ease the scrum and fold TA floor. Hunger never lets two indicators trade.",
+    "hunger_pace": "Idle candles until hunger reaches full strength. A dash means no pace is set, so hunger does nothing.",
     "landing": "Landing Strip: newest Heikin Ashi candles checked for Bollinger Band closeness. The shrinking-body check keeps its own fixed count.",
     "live_lbl": "The target the bot trades against. The box above is your input and does not move when compounding grows it.",
     "max_cartridge_pct": "Largest Target Delta, as a share of Target Balance. Drifting past it fires an immediate rebalance. Default 10%. 0 disables.",
