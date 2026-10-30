@@ -5984,6 +5984,19 @@ if getattr(self.config, "detonation_enabled", False):
         fired = await self._check_detonation_trigger(ticker)
 ```
 
+**Current reading, the third indicator.** A bullish reading at or above the
+confidence you set now fires only when three indicators agree. The reading must
+top what the two heaviest voters reach on that same vote. The Min Confidence entry
+below carries the readings.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._check_detonation_trigger`
+
+```python
+is_bullish = clears_bar and three_agree(
+    summary.consensus_confidence, summary.signals
+)
+```
+
 Detonation TF - Selects the timeframe for the chart that is being evaluated for bullish conditions that will allow the detonation to occur.
 
 Two entries, 1d and 1w. The label and the stored value are the same string on
@@ -6084,6 +6097,42 @@ not at 0.25.
 ```python
 return max(floor, math.nextafter(two_indicator_ceiling(signals), math.inf))
 ```
+
+**Current reading, three agreeing indicators.** The bar is no longer the only
+test. A bullish vote must also top what the two heaviest voters reach on that same
+vote, at the bot's own weights. That is the line every other vote in the engine
+reads, not the 0.25 floor. With all twelve voting at the published weights the
+line is 0.1966, so a bar under it waits for the line. Voters that abstain raise
+the line, to 1.0000 when ten abstain, so two agreeing indicators then wait even at
+the 0.75 start. A bot whose twelve weights are all zero votes neutral and never
+detonates, as before.
+
+`src/trading/ta_engine.py` — `three_agree`
+
+```python
+held = [sig.weight for sig in signals] if weights is None else list(weights)
+if not any(weight > 0.0 for weight in held):
+    return True
+return confidence > two_indicator_ceiling(signals)
+```
+
+Driven against the code before this change, taken from git, with real indicators
+on 120 constructed tapes at the published weights. Each tape carries a flat
+window, two sharp moves and a zero-volume bar, and one in five starts under a
+cent.
+
+```
+bullish readings   58, from 0.0137 to 0.2618
+Min Confidence     0.00   0.10   0.15   0.20   0.25   0.50   0.75
+fired before         58     34     18      4      1      0      0
+fire now              5      5      5      4      1      0      0
+```
+
+Over 438,528 planted readings, on eight weight sets, at every 0.05 step of the bar
+and with the latch on and off, `ScrummingBot._check_detonation_trigger` decided
+byte for byte as before wherever every weight was zero (51,408) or three agreed
+(89,312). Of the readings two indicators or fewer carry, 17,126 fired before and
+wait now. None fires now that waited before.
 
 **Design intention.** Two repairs are possible and both change what a live bot
 does on its next tick, so neither is shipped here. The box's floor could move down
@@ -11328,6 +11377,21 @@ They stand as written, and these are the readings that replaced them.
 | "No figure this box can emit was reached." | A figure the vote reaches can be set: 1,744 of 1,744 bullish readings clear a bar of 0.00 |
 | "PROPOSED — `src/gui/main_tabs/live_settings_tab_surface.py`, the row's range" | Not built as proposed. The row reads the one span, 0.00 to 1.00 |
 | "And the detonation check builds a fresh voting panel with no weights" | The check votes at the bot's own twelve weights |
+
+**Current reading, the bar of 0.10.** The engine now reads a second test beside
+every bar: a bullish vote must also top what two indicators reach on that same
+vote. So a bar of 0.10 fires only on a vote over that line. On the 120 tapes in the Min
+Confidence entry, a bar of 0.10 fired 34 readings before this change and fires 5
+now.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._check_detonation_trigger`, the bar
+
+```python
+clears_bar = (
+    summary.consensus_direction == SignalDirection.BULLISH
+    and summary.consensus_confidence >= conf_min
+)
+```
 
 ## 2026-10-29 - every fill is booked once, from the count the exchange settled
 
