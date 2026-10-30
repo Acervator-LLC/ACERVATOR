@@ -1689,6 +1689,10 @@ panel's reconciliation still balances.
 into a standing rung inside the same distance. A standing rung holding a venue
 order is never a candidate, since combining it would need that order cancelled.
 
+Driven in one run on both types: a pair 0.05 percent apart combined and a pair
+0.5 percent apart did not. On the fold pair the survivor's cash and units were
+the sums of both, and its original cost was the units-weighted figure.
+
 **Current reading.** A rung that a fold or a distribution opens carries the buy
 price of that fold as its floor reference. A new rung combines only with a
 standing rung holding the same floor reference, so no combine loses a floor. In
@@ -1707,10 +1711,6 @@ if floor_ref <= 0.0:
 try:
     floor = opposing_sale_price(floor_ref, self.opposing_trade_distance_pct())
 ```
-
-Driven in one run on both types: a pair 0.05 percent apart combined and a pair
-0.5 percent apart did not. On the fold pair the survivor's cash and units were
-the sums of both, and its original cost was the units-weighted figure.
 
 ### What this changes for a queue that is already aligned
 
