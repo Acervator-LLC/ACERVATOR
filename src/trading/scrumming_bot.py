@@ -46,6 +46,7 @@ from .ta_engine import (
     detect_bb_proximity,
     BBProximityResult,
     detect_landing_strip_v2,
+    three_agree,
     three_indicator_floor,
     two_indicator_ceiling,
     vote_sides,
@@ -4760,7 +4761,8 @@ class ScrummingBot(
 
         Requires:
             ``detonation_enabled``, a current value above the anchor, and
-            BULLISH at or above ``detonation_confidence_min``. The latch and
+            BULLISH at or above ``detonation_confidence_min`` where
+            ``three_agree`` holds on that vote. The latch and
             the rate limit are persisted state that survives a restart.
 
             The value is taken from the larger of ``_current_holdings`` and
@@ -4843,9 +4845,12 @@ class ScrummingBot(
                 DETONATION_CONFIDENCE_MIN_DEFAULT,
             )
         )
-        is_bullish = (
+        clears_bar = (
             summary.consensus_direction == SignalDirection.BULLISH
             and summary.consensus_confidence >= conf_min
+        )
+        is_bullish = clears_bar and three_agree(
+            summary.consensus_confidence, summary.signals
         )
 
         fired = is_bullish and not self._detonation_last_signal_bullish
@@ -4870,6 +4875,18 @@ class ScrummingBot(
                     f"DETONATION: {tf} still BULLISH conf="
                     f"{summary.consensus_confidence:.2f}; no "
                     f"edge transition, holding."
+                ),
+            )
+        elif clears_bar:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"DETONATION HELD: {tf} BULLISH at confidence "
+                    f"{summary.consensus_confidence:.4f} clears the bar "
+                    f"{conf_min:.2f}, and two indicators reach "
+                    f"{two_indicator_ceiling(summary.signals):.4f} on this "
+                    f"vote, so the detonation waits for a third to agree."
                 ),
             )
 
