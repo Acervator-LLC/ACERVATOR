@@ -27,7 +27,7 @@ from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT, detect_bb_prox
 from .indicators.bollinger import BollingerBands
 from .indicators.landing_strip import detect_landing_strip_v2
 from .indicators.types import SignalDirection
-from .otd_math import minimum_opposing_trade_distance_pct
+from .otd_math import distance_settings, minimum_opposing_trade_distance_pct
 from .scrumming.circuit_breakers import breaker_figures, breaker_move
 from .scrumming.target_ramp import (
     RAMP_FIRE,
@@ -657,6 +657,7 @@ def build_context(
     stands the six ``POSITION_BOUND_GATES`` down.
     """
     held = settings if settings is not None else scan_settings(symbol)
+    distance_held = distance_settings(held)
     price = float(candles[-1].close) if candles else NO_BAND_VALUE
     bb_pos = float(getattr(band, BAND_POSITION_KEY, MIDLINE_POSITION))
     lower_dt, upper_dt = detect_thresholds(held)
@@ -739,8 +740,8 @@ def build_context(
         htf_bias_name=DIRECTION_NAMES.get(bias) if bias is not None else None,
         htf_blocks_scrum=htf_blocks_scrum,
         htf_blocks_fold=htf_blocks_fold,
-        scrumming_interval_pct=float(held.scrumming_interval_pct),
-        trading_fee_pct=float(held.trading_fee_pct),
+        scrumming_interval_pct=distance_held.interval_pct,
+        trading_fee_pct=distance_held.fee_pct,
         adx=signal_detail(summary, "adx", "adx"),
         efficiency_ratio=signal_detail(summary, "kaufman_er", "er"),
         z_score=signal_detail(summary, "zscore", "z"),

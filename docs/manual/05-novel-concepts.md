@@ -84,6 +84,21 @@ if ok:
 eff_pct = ctx.scrumming_interval_pct + ctx.trading_fee_pct
 ```
 
+**Current reading.** The distance never sits under two fees, the round trip a
+scrum and its fold pay between them. Where the interval and the band extension
+together sit under one fee, the distance is two fees. At or above one fee, it is
+the sum above. The fee is the larger of the Trading Fee setting and the highest
+fee the venue has reported on this bot's fills.
+
+`src/trading/otd_math.py` — `minimum_opposing_trade_distance_pct`
+
+```python
+interval, fee, extension = terms
+if interval + extension < fee:
+    return clamped_otd_pct(ROUND_TRIP_FEES * fee)
+return clamped_otd_pct(interval + fee + extension)
+```
+
 #### The midline rule and the growth cap
 
 **Functional.** A sell is not allowed below the Bollinger midline and a buy is
@@ -890,6 +905,22 @@ travel = float(travel_pct)
 if travel <= 0.0 or span <= 0.0 or price <= 0.0:
     return BAND_EXTENSION_ABSENT_PCT
 return span * (travel / 100.0) / price * 100.0
+```
+
+**Current reading.** The extension still adds to the interval and the fee. Where
+the interval and the extension together sit under one fee, the distance is two
+fees, so a narrow band cannot pull it under the round trip.
+
+`src/trading/otd_math.py` — `DistanceSettings.distance_pct`
+
+```python
+return minimum_opposing_trade_distance_pct(
+    self.interval_pct,
+    self.fee_pct,
+    band_extension_pct(
+        band_upper, band_lower, self.band_travel_pct, reference_price
+    ),
+)
 ```
 
 ## 5 - Position-Aware Technical Analysis
@@ -2069,6 +2100,19 @@ One gap sits in the same path, and the function names it in its own docstring.
 The fold gate wraps the distance call and falls back to a distance of zero when
 a config value is not a number. At that fallback the rule is not active.
 
+**Current reading.** No path falls back to a distance of zero. A distance
+setting that holds no number refuses the scrum and the fold, and the bot log
+names the setting.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+try:
+    _distance = self.opposing_distance_settings()
+except DistanceSettingUnreadable as _unread:
+    self._refuse_unreadable_distance(_unread, "SCRUM AND FOLD", ticker.last)
+```
+
 ### Where a tranche's rebuy guide is placed
 
 The owner states the rule for where a tranche sits:
@@ -2096,6 +2140,16 @@ in `src/trading/container/config.py`, and
 either. Moving the declared interval from 1.0 to 7.3 moves the guide on a
 hundred-dollar sell reference from $98.40 to $92.10; moving the declared fee
 from 0.6 to 2.9 moves it to $96.10.
+
+**Current reading.** The fee move reads differently. At a fee of 2.9 % the
+1.0 % interval sits under one fee, so the distance is two fees, 5.80 %, and the
+guide reads $94.20. The interval move keeps its figure, since 7.3 % sits above
+the 0.6 % fee.
+
+```
+interval 1.0 %   fee 2.9 %   distance 5.80 %   guide $94.20
+interval 7.3 %   fee 0.6 %   distance 7.90 %   guide $92.10
+```
 
 The band extension is the third term and no caller supplies it yet.
 `band_extension_pct` states it as a share of the reference price, taking the

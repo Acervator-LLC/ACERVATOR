@@ -49,7 +49,7 @@ from ..exchange.base import MarketRules
 from ..exchange.market_rules_store import recorded_rules
 from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext, effective_gate_flags
-from ..trading.otd_math import fold_rebuy_factor
+from ..trading.otd_math import DEFAULT_TRADING_FEE_PCT, fold_rebuy_factor
 from ..trading.scrumming.sizing import (
     BELOW_ONE_UNIT,
     BELOW_POSITION_MINIMUM,
@@ -143,9 +143,6 @@ TA_CONFIDENCE_FLOOR = 0.25
 
 #: ``scrum_detect_pct`` when a stored config names none.
 DEFAULT_SCRUM_DETECT_PCT = 75.0
-
-#: ``trading_fee_pct`` when a stored config names none.
-DEFAULT_TRADING_FEE_PCT = 0.6
 
 #: ``ta_timeframe`` when a stored config names none. Every live tablet is 5m.
 DEFAULT_TIMEFRAME = "5m"

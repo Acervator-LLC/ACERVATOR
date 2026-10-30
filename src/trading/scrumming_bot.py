@@ -50,10 +50,7 @@ from .container.config import (
     ceiling_multiple,
     target_growth_pct,
 )
-from .otd_math import (
-    minimum_opposing_trade_distance_pct,
-    minimum_opposing_trade_distance_pct_from_config,
-)
+from .otd_math import DistanceSettingUnreadable
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
@@ -509,6 +506,7 @@ class ScrummingBot(
 
         self._last_sell_venue_fee: Optional[SettledFillFee] = None
         self._last_fill_venue_fee: Optional[SettledFillFee] = None
+        self.highest_venue_fee_pct: float = 0.0
 
         self._stack_tranches: list[dict] = []
         self._stack_created: int = 0
@@ -2749,10 +2747,6 @@ class ScrummingBot(
                 if not self._hyst_armed_fold_side:
                     self._hyst_armed_fold_side = True
                     self._hyst_ref_fold_side = _px
-                    try:
-                        _interval = float(self.config.scrumming_interval_pct or 0)
-                    except (TypeError, ValueError):
-                        _interval = 0.0
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -2760,8 +2754,8 @@ class ScrummingBot(
                             f"FOLD-side hysteresis ARMED: target delta "
                             f"crossed negative after recent SCRUM. "
                             f"Pivot ref = ${_px:.8f}. FOLD now requires "
-                            f"price drop of {_interval:.2f}% + fee from "
-                            f"this pivot."
+                            f"a price drop of {self._pivot_distance_text()} "
+                            f"from this pivot."
                         ),
                     )
             else:
@@ -2785,10 +2779,6 @@ class ScrummingBot(
                 if not self._hyst_armed_scrum_side:
                     self._hyst_armed_scrum_side = True
                     self._hyst_ref_scrum_side = _px
-                    try:
-                        _interval = float(self.config.scrumming_interval_pct or 0)
-                    except (TypeError, ValueError):
-                        _interval = 0.0
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -2796,8 +2786,8 @@ class ScrummingBot(
                             f"SCRUM-side hysteresis ARMED: target delta "
                             f"crossed positive after recent FOLD. "
                             f"Pivot ref = ${_px:.8f}. SCRUM now requires "
-                            f"price rise of {_interval:.2f}% + fee from "
-                            f"this pivot."
+                            f"a price rise of {self._pivot_distance_text()} "
+                            f"from this pivot."
                         ),
                     )
             else:
@@ -3241,17 +3231,21 @@ class ScrummingBot(
 
                 _hyst_blocks = False
                 _hyst_reason = ""
+                _block_label = "hysteresis"
                 try:
-                    _eff_pct = minimum_opposing_trade_distance_pct_from_config(
-                        self.config
+                    _eff_pct = self.opposing_trade_distance_pct()
+                except DistanceSettingUnreadable as _unread:
+                    _eff_pct = 0.0
+                    _hyst_blocks = True
+                    _block_label = "opposing distance unreadable"
+                    _hyst_reason = (
+                        f"{_unread}, so the opposing trade distance cannot be read"
                     )
-                    _eff_frac = _eff_pct / 100.0
-                except (TypeError, ValueError):
-                    _eff_pct = 3.6
-                    _eff_frac = 0.036
+                _eff_frac = _eff_pct / 100.0
 
                 if (
-                    _direction == "SCRUM"
+                    not _hyst_blocks
+                    and _direction == "SCRUM"
                     and getattr(self, "_hyst_armed_scrum_side", False)
                     and float(getattr(self, "_hyst_ref_scrum_side", 0.0) or 0.0) > 0
                 ):
@@ -3265,7 +3259,8 @@ class ScrummingBot(
                             f"+ {_eff_pct:.2f}%)"
                         )
                 elif (
-                    _direction == "FOLD"
+                    not _hyst_blocks
+                    and _direction == "FOLD"
                     and getattr(self, "_hyst_armed_fold_side", False)
                     and float(getattr(self, "_hyst_ref_fold_side", 0.0) or 0.0) > 0
                 ):
@@ -3292,7 +3287,7 @@ class ScrummingBot(
                             "bot.log",
                             bot_id=self.bot_id,
                             message=(
-                                f"MAX CARTRIDGE BLOCKED (hysteresis): "
+                                f"MAX CARTRIDGE BLOCKED ({_block_label}): "
                                 f"would fire {_direction} on "
                                 f"|delta|=${abs(_cartridge_delta):.2f} "
                                 f"≥ ${_cartridge_threshold:.2f}, but "
@@ -3321,10 +3316,20 @@ class ScrummingBot(
 
         self.stats.position_value = current_value
 
+        try:
+            _distance = self.opposing_distance_settings()
+        except DistanceSettingUnreadable as _unread:
+            self._refuse_unreadable_distance(_unread, "SCRUM AND FOLD", ticker.last)
+            self._emit_gate_decision_at_quiet_tick(
+                f"distance-unreadable({_unread.setting})"
+            )
+            self._last_price = ticker.last
+            return
+
         delta = target_delta_usd(current_value, self._target_balance)
         delta_pct = target_delta_pct(delta, self._target_balance)
         _interval_usd = scrumming_interval_usd(
-            self._target_balance, self.config.scrumming_interval_pct
+            self._target_balance, _distance.interval_pct
         )
 
         ta_tf = self.config.ta_timeframe or "1h"
@@ -3586,7 +3591,7 @@ class ScrummingBot(
         band_travel_triggered = False
         band_travel_frac = 0.0
         if (
-            self.config.band_travel_pct > 0
+            _distance.band_travel_pct > 0
             and self._last_trade_price > 0
             and bb_result is not None
             and bb_result.upper > 0
@@ -3596,7 +3601,7 @@ class ScrummingBot(
             band_travel_frac = abs(ticker.last - self._last_trade_price) / _bb_width
             if (
                 abs(ticker.last - self._last_trade_price)
-                >= self.config.band_travel_pct / 100.0 * _bb_width
+                >= _distance.band_travel_pct / 100.0 * _bb_width
                 and delta > 0
             ):
                 band_travel_triggered = True
@@ -3685,16 +3690,7 @@ class ScrummingBot(
         if bb_override_direction and eff_direction == SignalDirection.NEUTRAL:
             eff_direction = bb_override_direction
 
-        try:
-            _eff_hyst_pct = (
-                minimum_opposing_trade_distance_pct(
-                    float(self.config.scrumming_interval_pct),
-                    float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
-                )
-                / 100.0
-            )
-        except Exception:
-            _eff_hyst_pct = 0.036
+        _eff_hyst_pct = _distance.distance_pct() / 100.0
         _hyst_ok_scrum_side = True
         if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side > 0:
             _hyst_ok_scrum_side = ticker.last >= self._hyst_ref_scrum_side * (
@@ -4056,8 +4052,8 @@ class ScrummingBot(
             ),
             htf_blocks_scrum=bool(_htf_blocks_scrum),
             htf_blocks_fold=False,
-            scrumming_interval_pct=float(self.config.scrumming_interval_pct or 0),
-            trading_fee_pct=float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
+            scrumming_interval_pct=_distance.interval_pct,
+            trading_fee_pct=_distance.fee_pct,
             ripe_scrum=bool(_ripe_scrum),
             deep_fold=bool(_deep_fold),
             adx=_extract_signal_detail(summary, "adx", "adx", 0.0),
@@ -4387,8 +4383,8 @@ class ScrummingBot(
             ),
             htf_blocks_scrum=bool(_htf_blocks_scrum),
             htf_blocks_fold=bool(_htf_blocks_fold),
-            scrumming_interval_pct=float(self.config.scrumming_interval_pct or 0),
-            trading_fee_pct=float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
+            scrumming_interval_pct=_distance.interval_pct,
+            trading_fee_pct=_distance.fee_pct,
             ripe_scrum=bool(_ripe_scrum),
             deep_fold=bool(_deep_fold),
             z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
@@ -4443,16 +4439,11 @@ class ScrummingBot(
 
         from .otd_math import fold_rebuy_factor_from_pct
 
-        _otd_pct_for_gate = 0.0
-        try:
-            _otd_pct_for_gate = minimum_opposing_trade_distance_pct_from_config(
-                self.config,
-                band_upper=float(getattr(bb_result, "upper", 0.0) or 0.0),
-                band_lower=float(getattr(bb_result, "lower", 0.0) or 0.0),
-                reference_price=float(getattr(bb_result, "middle", 0.0) or 0.0),
-            )
-        except (TypeError, ValueError):
-            _otd_pct_for_gate = 0.0
+        _otd_pct_for_gate = _distance.distance_pct(
+            float(getattr(bb_result, "upper", 0.0) or 0.0),
+            float(getattr(bb_result, "lower", 0.0) or 0.0),
+            float(getattr(bb_result, "middle", 0.0) or 0.0),
+        )
         _otd_factor = fold_rebuy_factor_from_pct(_otd_pct_for_gate)
 
         self._tick_fold_diagnostics(
@@ -5019,7 +5010,19 @@ class ScrummingBot(
             split_scrum_into_tranches,
         )
 
-        min_opposing_pct = minimum_opposing_trade_distance_pct_from_config(self.config)
+        try:
+            min_opposing_pct = self.opposing_trade_distance_pct()
+        except DistanceSettingUnreadable as _unread:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK OPEN FAILED: {_unread}, so the opposing trade "
+                    f"distance the ladder anchors on cannot be read. Stack not "
+                    f"opened."
+                ),
+            )
+            return 0
 
         n_target = int(getattr(self.config, "stack_tranche_count_target", 3) or 3)
         split_dist = float(getattr(self.config, "split_distance", 1.0) or 1.0)

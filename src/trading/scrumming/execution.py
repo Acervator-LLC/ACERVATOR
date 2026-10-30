@@ -16,6 +16,13 @@ from typing import Any, Callable, Optional
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType
 from ..container.config import target_growth_pct
+from ..otd_math import (
+    ROUND_TRIP_FEES,
+    DistanceSettings,
+    DistanceSettingUnreadable,
+    distance_settings,
+    fold_rebuy_factor_from_pct,
+)
 from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
@@ -116,6 +123,32 @@ def fill_fee_fields(
     return {"fee_usd": _fee_usd}
 
 
+def venue_fee_pct(
+    record: Optional[SettledFillFee], fill_price: Any, quote: str, base: str = ""
+) -> Optional[float]:
+    """The fee ``record`` reports as a percentage of its fill, charged in ``quote`` or ``base``, else None."""
+    if record is None or not record.reported or not record.currency:
+        return None
+    try:
+        _price = float(fill_price)
+    except (TypeError, ValueError):
+        return None
+    if not math.isclose(record.price, _price, rel_tol=1e-9, abs_tol=1e-12):
+        return None
+    if quote and record.currency == quote:
+        _charged_on = record.units * record.price
+    elif base and record.currency == base:
+        _charged_on = record.units
+    else:
+        return None
+    if not math.isfinite(_charged_on) or _charged_on <= 0.0:
+        return None
+    _pct = record.fee_amount / _charged_on * 100.0
+    if not math.isfinite(_pct) or not 0.0 < _pct < 100.0:
+        return None
+    return _pct
+
+
 class ExecutionEngineMixin:
     """Place orders at the venue and book what the venue reports back.
 
@@ -190,6 +223,9 @@ class ExecutionEngineMixin:
     # Class-level defaults; every write lands on the instance, never on the class.
     _last_sell_venue_fee: Optional["SettledFillFee"] = None
     _last_fill_venue_fee: Optional["SettledFillFee"] = None
+
+    # The highest venue_fee_pct any of this bot's fills reported; _note_venue_fee_pct writes it.
+    highest_venue_fee_pct: float = 0.0
 
     # The units the venue reported sold on the last _execute_sell, for the
     # callers that take those units off _main_lots.
@@ -621,6 +657,71 @@ class ExecutionEngineMixin:
             return None
         return _rec
 
+    def _note_venue_fee_pct(
+        self, record: Optional[SettledFillFee], fill_price: float
+    ) -> None:
+        """Raise ``highest_venue_fee_pct`` to the ``venue_fee_pct`` of ``record`` and log each rise."""
+        charged = venue_fee_pct(
+            record,
+            fill_price,
+            self._venue_quote_currency(),
+            str(getattr(self.config, "target_asset", "") or "").strip().upper(),
+        )
+        if charged is None:
+            return
+        held = self.highest_venue_fee_pct
+        self.highest_venue_fee_pct = max(held, charged)
+        if self.highest_venue_fee_pct == held:
+            return
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"VENUE FEE: the venue charged {charged:.4f}% on this fill, the "
+                f"highest it has reported for this bot. The Minimum Opposing "
+                f"Trade Distance reads the larger of this fee and the Trading "
+                f"Fee setting."
+            ),
+        )
+
+    def opposing_distance_settings(self) -> DistanceSettings:
+        """``distance_settings`` of ``config`` at ``highest_venue_fee_pct``, the one reading every distance check takes."""
+        return distance_settings(self.config, self.highest_venue_fee_pct)
+
+    def opposing_trade_distance_pct(self, band: Any = None) -> float:
+        """The Minimum Opposing Trade Distance at ``band``, a percentage, read through ``opposing_distance_settings``."""
+        return self.opposing_distance_settings().distance_pct(
+            float(getattr(band, "upper", 0.0) or 0.0),
+            float(getattr(band, "lower", 0.0) or 0.0),
+            float(getattr(band, "middle", 0.0) or 0.0),
+        )
+
+    def _pivot_distance_text(self) -> str:
+        """``opposing_trade_distance_pct`` as a pivot line prints it, or the ``DistanceSettingUnreadable`` it raised."""
+        try:
+            return f"{self.opposing_trade_distance_pct():.2f}%"
+        except DistanceSettingUnreadable as unread:
+            return f"a distance that cannot be read ({unread})"
+
+    def _refuse_unreadable_distance(
+        self, unread: DistanceSettingUnreadable, side: str, price: float
+    ) -> None:
+        """Log ``unread`` once per held refusal: ``side`` refuses while a distance setting holds no number."""
+        if not self._refusal_is_new(f"distance_unreadable_{side.lower()}", price):
+            return
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"{side} REFUSED (opposing distance unreadable): {unread}, so "
+                f"the Minimum Opposing Trade Distance cannot be read. Nothing "
+                f"trades on it until the setting holds a number."
+            ),
+        )
+        self._emit_trade_notification(
+            side, "REFUSED", f"{unread.setting} {unread.reason}"
+        )
+
     def _fill_fee_fields(self, fill_price: float) -> dict:
         """The ``SettledFill`` fee field for the fill that settled at ``fill_price``,
         read by ``fill_fee_fields`` off ``_last_fill_venue_fee``, which this consumes.
@@ -629,6 +730,7 @@ class ExecutionEngineMixin:
         """
         _rec = self._last_fill_venue_fee
         self._last_fill_venue_fee = None
+        self._note_venue_fee_pct(_rec, fill_price)
         return fill_fee_fields(
             _rec,
             fill_price,
@@ -963,10 +1065,6 @@ class ExecutionEngineMixin:
         else:
 
             if caller_intent != "manual_button" and self._fold_tranches:
-                from ..otd_math import (
-                    fold_rebuy_factor,
-                )
-
                 _fold_factor = 1.0
                 _best_rebuy = 0.0
                 _distance_ok = False
@@ -974,9 +1072,8 @@ class ExecutionEngineMixin:
                 _unreadable_refs = 0
                 _thresholds: list[float] = []
                 try:
-                    _fold_factor = fold_rebuy_factor(
-                        getattr(self.config, "scrumming_interval_pct", 0) or 0,
-                        getattr(self.config, "trading_fee_pct", 0.6) or 0.6,
+                    _fold_factor = fold_rebuy_factor_from_pct(
+                        self.opposing_trade_distance_pct()
                     )
 
                     for _t in self._fold_tranches:
@@ -1862,18 +1959,17 @@ class ExecutionEngineMixin:
             if _n > 0:
                 return None
 
-        if (
-            self._hyst_armed_scrum_side
-            and self._hyst_ref_scrum_side > 0
-            and getattr(self.config, "scrumming_interval_pct", 0) > 0
-        ):
+        if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side > 0:
             try:
                 _px_check = float(price)
             except (TypeError, ValueError):
                 _px_check = 0.0
-            _interval = float(self.config.scrumming_interval_pct)
-            _fee = float(getattr(self.config, "trading_fee_pct", 0.6))
-            _eff_pct = _interval + _fee
+            try:
+                _held = self.opposing_distance_settings()
+            except DistanceSettingUnreadable as _unread:
+                self._refuse_unreadable_distance(_unread, "SCRUM", _px_check)
+                return None
+            _eff_pct = _held.distance_pct()
             _interval_frac = _eff_pct / 100.0
             _required_min = self._hyst_ref_scrum_side * (1.0 + _interval_frac)
             if _px_check > 0 and _px_check < _required_min:
@@ -1893,8 +1989,9 @@ class ExecutionEngineMixin:
                             f"FOLD), current ${_px_check:.8f} "
                             f"(only {_rise_pct:+.2f}% from pivot). "
                             f"Need ≥ {_eff_pct:.2f}% rise "
-                            f"(interval {_interval:.2f}% + fee {_fee:.2f}%; "
-                            f"price ≥ ${_required_min:.8f}) before "
+                            f"(interval {_held.interval_pct:.2f}% + fee "
+                            f"{_held.fee_pct:.2f}%, at least {ROUND_TRIP_FEES} "
+                            f"fees; price ≥ ${_required_min:.8f}) before "
                             f"SCRUM can fire."
                         ),
                     )
@@ -2275,18 +2372,17 @@ class ExecutionEngineMixin:
                 "suppressed in %s: %s: %s", "_execute_buy", type(_sup).__name__, _sup
             )
 
-        if (
-            self._hyst_armed_fold_side
-            and self._hyst_ref_fold_side > 0
-            and getattr(self.config, "scrumming_interval_pct", 0) > 0
-        ):
+        if self._hyst_armed_fold_side and self._hyst_ref_fold_side > 0:
             try:
                 _px_check = float(price)
             except (TypeError, ValueError):
                 _px_check = 0.0
-            _interval = float(self.config.scrumming_interval_pct)
-            _fee = float(getattr(self.config, "trading_fee_pct", 0.6))
-            _eff_pct = _interval + _fee
+            try:
+                _held = self.opposing_distance_settings()
+            except DistanceSettingUnreadable as _unread:
+                self._refuse_unreadable_distance(_unread, "FOLD", _px_check)
+                return None
+            _eff_pct = _held.distance_pct()
             _interval_frac = _eff_pct / 100.0
             _required_max = self._hyst_ref_fold_side * (1.0 - _interval_frac)
             if _px_check > 0 and _px_check > _required_max:
@@ -2306,8 +2402,9 @@ class ExecutionEngineMixin:
                             f"SCRUM), current ${_px_check:.8f} "
                             f"(only {_drop_pct:+.2f}% from pivot). "
                             f"Need ≥ {_eff_pct:.2f}% drop "
-                            f"(interval {_interval:.2f}% + fee {_fee:.2f}%; "
-                            f"price ≤ ${_required_max:.8f}) before "
+                            f"(interval {_held.interval_pct:.2f}% + fee "
+                            f"{_held.fee_pct:.2f}%, at least {ROUND_TRIP_FEES} "
+                            f"fees; price ≤ ${_required_max:.8f}) before "
                             f"FOLD can fire."
                         ),
                     )

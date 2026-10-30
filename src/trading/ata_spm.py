@@ -39,7 +39,7 @@ from .indicators.types import (
     SignalDirection,
     VotingSummary,
 )
-from .otd_math import minimum_opposing_trade_distance_pct
+from .otd_math import minimum_opposing_trade_distance_pct_from_config
 from .scrumming import sizing
 from .ta_engine import VotingEngine
 
@@ -1990,9 +1990,7 @@ def pull(
         landing_strip_candles=int(
             getattr(proximity, "landing_strip_candles", NO_BARS) or NO_BARS
         ),
-        otd_pct=minimum_opposing_trade_distance_pct(
-            settings.scrumming_interval_pct, settings.trading_fee_pct
-        ),
+        otd_pct=minimum_opposing_trade_distance_pct_from_config(settings),
         gates=gates,
         panel=dict(rows or {}),
     )

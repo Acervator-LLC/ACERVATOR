@@ -4142,6 +4142,21 @@ Band Travel   distance        guide on a tranche sold at $100.00
 Zero switches the term off, so a bot with Band Travel at zero reads the same
 6.600000 % it read before.
 
+**Current reading.** The sum keeps a floor of two fees. Where the interval and
+the band extension together sit under one fee, the distance is two fees. A
+5.00 % interval sits above every fee the box offers, so both rows above read the
+same figures.
+
+`src/trading/otd_math.py` — `distance_settings`
+
+```python
+return DistanceSettings(
+    interval_pct=setting_pct(config, "scrumming_interval_pct"),
+    fee_pct=trading_fee_pct_from_config(config, venue_fee_pct),
+    band_travel_pct=setting_pct(config, "band_travel_pct", BAND_TRAVEL_OFF_PCT),
+)
+```
+
 This is the row that decides how often a bot trades at all. A smaller figure makes
 the bot act on smaller moves and pay the fee more often; a larger one waits for a
 move worth acting on. Five per cent is the figure the live run has used throughout,
@@ -4518,6 +4533,25 @@ self._trading_fee.setSingleStep(0.05)
 self._trading_fee.setValue(0.6)
 ```
 
+**Current reading.** The distance reads the larger of this box and the highest
+fee the venue has reported on the bot's fills, so a venue that charges more than
+the box is never read as the box. A box at zero reads 0.60 % in every check, the
+figure the Settings tab shows for it.
+
+`src/trading/otd_math.py` — `trading_fee_pct_from_config`
+
+```python
+fee = setting_pct(config, "trading_fee_pct", DEFAULT_TRADING_FEE_PCT)
+if fee < 0.0:
+    raise DistanceSettingUnreadable(
+        "trading_fee_pct", getattr(config, "trading_fee_pct", None), BELOW_ZERO
+    )
+venue = float(venue_fee_pct or 0.0)
+if math.isfinite(venue) and venue > fee:
+    return venue
+return fee
+```
+
 **What the fleet runs.** The box opens at 0.60 % and the live fleet is split: 24
 bots run 1.6 % and 14 run 0.6 %. All 38 sit on one venue, so the split is not a
 venue difference, and nothing else in the stored record separates the two groups.
@@ -4671,6 +4705,16 @@ return minimum_opposing_trade_distance_pct(
 That module's docstring names the split and says it is named there and not
 repaired there. Closing it changes the distance a reversal must travel for any bot
 whose fee is zero, which is a live figure on a live tick.
+
+**Current reading.** The split is closed. Every read takes a stored zero as
+0.60 %, and the distance keeps a floor of two fees. At a 1.00 % interval the
+three stored figures read:
+
+```
+stored 0.60 %   distance filter 1.60 %   buy and sell hysteresis 1.60 %
+stored 2.50 %   distance filter 5.00 %   buy and sell hysteresis 5.00 %
+stored 0.00 %   distance filter 1.60 %   buy and sell hysteresis 1.60 %
+```
 
 **Max Target Growth % is the third, and it is closed.** Nine read sites take the
 figure, and every one of them names the declared default of 1.0. No bot can reach
@@ -5253,6 +5297,21 @@ _otd_pct_for_gate = minimum_opposing_trade_distance_pct_from_config(
     band_lower=float(getattr(bb_result, "lower", 0.0) or 0.0),
     reference_price=float(getattr(bb_result, "middle", 0.0) or 0.0),
 )
+```
+
+**Current reading.** The tick reads the three settings and the venue fee once,
+through `opposing_distance_settings`, and takes the fold factor from that reading
+at the tick's own band.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+_otd_pct_for_gate = _distance.distance_pct(
+    float(getattr(bb_result, "upper", 0.0) or 0.0),
+    float(getattr(bb_result, "lower", 0.0) or 0.0),
+    float(getattr(bb_result, "middle", 0.0) or 0.0),
+)
+_otd_factor = fold_rebuy_factor_from_pct(_otd_pct_for_gate)
 ```
 
 ```
@@ -6134,6 +6193,23 @@ Fold Tranches row both use. `band_extension_pct` in the same module states the
 band term and no caller hands it a band, so the figure it would contribute is
 0.000% everywhere today. Section 13 of
 [05-novel-concepts.md](05-novel-concepts.md) carries the rule and the figures.
+
+**Current reading.** The fold gate and the Fold Tranches row read one distance
+with three terms: the interval, the fee and the band extension the tick's band
+asks for. It never sits under two fees, and its fee is the larger of the setting
+and the highest fee the venue has reported.
+
+`src/gui/main_tabs/fold_tranches_tab_surface.py` — `fold_distance_pct`
+
+```python
+reader = getattr(bot, "opposing_trade_distance_pct", None)
+try:
+    if callable(reader):
+        return float(reader(getattr(bot, "_last_bb", None)))
+    return minimum_opposing_trade_distance_pct_from_config(bot.config)
+except (AttributeError, TypeError, ValueError):
+    return None
+```
 
 **What the fleet runs.** Neither removed row has a figure to report, because
 neither ever reached a saved record. What runs in their place is profit folding,
@@ -10254,6 +10330,21 @@ The two refusals the buy and sell executors write still read the fee for themsel
 because they read a fee set to zero as zero where every other place reads it as
 0.60 %. Routing them would change a refusal a bot makes today, so they are named and
 left.
+
+**Current reading.** Both refusals take `opposing_distance_settings`, the one
+reading the gate takes. A fee set to zero reads 0.60 % there too, and a setting
+that holds no number refuses the order and names the setting.
+
+`src/trading/scrumming/execution.py` — `ExecutionEngineMixin._execute_buy`
+
+```python
+try:
+    _held = self.opposing_distance_settings()
+except DistanceSettingUnreadable as _unread:
+    self._refuse_unreadable_distance(_unread, "FOLD", _px_check)
+    return None
+_eff_pct = _held.distance_pct()
+```
 
 The ratio was swept from minus five to a hundred and five in steps of a hundredth,
 which is 11,001 readings, and every integer boundary falls on a step. 600 readings

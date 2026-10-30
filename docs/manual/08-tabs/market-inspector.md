@@ -2385,6 +2385,17 @@ total = float(interval_pct) + float(fee_pct)
 return max(OTD_MIN_PCT, min(OTD_MAX_PCT, total))
 ```
 
+**Current reading.** The sum keeps a floor of two fees: where the interval sits
+under the fee, the distance is two fees. A scan holds no fills, so no venue fee
+raises the fee it reads from its settings.
+
+`src/trading/ata_gate_scan.py` — `build_context`
+
+```python
+held = settings if settings is not None else scan_settings(symbol)
+distance_held = distance_settings(held)
+```
+
 Landing Strip is the second number. The band-proximity detector reads whether price
 has sat against a Bollinger band for a run of candles, and it answers a side. An
 upper strip is a sell reversal and a lower strip is a buy reversal. The side and
