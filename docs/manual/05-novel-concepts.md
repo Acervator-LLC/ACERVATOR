@@ -1206,6 +1206,22 @@ The bot log names hunger while it acts. A HUNGER line gives the count and the
 floor it sets alone, and a SATIETY line names the fill or the return to target
 that ended it.
 
+**Current reading, the DIST sale.** The sentence above that hunger lets a DIST
+sale through sooner holds for the vote alone. A DIST sale now also waits for a
+price. Each fold that buys more units than its scrum sold queues those extra
+units beside the price it paid. They sell only at that price raised by the
+Minimum Opposing Trade Distance, or higher. Hunger can pass the vote sooner, and
+it does not move that price.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_distribute`
+
+```python
+clearing = dist_sets_clearing(self._dist_sets, price, otd_pct)
+if not clearing:
+    self._hold_dist_sets(price, otd_pct)
+    return
+```
+
 ## 9 - Accumulation Shadows
 
 The Accumulation Shadow was invented as a means of taking maximum advantage of long term and bearish conditions. It allows for a Scrumming to create a Shadow of itself that focuses on accumulating a smaller chunk of the target asset during a bearish regime. The shadow is allowed to accumulate downward but does not scrum. It was a bullish regime to be dedicated and then detonates thereby claiming all of its profits at once. Shadows operate in parallel with their parent bots and will be listed as Shadow Tranches once they are fully implemented.
@@ -1673,6 +1689,25 @@ panel's reconciliation still balances.
 into a standing rung inside the same distance. A standing rung holding a venue
 order is never a candidate, since combining it would need that order cancelled.
 
+**Current reading.** A rung that a fold or a distribution opens carries the buy
+price of that fold as its floor reference. A new rung combines only with a
+standing rung holding the same floor reference, so no combine loses a floor. In
+Internal mode an activated rung with a floor reference is not spent while the
+price sits under that buy price raised by the Minimum Opposing Trade Distance. It
+stays activated, and the bot log names the price it waits for. A fold whose own
+ladder opens adds nothing to the distribution sale, because that ladder already
+offers its extra units.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._rung_under_floor`
+
+```python
+floor_ref = rung_floor_ref(rung)
+if floor_ref <= 0.0:
+    return False
+try:
+    floor = opposing_sale_price(floor_ref, self.opposing_trade_distance_pct())
+```
+
 Driven in one run on both types: a pair 0.05 percent apart combined and a pair
 0.5 percent apart did not. On the fold pair the survivor's cash and units were
 the sums of both, and its original cost was the units-weighted figure.
@@ -2062,6 +2097,22 @@ where the two rates differ. `src/trading/scrumming/sizing.py`, in
 `units_at_scrum`, is the one place that turns a row's dollars back into the
 units it sold; the fold executor and `fold_surplus_usd` both read it, so the
 units a fold is measured against and the surplus it books cannot disagree.
+
+**Current reading.** The function above no longer turns a row's dollars back into
+units. It reads the row's own units, the units its scrum sold, so a fold's extra
+is the units it bought less the units its scrum sold. The sell fee no longer
+counts as extra, and a cycle that ends with fewer units books no gain. The blend
+rate is now read only by the checks that hold a row's dollars against its sale,
+and by the top-up that writes it.
+
+`src/trading/scrumming/sizing.py` — `units_at_scrum`
+
+```python
+units = as_finite_float(record.get("units", 0.0))
+if units is None or units <= 0.0:
+    return 0.0
+return units
+```
 
 **Design intention.** The same distance is held in three places so the rule
 cannot be true for the bot and false for a row. The bot-wide hysteresis gate

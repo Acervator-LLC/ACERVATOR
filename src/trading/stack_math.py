@@ -28,6 +28,8 @@ STACK_SIZE_KEY = "size"
 STACK_ORDER_ID_KEY = "order_id"
 STACK_STATUS_KEY = "status"
 STACK_STATUS_PENDING = "pending"
+# The buy price a rung's units must clear by the opposing trade distance.
+STACK_FLOOR_REF_KEY = "floor_ref_price"
 
 SPACING_MODES = ("quadratic", "fibonacci", "linear", "exponential")
 DEFAULT_SPACING_MODE = "quadratic"
@@ -371,6 +373,12 @@ def _rung_is_order_free(record: dict) -> bool:
     if record.get(STACK_ORDER_ID_KEY):
         return False
     return rung_is_pending(record)
+
+
+def rung_floor_ref(record: dict) -> float:
+    """`record`'s `STACK_FLOOR_REF_KEY` as a positive float, 0.0 where it holds none."""
+    held = _record_float(record.get(STACK_FLOOR_REF_KEY))
+    return held if held is not None and held > 0.0 else 0.0
 
 
 RUNG_NO_SIZE = "no size"

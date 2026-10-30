@@ -5197,6 +5197,20 @@ One DIST sell leaves one tranche behind. `_bound_new_fold_tranches` merges the s
 the build loop appended back to a single record, so the number of positions a
 distribution opens is 1 at an accumulator of 5.0 units and 1 at 3.0.
 
+**Current reading.** The distribution no longer sells one accumulator. Each fold
+that buys more units than its scrum sold queues one set: those extra units beside
+the price the fold paid. A sale takes only the sets whose price, raised by the
+Minimum Opposing Trade Distance, the market has reached, and the sold units come off
+those sets alone. The venue bound reads the free units in the balance the venue
+reports. With Stack Mode on, each set gets one ladder, never one per tick, and a
+fold whose own ladder opens queues no set.
+
+`src/trading/scrumming/distribution.py` — `dist_sets_clearing`
+
+```python
+return [one for one in sets if dist_floor_price(one, otd_pct) <= price]
+```
+
 ### Nine sell-side calls that refused a count
 
 Each sell-side path was asked for a count or a target by keyword.

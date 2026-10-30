@@ -240,7 +240,7 @@ class FoldTrancheAccountingMixin:
         a ``ref`` match too would make this dead code. The survivor keeps
         the ``ref`` its own scrum sold at, the one price its fold
         distance is measured from, and takes a ``blend_rate`` holding the
-        usd-weighted rate across both sales for ``units_at_scrum``; a
+        usd-weighted rate across both sales for ``tranche_sale_rate``; a
         top-up at the survivor's own rate sets no ``blend_rate``.
 
         Args:
