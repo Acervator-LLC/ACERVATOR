@@ -950,6 +950,8 @@ builds the widgets, so an edit still travels the same route into the bot.
 `_mark_changed` records the field against what the bot holds now, and
 `_apply_changes` writes it. The window carries no second copy of that logic.
 
+Now: each box on the React Settings tab keeps the operator's edit until Apply, and the window records it only where the Qt control could hold it, a list pick as its item (`src/gui/main_tabs/live_settings_tab_surface.py, in admitted_edit`).
+
 `src/gui/react_bot_live_settings.py` — `BotLiveSettingsReactDialog.apply_edit`
 
 ```python
@@ -957,38 +959,6 @@ field = field_for(str(asked.get("name") or ""))
 if not field:
     return
 self._mark_changed(field, asked.get("value"))
-```
-
-**Current reading, an edit on the React Settings tab.** Each box on the page now
-keeps what the operator ticks, types or picks until Apply, and a new stored value
-redraws it. The window records an edit only where the Qt control could hold it. A
-list choice records its item, not its row number. A figure outside its box, or
-typed words where a number belongs, goes back to the stored figure and records
-nothing. The Paper and Simulator windows take edits the same way.
-
-`src/gui/react_bot_live_settings.py` — `BotLiveSettingsReactDialog.apply_edit`
-
-```python
-held, value = settings_surface.admitted_edit(
-    name, asked.get("value"), self._last_tabs.get(SETTINGS_SPACE)
-)
-if not held:
-    logger.warning(EDIT_REFUSED_LOG, name, asked.get("value"))
-    return
-if settings_surface.spec_for(name)["reading"] == TIMEFRAME_READING:
-    self._ta_timeframe_picked(value)
-    return
-self._mark_changed(field, value)
-```
-
-```
-one edit of each kind, driven on the live, Paper and Simulator pages
-tick Enable Detonation          before: the box springs back, nothing recorded     now: True recorded
-type 7 in Tranche Count         before: the box springs back to 3, nothing recorded now: 7 recorded
-pick Internal in Visibility     before: the row number 0 recorded                    now: "internal" recorded
-type 99 in Tranche Count        now: the box goes back to 3, nothing recorded
-type 1.237 in Split Distance    now: 1.24 recorded, the two places the Qt box keeps
-pick 1m in TA Timeframe         now: "1m" recorded through the timeframe pick
 ```
 
 Each tab is drawn by its own renderer module into a named empty space the
