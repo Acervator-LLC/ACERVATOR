@@ -5049,6 +5049,19 @@ if bullseye_upper or bullseye_upper_wick:
     _fire_gate = "passes" if _ramp == "FIRE" else "holds"
 ```
 
+**Current reading, how far the skew takes the floor.** The 0.1923 above holds
+only while two indicators reach less. The floor now stays above what the two
+heaviest voters reach at full confidence, at the bot's weights on that tick, and
+never rises above 0.25. Driven with the skew alone, the floor went to 0.1923 at
+equal weights, just above 0.1966 at the published weights, and stayed at 0.25
+where two indicators reach 0.3362.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+_eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew, summary.signals)
+```
+
 Wire Inflow Stack - To be re-evaluated.
 
 A percentage from 0.00 to 100.00, at 1.00 % to start. The wizard writes it as
@@ -6032,6 +6045,18 @@ engine uses against it
 ```python
 _TA_CONFIDENCE_FLOOR = 0.25
 _BB_PRIORITY_CONFIDENCE_FLOOR = _TA_CONFIDENCE_FLOOR / (1.0 + _BB_PRIORITY_SKEW)
+```
+
+**Current reading, the band-priority floor.** Nineteen hundredths holds on the
+band-priority arm only while two indicators reach less. The arm's floor now
+stays above what the two heaviest voters reach at full confidence, so at the
+published weights it sits just above 0.1966.
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
+return min(floor, max(floor / denominator, past_two))
 ```
 
 **Design intention.** Two repairs are possible and both change what a live bot

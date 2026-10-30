@@ -510,6 +510,33 @@ the RSI module nor the Stochastic RSI module takes a band argument. Today the
 band context re-weights the vote after the fact. It does not re-read the
 oscillator.
 
+**Current reading, how far the skew relaxes the floor.** The skew now relaxes
+the floor no further than the vote's own two-indicator line. The line is the
+confidence the two heaviest voters reach at full confidence, with every other
+voter at none, at the bot's weights on that tick. An eased floor stays above the
+line and never rises above 0.25. At equal weights the line is 0.1667, and at the
+published weights it is 0.1966. Where two indicators already reach 0.25,
+through voters that abstain or uneven weights, the favours ease nothing.
+
+`src/trading/ta_engine.py` — `two_indicator_ceiling`
+
+```python
+heaviest = sorted(
+    (sig for sig in signals if not sig.abstained),
+    key=lambda sig: sig.weight,
+    reverse=True,
+)[:2]
+tally = [
+    (
+        replace(sig, direction=SignalDirection.BULLISH, confidence=1.0)
+        if any(sig is one for one in heaviest)
+        else replace(sig, direction=SignalDirection.NEUTRAL, confidence=0.0)
+    )
+    for sig in signals
+]
+return VotingEngine._aggregate(tally, "").consensus_confidence
+```
+
 ### 6 - Market Inspector
 
 This addition was, like the Phantom Bot above, a move towards making Acervator “hyper-vigilant” of hypothetical opportunities that take the form of oppositional trades (assets that move inversely to one another) and bot swarm network topologies. The bot swarm itself will be covered in a moment but basically this feature allows for the creation of custom capital reinforcement networks where profits are configured to flow between positions in a manner that can potentially strengthen a portfolio faster than just focusing on single, isolated bot instances.
@@ -709,6 +736,102 @@ do not move, so hunger opens no trade short of them.
 The bot log names hunger while it acts. A HUNGER line gives the count and the
 floor it sets alone, and a SATIETY line names the fill or the return to target
 that ended it.
+
+**Current reading, the DIST sale.** The sentence above that hunger lets a DIST
+sale through sooner holds for the vote alone. A DIST sale now also waits for a
+price. Each fold that buys more units than its scrum sold queues those extra
+units beside the price it paid. They sell only at that price raised by the
+Minimum Opposing Trade Distance, or higher. Hunger can pass the vote sooner, and
+it does not move that price.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_distribute`
+
+```python
+clearing = dist_sets_clearing(self._dist_sets, price, otd_pct)
+if not clearing:
+    self._hold_dist_sets(price, otd_pct)
+    return
+```
+
+**Current reading, what hunger reaches and when it counts.** Three statements
+in the readings above were wrong. "It changes no scrum" fails when the lower
+band sits at or under zero. The ripe-harvest override does not reach there, so
+the vote decides that scrum, and hunger can pass it. "Hunger opens no trade short
+of them" failed through the DIST sale, which has no band gate. The first reading
+counts "the candles that pass while the position is off target and nothing
+fills". That count ran inside the interval and while the Minimum Opposing Trade
+Distance blocked, and his entry names neither.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`, where the ripe-harvest
+override needs a lower band above zero
+
+```python
+if (
+    bb_result is not None
+    and bb_result.upper > 0
+    and bb_result.lower > 0
+    and ticker.last > 0
+):
+    if delta > 0 and not below_interval and bb_pos >= _bb_upper_dt:
+        _ripe_scrum = True
+```
+
+Hunger now reaches the scrum and fold chains only. The DIST sale and the hedge
+top-up read the same favours without hunger. So hunger no longer passes a DIST
+sale, and it no longer holds a hedge top-up. Both chains keep the band detect
+lines, and no override lifts them, so hunger now opens no trade short of those
+lines.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+_ta_conf_skew = _favour_skew(
+    position_boost,
+    bb_confidence_boost,
+    hunger_skew,
+    priority_arm=_bb_priority_arm,
+)
+_eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew, summary.signals)
+_floor_no_hunger = _skewed_confidence_floor(
+    _favour_skew(
+        position_boost, bb_confidence_boost, 0.0, priority_arm=_bb_priority_arm
+    ),
+    summary.signals,
+)
+```
+
+The count follows his entry. A new candle adds one only in the dead zone: the
+delta at the interval or past it, the opposing trade distance clear on its side,
+and the price still inside the band on that side. A candle inside the interval,
+short of the distance, or past the band adds nothing. It does not end the count
+either; a fill or a return to target still does that.
+
+`src/trading/scrumming_bot.py` — `_in_hunger_zone`
+
+```python
+if not distance_clear or band is None:
+    return False
+if delta > 0:
+    return price < band.upper
+if delta < 0:
+    return price > band.lower
+return False
+```
+
+No favour, hunger among them, now eases the floor to a level two indicators can
+reach. The floor stays above what the two heaviest voters reach at full
+confidence, at the bot's weights on that tick, and never rises above 0.25. At
+the published weights two indicators reach 0.1966, so the 0.20 ceiling alone
+still gives 0.2083.
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+if denominator <= 1.0:
+    return floor / denominator
+past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
+return min(floor, max(floor / denominator, past_two))
+```
 
 ### 9 - Accumulation Shadows
 

@@ -2424,6 +2424,18 @@ class GateScan:
     confidence_floor: float = 0.0
 ```
 
+**Current reading, the line under the scan's floor.** The scan's floor takes the
+line a bot's floor takes. The favours relax it no further than what the two
+heaviest voters of the scanned vote reach at full confidence, and never above
+0.25. So a scan needs a third agreeing indicator wherever the plain floor needs
+one.
+
+`src/trading/ata_gate_scan.py` — `confidence_floor`
+
+```python
+return _skewed_confidence_floor(skew, getattr(summary, "signals", None) or [])
+```
+
 `src/trading/ta_engine.py` — the candle floor the engine sets
 
 ```python

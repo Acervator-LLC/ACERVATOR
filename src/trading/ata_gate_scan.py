@@ -532,7 +532,8 @@ def confidence_floor(summary: Any, band: Any, candles: Any) -> float:
     """The TA confidence floor a scan judges ``summary`` direction at.
 
     ``voter_favour``, ``swing_favour`` and ``landing_strip_favour`` are
-    two of the three favours ``_skewed_confidence_floor`` divides by.
+    two of the four favours ``_skewed_confidence_floor`` divides by, and
+    ``summary`` signals hold the floor above what two indicators reach.
     """
     from .scrumming_bot import _skewed_confidence_floor
 
@@ -542,7 +543,7 @@ def confidence_floor(summary: Any, band: Any, candles: Any) -> float:
         + swing_favour(candles, position)
         + landing_strip_favour(band, candles)
     )
-    return _skewed_confidence_floor(skew)
+    return _skewed_confidence_floor(skew, getattr(summary, "signals", None) or [])
 
 
 def bull_candle_count(candles: Any) -> int:

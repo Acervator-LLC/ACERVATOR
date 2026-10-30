@@ -47,6 +47,8 @@ from __future__ import annotations
 import logging
 import math
 import time
+from collections.abc import Sequence
+from dataclasses import replace
 from typing import Optional
 
 from ..core.signal_contract import DIGEST_MIN_INTERVAL, TA_RAW_PREFIX
@@ -165,6 +167,7 @@ __all__ = [
     "detect_volume_confirmed_spring",
     "detect_w_bottom",
     "new_bot_weights",
+    "two_indicator_ceiling",
     "weights_away_from_default",
     "weights_from_settings",
     "weights_in_force",
@@ -474,7 +477,8 @@ class VotingEngine:
 
         return self._aggregate(all_signals, "multi")
 
-    def _aggregate(self, signals: list[Signal], timeframe: str) -> VotingSummary:
+    @staticmethod
+    def _aggregate(signals: list[Signal], timeframe: str) -> VotingSummary:
         """Compute voting totals from a list of signals."""
         bullish = 0
         bearish = 0
@@ -510,6 +514,25 @@ class VotingEngine:
             signals=signals,
             timeframe=timeframe,
         )
+
+
+def two_indicator_ceiling(signals: Sequence[Signal]) -> float:
+    """``VotingEngine._aggregate`` confidence when the two heaviest unabstained
+    ``signals`` agree fully and the rest read nothing."""
+    heaviest = sorted(
+        (sig for sig in signals if not sig.abstained),
+        key=lambda sig: sig.weight,
+        reverse=True,
+    )[:2]
+    tally = [
+        (
+            replace(sig, direction=SignalDirection.BULLISH, confidence=1.0)
+            if any(sig is one for one in heaviest)
+            else replace(sig, direction=SignalDirection.NEUTRAL, confidence=0.0)
+        )
+        for sig in signals
+    ]
+    return VotingEngine._aggregate(tally, "").consensus_confidence
 
 
 def analyze(
