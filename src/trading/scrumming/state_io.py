@@ -104,6 +104,9 @@ class StateSerializerMixin:
             "last_trade_price": float(self._last_trade_price),
             "last_trade_side": self._last_trade_side,
             "quote_to_usd": float(self._quote_to_usd or 1.0),
+            "highest_venue_fee_pct": float(
+                as_finite_float(getattr(self, "highest_venue_fee_pct", 0.0)) or 0.0
+            ),
             "pending_stack_buy_usd": float(
                 getattr(self, "_pending_stack_buy_usd", 0.0) or 0.0
             ),
@@ -308,6 +311,12 @@ class StateSerializerMixin:
             _qrate_saved = 0.0
         if _qrate_saved > 0:
             self._quote_to_usd = _qrate_saved
+        _venue_fee_saved = as_finite_float(data.get("highest_venue_fee_pct"))
+        self.highest_venue_fee_pct = (
+            _venue_fee_saved
+            if _venue_fee_saved is not None and 0.0 < _venue_fee_saved < 100.0
+            else 0.0
+        )
         try:
             self._pending_stack_buy_usd = float(
                 data.get("pending_stack_buy_usd", 0.0) or 0.0

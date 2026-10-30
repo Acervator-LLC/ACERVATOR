@@ -31,7 +31,11 @@ import math
 from typing import Any, Optional
 
 from ...trading.container.config import DESPAWN_MAX_DAYS, DESPAWN_PREVIEW_WINDOWS
-from ...trading.otd_math import fold_rebuy_factor_from_pct, fold_rebuy_price
+from ...trading.otd_math import (
+    fold_rebuy_factor_from_pct,
+    fold_rebuy_price,
+    minimum_opposing_trade_distance_pct_from_config,
+)
 from ..descriptions import FOLD_TRANCHES_TAB_DESCRIPTIONS
 
 METHOD = "fold_tranches_tab.state"
@@ -161,6 +165,10 @@ STATUS_ABOVE_REF_FORMAT = "Above ref ({delta:+.2f}%)"
 MIN_REBUY_TOOLTIP_FORMAT = (
     "A guide, not a trigger: sell ref ${ref:.8f} less "
     "{otd_pct:.2f}% is ${guide:.8f}. A fold-back still needs TA."
+)
+MIN_REBUY_UNREAD_TOOLTIP = (
+    "No guide: a distance setting holds no number, so no fold fires. "
+    "The bot log names the setting."
 )
 STATUS_TOOLTIP = FOLD_TRANCHES_TAB_DESCRIPTIONS["si_status"]
 FIRE_BUTTON_TOOLTIP = FOLD_TRANCHES_TAB_DESCRIPTIONS["fire_btn"]
@@ -1254,12 +1262,25 @@ def units_cell(tranche: dict) -> list:
     ]
 
 
-def min_rebuy_cell(ref: Optional[float], otd_pct: float) -> list:
+def fold_distance_pct(bot: Any) -> Optional[float]:
+    """The distance ``bot`` folds against, read through ``minimum_opposing_trade_distance_pct_from_config``, or None where it raises."""
+    reader = getattr(bot, "opposing_trade_distance_pct", None)
+    try:
+        if callable(reader):
+            return float(reader(getattr(bot, "_last_bb", None)))
+        return minimum_opposing_trade_distance_pct_from_config(bot.config)
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def min_rebuy_cell(ref: Optional[float], otd_pct: Optional[float]) -> list:
     """The Min-rebuy cell and its tooltip, or an em dash and none.
 
     ``ref`` is the tranche's sell reference price and the guide is
     ``fold_rebuy_price`` of it and ``otd_pct``.
     """
+    if otd_pct is None:
+        return [NO_VALUE_TEXT, MIN_REBUY_UNREAD_TOOLTIP]
     if ref is not None and ref > 0 and otd_pct > 0:
         return [
             MIN_REBUY_FORMAT.format(price=fold_rebuy_price(ref, otd_pct)),
@@ -1283,12 +1304,14 @@ def status_move_pct(price: float, threshold: float) -> float:
     return (threshold - price) / price * 100.0
 
 
-def status_cell(price: float, ref: Optional[float], otd_pct: float) -> list:
+def status_cell(price: float, ref: Optional[float], otd_pct: Optional[float]) -> list:
     """The Status cell, its colour and its tooltip.
 
     The percentage is ``status_move_pct`` of ``price`` against the
     ``fold_rebuy_price`` guide.
     """
+    if otd_pct is None:
+        return [NO_VALUE_TEXT, NO_CELL_COLOR, None]
     if price > 0 and ref is not None and ref > 0 and otd_pct > 0:
         threshold = fold_rebuy_price(ref, otd_pct)
         delta = status_move_pct(price, threshold)
@@ -1332,7 +1355,7 @@ def fold_row_cells(
     tranche: dict,
     now: float,
     price: float,
-    otd_pct: float,
+    otd_pct: Optional[float],
 ) -> list:
     """The eleven cell texts one fold tranche fills a table row with."""
     stamp = finite_number(tranche.get(CREATED_TS_KEY))
@@ -1353,7 +1376,7 @@ def fold_row_cells(
     ]
 
 
-def fold_row_colors(tranche: dict, price: float, otd_pct: float) -> list:
+def fold_row_colors(tranche: dict, price: float, otd_pct: Optional[float]) -> list:
     """The colour each cell of one fold row is drawn in."""
     colors: list = [FOLD_TRANCHE_FG_HEX] * COLUMN_COUNT
     ref = finite_number(tranche.get(REF_KEY, 0))
@@ -1845,7 +1868,7 @@ class FoldTranchesTabModel:
         schedule: Any = None,
         save: Any = None,
         now: float = 0.0,
-        otd_pct: float = 0.0,
+        otd_pct: Optional[float] = None,
         refresh_result: str = REFRESH_DONE,
     ) -> None:
         self.bot = bot
@@ -1853,7 +1876,11 @@ class FoldTranchesTabModel:
         self.schedule = schedule if schedule is not None else ScheduleSink()
         self.save = save if save is not None else SaveSink()
         self.now = now
-        self.otd_pct = otd_pct
+        if otd_pct is None and bot is not None:
+            otd_pct = fold_distance_pct(bot)
+        elif otd_pct is None:
+            otd_pct = 0.0
+        self.otd_pct: Optional[float] = otd_pct
         self.refresh_result = refresh_result
         self.accessible_name = ACCESSIBLE_NAME
         self.form_configured = False
@@ -1883,12 +1910,10 @@ class FoldTranchesTabModel:
         self.calls: list[ModelCall] = []
 
     @property
-    def otd_factor(self) -> float:
-        """``fold_rebuy_factor_from_pct`` of ``otd_pct``, never settable.
-
-        Nothing can hold a factor that disagrees with ``otd_pct`` or one
-        above 1.0.
-        """
+    def otd_factor(self) -> Optional[float]:
+        """``fold_rebuy_factor_from_pct`` of ``otd_pct``, or None where ``fold_distance_pct`` read no distance."""
+        if self.otd_pct is None:
+            return None
         return fold_rebuy_factor_from_pct(self.otd_pct)
 
     def tranches(self) -> list:

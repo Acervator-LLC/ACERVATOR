@@ -29,6 +29,7 @@ from ...paper.fleet_source import SendRefused
 from .. import design_system as ds
 from ..main_tabs.fold_tokens_surface import FOLD_COLUMN_TOOLTIPS
 from ..main_tabs.fold_tranches_tab_surface import (
+    fold_distance_pct,
     min_rebuy_cell,
     status_cell,
     units_cell,
@@ -1005,19 +1006,7 @@ class PaperFoldTranchesTabMixin:
 
             # "Original cost $" is informational; "Min rebuy $" is
             # the binding per-tranche threshold.
-            _otd_pct = 0.0
-            try:
-                # Same otd_math call as `ScrummingBot.tick`, so this
-                # cannot drift from the executor's own threshold.
-                from ...trading.otd_math import (
-                    minimum_opposing_trade_distance_pct_from_config,
-                )
-
-                _otd_pct = minimum_opposing_trade_distance_pct_from_config(
-                    self._bot.config
-                )
-            except Exception:
-                _otd_pct = 0.0
+            _otd_pct = fold_distance_pct(self._bot)
 
             table = QTableWidget()
             table.setColumnCount(ARBITER_COLUMN_INDEX + 1)
@@ -1134,7 +1123,9 @@ class PaperFoldTranchesTabMixin:
                     set_description(mr_item, _rebuy[1])
                 table.setItem(row, 6, mr_item)
 
-                if cur_price > 0 and ref_v is not None and ref_v > 0 and _otd_pct > 0:
+                if _otd_pct is None:
+                    table.setItem(row, 7, QTableWidgetItem("—"))
+                elif cur_price > 0 and ref_v is not None and ref_v > 0 and _otd_pct > 0:
                     _status = status_cell(cur_price, ref_v, _otd_pct)
                     si_status = QTableWidgetItem(_status[0])
                     si_status.setForeground(QColor(_status[1]))

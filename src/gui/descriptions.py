@@ -81,7 +81,7 @@ SETTINGS_TAB_DESCRIPTIONS = {
     "profit_folding_active": "ON: fold surplus grows Target Balance, capped by Max Target Growth. OFF holds the anchor. A new Extractor opens OFF.",
     "scrum_fold_pct": "Share of scrum proceeds queued to buy back. 100% is full reentry. Lower leaves a cash buffer for further falls.",
     "scrum_read_rate_min": "SEARCH-mode read rate in minutes. TRACK mode reads 10x faster.",
-    "scrum_interval": "Smallest price move, in percent, before the bot trades again. A direction flip needs this plus the fee.",
+    "scrum_interval": "Smallest price move, in percent, before trading again. A direction flip needs this plus the fee, minimum two fees.",
     "self_destruct_btn": "Aggressively exit the entire position. Confirmation required.",
     "split_distance": "Percent spacing between Stack tranches. Linear keeps it constant, Quadratic grows it arithmetically, Exponential grows it geometrically.",
     "stack_count": "Stack tranches a SCRUM aims for. Fewer appear if one is under the venue minimum or two merge within 0.1%.",
@@ -92,7 +92,7 @@ SETTINGS_TAB_DESCRIPTIONS = {
     "target_bal": "The balance this bot trades relative to. HARD-CAPPED: position can never exceed Target × (1 + Max Target Growth %/100).",
     "target_btc_lbl": "Target USD divided by BTC/USD spot. A positive 24-hour delta means the BTC-quoted pair is cheaper in USD now.",
     "target_eth_lbl": "Target USD divided by ETH/USD spot. A positive 24-hour delta means the ETH-quoted pair is cheaper in USD now.",
-    "trading_fee": "Venue fee per side. Added to the scrum interval, so a direction flip needs interval plus fee. Default 0.6%.",
+    "trading_fee": "Per-side venue fee, default 0.6%. A direction flip needs interval plus fee, minimum two fees. Higher venue-reported fees override this.",
     "tranche_despawn_days": "Removes fold and stack tranches this many days old. 0 is Off. It is not a trade.",
     "vis": "Orderbook rests limit orders on the exchange. Internal keeps them off the book and fires at market when price crosses.",
 }
@@ -156,7 +156,7 @@ BOT_WIZARD_DESCRIPTIONS = {
     "ta_timeframe": "Timeframe the TA indicators read. Only timeframes the exchange offers are listed. Shorter reacts faster; longer is smoother.",
     "target": "The asset this bot accumulates, from the markets that trade against the base currency.",
     "target_balance": "The balance this bot trades relative to. HARD-CAPPED: position can never exceed Target × (1 + Max Target Growth %/100).",
-    "trading_fee": "Venue fee per side. Added to the scrum interval, so a direction flip needs interval plus fee. Default 0.6%.",
+    "trading_fee": "Per-side venue fee, default 0.6%. A direction flip needs interval plus fee, minimum two fees. Higher venue-reported fees override this.",
     "visibility": "How orders appear on the exchange.",
     "whole_unit_open_units": "Whole units the position opens at on a market with no fractional units. 0 leaves the engine's two-unit minimum.",
 }
