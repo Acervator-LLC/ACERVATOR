@@ -35,7 +35,7 @@ from .scrumming.target_ramp import (
     next_ramp_mode,
     retreat_line,
 )
-from .ta_engine import MIN_CANDLES_FOR_TA
+from .ta_engine import MIN_CANDLES_FOR_TA, vote_sides
 
 #: The keys ``BollingerBands.compute`` publishes in ``Signal.details``.
 BAND_POSITION_KEY = "bb_position"
@@ -666,19 +666,9 @@ def build_context(
     direction = getattr(summary, "consensus_direction", SignalDirection.NEUTRAL)
     confidence = float(getattr(summary, "consensus_confidence", NO_WEIGHT))
     at_upper, at_lower = band_touch(price, band, candles)
-    is_bullish = (
-        direction in (SignalDirection.BULLISH, SignalDirection.NEUTRAL)
-        and confidence >= floor
+    is_bullish, is_bearish = vote_sides(
+        direction, confidence, floor, band, getattr(summary, "signals", None) or []
     )
-    is_bearish = (
-        direction in (SignalDirection.BEARISH, SignalDirection.NEUTRAL)
-        and confidence >= floor
-    )
-    strip_side = str(getattr(band, "landing_strip_side", "") or "")
-    if getattr(band, "landing_strip", False) and strip_side == "upper":
-        is_bullish = True
-    if getattr(band, "landing_strip", False) and strip_side == "lower":
-        is_bearish = True
     trend_strength = bull_candle_count(candles) / TREND_CANDLES
     trend_hold = trend_strength > TREND_MIN_BULL_SHARE
     _, breaker = breaker_reading(candles, held)

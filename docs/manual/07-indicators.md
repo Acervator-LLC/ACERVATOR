@@ -2634,6 +2634,21 @@ past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
 return min(floor, max(floor / denominator, past_two))
 ```
 
+**Current reading, three agreeing at the floor and at a strip.** The floor now
+stays above the two-indicator line at every skew, so it can rise over 0.25. A
+landing strip sets its flag only when the vote tops the same line. A bot with
+every weight at zero keeps its strip as before, because its vote has no line.
+Live, the Market Inspector scan, Paper and the Simulator read one function for
+both booleans.
+
+`src/trading/ta_engine.py` — `vote_sides`, the strip and the floor
+
+```python
+if strip and not three_agree(confidence, signals):
+    strip = ""
+clears = confidence >= floor
+```
+
 ### The band position
 
 **Functional.** The band position is %B: zero at the lower band, one at the

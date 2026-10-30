@@ -2436,6 +2436,20 @@ one.
 return _skewed_confidence_floor(skew, getattr(summary, "signals", None) or [])
 ```
 
+**Current reading, the scan's floor and its strip.** The scan's floor now keeps
+the line at every skew, so it can rise over 0.25. The scan's own copy of the
+strip rule is gone. It calls the function a bot calls, so a strip sets the
+scan's side only when three indicators agree. The scan's LS light reads cyan
+only while the TA light on its bank shows neither a refusal nor an override.
+
+`src/trading/ata_gate_scan.py` — `build_context`
+
+```python
+is_bullish, is_bearish = vote_sides(
+    direction, confidence, floor, band, getattr(summary, "signals", None) or []
+)
+```
+
 `src/trading/ta_engine.py` — the candle floor the engine sets
 
 ```python
