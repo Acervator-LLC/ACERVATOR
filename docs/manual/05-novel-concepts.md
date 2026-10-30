@@ -2599,53 +2599,6 @@ The sentence above stands as written. This is the reading that replaced it.
 | --- | --- |
 | "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this page |
 
-### Detonation waits for three agreeing indicators
-
-**Current reading.** A detonation now needs three agreeing indicators as well as
-the Min Confidence bar. The bullish vote must top what the two heaviest voters
-reach on that same vote, at the bot's own weights. With all twelve voting at the
-published weights, two reach 0.1966. Min Confidence still runs from 0.00 to 1.00,
-and a bar under the line waits for the line.
-
-`src/trading/scrumming_bot.py, in ScrummingBot._check_detonation_trigger`
-
-```python
-clears_bar = (
-    summary.consensus_direction == SignalDirection.BULLISH
-    and summary.consensus_confidence >= conf_min
-)
-is_bullish = clears_bar and three_agree(
-    summary.consensus_confidence, summary.signals
-)
-```
-
-A bot whose twelve weights are all zero has no line. Its vote reads neutral, so it
-never detonates, as before. The line is the one every other vote in the engine
-reads.
-
-`src/trading/ta_engine.py, in three_agree`
-
-```python
-held = [sig.weight for sig in signals] if weights is None else list(weights)
-if not any(weight > 0.0 for weight in held):
-    return True
-return confidence > two_indicator_ceiling(signals)
-```
-
-A vote that clears the bar and not the line prints one DETONATION HELD line and
-leaves `_detonation_last_signal_bullish` off. The next vote over the bar and the
-line is then a fresh edge, and it fires. Driven on a stand-in exchange, against
-the code before this change taken from git:
-
-```
-Min Confidence 0.10, all twelve voting at the published weights
-two agree, BULLISH 0.1966      before: sold 10 of 30 units    now: waits
-three agree, BULLISH 0.2821    before: sold 10 of 30 units    now: sold 10 of 30 units
-Min Confidence 0.75, ten voters abstaining
-two agree, BULLISH 1.0000      before: sold 10 of 30 units    now: waits
-every weight zero              NEUTRAL 0.0, nothing sold before or now
-```
-
 ## 15 - Proof of Accumulation (PoA)
 
 This is another one of the larger and more distinguishing features of the platform. At this point, it is a design proposal for a blockchain that provides certified trade performance between competitors without revealing their specific strategy tunings within Acervator or their identity. When this blockchain is initiated, ZERO tokens for it will exist in the world. I intend it to be, much like A15 to 1) have a fixed supply, 2) mean something through its generation and acquisition. Tokens are only created through the PoA tournaments and defeating Token Beasts or inflicting the most damage to them in a colosseum format. Additional functions would allow PoA tokens to be socketed into the platform to change its appearance and identify a user as a victor.

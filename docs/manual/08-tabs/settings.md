@@ -1061,20 +1061,6 @@ if not three_agree(
 ):
 ```
 
-**Current reading, detonation.** The detonation check votes at the bot's own
-twelve figures, and its bullish vote now needs three agreeing indicators as well
-as Min Confidence. With all twelve voting at the published figures two reach
-0.1966, so a bar under that waits for a third. A bot whose own twelve figures are
-all zero votes neutral and never detonates, as before.
-
-`src/trading/scrumming_bot.py` — `ScrummingBot._check_detonation_trigger`
-
-```python
-is_bullish = clears_bar and three_agree(
-    summary.consensus_confidence, summary.signals
-)
-```
-
 #### A phantom keeps the figures its set was created with
 
 A phantom set is built from the parent's weights at the moment it is created.
@@ -9857,15 +9843,6 @@ They stand as written, and these are the readings that replaced them.
 | "The figures are unchanged for that reason." | The published figures are still unchanged. The zero sits in a new bot's own twelve, so no bot already on disk changes |
 | "The detonation check and the initial-entry check each build a fresh voting engine, so the twelve figures reach neither." | The detonation check votes at the bot's own twelve. The initial-entry check still builds its own engine at the published figures |
 | "Detonation cannot fire in any case: its confidence bar starts at 0.50" | The bar starts at 0.00, so a reading the vote reaches can fire it |
-
-**Current reading, the detonation row.** A reading the vote reaches fires only
-where it also tops what two indicators reach on that same vote.
-
-`src/trading/ta_engine.py` — `three_agree`
-
-```python
-return confidence > two_indicator_ceiling(signals)
-```
 
 The Product Manual PDF rebuild is owed for this page.
 
