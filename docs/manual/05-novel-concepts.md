@@ -1428,15 +1428,13 @@ no pace, and no measurement sets one. The gain is no longer a stored figure. The
 config works it out from the switch and the pace, and a bot record saved before
 this change opens with hunger off.
 
-`src/trading/container/config.py` — `BotConfig`
+`src/trading/container/config.py` — `BotConfig.hunger_gain_per_candle`
 
 ```python
-    hunger_enabled: bool = False
-    hunger_pace_candles: int = HUNGER_PACE_NONE
-    hunger_skew_max: float = 0.20
-
     @property
     def hunger_gain_per_candle(self) -> float:
+        """Return one float step above ``hunger_skew_max`` over ``hunger_pace``, so
+        that many candles reach it; 0.0 while off."""
         pace = hunger_pace(self)
         ceiling = as_finite_float(self.hunger_skew_max)
         if not hunger_switched_on(self) or pace == HUNGER_PACE_NONE:
