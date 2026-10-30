@@ -2676,16 +2676,12 @@ def tranche_sale_rate(record: dict) -> float:
 
 
 def units_at_scrum(record: dict) -> float:
-    """The units a tranche's ``usd`` sold, its dollars over
-    ``tranche_sale_rate``.
-
-    The fold executor in ``tick_phases`` and ``fold_surplus_usd`` both read
-    this one definition, and a ``record`` with no readable rate answers 0.0.
-    """
-    rate = tranche_sale_rate(record)
-    if rate <= 0:
+    """The ``units`` the scrum behind ``record`` sold, 0.0 where that figure is
+    not a positive finite number."""
+    units = as_finite_float(record.get("units", 0.0))
+    if units is None or units <= 0.0:
         return 0.0
-    return float(record.get("usd", 0) or 0) / rate
+    return units
 
 
 def eligible_fold_tranches(

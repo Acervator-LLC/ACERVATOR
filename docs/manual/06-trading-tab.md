@@ -3778,6 +3778,19 @@ gets there, so a ticked box today changes what the record says and not what the 
 does. That is a different thing from the box being off on purpose, and both are true
 of the fleet at once.
 
+**Current reading.** The method that appends a Stack tranche no longer raises.
+Driven on a stand-in venue in a scratch home, a fold and a distribution each opened
+a three-rung ladder. The box gates two more places. A fold opens a ladder for every
+unit it bought, and the distribution sale opens one ladder for each set of a fold's
+extra units that no ladder holds, anchored no lower than that fold's buy price.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_distribute`
+
+```python
+if getattr(self.config, "stack_mode", False):
+    await self._ladder_dist_sets(price, summary)
+```
+
 Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
 
 A percentage from 0.10 to 20.00, at 1.00 % to start. The bot hands it to the

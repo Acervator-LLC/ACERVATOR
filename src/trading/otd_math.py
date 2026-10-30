@@ -195,6 +195,12 @@ def fold_rebuy_price(sell_ref_price: float, otd_pct: float) -> float:
     return float(sell_ref_price) * fold_rebuy_factor_from_pct(otd_pct)
 
 
+def opposing_sale_price(buy_ref_price: float, otd_pct: float) -> float:
+    """The lowest price a unit bought at ``buy_ref_price`` may sell at,
+    ``clamped_otd_pct`` of ``otd_pct`` above it."""
+    return float(buy_ref_price) * (1.0 + clamped_otd_pct(otd_pct) / 100.0)
+
+
 def fold_rebuy_factor(
     interval_pct: float,
     fee_pct: float,

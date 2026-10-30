@@ -2035,6 +2035,19 @@ opened on the upper side when it reaches 0.25.
 `PaperTrade` now carries `target_usd_after`, the balance's target once the
 growth has been taken.
 
+**Current reading.** The surplus a fold books is the units it bought less the
+units its scrum sold, priced at the fold. Live, Paper and the Simulator read it
+through one function, so all three book the same figure. A scrum of 0.1 units at
+$100 and a fold at $98, at a 0.6 per cent fee, book $0.14 of surplus in Paper and
+in the Simulator alike.
+
+`src/trading/scrumming/sizing.py` — `fold_surplus_usd`
+
+```python
+asset_at_scrum = sum(units_at_scrum(one) for one in slices)
+return max(0.0, priced_usd(float(units_bought) - asset_at_scrum, float(fill_price)))
+```
+
 ### The run writes the record, and the row follows
 
 `PaperRunner` gains one seam, `on_stats`, beside `on_trade` and `on_figures`.

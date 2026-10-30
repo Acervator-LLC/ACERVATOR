@@ -18,6 +18,7 @@ from ..container.config import (
     as_whole_count,
     ceiling_multiple,
 )
+from .distribution import dist_sets_from_saved, dist_units
 from .target_ramp import RAMP_MODES, RAMP_SEARCH
 
 if TYPE_CHECKING:
@@ -61,7 +62,7 @@ class StateSerializerMixin:
     _bus: Any
     _compact_wire_credits: Callable[..., int]
     _current_holdings: float
-    _dist_accumulator: float
+    _dist_sets: list[dict]
     _export_resting_orders: Callable[..., list]
     _fold_queue_usd: float
     _fold_tranches: list[dict]
@@ -130,7 +131,8 @@ class StateSerializerMixin:
             ),
             "cb_soft_trip_pct": float(getattr(self, "_cb_soft_trip_pct", 0.0) or 0.0),
             "fold_queue_usd": float(self._fold_queue_usd),
-            "dist_accumulator": float(self._dist_accumulator),
+            "dist_accumulator": dist_units(self._dist_sets),
+            "dist_sets": [dict(one) for one in self._dist_sets],
             "hedge_bal": float(self._hedge_bal),
             "hedge_trades": admitted_counter(
                 self._hedge_trades, "_hedge_trades", self.bot_id
@@ -212,6 +214,23 @@ class StateSerializerMixin:
             ),
             "_format_version": 8,
         }
+
+    def _release_unpriced_dist(self, data: dict) -> None:
+        """Log the ``dist_accumulator`` units a save holds with no ``dist_sets``
+        beside it, which no distribution sells."""
+        if "dist_sets" in data:
+            return
+        unpriced = as_finite_float(data.get("dist_accumulator"))
+        if unpriced is None or unpriced <= 0.0:
+            return
+        message = (
+            f"DIST RELEASED: the saved state holds {unpriced:.8f} extra units and "
+            f"names no fold price, so no distribution can keep the opposing trade "
+            f"distance from one. They stay in the position, and no distribution "
+            f"sells them."
+        )
+        logger.warning("Bot %s %s", self.bot_id, message)
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=message)
 
     def import_scrumming_state(self, data: dict) -> None:
         """Restore compounding state from an ``export_scrumming_state`` dict.
@@ -388,9 +407,8 @@ class StateSerializerMixin:
                     type(_sup).__name__,
                     _sup,
                 )
-        self._dist_accumulator = float(
-            data.get("dist_accumulator", self._dist_accumulator)
-        )
+        self._dist_sets = dist_sets_from_saved(data.get("dist_sets"))
+        self._release_unpriced_dist(data)
         self._hedge_bal = float(data.get("hedge_bal", self._hedge_bal))
         self._hedge_trades = admitted_counter(
             data.get("hedge_trades", self._hedge_trades), "hedge_trades", self.bot_id

@@ -17,18 +17,31 @@ from ..container.config import (
     EXPIRY_CLOSE_SELL_ALL,
     SMART_CARTRIDGE_CEILING_OFF,
     SMART_CARTRIDGE_CEILING_OFF_TEXT,
+    as_finite_float,
     ceiling_multiple,
     expiry_close_decision,
     smart_cartridge_ceiling_pct,
     target_growth_pct,
 )
 from ..indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
+from ..otd_math import DistanceSettingUnreadable
+from ..stack_math import rung_is_pending
 from ..target_bands import at_target_dust_band
 from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
     VotingEngine,
     candles_from_raw,
     detect_bb_proximity,
+)
+from .distribution import (
+    DIST_FOLD_PRICE_KEY,
+    DIST_LADDER_TRIED_KEY,
+    DIST_UNITS_KEY,
+    dist_floor_price,
+    dist_set,
+    dist_sets_clearing,
+    dist_units,
+    take_off_dist_sets,
 )
 from .sizing import (
     EVENT_ID_KEY,
@@ -76,7 +89,7 @@ class TickPhaseMixin:
     _count_trade_volume: Callable[..., float]
     _current_holdings: float
     _detonation_last_signal_bullish: bool
-    _dist_accumulator: float
+    _dist_sets: list[dict]
     _drop_malformed_fold_tranches: Callable[..., int]
     _emit_gate_decision_at_fire: Callable[..., None]
     _emit_trade_fire_snapshot: Callable[..., None]
@@ -92,6 +105,7 @@ class TickPhaseMixin:
     _fold_diag_last_blocker_set: str
     _fold_diag_tick: int
     _fold_eligible_tranches: Callable[..., list[dict]]
+    _fold_piece_laddered: bool
     _fold_queue_ref_price: float
     _fill_fee_fields: Callable[..., dict]
     _fold_queue_usd: float
@@ -113,6 +127,7 @@ class TickPhaseMixin:
     _last_trade_side: Optional[str]
     _main_lots: list[dict]
     _manual_fire_pending: bool
+    _open_stack_from_scrum: Callable[..., Any]
     _pending_stack_buy_usd: float
     _pending_wire_credits: float
     _phantom_gate_logged: bool
@@ -127,6 +142,7 @@ class TickPhaseMixin:
     _record_venue_units_after_fill: Callable[..., float]
     _refresh_quote_to_usd: Callable[..., Any]
     _refusal_is_new: Callable[..., bool]
+    _refuse_unreadable_distance: Callable[..., None]
     _reset_opposing_hysteresis_after_fill: Callable[..., None]
     _resting_order_for: Callable[..., Any]
     _route_scrum_proceeds_via_wires: Callable[..., float]
@@ -136,6 +152,7 @@ class TickPhaseMixin:
     _settled_fill: Callable[..., Any]
     _settled_sale_proceeds: Callable[..., float]
     _smart_wire_mgr: Any
+    _stack_tranches: list[dict]
     _standing_surplus_usd: float
     _sum_sibling_base_currency_claims: Callable[..., Optional[float]]
     _ta_weights: Any
@@ -151,6 +168,7 @@ class TickPhaseMixin:
     config: Any
     exchange: Any
     note_scrum_retention_usd: Callable[..., None]
+    opposing_trade_distance_pct: Callable[..., float]
     reset_swos_cycle: Callable[..., None]
     stats: Any
 
@@ -167,6 +185,11 @@ class TickPhaseMixin:
         """Write the ceiling onto config.hedge_balance, the one place it is
         stored."""
         self.config.hedge_balance = float(value)
+
+    @property
+    def _dist_accumulator(self) -> float:
+        """The extra units ``_dist_sets`` hold, summed by ``dist_units``."""
+        return dist_units(self._dist_sets)
 
     async def _tick_initialise(self, symbol: str) -> None:
         """Run the boot handshake; the tick ends whatever this decides."""
@@ -2331,8 +2354,7 @@ class TickPhaseMixin:
         self._last_trade_price = buy_fill
         self._reset_opposing_hysteresis_after_fill()
 
-        if extra_asset > 0:
-            self._dist_accumulator += extra_asset
+        self._open_dist_set(extra_asset, buy_fill)
         self._announce_fill(
             kind="FOLD",
             side=FILL_BUY,
@@ -2344,46 +2366,134 @@ class TickPhaseMixin:
             fee=self._fill_fee_fields(buy_fill),
         )
 
+    def _open_dist_set(self, extra_units: float, fold_price: float) -> None:
+        """Queue ``extra_units`` bought at ``fold_price`` on ``_dist_sets`` unless
+        ``_fold_piece_laddered`` says the fold's ladder holds them."""
+        laddered = self._fold_piece_laddered
+        self._fold_piece_laddered = False
+        record = dist_set(extra_units, fold_price)
+        if record is None:
+            return
+        if laddered:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"DIST: the stack ladder this fold opened already offers its "
+                    f"{record[DIST_UNITS_KEY]:.8f} extra units, so no distribution "
+                    f"ladders them a second time."
+                ),
+            )
+            return
+        self._dist_sets.append(record)
+
     async def _tick_distribute(
         self, ticker: Any, summary: Any, bb_result: Any, is_bullish: bool
     ) -> None:
-        """Sell the accumulated excess and re-queue the proceeds for fold."""
-        if self._dist_accumulator > 0 and is_bullish:
-            dist_asset = self._dist_accumulator
-            try:
-                bal = await self._get_balance(self.config.symbol.split("/")[0])
-                dist_asset = min(dist_asset, bal)
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
+        """Sell each set of ``_dist_sets`` at or above its ``dist_floor_price``, and
+        re-queue the proceeds for fold."""
+        if not self._dist_sets or not is_bullish:
+            return
+        price = float(ticker.last)
+        try:
+            otd_pct = self.opposing_trade_distance_pct()
+        except DistanceSettingUnreadable as unread:
+            self._refuse_unreadable_distance(unread, "DIST", price)
+            return
+        if getattr(self.config, "stack_mode", False):
+            await self._ladder_dist_sets(price, summary)
+            if not self._dist_sets:
+                return
+        clearing = dist_sets_clearing(self._dist_sets, price, otd_pct)
+        if not clearing:
+            self._hold_dist_sets(price, otd_pct)
+            return
+        dist_asset = await self._dist_balance_cap(dist_units(clearing))
+        if dist_asset > 0:
+            dist_fill = await self._execute_sell(
+                dist_asset,
+                ticker.last,
+                summary,
+                bypass_stack=True,
+                label="DIST",
+                booker="_book_dist_fill",
+                booking={
+                    "dist_asset": float(dist_asset),
+                    "intended": float(ticker.last),
+                    "bb_lower": float(getattr(bb_result, "lower", 0.0) or 0.0),
+                    "bb_upper": float(getattr(bb_result, "upper", 0.0) or 0.0),
+                    "fold_price_cap": max(
+                        float(one[DIST_FOLD_PRICE_KEY]) for one in clearing
+                    ),
+                },
+            )
+            if (dist_fill is None or dist_fill <= 0) and self._refusal_is_new(
+                "dist_sell_refused", ticker.last
+            ):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"DIST ABORTED: sell failed for "
+                        f"{dist_asset:.6f} excess @ ${ticker.last:.8f}. "
+                        f"Accumulator kept; no re-fold tranches "
+                        f"created. Retry next tick."
+                    ),
                 )
-            if dist_asset > 0:
-                dist_fill = await self._execute_sell(
-                    dist_asset,
-                    ticker.last,
-                    summary,
-                    label="DIST",
-                    booker="_book_dist_fill",
-                    booking={
-                        "dist_asset": float(dist_asset),
-                        "intended": float(ticker.last),
-                        "bb_lower": float(getattr(bb_result, "lower", 0.0) or 0.0),
-                        "bb_upper": float(getattr(bb_result, "upper", 0.0) or 0.0),
-                    },
-                )
-                if (dist_fill is None or dist_fill <= 0) and self._refusal_is_new(
-                    "dist_sell_refused", ticker.last
-                ):
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=(
-                            f"DIST ABORTED: sell failed for "
-                            f"{dist_asset:.6f} excess @ ${ticker.last:.8f}. "
-                            f"Accumulator kept; no re-fold tranches "
-                            f"created. Retry next tick."
-                        ),
-                    )
+
+    async def _ladder_dist_sets(self, price: float, summary: Any) -> None:
+        """Open one ``_open_stack_from_scrum`` ladder per untried set, anchored no
+        lower than its fold price, and drop each set a rung now holds."""
+        laddered: set[int] = set()
+        for record in list(self._dist_sets):
+            if record.get(DIST_LADDER_TRIED_KEY):
+                continue
+            fold_price = float(record[DIST_FOLD_PRICE_KEY])
+            before = len(self._stack_tranches)
+            opened = await self._open_stack_from_scrum(
+                scrum_price=max(price, fold_price),
+                scrum_size=float(record[DIST_UNITS_KEY]),
+                summary=summary,
+                origin="dist",
+                floor_ref_price=fold_price,
+            )
+            appended = self._stack_tranches[before:]
+            if opened > len(appended) or any(rung_is_pending(r) for r in appended):
+                laddered.add(id(record))
+            else:
+                record[DIST_LADDER_TRIED_KEY] = True
+        self._dist_sets = [one for one in self._dist_sets if id(one) not in laddered]
+
+    def _hold_dist_sets(self, price: float, otd_pct: float) -> None:
+        """Log, once per held refusal, the lowest ``dist_floor_price`` among
+        ``_dist_sets`` that ``price`` has not reached."""
+        if not self._refusal_is_new("dist_floor", price):
+            return
+        lowest = min(self._dist_sets, key=lambda one: one[DIST_FOLD_PRICE_KEY])
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"DIST HELD (opposing distance): {len(self._dist_sets)} set(s) "
+                f"holding {dist_units(self._dist_sets):.8f} extra units wait. "
+                f"The lowest may sell at ${dist_floor_price(lowest, otd_pct):.8f}, "
+                f"its fold's buy price ${lowest[DIST_FOLD_PRICE_KEY]:.8f} plus the "
+                f"{otd_pct:.2f}% opposing trade distance. Price ${price:.8f}."
+            ),
+        )
+
+    async def _dist_balance_cap(self, units: float) -> float:
+        """``units`` held to the venue's free balance of the base asset, unchanged
+        where that balance cannot be read."""
+        try:
+            balance = await self._get_balance(self.config.symbol.split("/")[0])
+        except Exception as _sup:
+            logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
+            return units
+        free = as_finite_float(getattr(balance, "free", None))
+        if free is None:
+            return units
+        return min(units, free)
 
     async def _book_dist_fill(
         self,
@@ -2396,12 +2506,15 @@ class TickPhaseMixin:
         intended: float,
         bb_lower: float,
         bb_upper: float,
+        fold_price_cap: float = 0.0,
     ) -> None:
         """Book one settled piece of a distribution sale, queueing its proceeds for
         re-fold while ``profit_folding_active`` is on, and announce it as a ``DIST``
         fill.
 
-        The announced profit is the change in ``_target_balance`` across this booking.
+        ``take_off_dist_sets`` takes the sold units off the sets priced at or under
+        ``fold_price_cap``. The announced profit is the change in ``_target_balance``
+        across this booking.
         """
         _target_before = float(self._target_balance)
         dist_fill = fill_price
@@ -2421,7 +2534,13 @@ class TickPhaseMixin:
         self._emit_gate_decision_at_fire(side="SELL", trade_action="DIST")
         self._last_trade_price = dist_fill
 
-        self._dist_accumulator = 0.0
+        _venue_rules = await self._get_market_rules(self.config.symbol)
+        take_off_dist_sets(
+            self._dist_sets,
+            _sold_units,
+            fold_price_cap,
+            float(_venue_rules.smallest_amount or 0.0),
+        )
 
         if self.config.profit_folding_active:
             self._main_lots.sort(key=lambda l: l["initial_buy_price"], reverse=True)

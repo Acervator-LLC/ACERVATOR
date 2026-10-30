@@ -50,7 +50,8 @@ from .container.config import (
     ceiling_multiple,
     target_growth_pct,
 )
-from .otd_math import DistanceSettingUnreadable
+from .otd_math import DistanceSettingUnreadable, opposing_sale_price
+from .stack_math import rung_floor_ref
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
@@ -489,7 +490,8 @@ class ScrummingBot(
         self._phantoms_started = False
 
         self._fold_accumulator: float = 0.0
-        self._dist_accumulator: float = 0.0
+        self._dist_sets: list[dict] = []
+        self._fold_piece_laddered: bool = False
         self._fold_queue_usd: float = 0.0
         self._fold_queue_ref_price: float = 0.0
 
@@ -4990,8 +4992,13 @@ class ScrummingBot(
         scrum_size: float,
         summary: Optional[VotingSummary] = None,
         origin: str = "scrum",
+        floor_ref_price: float = 0.0,
     ) -> int:
         """Split a SCRUM decision into Stack tranches instead of one immediate sell.
+
+        A ``floor_ref_price`` above zero is written on every rung as
+        ``STACK_FLOOR_REF_KEY``, and a new rung combines only with a standing rung
+        holding the same figure.
 
         Returns:
             The number of tranches created (>=1). Populates
@@ -5005,10 +5012,13 @@ class ScrummingBot(
             opposing_event_id,
         )
         from .stack_math import (
+            STACK_FLOOR_REF_KEY,
             STACK_PRICE_KEY,
             merge_into_standing_rungs,
             split_scrum_into_tranches,
         )
+
+        _floor_ref = max(0.0, float(floor_ref_price or 0.0))
 
         try:
             min_opposing_pct = self.opposing_trade_distance_pct()
@@ -5088,11 +5098,12 @@ class ScrummingBot(
                 EVENT_ID_KEY: _event_id,
                 EVENT_UNITS_KEY: float(scrum_size),
                 EVENT_USD_KEY: _event_usd,
+                **({STACK_FLOOR_REF_KEY: _floor_ref} if _floor_ref > 0.0 else {}),
             }
             for t in tranches
         ]
         _fresh_rungs, _combined_n, _combined_size = merge_into_standing_rungs(
-            self._stack_tranches,
+            [r for r in self._stack_tranches if rung_floor_ref(r) == _floor_ref],
             _fresh_rungs,
             sum_keys=(EVENT_UNITS_KEY, EVENT_USD_KEY),
             id_key=EVENT_ID_KEY,
@@ -5328,6 +5339,32 @@ class ScrummingBot(
             )
         return activated
 
+    def _rung_under_floor(self, rung: dict, price: float) -> bool:
+        """True while ``price`` sits under ``opposing_sale_price`` of ``rung``'s
+        ``rung_floor_ref``, or the distance cannot be read."""
+        floor_ref = rung_floor_ref(rung)
+        if floor_ref <= 0.0:
+            return False
+        try:
+            floor = opposing_sale_price(floor_ref, self.opposing_trade_distance_pct())
+        except DistanceSettingUnreadable as _unread:
+            self._refuse_unreadable_distance(_unread, "STACK", price)
+            return True
+        if price >= floor:
+            return False
+        if self._refusal_is_new("stack_rung_floor", price):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK TRANCHE {rung.get('index')} HELD (opposing distance): "
+                    f"price ${price:.8f} sits under ${floor:.8f}, the buy price "
+                    f"${floor_ref:.8f} its units came in at plus the opposing trade "
+                    f"distance. The tranche stays activated."
+                ),
+            )
+        return True
+
     async def _spend_activated_stack_tranches(
         self,
         current_price: float,
@@ -5361,6 +5398,8 @@ class ScrummingBot(
             if t.get("status") != "pending":
                 continue
             if not t.get("activated"):
+                continue
+            if self._rung_under_floor(t, float(current_price)):
                 continue
             _vote = summary
             if _vote is None:
@@ -5549,10 +5588,14 @@ class ScrummingBot(
     ) -> int:
         """A filled FOLD spawns the Stack ladder above it.
 
+        Every rung keeps ``fold_price`` as its floor reference, and
+        ``_fold_piece_laddered`` reads True only when this fill opened a ladder.
+
         Returns:
             How many Stack tranches were created, 0 when none were.
 
         """
+        self._fold_piece_laddered = False
         if path not in ("fold_rebuy", "manual_tranche_fire"):
             return 0
         if not getattr(self.config, "stack_mode", False):
@@ -5567,6 +5610,7 @@ class ScrummingBot(
                 scrum_size=float(fold_size),
                 summary=summary,
                 origin="fold",
+                floor_ref_price=float(fold_price),
             )
         except Exception as _spawn_exc:
             logger.error(
@@ -5587,6 +5631,7 @@ class ScrummingBot(
                 ),
             )
             return 0
+        self._fold_piece_laddered = opened > 0
         if opened > 0:
             self._bus.emit(
                 "bot.log",
