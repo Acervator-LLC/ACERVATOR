@@ -885,6 +885,80 @@ past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
 return min(floor, max(floor / denominator, past_two))
 ```
 
+**Current reading, the line at every floor.** The sentence above that the floor
+never rises above 0.25 no longer holds. The floor now stays just above what two
+indicators reach at every skew, no skew included. Where two indicators already
+reach more than 0.25, through voters that abstain or weights that lean on two,
+the floor sits just above them, with hunger or without it. Hunger eases a floor
+down to that line and no further.
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+denominator = 1.0 + skew
+if denominator <= 0.0:
+    return math.inf
+eased = floor if math.isnan(denominator) else floor / denominator
+return three_indicator_floor(eased, signals)
+```
+
+Read off the function itself, with no skew and with hunger at its 0.20 ceiling:
+
+```
+weights     voters abstaining   two indicators reach   floor, no hunger   floor, full hunger
+equal       none                0.1667                 0.25               0.2083
+equal       five                0.2857                 0.2857             0.2857
+published   none                0.1966                 0.25               0.2083
+published   the four lightest   0.2771                 0.2771             0.2771
+```
+
+**Current reading, the switch and the pace.** Each live Scrumming bot's Bot
+Settings window now carries hunger in the Strategy Gate Flags group of its
+Settings tab. A Hunger tick box switches it on. A Hunger Pace box takes the
+number of idle candles that brings hunger to full strength, the 0.20 ceiling.
+Both start off: the box is clear and the pace shows a dash. The screen suggests
+no pace, and no measurement sets one. The gain is no longer a stored figure. The
+config works it out from the switch and the pace, and a bot record saved before
+this change opens with hunger off.
+
+`src/trading/container/config.py` — `BotConfig`
+
+```python
+    hunger_enabled: bool = False
+    hunger_pace_candles: int = HUNGER_PACE_NONE
+    hunger_skew_max: float = 0.20
+
+    @property
+    def hunger_gain_per_candle(self) -> float:
+        pace = hunger_pace(self)
+        ceiling = as_finite_float(self.hunger_skew_max)
+        if not hunger_switched_on(self) or pace == HUNGER_PACE_NONE:
+            return 0.0
+        if ceiling is None or ceiling <= 0.0:
+            return 0.0
+        return math.nextafter(ceiling / pace, math.inf)
+```
+
+The gain sits one float step above the plain division. Without that step,
+135,525 of the paces from 1 to 2,000,000 reached full strength one candle late.
+With it, every pace reaches full strength on its own candle, and none a candle
+early.
+
+Apply writes both figures onto the running bot, and its next tick reads them.
+The platform saves them to the bot's record within a minute, and again at
+shutdown. The count runs whether the switch is on or off, so a bot switched on
+part way through a wait takes the strength its count already holds. Paper and
+the Simulator run no hunger, so their Settings tabs carry neither row.
+
+```
+driven in a redirected home, on a stand-in exchange
+Qt, tick Hunger, type 12, Apply       0.0167 a candle; 1, 6 and 12 candles give 0.0167, 0.1000, 0.2000
+React, tick Hunger, type 19, Apply    0.1895 at candle 18, full strength at candle 19
+restart, either page                  the box ticked and the pace typed, as set on the other page
+three idle candles at pace 12         HUNGER lines put the floor at 0.2459, 0.2419, 0.2381
+left off, 2,023 ticks                 every decision matches the code before this change, byte for byte
+```
+
 ### 9 - Accumulation Shadows
 
 The Accumulation Shadow was invented as a means of taking maximum advantage of long term and bearish conditions. It allows for a Scrumming to create a Shadow of itself that focuses on accumulating a smaller chunk of the target asset during a bearish regime. The shadow is allowed to accumulate downward but does not scrum. It was a bullish regime to be dedicated and then detonates thereby claiming all of its profits at once. Shadows operate in parallel with their parent bots and will be listed as Shadow Tranches once they are fully implemented.

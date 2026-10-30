@@ -93,7 +93,9 @@ TAB_PLAN: tuple = (
 )
 
 #: The page space the Settings tab draws into, read off ``TAB_PLAN``.
-SETTINGS_SPACE = next(part for name, part, _api, _module in TAB_PLAN if name == "Settings")
+SETTINGS_SPACE = next(
+    part for name, part, _api, _module in TAB_PLAN if name == "Settings"
+)
 
 #: The TA Timeframe row's reading, which records through ``_ta_timeframe_picked``.
 TIMEFRAME_READING = settings_surface.TIMEFRAME_READING

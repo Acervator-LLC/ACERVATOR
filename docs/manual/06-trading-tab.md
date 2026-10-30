@@ -9634,6 +9634,51 @@ the same counts and the same dollars on every row. A third copy of a predicate i
 drift hazard rather than a present fault, and collapsing it would reach files other
 rows own.
 
+### The Hunger switch and pace on a running bot
+
+The Strategy Gate Flags group of a running Scrumming bot carries two hunger rows
+under its five flags. Neither creation wizard carries them, so a new bot opens
+with hunger off. An Extractor bot, a Paper bot and a Simulator bot show neither
+row, because their engines run no hunger.
+
+| | the control |
+| --- | --- |
+| Where | `src/gui/live_settings/settings_tab.py` |
+| React row | `src/gui/main_tabs/live_settings_tab_surface.py` |
+| Kind | a tick box, clear at the start, and a whole-number box that shows a dash until a pace is typed |
+| What it writes | the switch and the pace, which the engine reads as one gain for each idle candle |
+
+Hunger - When the box is ticked and a pace is typed, each idle candle in the dead
+zone eases the scrum and fold vote floor. A fill or a return to target sets the
+count back to zero. Hunger never lets two indicators carry a trade.
+
+Hunger Pace - The idle candles that bring hunger to full strength, a skew of 0.20,
+from one candle up. A dash means no pace is typed, and hunger then does nothing
+with the box ticked.
+
+`src/gui/live_settings/settings_tab.py` — `SettingsTabMixin._add_hunger_rows`
+
+```python
+self._hunger_pace = QSpinBox()
+self._hunger_pace.setRange(HUNGER_PACE_NONE, HUNGER_PACE_MAX_CANDLES)
+self._hunger_pace.setSuffix(HUNGER_PACE_SUFFIX)
+self._hunger_pace.setSpecialValueText(HUNGER_PACE_NONE_TEXT)
+self._hunger_pace.setValue(hunger_pace(cfg))
+```
+
+Apply writes both onto the running bot, and its next tick reads them. The bot's
+record on disk follows within a minute. Both pages show and set the same two
+figures: a pace typed on one page reads back on the other after a restart.
+[05-novel-concepts.md](05-novel-concepts.md), entry 8, carries what hunger does to
+the vote.
+
+```
+the two rows, measured against the code before this change
+Qt Settings tab      group height 154 -> 210 px; the other seven groups and every other row unmoved
+React Settings tab   group height 110 -> 156 px; the other seven groups and every other row unmoved
+both pages           page width unchanged at 640 x 720 and at 980 x 900
+```
+
 ### The accumulation ceiling and the capital claim
 
 **The adoption ceiling comes from Target Balance.** A bot that has never scrummed
