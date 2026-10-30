@@ -950,6 +950,8 @@ builds the widgets, so an edit still travels the same route into the bot.
 `_mark_changed` records the field against what the bot holds now, and
 `_apply_changes` writes it. The window carries no second copy of that logic.
 
+Now: each box on the React Settings tab keeps the operator's edit until Apply, and the window records it only where the Qt control could hold it, a list pick as its item (`src/gui/main_tabs/live_settings_tab_surface.py, in admitted_edit`).
+
 `src/gui/react_bot_live_settings.py` — `BotLiveSettingsReactDialog.apply_edit`
 
 ```python

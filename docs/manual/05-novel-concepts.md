@@ -1212,6 +1212,8 @@ Each bot carries its own two figures. The gain is zero on every bot, so no bot
 trades differently today. No screen sets the gain, and no measurement sets its
 figure.
 
+Now: the gain is the 0.20 ceiling over the pace typed in each live Scrumming bot's Hunger Pace box, and none until its Hunger box is ticked (`src/trading/container/config.py, in BotConfig.hunger_gain_per_candle`).
+
 `src/trading/container/config.py` — `BotConfig`
 
 ```python
@@ -1382,6 +1384,8 @@ reach. The floor stays above what the two heaviest voters reach at full
 confidence, at the bot's weights on that tick, and never rises above 0.25. At
 the published weights two indicators reach 0.1966, so the 0.20 ceiling alone
 still gives 0.2083.
+
+Now: the floor stays just above what two indicators reach at every skew, no skew included, so it rises over 0.25 wherever two indicators reach more (`src/trading/scrumming_bot.py, in _skewed_confidence_floor`).
 
 `src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
 

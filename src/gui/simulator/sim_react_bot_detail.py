@@ -92,6 +92,17 @@ TAB_PLAN: tuple = (
     ),
 )
 
+#: The page space the Settings tab draws into, read off ``TAB_PLAN``.
+SETTINGS_SPACE = next(
+    part for name, part, _api, _module in TAB_PLAN if name == "Settings"
+)
+
+#: The TA Timeframe row's reading, which records through ``_ta_timeframe_picked``.
+TIMEFRAME_READING = settings_surface.TIMEFRAME_READING
+
+#: What the log says when the page sends a figure its box could not hold.
+EDIT_REFUSED_LOG = "Sim settings page sent %s=%r, which that box cannot hold"
+
 #: The model class each surface module builds its payload from.
 MODEL_BY_SURFACE: dict[str, str] = {
     "sim_live_status_tab_surface": "SimLiveStatusTabModel",
@@ -240,6 +251,15 @@ HOST_SCRIPT = """(function (global) {
     return node.value;
   }
 
+  function outsideBox(node, kind, value) {
+    if (kind !== "spin" && kind !== "double_spin") {
+      return false;
+    }
+    var low = parseFloat(node.getAttribute("min"));
+    var high = parseFloat(node.getAttribute("max"));
+    return !isFinite(value) || value < low || value > high;
+  }
+
   document.addEventListener("change", function (event) {
     var node = event.target;
     if (typeof node.getAttribute !== "function") {
@@ -250,9 +270,12 @@ HOST_SCRIPT = """(function (global) {
     if (name === null || kind === null) {
       return;
     }
-    console.log(
-      "%(edit)s" + JSON.stringify({ name: name, value: readValue(node, kind) })
-    );
+    var value = readValue(node, kind);
+    if (outsideBox(node, kind, value)) {
+      node.value = node.defaultValue;
+      return;
+    }
+    console.log("%(edit)s" + JSON.stringify({ name: name, value: value }));
   });
 
   document.addEventListener("click", function (event) {
@@ -600,10 +623,20 @@ def _build() -> dict:
             except ValueError:
                 logger.warning("Sim settings page sent an edit that is not JSON")
                 return
-            field = field_for(str(asked.get("name") or ""))
+            name = str(asked.get("name") or "")
+            field = field_for(name)
             if not field:
                 return
-            self._mark_changed(field, asked.get("value"))
+            held, value = settings_surface.admitted_edit(
+                name, asked.get("value"), self._last_tabs.get(SETTINGS_SPACE)
+            )
+            if not held:
+                logger.warning(EDIT_REFUSED_LOG, name, asked.get("value"))
+                return
+            if settings_surface.spec_for(name)["reading"] == TIMEFRAME_READING:
+                self._ta_timeframe_picked(value)
+                return
+            self._mark_changed(field, value)
 
         def run_action(self, payload: str) -> None:
             """Run the tab, the footer press or the refused press the page reports."""

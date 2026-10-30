@@ -44,7 +44,13 @@ from ...trading.container.config import (
     FOLD_RATIO_MAX_PCT,
     FOLD_RATIO_MIN_PCT,
     FOLD_RATIO_PCT_DEFAULT,
+    HUNGER_PACE_MAX_CANDLES,
+    HUNGER_PACE_NONE,
     POSITION_CEILING_MULTIPLE_DEFAULT,
+    as_box_figure,
+    as_whole_count,
+    hunger_pace,
+    hunger_switched_on,
 )
 from .. import design_system as ds
 from ..descriptions import SETTINGS_TAB_DESCRIPTIONS
@@ -256,6 +262,13 @@ FLOAT_SAFE_INT = 2**1023
 DESPAWN_FIELD = "tranche_despawn_days"
 DESPAWN_OFF = 0
 
+#: The Hunger rows' words, which the Qt tab and the React page both draw.
+HUNGER_SWITCH_TEXT = "Hunger (idle candles ease the TA floor)"
+HUNGER_PACE_LABEL = "Hunger Pace:"
+HUNGER_PACE_SUFFIX = " candles"
+#: What the Hunger Pace box draws while ``hunger_pace`` reads ``HUNGER_PACE_NONE``.
+HUNGER_PACE_NONE_TEXT: str = ABSENT_CELL_TEXT
+
 #: The row tooltips, read from ``SETTINGS_TAB_DESCRIPTIONS``, the dict the Qt tabs read.
 TOOLTIPS = dict(SETTINGS_TAB_DESCRIPTIONS)
 
@@ -442,6 +455,8 @@ FLOAT_OR_ZERO_READING = "float_or_zero"
 FLOAT_OR_DEFAULT_READING = "float_or_default"
 DESPAWN_READING = "despawn_days"
 ADMITTED_READING = "admitted"
+HUNGER_SWITCH_READING = "hunger_switch"
+HUNGER_PACE_READING = "hunger_pace"
 
 #: What a dollar box draws in place of a stored figure `as_box_figure`
 #: refuses. The dash the indicator panel's absent cells draw, so one
@@ -517,6 +532,8 @@ def read_number(
     """
     if kind == DESPAWN_READING:
         return despawn_days(config)
+    if kind == HUNGER_PACE_READING:
+        return hunger_pace(config)
     raw = read_config_field(config, field, default, no_default)
     if kind == BARE_READING:
         return raw
@@ -1109,6 +1126,32 @@ CONTROL_SPECS = (
         "default": True,
     },
     {
+        "name": "hunger_enabled",
+        "kind": CHECK,
+        "group": GATES_GROUP,
+        "row_label": NO_ROW_LABEL,
+        "text": HUNGER_SWITCH_TEXT,
+        "field": "hunger_enabled",
+        "reading": HUNGER_SWITCH_READING,
+        "default": False,
+        "scrumming_only": True,
+        "hunger_only": True,
+    },
+    {
+        "name": "hunger_pace",
+        "kind": SPIN,
+        "group": GATES_GROUP,
+        "row_label": HUNGER_PACE_LABEL,
+        "field": "hunger_pace_candles",
+        "reading": HUNGER_PACE_READING,
+        "default": HUNGER_PACE_NONE,
+        "range": (HUNGER_PACE_NONE, HUNGER_PACE_MAX_CANDLES),
+        "suffix": HUNGER_PACE_SUFFIX,
+        "special_value_text": HUNGER_PACE_NONE_TEXT,
+        "scrumming_only": True,
+        "hunger_only": True,
+    },
+    {
         "name": "ext_chunk_size",
         "kind": DOUBLE_SPIN,
         "group": EXTRACTOR_GROUP,
@@ -1216,6 +1259,50 @@ def spec_for(name: str) -> dict:
         if spec["name"] == name:
             return spec
     raise KeyError(name)
+
+
+def _admitted_choice(spec: dict, raw: Any, timeframes: Any) -> tuple:
+    """Return ``(True, item)`` for row ``raw`` of the list ``spec`` draws, the
+    data for a ``COMBO_DATA`` box."""
+    items = list(spec.get("items") or timeframes or ())
+    at = as_whole_count(raw)
+    if at is None or not 0 <= at < len(items):
+        return (False, None)
+    chosen = items[at]
+    return (True, chosen[1] if spec["kind"] == COMBO_DATA else chosen)
+
+
+def _admitted_number(spec: dict, raw: Any) -> tuple:
+    """Return ``(True, raw)`` inside ``spec``'s range, whole for a ``SPIN`` box and
+    rounded to its decimals otherwise."""
+    low, high = spec["range"]
+    read = as_box_figure(raw, low, high)
+    if read is None:
+        return (False, None)
+    if spec["kind"] == SPIN:
+        whole = as_whole_count(raw)
+        return (False, None) if whole is None else (True, whole)
+    return (True, round(read, int(spec.get("decimals", 2))))
+
+
+def admitted_edit(name: str, raw: Any, drawn: Any = None) -> tuple:
+    """Return ``(True, value)`` for a page edit of control ``name`` that its Qt
+    control could hold, given the ``drawn`` Settings payload."""
+    try:
+        spec = spec_for(name)
+    except KeyError:
+        return (False, None)
+    kind = spec["kind"]
+    if kind == CHECK:
+        return (True, raw) if type(raw) is bool else (False, None)
+    if kind in (COMBO_DATA, COMBO_TEXT):
+        timeframes = drawn.get("timeframe_items") if isinstance(drawn, dict) else None
+        return _admitted_choice(spec, raw, timeframes)
+    if kind in (SPIN, DOUBLE_SPIN):
+        return _admitted_number(spec, raw)
+    if kind == LINE and isinstance(raw, str):
+        return (True, raw)
+    return (False, None)
 
 
 def actions() -> dict:
@@ -1470,6 +1557,10 @@ class LiveSettingsTabModel:
     makes it, so a run that refuses part way keeps what it recorded.
     """
 
+    #: False where the bot's engine runs no hunger; ``_shows`` then drops each
+    #: ``hunger_only`` row.
+    runs_hunger: bool = True
+
     def __init__(
         self,
         bot: Any = None,
@@ -1526,6 +1617,8 @@ class LiveSettingsTabModel:
     ) -> bool:
         if spec.get("scrumming_only") and not is_scrumming:
             return False
+        if spec.get("hunger_only") and not self.runs_hunger:
+            return False
         if spec["group"] == EXTRACTOR_GROUP and not is_extractor:
             return False
         if spec["name"] in EXPIRY_CONTROL_NAMES and not expires:
@@ -1556,6 +1649,8 @@ class LiveSettingsTabModel:
         no_default = spec.get("no_default", False)
         if reading == ADMITTED_READING:
             return self._read_admitted(config, spec)
+        if reading == HUNGER_SWITCH_READING:
+            return hunger_switched_on(config)
         if kind in (DOUBLE_SPIN, SPIN):
             return read_number(config, field, default, reading, no_default)
         raw = read_config_field(config, field, default, no_default)
@@ -1681,7 +1776,9 @@ class LiveSettingsTabModel:
         self._add_group(GATES_GROUP, GATES_GROUP_TITLE)
         self._add_form()
         for spec in CONTROL_SPECS:
-            if spec["group"] == GATES_GROUP:
+            if spec["group"] != GATES_GROUP:
+                continue
+            if self._shows(spec, is_scrumming, is_extractor, expires):
                 self._add_control(config, spec)
 
         if is_extractor:
