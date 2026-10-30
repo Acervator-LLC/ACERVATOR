@@ -260,8 +260,8 @@ class BotConfig:
     position_ceiling_enabled: bool = False
     # Range [1.0, 10.0].
     position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
-    # A BULLISH reversal on detonation_timeframe at or above
-    # detonation_confidence_min market-sells above the anchor, once per reversal.
+    # A BULLISH reversal on detonation_timeframe at or above detonation_confidence_min,
+    # where three_agree holds, market-sells above the anchor once per reversal.
     # position_ceiling_enabled gates none of the three: detonation fires on the
     # anchor, not on the ceiling.
     detonation_enabled: bool = False
