@@ -4577,6 +4577,8 @@ must move between a sell and the next buy.
 
 Max Target Growth % - This determines the maximum amount of growth the Target Balance can increase in a given Market Cycle with a cycle being a Fold / Scrum / Fold sequence. Essentially any Fold preceded by a Scrum will be allowed to Fold an amount of profit back in and, if Surplus remains after the Target Delta is re-zero’d, it can be used to increase Target Balance up to this hard limit for that cycle. This is the organic compounding mechanic.
 
+Now: only a fold spends wire credits, under this cap, as it spends a sale's own dollars; a cartridge or Manual Fire buy leaves them in the wallet (`src/trading/scrumming/sizing.py, in rebalance_held_usd`).
+
 A percentage from 0.00 to 100.00, at 1.00 % to start. Setting it to zero
 freezes Target Balance. It steps a quarter of a percent at a time, and it is
 the only mechanism allowed to raise the figure.
@@ -5434,6 +5436,8 @@ the same bot with Max Cartridge at 0.0 % wrote nothing. Nothing is changed here
 for that, because raising the hard breaker above the cartridge would stop a
 rebalance that fires on live bots today.
 
+Now: the Wire Stack fire is gone, and a pending stack that a saved state carries joins the wire-credit pool on restore (`src/trading/scrumming/state_io.py, in import_scrumming_state`).
+
 Soft CB Cooldown - This is the number of candles that must close before the Soft Circuit Breaker opens again.
 
 From 1 to 100 candles, at 3 to start. It is counted in closed candles, so its
@@ -5494,6 +5498,8 @@ reaches zero, with a SOFT CIRCUIT BREAKER RESET line naming the side that
 re-opens, and the Reset All Breakers button ends it early.
 
 Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
+
+Now: a cartridge buy pays back only the tranches whose own sale price, less the distance and that sale's wire share, sits at or above the fill, and it spends none of the dollars the unpaid tranches, the wire credits or the pool hold (`src/trading/scrumming/execution.py, in _execute_manual_rebalance`).
 
 A percentage from 0.0 to 200.0, at 10.0 % to start. Crossing it fires an
 aggressive rebalance that bypasses the detection, hysteresis and soft-breaker
@@ -11488,6 +11494,8 @@ A Manual Fire, a cartridge or a wire stack whose order is still held answers
 the next press with MANUAL FIRE HELD and sends nothing. The expiry close sends
 nothing more while its order is held. The Extractor sends no round and no exit
 on a pair while an order on that pair is held.
+
+Now: the wire stack is gone, and a Manual Fire or cartridge buy also sends nothing while the venue lists an open buy on the market, one with no order id included (`src/trading/scrumming/execution.py, in _refuses_stacked_buy`).
 
 ```python
 # src/trading/scrumming/execution.py, in _execute_manual_rebalance
