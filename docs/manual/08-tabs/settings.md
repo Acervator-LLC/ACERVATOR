@@ -2230,6 +2230,8 @@ target growth they applied. A detonation carries the position's value above its
 anchor target, and an Extractor exit carries its gain. Every other fill, a scrum
 and a distribution sale among them, carries $0.00 and plays no coins.
 
+Now: the wire stack is gone, and the growth a cartridge, Manual Fire or manual tranche fire carries reads each tranche's sale price less its wire share (`src/trading/scrumming/sizing.py, in discharge_gain_usd`).
+
 ```python
 # src/gui/main_tabs/main_window_surface.py, in trade_filled_sounds
     if profit > 0:

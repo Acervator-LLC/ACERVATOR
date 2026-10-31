@@ -1,6 +1,7 @@
 """Minimum Opposing Trade Distance arithmetic, with no I/O, no state and no import from ``src.trading``.
 
 ``minimum_opposing_trade_distance_pct`` sums the interval, the fee and the band extension, and never answers under ``ROUND_TRIP_FEES`` fees.
+``wired_distance_pct`` lifts that distance by the wire share of the price it leaves.
 ``distance_settings`` reads the three settings and the venue fee once, and raises ``DistanceSettingUnreadable`` naming a setting that holds no number.
 """
 
@@ -16,6 +17,12 @@ OTD_MAX_PCT = 50.0
 
 # The band extension a caller that holds no Bollinger Band contributes.
 BAND_EXTENSION_ABSENT_PCT = 0.0
+
+#: The wire share of a sale that routed nothing along a wire.
+WIRE_ABSENT_PCT = 0.0
+
+#: The whole of a sale's proceeds, in percent: the most a wire share, or a distance carrying one, reaches.
+WHOLE_PCT = 100.0
 
 #: ``trading_fee_pct`` where a config names none, the Coinbase Advanced Trade taker maximum.
 DEFAULT_TRADING_FEE_PCT = 0.6
@@ -82,6 +89,20 @@ def clamped_otd_pct(otd_pct: float) -> float:
     return max(OTD_MIN_PCT, min(OTD_MAX_PCT, float(otd_pct)))
 
 
+def clamped_wire_pct(wire_pct: float) -> float:
+    """``wire_pct`` held inside ``WIRE_ABSENT_PCT`` and ``WHOLE_PCT``."""
+    return max(WIRE_ABSENT_PCT, min(WHOLE_PCT, float(wire_pct)))
+
+
+def wired_distance_pct(distance_pct: float, wire_pct: float) -> float:
+    """``distance_pct`` plus ``clamped_wire_pct`` of ``wire_pct`` taken off the price ``distance_pct`` leaves.
+
+    A buy-back at it returns the share of units an unwired sale's buy-back at ``distance_pct`` returns, and ``WIRE_ABSENT_PCT`` answers ``distance_pct`` unchanged.
+    """
+    distance = float(distance_pct)
+    return distance + clamped_wire_pct(wire_pct) * (1.0 - distance / 100.0)
+
+
 def band_extension_pct(
     upper: float,
     lower: float,
@@ -123,17 +144,18 @@ def minimum_opposing_trade_distance_pct(
     interval_pct: float,
     fee_pct: float,
     extension_pct: float = BAND_EXTENSION_ABSENT_PCT,
+    wire_pct: float = WIRE_ABSENT_PCT,
 ) -> float:
-    """``ROUND_TRIP_FEES`` times ``fee_pct`` where ``interval_pct`` plus ``extension_pct`` is under ``fee_pct``, else all three summed, clamped.
+    """``ROUND_TRIP_FEES`` times ``fee_pct`` where ``interval_pct`` plus ``extension_pct`` is under ``fee_pct``, else those three summed, clamped, then ``wired_distance_pct`` of ``wire_pct``.
 
-    Raises ``ValueError`` where any of the three is not a finite number."""
-    terms = (float(interval_pct), float(fee_pct), float(extension_pct))
+    Raises ``ValueError`` where any of the four is not a finite number."""
+    terms = (float(interval_pct), float(fee_pct), float(extension_pct), float(wire_pct))
     if not all(math.isfinite(term) for term in terms):
         raise ValueError(f"opposing trade distance terms {terms!r} are not all finite")
-    interval, fee, extension = terms
+    interval, fee, extension, wire = terms
     if interval + extension < fee:
-        return clamped_otd_pct(ROUND_TRIP_FEES * fee)
-    return clamped_otd_pct(interval + fee + extension)
+        return wired_distance_pct(clamped_otd_pct(ROUND_TRIP_FEES * fee), wire)
+    return wired_distance_pct(clamped_otd_pct(interval + fee + extension), wire)
 
 
 @dataclass(frozen=True)
@@ -149,14 +171,27 @@ class DistanceSettings:
         band_upper: float = 0.0,
         band_lower: float = 0.0,
         reference_price: float = 0.0,
+        wire_pct: float = WIRE_ABSENT_PCT,
     ) -> float:
-        """``minimum_opposing_trade_distance_pct`` at one band, with ``BAND_EXTENSION_ABSENT_PCT`` where no band is held."""
+        """``minimum_opposing_trade_distance_pct`` at one band and ``wire_pct``, with ``BAND_EXTENSION_ABSENT_PCT`` where no band is held."""
         return minimum_opposing_trade_distance_pct(
             self.interval_pct,
             self.fee_pct,
             band_extension_pct(
                 band_upper, band_lower, self.band_travel_pct, reference_price
             ),
+            wire_pct,
+        )
+
+    def distance_at_band(
+        self, band: Any = None, wire_pct: float = WIRE_ABSENT_PCT
+    ) -> float:
+        """``distance_pct`` at ``band``'s ``upper``, ``lower`` and ``middle``, each 0.0 where ``band`` holds none."""
+        return self.distance_pct(
+            float(getattr(band, "upper", 0.0) or 0.0),
+            float(getattr(band, "lower", 0.0) or 0.0),
+            float(getattr(band, "middle", 0.0) or 0.0),
+            wire_pct,
         )
 
 
@@ -177,11 +212,12 @@ def fold_rebuy_factor_from_pct(otd_pct: float) -> float:
 
         eligible  <=>  ticker.last <= ref * factor
 
-    ``clamped_otd_pct`` holds the argument inside ``OTD_MIN_PCT`` and
-    ``OTD_MAX_PCT`` first, so the factor lies in ``[0.5, 1.0]`` for
-    every input and a negative percentage cannot lift it above 1.0.
+    The argument is held inside ``OTD_MIN_PCT`` and ``WHOLE_PCT`` first,
+    the bound ``wired_distance_pct`` reaches, so the factor lies in
+    ``[0.0, 1.0]`` for every input and a negative percentage cannot lift
+    it above 1.0.
     """
-    return 1.0 - (clamped_otd_pct(otd_pct) / 100.0)
+    return 1.0 - (max(OTD_MIN_PCT, min(WHOLE_PCT, float(otd_pct))) / 100.0)
 
 
 def fold_rebuy_price(sell_ref_price: float, otd_pct: float) -> float:
@@ -199,17 +235,6 @@ def opposing_sale_price(buy_ref_price: float, otd_pct: float) -> float:
     """The lowest price a unit bought at ``buy_ref_price`` may sell at,
     ``clamped_otd_pct`` of ``otd_pct`` above it."""
     return float(buy_ref_price) * (1.0 + clamped_otd_pct(otd_pct) / 100.0)
-
-
-def fold_rebuy_factor(
-    interval_pct: float,
-    fee_pct: float,
-    extension_pct: float = BAND_EXTENSION_ABSENT_PCT,
-) -> float:
-    """``minimum_opposing_trade_distance_pct`` expressed as a factor."""
-    return fold_rebuy_factor_from_pct(
-        minimum_opposing_trade_distance_pct(interval_pct, fee_pct, extension_pct)
-    )
 
 
 def minimum_opposing_trade_distance_pct_from_config(

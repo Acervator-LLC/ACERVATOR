@@ -11,6 +11,7 @@ import logging
 from typing import Any, TYPE_CHECKING
 
 from ...core.event_bus import LINE_KIND_WIRE_FLOW
+from .sizing import held_wire_usd, tranche_wire_usd, wire_credit_entries
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -466,6 +467,43 @@ class WireRoutingMixin(_Host):
             n,
         )
         return pending
+
+    def _park_wire_credits(self, usd: float, entries: list) -> float:
+        """Add ``usd`` to ``_pending_wire_credits`` and ``entries`` to
+        ``_pending_wire_ledger``, and return the pool total."""
+        self._pending_wire_credits = float(
+            getattr(self, "_pending_wire_credits", 0.0) or 0.0
+        ) + float(usd)
+        self._pending_wire_ledger = list(
+            getattr(self, "_pending_wire_ledger", []) or []
+        ) + [dict(e) for e in entries]
+        return self._pending_wire_credits
+
+    def _return_wire_credits_to_pool(self, tranche: dict) -> float:
+        """Park ``held_wire_usd`` of ``tranche`` through ``_park_wire_credits``, its
+        ``wire_credit_entries`` scaled to that amount, and return the amount."""
+        amount = held_wire_usd(tranche)
+        if amount <= 0.0:
+            return 0.0
+        recorded = tranche_wire_usd(tranche)
+        entries = wire_credit_entries(tranche)
+        if recorded > amount:
+            for entry in entries:
+                entry["usd"] = float(entry.get("usd", 0.0) or 0.0) * (amount / recorded)
+        pool = self._park_wire_credits(amount, entries)
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"WIRE CREDITS RETURNED: ${amount:.4f} of wire credit on the "
+                f"tranche sold at ${float(tranche.get('ref', 0.0) or 0.0):.8f} "
+                f"went back to the pool, because that tranche's own sale "
+                f"dollars are spent. Pool now ${pool:.4f}; it lands on the "
+                f"next tranche a sale opens."
+            ),
+            kind=LINE_KIND_WIRE_FLOW,
+        )
+        return amount
 
     def _add_wire_credits(self, tranche: dict, entries: list) -> None:
         """Append wire-credit provenance to a tranche, bounded.

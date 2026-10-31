@@ -9,10 +9,11 @@ from __future__ import annotations
 import logging
 import math
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from ..bot_container import as_finite_float, despawn_threshold_days
 from ..container.config import fold_ratio_pct
+from ..otd_math import DistanceSettings
 from ..stack_math import (
     STACK_ORDER_ID_KEY,
     STACK_PRICE_KEY,
@@ -26,11 +27,15 @@ from .sizing import (
     FOLD_AGE_KEY,
     STACK_AGE_KEY,
     combined_event_reference,
+    combined_wire_share,
     eligible_fold_tranches,
+    held_wire_usd,
     merge_fold_tranches_within_distance,
+    merge_wire_credit_records,
     plan_fold_consumption,
     settle_fold_plan,
     tranche_sale_rate,
+    tranche_sale_usd,
     tranches_beyond_held_total,
     unaligned_fold_tranches,
 )
@@ -59,6 +64,7 @@ class FoldTrancheAccountingMixin:
     _fold_tranches: list[dict]
     _last_trend_bull_candles: int
     _main_lots: list[dict]
+    _return_wire_credits_to_pool: Callable[..., float]
     _scrum_sells_lifetime: int
     _stack_discarded: int
     _stack_tranches: list[dict]
@@ -71,15 +77,17 @@ class FoldTrancheAccountingMixin:
     config: Any
     stats: Any
 
-    def _fold_eligible_tranches(self, ticker_last: float, otd_factor: float) -> list:
+    def _fold_eligible_tranches(
+        self, ticker_last: float, distance: DistanceSettings, band: Any = None
+    ) -> list:
         """Fold-queue tranches eligible for fold-back at ``ticker_last``.
 
-        A tranche is eligible when ``ticker_last <= ref * otd_factor``.
-        The FOLD_DIAG diagnostic and the fold-back executor in
-        ``tick_phases`` both call this, so the two cannot report
-        different sets.
+        ``eligible_fold_tranches`` reads each tranche at ``distance`` and
+        ``band`` with its own wire share. The FOLD_DIAG diagnostic and the
+        fold-back executor in ``tick_phases`` both call this, so the two
+        cannot report different sets.
         """
-        return eligible_fold_tranches(self._fold_tranches, ticker_last, otd_factor)
+        return eligible_fold_tranches(self._fold_tranches, ticker_last, distance, band)
 
     def _apply_scrum_fold_pct(
         self, _tranche_count_before: int, scrum_usd: float, scrum_asset: float
@@ -290,6 +298,8 @@ class FoldTrancheAccountingMixin:
             _b_usd = float(_best.get("usd", 0) or 0)
             _b_rate = tranche_sale_rate(_best)
             _new_rate = tranche_sale_rate(_new_t)
+            _best.update(combined_wire_share(_best, _new_t))
+            merge_wire_credit_records(_best, _new_t)
             _best["usd"] = _b_usd + _new_usd
             _best["units"] = float(_best.get("units", 0) or 0) + _new_units
             if _new_rate != _b_rate:
@@ -948,6 +958,33 @@ class FoldTrancheAccountingMixin:
             report["stack_kept_live_order"],
         )
         return report
+
+    def close_spent_tranches(self) -> float:
+        """Remove each standing tranche whose ``tranche_sale_usd`` is not above zero
+        while its ``held_wire_usd`` is, through ``_return_wire_credits_to_pool``.
+
+        Each counts as closed in ``_tranches_closed_lifetime``, and the dollars
+        moved to the pool are returned.
+        """
+        returned = 0.0
+        kept: list[dict] = []
+        closed = 0
+        for _t in self._fold_tranches or []:
+            if (
+                isinstance(_t, dict)
+                and held_wire_usd(_t) > 0.0
+                and tranche_sale_usd(_t) <= 0.0
+            ):
+                returned += self._return_wire_credits_to_pool(_t)
+                closed += 1
+                continue
+            kept.append(_t)
+        if closed:
+            self._fold_tranches = kept
+            self._tranches_closed_lifetime = (
+                int(getattr(self, "_tranches_closed_lifetime", 0) or 0) + closed
+            )
+        return returned
 
     def retire_unaligned_tranches(self, reason: str = "load") -> dict:
         """Drop the standing tranches whose amount no sale produced, keep the

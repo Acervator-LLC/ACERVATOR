@@ -14,6 +14,8 @@ At the core of Acervator is what might not first appear as a multi-faceted conce
 
 Acervator addresses ‘fundamental market unpredictability’ by allowing volatility to “orbit” around a set point we call the Target Balance. This element is what performs the first mental trick. It forces the trader to say and establish that “my position is worth X and I will support X with an equal amount of liquidity” i.e. a Target Balance of $50 is set and a total mental position of $100 is established. Trades will be executed to maintain the truth of the Target Balance always being X. After the initial entry is executed and filled, which Acervator will only do in the lower extent of the Bollinger Band on the chosen timeframe, the Scrumming Bot will persistently shave off and “Fold” back in Y% of profits through repeating Harvest-Fold operations that continue until the bot is deactivated or the market suffers a catastrophic collapse which can and do happen so don’t not leave it unmonitored. It should also be noted that the term ‘harvest’ came to replace ‘scrum’ for the sake of clarity but they may be used interchangeably throughout this text. Essentially a Scrum or Harvest is a sale of a position’s increased value over the Target Balance. The amount that the Scrumming Bot harvests or folds is pinned to the Target Delta or the amount of variation (%delta) from the most recent trade event. Much of the finer details of trade execution can be tuned by the user as expected for any professional application but the primary point here is that the amount of profit folded back is capped by the Maximum Target Growth Per Cycle setting while the ability of Acervator to prevent inverted (profit losing: buying higher than sold / selling lower than bought) trades we also have the Minimum Opposing Trade Distance rule which dictates the next trade must be Z distance from the most recent trade event. In addition, sells are not allowed to occur or be pushed below the Bollinger Band midline while buys are not allowed to occur or be pushed above the midline. As a result of just these few component features, we already have multiple soft, non-TA or non-traditional rules protecting the investor before we even start optimizing the trades themselves (pushing them as close to volatility extents as possible) via Technical Analysis and other inventions.
 
+Now: a buy-back of a sale that sent part of its proceeds along a wire waits that share further under the sale price, so its dollars return the units the sale took (`src/trading/otd_math.py, in minimum_opposing_trade_distance_pct`).
+
 The harvest-fold method itself was manually executed and tested on a multiple cryptocurrency pairs throughout 2023~2026 but it has always been the aspiration to automate it and have it executed at a high rate of frequency with the operating theory that this approach to investment, being a hybrid a HODL and active trading, creates frontline area of support for whatever markets in which it participates long term. It does this by maintaining and, utilizing as directed, all earned profits. It turns any user into an active participant and liquidity provider.
 
 After entering the space full time in 2017, I immediately began to parse and breakdown how price charts were being interpreted. This also allowed me to perform ever deeper introspections on my own response to how my mind was responding to the value of my portfolio fluctuating. I did myself absolutely no psychological favors in this pursuit but, as you will see, I had plenty of reasons to take this reckless approach. By this point, my undiagnosed and untreated military injuries had worn me down to the point where I realized I was running out of time to continue working as normal. I had, by then, been walking a torsioned pelvis for 17 years that had seized in place and, by 2020, would be causing enough pain to induce panic attacks. I could have joined the pill-mill club but I declined. In combination with the pain, the forced TA self-training, physical job, and broken marriage, I also assembled an entire GPU-based mining farm…alone. I had some business partners but their participation was basically nonexistent. The VA was providing no support and would not until 2022. The Navy and Pentagon had spit in my face by sending me PDBR paperwork that they had no intention of ever honoring no matter what I wrote down. My family more or less remained ignorant of all my turmoil while I kept the paychecks coming. So really the story of Acervator’s and Harvest-Fold is one of betrayal to a degree that allowed me to see through things more clearly than would otherwise have been possible. It has been invented out of necessity and it is my intuition that Acervator can become that necessary tool for other people as well.
@@ -1136,6 +1138,8 @@ src/gui/market_inspector.py                           dict(self._connectors_gett
 
 The Bot Swarm, which is how I presented the concept to Claude, is my version of a capital reinforcement network. At the Exchange level (swarms cannot be connected across multi-API boundaries) profit from individual bots can be routed to others with such outputs being termed Wire Credits since they are sent and received along Smart Wires which connect the bots. Each such wire can have its own flow rate. The network nodes are designed to protect a given bot from excessive outflows which would cripple its own growth capacity. The other piece of this is that Wire Credits are Provenance tracked which allows outflows to eventually start sending profits back to the originating bot with the over-arcing philosophy being long-term investment with accumulation and position strengthening rather than just sitting around waiting for a good outcome that might not arrive.
 
+Now: only a fold spends wire credits, under the Maximum Target Growth Per Cycle, and a tranche whose own sale dollars are spent or sold ends and returns its credit to the pool for a later tranche (`src/trading/scrumming/wire_routing.py, in _return_wire_credits_to_pool`).
+
 In combination with the Market Inspector, the Bot Swarm can receive and deploy groups of pre-configured and pre-connected bot clusters that immediately begin participating in the market. This layer, along with future portfolio-level algorithms, will enable the fully automated and persistent execution of complex trading strategies from a single terminal window.
 
 **Functional.** The wire manager holds the topology and one ledger for each bot.
@@ -1925,6 +1929,8 @@ times the price its sale filled at, less the trading fee.
 sale dollars / (units x sale rate)  =  1 - trading fee / 100
 ```
 
+Now: a record that a wired sale queues carries the share the wire took, and the relation reads its dollars against units times price less the fee and that share, so the sweep keeps it (`src/trading/scrumming/sizing.py, in unproduced_fold_amount`).
+
 `src/trading/scrumming/sizing.py`, in `unproduced_fold_amount`, reads that and
 answers why no sale produced a record's amount, or nothing where one could.
 `tranche_wire_usd` beside it takes off the wired-in dollars first, because wire
@@ -2247,6 +2253,8 @@ return confidence > two_indicator_ceiling(signals)
 
 This rule asserts that a subsequent Fold occurring after a Scrum MUST be less than sell. This, of course, is asserted by Bollinger Band Travel, Minimum Opposing Trade Distance, Target Balance Not Zero, etc.
 
+Now: every fold path, the cartridge included, pays a tranche back only at or under its own sale price less the distance and its wire share (`src/trading/scrumming/sizing.py, in tranche_rebuy_price`).
+
 **Functional.** The floor runs, and it lives on the tranche. Every fold tranche
 stores the price of the scrum that spawned it. The row is released only when
 price has fallen to that reference multiplied by the rebuy factor, and the
@@ -2403,6 +2411,8 @@ factor for the whole queue, so wiring the term reaches that function,
 `src/trading/scrumming/tick_phases.py`, `src/paper/paper_run.py` and
 `src/simulator/back_test.py`.
 
+Now: each tranche reads its own distance from the bot's distance settings, the band and its own wire share (`src/trading/scrumming/sizing.py, in tranche_distance_pct`).
+
 ### A guide above the price it is measured from cannot be produced
 
 An earlier reading of the factor trusted its caller to clamp the percentage
@@ -2456,6 +2466,8 @@ trigger: sell ref $100.00000000 less 1.60% is $98.40000000. A fold-back still
 needs TA.* The Live, Paper and Simulator panels and both React pages draw
 `min_rebuy_cell` and `status_cell` from this one module, so no screen can carry
 a different figure.
+
+Now: each row's guide and status read that tranche's own distance with its wire share, so a wired tranche shows the lower price its buy-back waits for (`src/gui/main_tabs/fold_tranches_tab_surface.py, in fold_tranche_distance_pct`).
 
 ## 14 - Position Ceiling and Detonation
 
