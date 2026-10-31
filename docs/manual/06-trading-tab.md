@@ -4756,7 +4756,7 @@ src/trading/scrumming_bot.py         get_swos_inputs
 **Where the Scrum Fold Ratio is read.** One method reads it, once per sale, and it
 runs on the slice of tranches that sale appended rather than on the whole queue.
 
-Now: a sale on a bot with an outgoing wire reads it once more, as the share of the sale's profit its wire surplus is taken from (`src/trading/scrumming/wire_routing.py, in _sale_surplus_usd`).
+Now: a sale on a bot with an outgoing wire reads it once more, for the share of the sale's profit that its wire surplus comes from (`src/trading/scrumming/wire_routing.py, in _sale_surplus_usd`).
 
 `src/trading/scrumming/fold_tranches.py` — the read and the clamp
 
