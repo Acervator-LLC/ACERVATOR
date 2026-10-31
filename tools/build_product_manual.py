@@ -19,18 +19,21 @@ import re
 import sys
 from bisect import bisect_right
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from statistics import median
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+import pptx
 from matplotlib.dates import DateFormatter
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 from PIL import Image as PilImage
 from PIL import ImageDraw, ImageFont
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches
 from pypdf import PdfReader
 from reportlab.lib.colors import HexColor
 from reportlab.lib.styles import ParagraphStyle
@@ -59,13 +62,28 @@ from src.design_system import (
     plt,
     validate_contrast,
 )
+from src.trading import trade_grader
 from src.trading.indicators.bollinger import BollingerBands
+from src.trading.indicators.helpers import _window_has_no_range
 from src.trading.indicators.types import candles_from_raw
+from tools.build_vwap_deck import ACCENT, BODY_W, MUTE, SLIDE_H, SLIDE_W, Box, Ledger
+from tools.build_vwap_deck import MARGIN as SLIDE_MARGIN
+from tools.build_vwap_deck import (
+    blank,
+    emu,
+    heading,
+    picture,
+    source_note,
+    table,
+    text_box,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
 
     from matplotlib.axes import Axes
+    from pptx.presentation import Presentation
+    from pptx.slide import Slide
 
     from src.trading.indicators.types import Candle
 
@@ -1736,6 +1754,23 @@ COMBINED_PANEL = (0.08, 0.16, 0.74, 0.68)
 COMBINED_NOTE_AT = (0.08, 0.06)
 BUY_PEN = 0
 SELL_PEN = 5
+DECK_TITLE = "Ekthelius's Prototyping Trading Evidence"
+DEFAULT_DECK = (
+    REPO_ROOT / "docs" / "prototyping-evidence" / "Prototyping-Trading-Evidence.pptx"
+)
+DECK_TOP_BASES = 8
+DECK_GROUP_BASES = 6
+DECK_MARKET_BASES = 3
+DECK_CARD_BASES = 10
+RATIO_MIN_SIDE_FILLS = 4
+BAND_BAR_LENGTHS = (
+    ("5 minutes", 300_000),
+    ("15 minutes", 900_000),
+    ("1 hour", 3_600_000),
+    ("4 hours", 14_400_000),
+    ("1 day", DAY_MS),
+)
+WORKED_BUYS = ((10.0, 1.0), (20.0, 3.0))
 
 
 @dataclass(frozen=True)
@@ -1791,6 +1826,52 @@ class ExportReading:
     drops: Counter[str]
     opened: datetime
     closed: datetime
+
+
+@dataclass(frozen=True)
+class Evidence:
+    """The newest export's labels, fills, reading and tablet rows, read once for
+    ``write_evidence_figures`` and ``write_evidence_deck``."""
+
+    exports: int
+    labels: dict[str, str]
+    fills: list[Fill]
+    reading: ExportReading
+    candles: dict[str, list[list[float]]]
+
+
+@dataclass(frozen=True)
+class BandTally:
+    """``CHART_BAND`` entries over ``fill_bars`` at one bar length, and the fills at
+    their edges."""
+
+    bands: int
+    flat: int
+    banded: int
+    upper: int
+    lower: int
+    upper_sells: int
+    lower_buys: int
+
+    def __add__(self, other: BandTally) -> BandTally:
+        """Return the field-by-field sum of two ``BandTally`` counts."""
+        return BandTally(
+            *(getattr(self, f.name) + getattr(other, f.name) for f in fields(self))
+        )
+
+
+EMPTY_TALLY = BandTally(0, 0, 0, 0, 0, 0, 0)
+
+
+@dataclass(frozen=True)
+class DeckSource:
+    """The ``Evidence``, its fills grouped by label and one ``BaseRow`` per label, for
+    the slides."""
+
+    evidence: Evidence
+    figures_dir: Path
+    groups: dict[str, list[Fill]]
+    rows: dict[str, BaseRow]
 
 
 def parse_money(text: str) -> float:
@@ -2387,9 +2468,24 @@ def _draw_vwap(label: str, fills: Sequence[Fill]) -> Figure:
     return figure
 
 
+def label_groups(
+    labels: Mapping[str, str], fills: Sequence[Fill]
+) -> dict[str, list[Fill]]:
+    """Return ``fills`` grouped by each base's label in ``labels``, in export order."""
+    groups: dict[str, list[Fill]] = {}
+    for fill in fills:
+        groups.setdefault(labels[fill.asset], []).append(fill)
+    return groups
+
+
+def busiest(groups: Mapping[str, Sequence[Fill]]) -> list[str]:
+    """Return the labels of ``groups``, most fills first."""
+    return sorted(groups, key=lambda label: len(groups[label]), reverse=True)
+
+
 def _draw_combined(groups: Mapping[str, Sequence[Fill]]) -> Figure:
     """Return a chart of the ``COMBINED_BASES`` busiest labels' indexed buy VWAPs."""
-    ranked = sorted(groups, key=lambda label: len(groups[label]), reverse=True)
+    ranked = busiest(groups)
     pens = accessible_series()
     figure = _page_figure()
     axis = figure.add_axes(COMBINED_PANEL)
@@ -2427,9 +2523,7 @@ def _write_asset_vwap(
     fills: Sequence[Fill],
 ) -> list[tuple[str, str]]:
     """Write ``vwap_combined.png`` and one VWAP chart per label of ``fills``."""
-    groups: dict[str, list[Fill]] = {}
-    for fill in fills:
-        groups.setdefault(labels[fill.asset], []).append(fill)
+    groups = label_groups(labels, fills)
     combined = "vwap_combined.png"
     out = [(combined, _save(_draw_combined(groups), figures_dir / combined))]
     for label in sorted(labels.values()):
@@ -2619,9 +2713,27 @@ def _write_market(
     return (name, _save(figure, figures_dir / name))
 
 
+def read_evidence(evidence_dir: Path) -> Evidence | None:
+    """Return the ``Evidence`` of the newest export under ``evidence_dir``, or None."""
+    paths = export_files(evidence_dir)
+    if not paths:
+        return None
+    indexed = {path: load_fills(path)[0] for path in paths}
+    labels = labels_across(indexed)
+    newest = newest_export(indexed)
+    return Evidence(
+        exports=len(paths),
+        labels=labels,
+        fills=indexed[newest],
+        reading=export_reading(newest),
+        candles={asset: tablet_candles(asset) for asset in labels},
+    )
+
+
 def write_evidence_figures(
     figures_dir: Path,
     evidence_dir: Path,
+    evidence: Evidence | None,
 ) -> list[tuple[str, str]]:
     """Write every evidence figure into figures_dir and return each name and outcome."""
     names = [
@@ -2634,14 +2746,10 @@ def write_evidence_figures(
         "evidence_hodl_dollars.png",
         "evidence_market.png",
     ]
-    paths = export_files(evidence_dir)
-    if not paths:
+    if evidence is None:
         missing = evidence_dir / TRANSACTIONS_FOLDER
         return [(name, f"absent - no venue export under {missing}") for name in names]
-    indexed = {path: load_fills(path)[0] for path in paths}
-    labels = labels_across(indexed)
-    fills = indexed[newest_export(indexed)]
-    candles = {asset: tablet_candles(asset) for asset in labels}
+    labels, fills, candles = evidence.labels, evidence.fills, evidence.candles
     out = _write_asset_vwap(figures_dir, labels, fills)
     out += _write_asset_weekly(figures_dir, labels, candles)
     out += _write_asset_traces(figures_dir, labels, candles)
@@ -2766,6 +2874,680 @@ def measurement_lines(evidence_dir: Path) -> list[str]:
     return out
 
 
+def band_tally(fills: Sequence[Fill], interval_ms: int) -> BandTally:
+    """Return ``fills`` counted against ``CHART_BAND`` over ``fill_bars`` of
+    ``interval_ms``."""
+    candles = fill_bars(fills, interval_ms)
+    if not candles:
+        return EMPTY_TALLY
+    closes = [candle.close for candle in candles]
+    bands = CHART_BAND.bands(candles)
+    span = CHART_BAND.period
+    flat = sum(
+        1
+        for index, entry in enumerate(bands)
+        if entry is not None
+        and _window_has_no_range(closes[index - span + 1 : index + 1])
+    )
+    first = int(candles[0].timestamp) // interval_ms
+    counts: Counter[str] = Counter()
+    for fill in fills:
+        entry = bands[int(fill.when.timestamp() * 1000) // interval_ms - first]
+        if entry is None:
+            continue
+        counts["banded"] += 1
+        if fill.price >= entry[0]:
+            counts["upper"] += 1
+            counts["upper_sells"] += int(fill.side == "sell")
+        if fill.price <= entry[2]:
+            counts["lower"] += 1
+            counts["lower_buys"] += int(fill.side == "buy")
+    return BandTally(
+        bands=sum(1 for entry in bands if entry is not None),
+        flat=flat,
+        banded=counts["banded"],
+        upper=counts["upper"],
+        lower=counts["lower"],
+        upper_sells=counts["upper_sells"],
+        lower_buys=counts["lower_buys"],
+    )
+
+
+def sell_over_buy(row: BaseRow) -> float | None:
+    """Return ``row``'s sell VWAP over its buy VWAP, or None when a side holds fewer
+    than ``RATIO_MIN_SIDE_FILLS`` fills."""
+    if min(row.buys, row.sells) < RATIO_MIN_SIDE_FILLS or row.final_buy_vwap <= 0.0:
+        return None
+    return row.sell_vwap / row.final_buy_vwap
+
+
+def buy_index(row: BaseRow) -> float:
+    """Return ``row``'s final buy VWAP over its first buy VWAP."""
+    return row.final_buy_vwap / row.first_buy_vwap if row.first_buy_vwap else 0.0
+
+
+def _deck_window(reading: ExportReading) -> str:
+    """Return the fill count, base count and window of ``reading`` as one line."""
+    return (
+        f"{reading.fills:,} fills on {reading.bases} bases,"
+        f" {day_label(reading.opened)} to {day_label(reading.closed)}"
+    )
+
+
+def _deck_picture(
+    slide: Slide,
+    source: DeckSource,
+    name: str,
+    box: Box,
+    ledger: Ledger,
+) -> None:
+    """Place figure ``name`` from ``source.figures_dir``, or record it absent in
+    ``ledger``."""
+    path = source.figures_dir / name
+    if path.is_file():
+        picture(slide, path, box, ledger)
+        return
+    ledger.stated_absent.append(name)
+    text_box(slide, box, f"{name} is absent.", size=12, color=MUTE)
+
+
+def _deck_title(prs: Presentation, source: DeckSource) -> str:
+    """Add the slide carrying ``DECK_TITLE`` and the window, and return the title."""
+    reading = source.evidence.reading
+    title = f"{DECK_TITLE}: {BASELINE_DAY:%m/%d/%Y}~{reading.closed:%m/%d/%Y}"
+    labels = sorted(source.evidence.labels.values())
+    slide = blank(prs)
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(2.3), BODY_W, Inches(1.7)),
+        title,
+        size=36,
+        bold=True,
+        color=ACCENT,
+        align=PP_ALIGN.CENTER,
+    )
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(4.05), BODY_W, Inches(2.0)),
+        "The year's live fills, the average price drawn from them, and the market"
+        f" they ran in.\nEvery asset is labelled {labels[0]} to {labels[-1]} and"
+        f" named nowhere.\n\n{_deck_window(reading)}",
+        size=14,
+        color=MUTE,
+        align=PP_ALIGN.CENTER,
+    )
+    source_note(slide, "tools/build_product_manual.py, in write_evidence_deck")
+    return title
+
+
+def _deck_record(prs: Presentation, source: DeckSource) -> None:
+    """Add the slide carrying the ``export_reading`` row counts of the newest export."""
+    slide = blank(prs)
+    heading(
+        slide,
+        "What the record holds",
+        "The fill record is the operator's own venue export. No row of it is"
+        " reproduced here. Every figure is an aggregate over that record.",
+    )
+    table(
+        slide,
+        ["Reading", "The newest export"],
+        [line.split(" | ", 1) for line in _reading_lines(source.evidence.reading)],
+        Box(SLIDE_MARGIN, Inches(2.0), BODY_W, Inches(4.2)),
+    )
+    source_note(slide, "tools/build_product_manual.py, in export_reading")
+
+
+def _deck_method(prs: Presentation) -> None:
+    """Add the slide stating how ``trajectory`` weights ``WORKED_BUYS``."""
+    worked = trajectory(
+        [Fill("worked", BASELINE_DAY, "buy", price, qty) for price, qty in WORKED_BUYS]
+    )[1][-1]
+    plain_mean = sum(price for price, _ in WORKED_BUYS) / len(WORKED_BUYS)
+    (low, low_qty), (high, high_qty) = WORKED_BUYS
+    slide = blank(prs)
+    heading(
+        slide,
+        "How the average is drawn",
+        "A running sum of price times quantity over a running sum of quantity."
+        " The price is the export's Price at Transaction column.",
+    )
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(2.0), BODY_W, Inches(3.6)),
+        "A fee is a transaction cost and not a price, so the fee column stays out."
+        f"\n\n{low_qty:g} unit at ${low:g} and {high_qty:g} at ${high:g} average"
+        f" {worked:.2f}, weighted by quantity. The unweighted mean of the two prices"
+        f" is {plain_mean:.2f}, so a lost weighting would show as a gap of"
+        f" {worked - plain_mean:.2f}.",
+        size=15,
+    )
+    source_note(slide, "tools/build_product_manual.py, in trajectory")
+
+
+def _deck_combined(prs: Presentation, source: DeckSource, ledger: Ledger) -> None:
+    """Add the slide carrying ``vwap_combined.png``."""
+    slide = blank(prs)
+    heading(
+        slide,
+        f"The {count_word(COMBINED_BASES)} most-traded bases on one scale",
+        "Each line is that base's running buy average divided by its own first"
+        " value, so a base priced in cents and one priced in thousands share one"
+        " axis.",
+    )
+    box = Box(SLIDE_MARGIN, Inches(1.8), BODY_W, Inches(5.1))
+    _deck_picture(slide, source, "vwap_combined.png", box, ledger)
+    source_note(slide, "figures/vwap_combined.png")
+
+
+def _deck_line_ends(prs: Presentation, source: DeckSource) -> None:
+    """Add the table of where the ``busiest`` labels' combined-chart lines end."""
+    rows = [
+        [
+            label,
+            str(source.rows[label].fills),
+            f"{source.rows[label].first_buy_vwap:g}",
+            f"{source.rows[label].final_buy_vwap:g}",
+            f"{buy_index(source.rows[label]):.3f}",
+        ]
+        for label in busiest(source.groups)[:COMBINED_BASES]
+    ]
+    slide = blank(prs)
+    heading(
+        slide,
+        f"Where the {count_word(COMBINED_BASES)} lines end",
+        "A falling line says the average cost of the units now held fell. It is"
+        " not profit, and the index carries no sale in it at all.",
+    )
+    table(
+        slide,
+        ["Asset", "Fills", "First buy VWAP", "Final buy VWAP", "Final index"],
+        rows,
+        Box(SLIDE_MARGIN, Inches(1.86), BODY_W, Inches(4.9)),
+    )
+    source_note(slide, "tools/build_product_manual.py, in base_rows")
+
+
+def _deck_two_readings(prs: Presentation) -> None:
+    """Add the slide setting the trajectory beside ``sell_over_buy``."""
+    slide = blank(prs)
+    heading(slide, "Two readings, and neither stands in for the other")
+    column = Inches(6.0)
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(1.5), column, Inches(4.8)),
+        "The trajectory"
+        "\n\nWhat the units now held cost on average. It keeps moving while the"
+        " position is open, counts every buy, and carries no sale at all."
+        "\n\nIt says nothing about whether a sale ever cleared its cost.",
+        size=15,
+    )
+    text_box(
+        slide,
+        Box(emu(SLIDE_MARGIN + Inches(6.6)), Inches(1.5), column, Inches(4.8)),
+        "The sell-over-buy ratio"
+        "\n\nWhether the trades already closed sold above what they cost. One"
+        " settled figure per base across the whole record."
+        "\n\nIt counts only what completed on both sides, so it says nothing"
+        " about the units still held.",
+        size=15,
+    )
+    source_note(slide, "tools/build_product_manual.py, in trajectory and sell_over_buy")
+
+
+def _deck_ratio(prs: Presentation, source: DeckSource) -> None:
+    """Add the slide counting ``sell_over_buy`` across the labelled bases."""
+    ratios = {label: sell_over_buy(row) for label, row in sorted(source.rows.items())}
+    read = {label: value for label, value in ratios.items() if value is not None}
+    shown = {label: f"{value:.3f}" for label, value in read.items()}
+    level = sum(1 for text in shown.values() if text == "1.000")
+    above = sum(1 for label, value in read.items() if value > 1.0) - level
+    unread = [label for label, value in ratios.items() if value is None]
+    best = max(read, key=read.__getitem__, default="")
+    worst = min(read, key=read.__getitem__, default="")
+    slide = blank(prs)
+    heading(
+        slide,
+        "The average sale against the average cost",
+        "Above 1.000 the average sale price beat the average buy price. The"
+        " figure reads how the closed trades performed, and nothing else.",
+    )
+    table(
+        slide,
+        ["Reading", "Value"],
+        [
+            [
+                f"Bases with {count_word(RATIO_MIN_SIDE_FILLS)} fills a side or more",
+                str(len(read)),
+            ],
+            ["Finishing above 1.000", str(above)],
+            ["Finishing below 1.000", str(len(read) - above - level)],
+            ["Landing exactly on 1.000", str(level)],
+            ["Highest", f"{best} at {shown.get(best, 'none')}"],
+            ["Lowest", f"{worst} at {shown.get(worst, 'none')}"],
+            ["Carrying no ratio", ", ".join(unread) or "none"],
+        ],
+        Box(SLIDE_MARGIN, Inches(1.9), BODY_W, Inches(3.4)),
+    )
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(5.55), BODY_W, Inches(1.2)),
+        f"A base with {count_word(RATIO_MIN_SIDE_FILLS - 1)} fills or fewer on a side"
+        " carries no ratio, because a mean over so few fills moves with any one of"
+        " them.",
+        size=13,
+        color=MUTE,
+    )
+    source_note(slide, "tools/build_product_manual.py, in sell_over_buy")
+
+
+def _deck_base(
+    prs: Presentation, source: DeckSource, label: str, ledger: Ledger
+) -> None:
+    """Add one slide carrying ``label``'s VWAP chart and its two lines' ends."""
+    row = source.rows[label]
+    sale_ratio = sell_over_buy(row)
+    ratio_text = "not read" if sale_ratio is None else f"{sale_ratio:.3f}"
+    slide = blank(prs)
+    heading(
+        slide,
+        f"{label} — {row.fills} fills, {row.buys} buys, {row.sells} sells",
+        f"Buy VWAP from {row.first_buy_vwap:g} to {row.final_buy_vwap:g}, index"
+        f" {buy_index(row):.3f}; sell over buy {ratio_text};"
+        f" {day_label(row.opened)} to {day_label(row.closed)}.",
+    )
+    name = asset_figure_name("vwap", label)
+    box = Box(SLIDE_MARGIN, Inches(1.76), BODY_W, Inches(4.9))
+    _deck_picture(slide, source, name, box, ledger)
+    source_note(slide, f"figures/{name}")
+
+
+def _deck_group(
+    prs: Presentation,
+    source: DeckSource,
+    labels: Sequence[str],
+    ledger: Ledger,
+) -> None:
+    """Add one slide carrying up to ``DECK_GROUP_BASES`` VWAP charts, each labelled."""
+    slide = blank(prs)
+    heading(
+        slide,
+        f"The remaining bases, {labels[0]} to {labels[-1]}",
+        f"{count_word(DECK_GROUP_BASES).capitalize()} charts to a slide. Each one"
+        " carries the same two lines and the same net-units panel as the"
+        f" {count_word(DECK_TOP_BASES)} above.",
+    )
+    columns = DECK_GROUP_BASES // 2
+    cell_w = emu(BODY_W / columns)
+    cell_h = Inches(2.3)
+    for index, label in enumerate(labels):
+        left = emu(SLIDE_MARGIN + (index % columns) * cell_w)
+        top = emu(Inches(1.72) + (index // columns) * (cell_h + Inches(0.42)))
+        inner = emu(cell_w - Inches(0.14))
+        name = asset_figure_name("vwap", label)
+        _deck_picture(slide, source, name, Box(left, top, inner, cell_h), ledger)
+        row = source.rows[label]
+        text_box(
+            slide,
+            Box(left, emu(top + cell_h), inner, Inches(0.34)),
+            f"{label}   {row.fills} fills   index {buy_index(row):.3f}",
+            size=11,
+            color=MUTE,
+            align=PP_ALIGN.CENTER,
+        )
+    source_note(slide, "figures/vwap_a<NN>.png")
+
+
+def _share(tally: BandTally) -> str:
+    """Return the share of ``tally``'s bands with no width, as a percentage."""
+    return f"{tally.flat / tally.bands:.1%}" if tally.bands else "none"
+
+
+def _deck_band_bars(prs: Presentation, source: DeckSource) -> None:
+    """Add the slide measuring ``CHART_BAND`` at every ``BAND_BAR_LENGTHS`` length."""
+    measured = [
+        (
+            name,
+            sum(
+                (band_tally(held, bar_ms) for held in source.groups.values()),
+                EMPTY_TALLY,
+            ),
+        )
+        for name, bar_ms in BAND_BAR_LENGTHS
+    ]
+    chart_bar = next(name for name, bar_ms in BAND_BAR_LENGTHS if bar_ms == BAND_BAR_MS)
+    (short_name, short), (long_name, long) = measured[0], measured[-1]
+    slide = blank(prs)
+    heading(
+        slide,
+        "Why the band's bar is a day long",
+        "The grey channel behind the fills is a Bollinger band at period"
+        f" {CHART_BAND.period} and width {CHART_BAND.std_dev:g}. It puts a trade at"
+        " a volatility extreme on the picture.",
+    )
+    table(
+        slide,
+        ["Bar length", "Bands drawn", "Zero width", "Share", "Fills in a banded bar"],
+        [
+            [name, f"{t.bands:,}", f"{t.flat:,}", _share(t), f"{t.banded:,}"]
+            for name, t in measured
+        ],
+        Box(SLIDE_MARGIN, Inches(1.9), BODY_W, Inches(3.2)),
+    )
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(5.4), BODY_W, Inches(1.3)),
+        f"At {short_name}, {_share(short)} of the channel has no width, so the band"
+        f" traces the price line and shows no extreme. At {long_name}, {_share(long)}"
+        f" has no width. The charts use bars of {chart_bar}, and"
+        f" {CHART_BAND.period} of them must close before the first band appears.",
+        size=13,
+        color=MUTE,
+    )
+    source_note(slide, "tools/build_product_manual.py, in band_tally")
+
+
+def _deck_band_edges(prs: Presentation, source: DeckSource) -> None:
+    """Add the slide counting fills at the ``CHART_BAND`` edges of the charts' bars."""
+    tallies = {
+        label: band_tally(held, BAND_BAR_MS)
+        for label, held in sorted(source.groups.items())
+    }
+    total = sum(tallies.values(), EMPTY_TALLY)
+    sellers = sorted(tallies, key=lambda label: -tallies[label].upper_sells)[:2]
+    buyers = sorted(tallies, key=lambda label: -tallies[label].lower_buys)[:2]
+    slide = blank(prs)
+    heading(
+        slide,
+        "Where the fills landed against the band",
+        f"The upper line is {CHART_BAND.std_dev:g} standard deviations above the"
+        " recent average price, so a sell on it is a sale made at the top of that"
+        " base's range.",
+    )
+    table(
+        slide,
+        ["Reading", "Value"],
+        [
+            [
+                f"Fills at or above the upper band, {len(tallies)} bases",
+                f"{total.upper:,}",
+            ],
+            [
+                f"Fills at or below the lower band, {len(tallies)} bases",
+                f"{total.lower:,}",
+            ],
+            [
+                "Sells at or above the upper band, most often",
+                ", ".join(f"{lab} at {tallies[lab].upper_sells}" for lab in sellers),
+            ],
+            [
+                "Buys at or below the lower band, most often",
+                ", ".join(f"{lab} at {tallies[lab].lower_buys}" for lab in buyers),
+            ],
+        ],
+        Box(SLIDE_MARGIN, Inches(1.95), BODY_W, Inches(2.6)),
+    )
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(4.9), BODY_W, Inches(1.6)),
+        "Nothing about a fill at a band edge says it was profitable. It says"
+        " where in the recent price distribution the trade landed. A dot inside"
+        " the channel is an ordinary trade.",
+        size=13,
+        color=MUTE,
+    )
+    source_note(slide, "tools/build_product_manual.py, in band_tally")
+
+
+def _deck_market(
+    prs: Presentation, source: DeckSource, label: str, ledger: Ledger
+) -> None:
+    """Add the slide carrying ``label``'s weekly chart and price trace."""
+    rows = next(
+        (
+            source.evidence.candles.get(asset) or []
+            for asset, own in source.evidence.labels.items()
+            if own == label
+        ),
+        [],
+    )
+    captions = {
+        "weekly": f"{label} weekly chart, {len(weekly_bars(rows))} weekly candles"
+        f" built from {len(rows):,} five-minute rows.",
+        "trace": f"{label} price trace, {len(rows):,} five-minute closes across the"
+        " recorded window.",
+    }
+    slide = blank(prs)
+    heading(
+        slide,
+        f"The market {label}'s fills ran in",
+        "A weekly bar hides what happens inside its week, and inside the week is"
+        " where the cycle works. The trace plots every five-minute close.",
+    )
+    half = emu((BODY_W - Inches(0.3)) / 2)
+    for index, (kind, caption) in enumerate(captions.items()):
+        left = emu(SLIDE_MARGIN + index * (half + Inches(0.3)))
+        box = Box(left, Inches(1.82), half, Inches(4.2))
+        _deck_picture(slide, source, asset_figure_name(kind, label), box, ledger)
+        text_box(
+            slide,
+            Box(left, Inches(6.12), half, Inches(0.74)),
+            caption,
+            size=11,
+            color=MUTE,
+            align=PP_ALIGN.CENTER,
+        )
+    source_note(slide, "figures/weekly_a<NN>.png and trace_a<NN>.png")
+
+
+def _deck_cards(
+    prs: Presentation,
+    source: DeckSource,
+    labels: Sequence[str],
+    ledger: Ledger,
+) -> None:
+    """Add one slide carrying up to ``DECK_CARD_BASES`` labelled position cards."""
+    slide = blank(prs)
+    heading(
+        slide,
+        f"The venue's own position cards, {labels[0]} to {labels[-1]}",
+        "Each card carries the entry price the venue holds for the open position,"
+        " the current price, and the gain or loss. The figures are the venue's own.",
+    )
+    columns = DECK_CARD_BASES // 2
+    cell_w = emu(BODY_W / columns)
+    cell_h = Inches(2.1)
+    for index, label in enumerate(labels):
+        left = emu(SLIDE_MARGIN + (index % columns) * cell_w)
+        top = emu(Inches(1.78) + (index // columns) * (cell_h + Inches(0.46)))
+        inner = emu(cell_w - Inches(0.12))
+        name = asset_figure_name("card", label)
+        caption = label
+        if (source.figures_dir / name).is_file():
+            picture(
+                slide, source.figures_dir / name, Box(left, top, inner, cell_h), ledger
+            )
+        else:
+            ledger.stated_absent.append(name)
+            caption = f"{label}, no card"
+        text_box(
+            slide,
+            Box(left, emu(top + cell_h), inner, Inches(0.34)),
+            caption,
+            size=11,
+            color=MUTE,
+            align=PP_ALIGN.CENTER,
+        )
+    source_note(slide, "figures/card_a<NN>.png")
+
+
+def _deck_grader(prs: Presentation) -> None:
+    """Add the slide naming ``TradeGrade``'s score axes and the letter floors."""
+    axes = [
+        field.name.removesuffix("_score")
+        for field in fields(trade_grader.TradeGrade)
+        if field.name.endswith("_score")
+    ]
+    floors: dict[str, int] = {}
+    for hundredths in range(101):
+        letter = trade_grader._letter_from_numeric(hundredths / 100)
+        floors.setdefault(letter, hundredths)
+    letters = sorted(floors, key=floors.__getitem__, reverse=True)
+    lowest = min(value for value in floors.values() if value > 0)
+    slide = blank(prs)
+    heading(
+        slide,
+        "What the platform's own grader scores",
+        f"{count_word(len(axes)).capitalize()} axes and no more. The overall figure is"
+        " the unweighted mean of the axes that scored, and 0.5 when none of them"
+        " could.",
+    )
+    table(
+        slide,
+        axes,
+        [["scored" for _ in axes]],
+        Box(SLIDE_MARGIN, Inches(2.1), BODY_W, Inches(0.9)),
+    )
+    table(
+        slide,
+        letters,
+        [
+            [
+                (
+                    f"{floors[letter] / 100:.2f}"
+                    if floors[letter]
+                    else f"under {lowest / 100:.2f}"
+                )
+                for letter in letters
+            ]
+        ],
+        Box(SLIDE_MARGIN, Inches(3.6), BODY_W, Inches(0.9)),
+    )
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(5.1), BODY_W, Inches(1.4)),
+        "An axis whose price inputs are absent is left out. The market regime rides"
+        " beside the grade rather than inside it, and carries no score of its own.",
+        size=13,
+        color=MUTE,
+    )
+    source_note(slide, "src/trading/trade_grader.py, in grade_trade")
+
+
+def _deck_limits(prs: Presentation, source: DeckSource) -> None:
+    """Add the slide stating what the deck does not claim, from ``sell_over_buy``."""
+    unread = [
+        label
+        for label, row in sorted(source.rows.items())
+        if sell_over_buy(row) is None
+    ]
+    least = count_word(RATIO_MIN_SIDE_FILLS)
+    gaps = (
+        f"{', '.join(unread)} carry no ratio, because a mean over"
+        f" {count_word(RATIO_MIN_SIDE_FILLS - 1)} fills or fewer says more about which"
+        " trade landed last than about the base."
+        if unread
+        else f"Every base carries a ratio, because every base has {least} fills or"
+        " more on each side."
+    )
+    slide = blank(prs)
+    heading(slide, "What this deck does not claim")
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(1.4), BODY_W, Inches(5.2)),
+        "A falling average cost is not profit. It does not become profit until"
+        " units are sold, and no sale enters that line."
+        "\n\nA ratio above 1.000 reads the trades already closed. It says nothing"
+        f" about the units still held.\n\n{gaps}"
+        "\n\nA card's entry price is not the buy line above it. The card follows"
+        " the open position only and resets to zero on a full close. The buy line"
+        " counts every buy in the record and never resets.",
+        size=15,
+    )
+    source_note(slide, "tools/build_product_manual.py, in sell_over_buy")
+
+
+def _deck_provenance(prs: Presentation, source: DeckSource, ledger: Ledger) -> None:
+    """Add the slide naming where every figure came from and the rebuilding command."""
+    figures = (
+        "docs/manual/figures/"
+        if source.figures_dir.resolve() == DEFAULT_FIGURES_DIR.resolve()
+        else "the folder --figures-dir names"
+    )
+    slide = blank(prs)
+    heading(slide, "Where every figure came from")
+    table(
+        slide,
+        ["Reading", "Value"],
+        [
+            ["The builder", "tools/build_product_manual.py"],
+            ["The figures", figures],
+            ["Figures on these slides", str(ledger.embedded())],
+            ["Absences stated rather than drawn", ", ".join(ledger.stated_absent)],
+            ["The export these slides read", _deck_window(source.evidence.reading)],
+            ["Exports in the input folder", str(source.evidence.exports)],
+            [
+                "The one command",
+                "python -m tools.build_product_manual --evidence-dir <folder>",
+            ],
+        ],
+        Box(SLIDE_MARGIN, Inches(1.6), BODY_W, Inches(3.7)),
+    )
+    text_box(
+        slide,
+        Box(SLIDE_MARGIN, Inches(5.7), BODY_W, Inches(1.3)),
+        "The deck is a build output. The command above draws the figures, these"
+        " slides and the manual from one export, so nobody edits a slide by hand.",
+        size=13,
+        color=MUTE,
+    )
+    source_note(slide, "tools/build_product_manual.py, in write_evidence_deck")
+
+
+def write_evidence_deck(
+    deck: Path, figures_dir: Path, evidence: Evidence | None
+) -> str:
+    """Write the evidence slides to ``deck`` from ``evidence`` and ``figures_dir``, and
+    return the outcome."""
+    if evidence is None:
+        return "absent - no venue export"
+    groups = label_groups(evidence.labels, evidence.fills)
+    rows = {row.label: row for row in base_rows(evidence.fills, evidence.labels)}
+    source = DeckSource(evidence, figures_dir, groups, rows)
+    prs = pptx.Presentation()
+    prs.slide_width = SLIDE_W
+    prs.slide_height = SLIDE_H
+    ledger = Ledger()
+    title = _deck_title(prs, source)
+    _deck_record(prs, source)
+    _deck_method(prs)
+    _deck_combined(prs, source, ledger)
+    _deck_line_ends(prs, source)
+    _deck_two_readings(prs)
+    _deck_ratio(prs, source)
+    labels = sorted(groups)
+    for label in labels[:DECK_TOP_BASES]:
+        _deck_base(prs, source, label, ledger)
+    rest = labels[DECK_TOP_BASES:]
+    for start in range(0, len(rest), DECK_GROUP_BASES):
+        _deck_group(prs, source, rest[start : start + DECK_GROUP_BASES], ledger)
+    _deck_band_bars(prs, source)
+    _deck_band_edges(prs, source)
+    for label in labels[:DECK_MARKET_BASES]:
+        _deck_market(prs, source, label, ledger)
+    every = sorted(evidence.labels.values())
+    for start in range(0, len(every), DECK_CARD_BASES):
+        _deck_cards(prs, source, every[start : start + DECK_CARD_BASES], ledger)
+    _deck_grader(prs)
+    _deck_limits(prs, source)
+    _deck_provenance(prs, source, ledger)
+    prs.core_properties.title = title
+    deck.parent.mkdir(parents=True, exist_ok=True)
+    prs.save(str(deck))
+    absent = ", ".join(ledger.stated_absent) or "none"
+    return f"{len(prs.slides)} slides, {ledger.embedded()} figures, absent {absent}"
+
+
 def build(docs_dir: Path, figures_dir: Path, output: Path) -> BuildResult:
     """Render the manual under ``docs_dir`` to ``output`` and measure the written PDF."""
     manual = load_manual(docs_dir, figures_dir)
@@ -2797,6 +3579,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--figures-dir", type=Path, default=DEFAULT_FIGURES_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--evidence-dir", type=Path, default=EVIDENCE_DIR)
+    parser.add_argument("--deck", type=Path, default=DEFAULT_DECK)
     parser.add_argument(
         "--measure",
         action="store_true",
@@ -2809,8 +3592,13 @@ def main(argv: list[str] | None = None) -> int:
             print(console_safe(line))
         return 0
 
-    for figure, outcome in write_evidence_figures(args.figures_dir, args.evidence_dir):
+    evidence = read_evidence(args.evidence_dir)
+    for figure, outcome in write_evidence_figures(
+        args.figures_dir, args.evidence_dir, evidence
+    ):
         print(console_safe(f"figure {figure}: {outcome}"))
+    deck = write_evidence_deck(args.deck, args.figures_dir, evidence)
+    print(console_safe(f"deck {args.deck.name}: {deck}"))
 
     result = build(args.docs_dir, args.figures_dir, args.output)
     for entry in result.entries:
