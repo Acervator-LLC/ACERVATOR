@@ -1637,7 +1637,7 @@ lot sold from, in the dict shape Live's `_tick_execute_scrum` builds. A fold
 is planned under the cycle growth cap, as Live's `tick_phases` plans it, and
 the target's growth from the surplus is unit Q4's.
 
-Now: the fold reads each tranche against the bot's distance settings and that tranche's own wire share, as Live's fold does, and the factor helper named above is gone (`src/paper/paper_run.py, in apply_fold`).
+Now: the fold reads each tranche against the bot's distance settings, as Live's fold does, and the factor helper named above is gone (`src/paper/paper_run.py, in apply_fold`).
 
 `src/paper/paper_run.py` — the scrum's size and proceeds
 

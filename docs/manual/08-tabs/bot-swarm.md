@@ -270,6 +270,8 @@ compounded fold, and `src/trading/scrumming/wire_routing.py`, in
 `_route_scrum_proceeds_via_wires` on a scrum, a manual scrum and a detonation.
 A transfer cannot reach the totals without reaching the breakdown.
 
+Now: a scrum or a manual scrum books each wire's share of its surplus alone, and a detonation books no transfer (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
+
 `src/trading/smart_wire.py` — `book_transfer`
 
 ```python

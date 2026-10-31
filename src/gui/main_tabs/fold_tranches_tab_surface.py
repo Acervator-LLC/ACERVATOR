@@ -32,14 +32,10 @@ from typing import Any, Optional
 
 from ...trading.container.config import DESPAWN_MAX_DAYS, DESPAWN_PREVIEW_WINDOWS
 from ...trading.otd_math import (
-    DistanceSettings,
-    distance_settings,
     fold_rebuy_factor_from_pct,
     fold_rebuy_price,
     minimum_opposing_trade_distance_pct_from_config,
-    wired_distance_pct,
 )
-from ...trading.scrumming.sizing import tranche_wire_share_pct
 from ..descriptions import FOLD_TRANCHES_TAB_DESCRIPTIONS
 
 METHOD = "fold_tranches_tab.state"
@@ -1277,29 +1273,6 @@ def fold_distance_pct(bot: Any) -> Optional[float]:
         return None
 
 
-def fold_distance_settings(bot: Any) -> Optional[DistanceSettings]:
-    """``bot``'s ``opposing_distance_settings``, else ``distance_settings`` of its ``config``, or None where either raises."""
-    reader = getattr(bot, "opposing_distance_settings", None)
-    try:
-        if callable(reader):
-            held = reader()
-            return held if isinstance(held, DistanceSettings) else None
-        return distance_settings(bot.config)
-    except (AttributeError, TypeError, ValueError):
-        return None
-
-
-def fold_tranche_distance_pct(
-    bot: Any, tranche: dict, otd_pct: Optional[float]
-) -> Optional[float]:
-    """``wired_distance_pct`` of ``otd_pct`` and ``tranche``'s ``tranche_wire_share_pct`` at the fee ``fold_distance_settings`` reads, or None where ``otd_pct`` is None."""
-    if otd_pct is None:
-        return None
-    settings = fold_distance_settings(bot)
-    fee = settings.fee_pct if settings is not None else None
-    return wired_distance_pct(otd_pct, tranche_wire_share_pct(tranche, fee))
-
-
 def min_rebuy_cell(ref: Optional[float], otd_pct: Optional[float]) -> list:
     """The Min-rebuy cell and its tooltip, or an em dash and none.
 
@@ -2121,21 +2094,20 @@ class FoldTranchesTabModel:
         )
         self.calls.append([BUILD_TABLE, len(tranches) + len(rows)])
         for queue_index, tranche in display_order(tranches, self.sort_key):
-            tranche_pct = fold_tranche_distance_pct(self.bot, tranche, self.otd_pct)
             self.rows.append(
                 fold_row_cells(
                     queue_index,
                     tranche,
                     self.now,
                     float(getattr(self.bot, "price", 0.0) or 0.0),
-                    tranche_pct,
+                    self.otd_pct,
                 )
             )
             self.row_colors.append(
                 fold_row_colors(
                     tranche,
                     float(getattr(self.bot, "price", 0.0) or 0.0),
-                    tranche_pct,
+                    self.otd_pct,
                 )
             )
             self.row_backgrounds.append(FOLD_TRANCHE_BG_HEX)

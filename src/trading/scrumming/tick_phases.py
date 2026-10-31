@@ -59,7 +59,6 @@ from .sizing import (
     routed_share_pct,
     scrum_units,
     target_delta_usd,
-    tranche_distance_pct,
     tranche_rebuy_price,
     units_at_scrum,
 )
@@ -1572,7 +1571,10 @@ class TickPhaseMixin:
             )
 
         _scrum_routed_total = self._route_scrum_proceeds_via_wires(
-            scrum_usd=scrum_usd, sell_fill=sell_fill, label="scrum"
+            scrum_usd=scrum_usd,
+            sold_units=_sold_units,
+            sell_fill=sell_fill,
+            label="scrum",
         )
         _scrum_wire_share = routed_share_pct(scrum_usd, _scrum_routed_total)
 
@@ -1709,7 +1711,7 @@ class TickPhaseMixin:
         band: Any,
     ) -> None:
         """Emit the fold-queue diagnostics for this tick's gate outcome, each
-        tranche read at ``distance`` and ``band`` through ``tranche_distance_pct``."""
+        tranche read at ``distance`` and ``band`` through ``tranche_rebuy_price``."""
         try:
             self._fold_diag_tick += 1
             if self._fold_tranches:
@@ -1789,7 +1791,7 @@ class TickPhaseMixin:
                         self._fold_tranches, key=lambda _t: float(_t.get("ref", 0))
                     )
                     _min_ref = float(_lowest.get("ref", 0))
-                    _otd_diag = tranche_distance_pct(_lowest, distance, band)
+                    _otd_diag = distance.distance_at_band(band)
                     _activation = tranche_rebuy_price(_lowest, distance, band)
                     self._bus.emit(
                         "bot.log",
@@ -2306,7 +2308,7 @@ class TickPhaseMixin:
             f"part-consumed {partial_count}, out of "
             f"{_pre_remove} queued "
             f"(others held by the OTD price gate: needs "
-            f"price <= ref x {otd_factor:.4f}, less each tranche's wire share"
+            f"price <= ref x {otd_factor:.4f}"
             + (
                 f"; {excluded} more were price-eligible "
                 f"but skipped by the per-cycle cap"

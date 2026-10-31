@@ -1,6 +1,6 @@
 """Smart Wire routing and wire-credit provenance for ScrummingBot.
 
-Routes scrum/manual/detonation proceeds to downstream bots, applies
+Routes the surplus of a scrum or manual sale to downstream bots, applies
 incoming wire USD to the fold queue (or parks it when no tranches are
 open), and keeps per-tranche wire-credit provenance bounded.
 """
@@ -8,10 +8,19 @@ open), and keeps per-tranche wire-credit provenance bounded.
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any, TYPE_CHECKING
 
 from ...core.event_bus import LINE_KIND_WIRE_FLOW
-from .sizing import held_wire_usd, tranche_wire_usd, wire_credit_entries
+from ..container.config import fold_ratio_pct
+from ..otd_math import DistanceSettingUnreadable, fold_rebuy_price
+from .sizing import (
+    fold_cap_remaining_usd,
+    held_wire_usd,
+    sale_surplus_usd,
+    tranche_wire_usd,
+    wire_credit_entries,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -27,6 +36,14 @@ _WIRE_CREDIT_CAP = 20
 Everything older is folded into ``wire_credits_rolled``, which keeps the
 totals exactly.
 """
+
+_WIRE_HELD_FORMAT = (
+    "WIRE HELD ({label}): the ${proceeds:.4f} this sale left holds no surplus "
+    "past the dollars that buy back its {units:.6f} units and the room the "
+    "cycle growth cap leaves, so no wire carries any of it."
+)
+"""The ``bot.log`` line ``_route_scrum_proceeds_via_wires`` writes for a sale
+with no ``_sale_surplus_usd``."""
 
 
 def _roll_wire_credit_overflow(tranche: dict) -> int:
@@ -88,20 +105,51 @@ class WireRoutingMixin(_Host):
         """Attach a Smart Wire manager for cross-compounding."""
         self._smart_wire_mgr = manager
 
-    def _route_scrum_proceeds_via_wires(
-        self, scrum_usd: float, sell_fill: float, label: str = "scrum"
+    def _sale_surplus_usd(
+        self, proceeds_usd: float, sold_units: float, sale_price: float
     ) -> float:
-        """Route pct% of `scrum_usd` to each outgoing wire's target via
-        `apply_wire_income`. Each routed share is booked by
+        """``sale_surplus_usd`` of one sale, restored at the unbanded
+        ``opposing_distance_settings``, under ``fold_cap_remaining_usd`` in
+        quote units."""
+        try:
+            restore_price = fold_rebuy_price(
+                sale_price, self.opposing_distance_settings().distance_pct()
+            )
+        except DistanceSettingUnreadable:
+            return 0.0
+        quote = float(self._quote_to_usd or 1.0)
+        if not math.isfinite(quote) or quote <= 0.0:
+            return 0.0
+        cap_remaining = fold_cap_remaining_usd(
+            self.cycle_growth_cap_usd, self._fold_cycle_cap_consumed
+        )
+        return sale_surplus_usd(
+            proceeds_usd,
+            sold_units,
+            restore_price,
+            fold_ratio_pct(self.config),
+            cap_remaining / quote,
+        )
+
+    def _route_scrum_proceeds_via_wires(
+        self,
+        scrum_usd: float,
+        sold_units: float,
+        sell_fill: float,
+        label: str = "scrum",
+    ) -> float:
+        """Route pct% of the sale's `_sale_surplus_usd` to each outgoing
+        wire's target via `apply_wire_income`. Each routed share is booked by
         `SmartWireManager.book_transfer`, which moves the source-side
         wired_out, the target-side wired_in and the target's provenance
         entry for this bot together.
 
         Args:
-          scrum_usd:  full proceeds available for routing (USD).
+          scrum_usd:  the sale's proceeds (USD).
+          sold_units: the units the sale sold.
           sell_fill:  the actual fill price (used in audit ref string).
-          label:      "scrum" / "manual_scrum" / "detonation" — appears
-                      in WireTransaction.wire_type and operator log.
+          label:      "scrum" / "manual_scrum" — appears in
+                      WireTransaction.wire_type and operator log.
 
         Returns the total USD routed. Caller subtracts this from local
         accounting so tranches/fold-queue reflect only the local share.
@@ -116,6 +164,13 @@ class WireRoutingMixin(_Host):
                 return 0.0
             _wires = _wire_mgr.get_outgoing_wires(self.bot_id)
             if not _wires:
+                return 0.0
+            _surplus = self._sale_surplus_usd(scrum_usd, sold_units, sell_fill)
+            if _surplus <= 0.0:
+                _held = _WIRE_HELD_FORMAT.format(
+                    label=label.upper(), proceeds=scrum_usd, units=sold_units
+                )
+                self._bus.emit("bot.log", bot_id=self.bot_id, message=_held)
                 return 0.0
             # Clamp total pct to 100% (operator config could sum > 100%).
             _total_pct = sum(float(p) for p in _wires.values())
@@ -165,7 +220,7 @@ class WireRoutingMixin(_Host):
             for _tgt_id, _pct in _wires.items():
                 try:
                     _eff_pct = min(float(_pct) * _scaling, _per_wire_safe_pct)
-                    _routed = scrum_usd * (_eff_pct / 100.0)
+                    _routed = _surplus * (_eff_pct / 100.0)
                     if _routed < 0.01:  # dust floor
                         continue
                     _tgt_bot = _bot_refs.get(_tgt_id)
@@ -219,7 +274,7 @@ class WireRoutingMixin(_Host):
                                     wire_type=f"{label.upper()}_ROUTE",
                                     reason=(
                                         f"{_eff_pct:.2f}% of "
-                                        f"${scrum_usd:.4f} {label}"
+                                        f"${_surplus:.4f} {label} surplus"
                                     ),
                                 )
                             )
@@ -257,7 +312,8 @@ class WireRoutingMixin(_Host):
                     bot_id=self.bot_id,
                     message=(
                         f"WIRE OUT ({label.upper()}): routed "
-                        f"${_scrum_routed_total:.4f} of "
+                        f"${_scrum_routed_total:.4f} of the "
+                        f"${_surplus:.4f} surplus in "
                         f"${scrum_usd:.4f} {label} proceeds "
                         f"across {len(_wires)} target bot(s). "
                         f"Remaining "
