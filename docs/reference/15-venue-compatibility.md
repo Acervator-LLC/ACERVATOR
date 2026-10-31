@@ -10,9 +10,9 @@ fraction survive the venue's own size rule.
 
 The index is [README.md](README.md). The connectors behind the crypto path are
 described in [13-live-evidence.md](13-live-evidence.md), the screen that adds a
-venue is in [08-tabs/settings.md](08-tabs/settings.md), and the per-class
+venue is in [08-tabs/settings.md](../manual/08-tabs/settings.md), and the per-class
 fractional reading the simulator works from is in
-[08-tabs/simulator.md](08-tabs/simulator.md).
+[08-tabs/simulator.md](../manual/08-tabs/simulator.md).
 
 No venue was contacted to write this page. Every venue fact below was read from
 the publisher's own page outside this repository and handed to the page on
@@ -348,7 +348,7 @@ figures that decide whether a scrum can run.
 
 | Venue | How the size is named | Smallest step | Minimum | Source |
 | ----- | --------------------- | ------------- | ------- | ------ |
-| coinbase, spot | units of the base currency | the product's own increment field | the product's own minimum size field | Coinbase Create a new order and Get Product, quoted with their read date in [08-tabs/simulator.md](08-tabs/simulator.md) |
+| coinbase, spot | units of the base currency | the product's own increment field | the product's own minimum size field | Coinbase Create a new order and Get Product, quoted with their read date in [08-tabs/simulator.md](../manual/08-tabs/simulator.md) |
 | coinbase, US futures | not stated by the pages read | not stated by the pages read | not stated by the pages read | Coinbase developer documentation, Advanced Trade US derivatives, read 2026-09-24 |
 | the other fourteen crypto venues | units of the base currency | published per product by each venue, not stated by the pages read | published per product by each venue, not stated by the pages read | each venue's own product record |
 | Alpaca | either a share quantity or a dollar amount, never both in one order | nine decimal places of a share | 1.00 USD on a buy | Alpaca fractional trading documentation, read 2026-09-24 |
@@ -10562,7 +10562,7 @@ read as coinbase is refused.
 
 The Create Auto Trader wizard's Base Currency row offers every money leg the
 picked venue's own market rows quote, described in
-[06-trading-tab.md](06-trading-tab.md). The row opened on the first of its seven
+[06-trading-tab.md](../manual/06-trading-tab.md). The row opened on the first of its seven
 declared entries, `USDT`, whichever sector the operator pressed. Five of the six
 sectors quote no market in `USDT`, so the Target Asset row drew one entry reading
 "No pairs found" and the operator had to work out that the row above it was the

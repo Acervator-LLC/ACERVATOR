@@ -50,7 +50,7 @@ own surface still ships, because the window's model imports it for the heading.
 ```
 
 Dropping the name from the skip list puts the panel back in the build as well.
-The rule is on [17-what-the-build-includes.md](../17-what-the-build-includes.md).
+The rule is on [17-what-the-build-includes.md](../../reference/17-what-the-build-includes.md).
 
 The Competition tab and the Local Testnet tab are not built either. One mixin
 assigns `None` to both attributes on every launch.

@@ -653,7 +653,7 @@ units.
 | the blocking hooks | `dev_harness/hooks/`, declared in `dev_harness/hooks/REGISTRATIONS.md` |
 | the three auto-loaded rules | `.claude/rules/`, loaded with `CLAUDE.md` |
 | the Product Manual | `docs/manual/`, rendered by `tools/build_product_manual.py` |
-| this protocol, in the manual | `docs/manual/11-hop-protocol-and-rules-registry.md` |
+| this protocol, in the manual | `docs/reference/11-hop-protocol-and-rules-registry.md` |
 | debug evidence, one file per run | `tests/debug_reports/` |
 | engineering notes and audits | `docs/engineering-notes/`, `docs/audits/` |
 | calibration fixtures | `harness_fixtures/` |

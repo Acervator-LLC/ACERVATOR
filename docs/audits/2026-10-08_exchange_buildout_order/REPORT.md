@@ -245,7 +245,7 @@ TD Ameritrade's absence rests on a filing record, not on a search. Its
 registration was terminated by a Form 15 filed on 2020-10-16 and it has filed
 nothing of any kind since October 2020, so no figure after 2020 exists to find.
 The discontinuation date of 10 May 2024 in this report is the one
-[15-venue-compatibility.md](../../manual/15-venue-compatibility.md) records for
+[15-venue-compatibility.md](../../reference/15-venue-compatibility.md) records for
 the interface, and no primary page stating that date was fetched here.
 
 Robinhood is fixed second and is not ranked. Its own release of 10 September
@@ -525,7 +525,7 @@ the other twelve crypto ids  key and secret
 ```
 
 The broker credential shapes are the ones
-[15-venue-compatibility.md](../../manual/15-venue-compatibility.md) records per
+[15-venue-compatibility.md](../../reference/15-venue-compatibility.md) records per
 firm: a key and a secret for Alpaca, a TWS session for Interactive Brokers, and
 a key issued on the Schwab developer portal for Schwab. That page records a
 shape not stated by the pages it read for tastytrade, E\*TRADE and Webull, and
@@ -600,7 +600,7 @@ no file under dist/ launched
 | `src/stocks/broker_base.py` | `record_markets` | 2026-10-08 |
 | `src/gui/main_window.py` | `_connect_exchange_for_bot`, `_connect_broker_for_bot` | 2026-10-08 |
 | `2026-10-07_venue_sector_readiness_matrix/REPORT.md` | the venue-by-sector matrix and its four verdicts | 2026-10-08 |
-| `docs/manual/15-venue-compatibility.md` | the venue table and its credential shapes | 2026-10-08 |
+| `docs/reference/15-venue-compatibility.md` | the venue table and its credential shapes | 2026-10-08 |
 | coinmarketcap.com, the ranking page and each venue page | `Spot Trading Volume(24h)` per venue | 2026-10-08 |
 | coingecko.com, the exchanges page | the `24h Volume` column per venue | 2026-10-08 |
 | pressroom.aboutschwab.com, Monthly Activity Highlights of 15 September 2026 | client daily average trades for August 2026 | 2026-10-08 |

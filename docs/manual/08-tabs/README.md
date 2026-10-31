@@ -234,7 +234,7 @@ def _is_carried(module_name: str) -> bool:
 ```
 
 The rule that leaves the seven out of the build is on
-[17-what-the-build-includes.md](../17-what-the-build-includes.md), under "A
+[17-what-the-build-includes.md](../../reference/17-what-the-build-includes.md), under "A
 screen the window never builds".
 
 The transport is one JSON object per line over the pipe the parent process

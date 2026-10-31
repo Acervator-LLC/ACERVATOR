@@ -7815,7 +7815,7 @@ the home trees redirected and every outbound socket refused:
 | Indices | 1 note | 1 row, `Coinbase (coinbase)` |
 | Futures / Perps | 1 note | 1 row, `Coinbase (coinbase)` |
 
-[The sector and product tree](../16-sector-exchange-product-tree.md) records the
+[The sector and product tree](../../reference/16-sector-exchange-product-tree.md) records the
 same six registrations.
 
 ### The Add box is named after the sector

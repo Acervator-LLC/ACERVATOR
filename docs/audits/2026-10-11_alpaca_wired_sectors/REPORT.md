@@ -568,7 +568,7 @@ black: one undefined name added to a changed file reads
 0 findings and **exit 0**.
 
 **The manual page is add-only.** A sentence census against
-`git show origin/current:docs/manual/15-venue-compatibility.md`, decoded as
+`git show origin/current:docs/reference/15-venue-compatibility.md`, decoded as
 UTF-8:
 
 ```

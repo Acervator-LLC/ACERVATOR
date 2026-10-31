@@ -709,7 +709,7 @@ CONTROL two new sentences reworded            before 4871  after 4871  originals
 | `src/gui/main_tabs/api_tester_tab_surface.py` | the probe host |
 | `src/gui/widgets/api_tester_tab.py` | the same probe host, on the widget's own map |
 | `src/exchange/exchange_chart_urls.py` | the chart row |
-| `docs/manual/15-venue-compatibility.md` | add-only, with the sentence census above |
+| `docs/reference/15-venue-compatibility.md` | add-only, with the sentence census above |
 
 The last four are connections the registration itself would otherwise break. A
 registered id with no timeframe row falls to a permissive fallback the module's
@@ -743,7 +743,7 @@ unit built none, and the answer is the operator's.
 
 ## Related pages
 
-- [The venue-and-sector page](../../manual/15-venue-compatibility.md)
+- [The venue-and-sector page](../../reference/15-venue-compatibility.md)
 - [The global company's report](../2026-10-10_okx_wired_sectors/REPORT.md)
 - [Bitget](../2026-10-10_bitget_wired_sectors/REPORT.md)
 - [Gate.io](../2026-10-10_gateio_wired_six_sectors/REPORT.md)
