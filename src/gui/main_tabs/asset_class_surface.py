@@ -496,12 +496,14 @@ EXTRA_VENUE_CLASSES = {
     "robinhood": ("commodities", "indices", "forex"),
 }
 
-#: The two articles a sentence takes before a sector name, and the first
-#: letters taking the second.
-#: The last recording read, under its ``recording_stamp``. One Live tab refresh
-#: asks ``venue_classes`` once a bot, and the file is 235 KB.
+#: The last ``recorded_venue_classes`` answer, held as one ``(stamp, classes)`` pair.
 _RECORDED_CACHE: dict = {}
 
+#: The last ``recorded_symbol_classes`` reads, as one ``(stamp, venue maps)`` pair.
+_SYMBOL_CLASS_CACHE: dict = {}
+
+#: The two articles a sentence takes before a sector name, and the first
+#: letters taking the second.
 ARTICLE_DEFAULT = "a"
 ARTICLE_VOWEL = "an"
 ARTICLE_VOWEL_LETTERS = "aeio"
@@ -808,7 +810,8 @@ def recording_stamp() -> tuple:
     """The recording file's path, modification time and size, or an empty tuple
     while no file is there.
 
-    ``recorded_venue_classes`` reads the recording again only when this moves.
+    ``recorded_venue_classes`` and ``recorded_symbol_classes`` read the
+    recording again only when this moves.
     """
     try:
         from ...exchange.market_rules_store import store_path
@@ -834,8 +837,9 @@ def recorded_venue_classes(document: Any = None) -> dict:
     except ImportError:
         return {}
     stamp = () if isinstance(document, dict) else recording_stamp()
-    if stamp and _RECORDED_CACHE.get("stamp") == stamp:
-        return dict(_RECORDED_CACHE["classes"])
+    cached = _RECORDED_CACHE.get("held")
+    if stamp and cached is not None and cached[0] == stamp:
+        return dict(cached[1])
     body = document if isinstance(document, dict) else load_document()
     declared = set(asset_classes())
     found: dict = {}
@@ -851,8 +855,7 @@ def recorded_venue_classes(document: Any = None) -> dict:
                 held.add(named)
         found[str(venue).strip().lower()] = frozenset(held)
     if stamp:
-        _RECORDED_CACHE["stamp"] = stamp
-        _RECORDED_CACHE["classes"] = dict(found)
+        _RECORDED_CACHE["held"] = (stamp, dict(found))
     return found
 
 
@@ -909,7 +912,10 @@ def venue_served_classes(venue_id: Any, document: Any = None) -> frozenset:
 
 def recorded_symbol_classes(venue_id: Any) -> dict:
     """Every symbol one venue's recording holds mapped to its ``CLASS_FIELD``,
-    empty while the recording cannot be read."""
+    empty while the recording cannot be read.
+
+    One read of a venue serves every call until ``recording_stamp`` moves.
+    """
     try:
         from ...exchange.market_rules_store import recorded_classes
     except ImportError:
@@ -917,7 +923,18 @@ def recorded_symbol_classes(venue_id: Any) -> dict:
     asked = str(venue_id or "").strip().lower()
     if not asked:
         return {}
-    return recorded_classes(asked)
+    stamp = recording_stamp()
+    cached = _SYMBOL_CLASS_CACHE.get("held")
+    venues = (
+        dict(cached[1]) if stamp and cached is not None and cached[0] == stamp else {}
+    )
+    if asked in venues:
+        return dict(venues[asked])
+    found = recorded_classes(asked)
+    if stamp:
+        venues[asked] = dict(found)
+        _SYMBOL_CLASS_CACHE["held"] = (stamp, venues)
+    return found
 
 
 # OVERTAKEN, quoted whole:
@@ -926,7 +943,9 @@ def recorded_symbol_classes(venue_id: Any) -> dict:
 #   answers for a symbol the recording holds none for."
 # True today: a pair the recording holds no class for answers the one class
 # ``venue_classes`` names, and an empty string where that set holds several.
-def symbol_class(venue_id: Any, symbol: Any, recorded: Any = None) -> str:
+def symbol_class(
+    venue_id: Any, symbol: Any, recorded: Any = None, venues: Any = None
+) -> str:
     """The class ``recorded_symbol_classes`` holds for ``symbol`` on
     ``venue_id``, the one class ``venue_classes`` names where the recording
     holds none, and an empty string where that set holds several.
@@ -939,7 +958,7 @@ def symbol_class(venue_id: Any, symbol: Any, recorded: Any = None) -> str:
     named = str(held.get(str(symbol or ""), "") or "")
     if named:
         return retired_onto(named)
-    served = venue_classes(venue_id)
+    served = venue_classes(venue_id, venues)
     if len(served) == 1:
         return next(iter(served))
     return ""

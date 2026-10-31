@@ -1,45 +1,20 @@
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-"""history_qt_table.py -- the History table drawn by Qt widgets.
+"""``HistoryQtTable`` draws the History view model with ``QTableWidget``, as
+``HistoryWebTable`` in ``src/gui/react_history_panel.py`` draws it with React.
 
-WHAT THIS IS
-============
-The Qt half of the History table variant. ``HistoryWebTable`` in
-``src/gui/react_history_panel.py`` draws the same view model with React
-inside ``QWebEngineView``; this draws it with ``QTableWidget``. The build
-picks one, ``src/gui/history_table_variant.py`` hands it to
-``HistoryTab``, and the two executables can then be run against each
-other on the same data.
-
-WHAT IT MAY NOT DO
-==================
-It computes nothing, the same prohibition the React panel carries. Every
-string, colour and tooltip on screen is a field
-``src.exchange.history_read_contract`` already produced and
-``build_view_model`` already packed. A table that re-derived a cost, a
-grade or a colour would be a third implementation of History, disagreeing
-with the other two exactly where a comparison is supposed to be reading.
-
-THE INTERFACE IS THE REACT PANEL'S, EXACTLY
-===========================================
-``HistoryTab`` holds the table through three calls and no others:
-construction, ``set_model``, and ``row_count``. Both classes answer all
-three with the same signatures and the same meanings, so the tab needs no
-knowledge of which one it holds.
-
-``row_count`` answers through a callback here as well, though this table
-knows its count synchronously. The React panel has to ask a browser and
-cannot answer inline; keeping the callback shape identical is what lets
-the tab stay written once.
-
-Construction takes a parent and nothing else. ``HistoryWebTable`` takes a
-theme because ``panel_html`` builds its page in one; the application
-stylesheet paints this table's chrome, so a theme here would reach no
-colour. ``history_tab`` passes neither.
+Every string, colour and tooltip it draws is a field
+``src.exchange.history_read_contract`` produced and ``build_view_model`` packed.
+``HistoryTab`` holds either table through construction, ``set_model`` and
+``row_count``, which both answer with the same signatures and meanings.
+``set_model`` draws over several event-loop turns, and ``row_count`` hands its
+callback the count once that draw finishes.
 """
 
 from __future__ import annotations
 
+import functools
 import logging
+import time
 from typing import Any, Callable
 
 from ..trading.gate_vocabulary import (
@@ -49,7 +24,7 @@ from ..trading.gate_vocabulary import (
 )
 
 try:
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QColor
     from PySide6.QtWidgets import (
         QAbstractItemView,
@@ -101,6 +76,12 @@ BANK_MARKER_PX = 8
 LIGHT_SPACING_PX = 3
 BANK_SPACING_PX = 10
 TEXT_SPACING_PX = 8
+
+#: Seconds one ``HistoryQtTable._draw_rows`` turn draws before the next rows wait.
+DRAW_STEP_S = 0.010
+
+#: Rows ``HistoryQtTable._shrink_rows`` takes off the bottom in one turn.
+SHRINK_STEP_ROWS = 10
 
 
 def row_lights(row: dict) -> list:
@@ -303,6 +284,9 @@ if _HAS_QT:
             super().__init__(parent)
             self.setAccessibleName("Qt History Table")
             self._last_model: dict = {}
+            self._draw_round = 0
+            self._drawn_round = 0
+            self._count_waiting: list = []
             layout = QVBoxLayout(self)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(0)
@@ -327,20 +311,35 @@ if _HAS_QT:
             return dict(self._last_model)
 
         def set_model(self, model: dict) -> None:
-            """Draw ``model``. Every value comes from the model as given."""
+            """Draw ``model`` from the next event-loop turn, ``DRAW_STEP_S`` of
+            rows a turn.
+
+            Every value comes from the model as given.
+            """
             self._last_model = model
             self._draw_headers(model)
-            self._draw_rows(model)
+            self._draw_round += 1
+            rows = model_rows(model)
+            if len(rows) > self._table.rowCount():
+                self._table.setRowCount(len(rows))
+            # ResizeToContents re-measures every column on each cell write.
+            self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+            first = functools.partial(
+                self._draw_rows, rows, 0, regrew=False, draw_round=self._draw_round
+            )
+            QTimer.singleShot(0, self, first)
 
         def row_count(self, callback: Callable[[Any], None]) -> bool:
-            """Report how many rows are drawn, through ``callback``.
+            """Hand ``callback`` the rows drawn once the draw in hand finishes,
+            and answer True.
 
-            Always answers, and returns True, because the table is always
-            ready. The React panel returns False when its document is not
-            up; the tab treats that as "no count available" and this class
-            never produces it.
+            A draw a newer ``set_model`` replaced hands -1, the count the tab
+            reads as unavailable.
             """
-            callback(self._table.rowCount())
+            if self._drawn_round == self._draw_round:
+                callback(self._table.rowCount())
+            else:
+                self._count_waiting.append((self._draw_round, callback))
             return True
 
         def _draw_headers(self, model: dict) -> None:
@@ -356,27 +355,70 @@ if _HAS_QT:
             header.setSectionResizeMode(QHeaderView.ResizeToContents)
             header.setStretchLastSection(False)
 
-        def _draw_rows(self, model: dict) -> None:
-            rows = model_rows(model)
-            self._table.setRowCount(len(rows))
-            header = self._table.horizontalHeader()
-            # ResizeToContents re-measures every column on each cell write.
-            header.setSectionResizeMode(QHeaderView.Interactive)
-            regrew = False
-            for row_index, row in enumerate(rows):
-                lights = row_lights(row)
-                for cell_index, cell in enumerate(row.get("cells", [])):
-                    gates = cell.get("key") == GATES_COLUMN_KEY
-                    # GateLightsCell draws the Gates text; its item stays blank.
-                    text = "" if gates else str(cell.get("text", ""))
-                    self._draw_cell(row_index, cell_index, cell, text)
-                    if not gates:
-                        continue
-                    if self._draw_gates(row_index, cell_index, cell, lights):
-                        regrew = True
-            header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        def _draw_rows(
+            self, rows: list, start: int, *, regrew: bool, draw_round: int
+        ) -> None:
+            """Draw ``rows`` from ``start`` for ``DRAW_STEP_S``, then queue the
+            rest or ``_shrink_rows``; a newer ``set_model`` drops this round."""
+            if draw_round != self._draw_round:
+                return
+            began = time.monotonic()
+            index = start
+            while index < len(rows):
+                regrew = self._draw_row(index, rows[index]) or regrew
+                index += 1
+                if time.monotonic() - began >= DRAW_STEP_S:
+                    break
+            if index < len(rows):
+                rest = functools.partial(
+                    self._draw_rows, rows, index, regrew=regrew, draw_round=draw_round
+                )
+            else:
+                rest = functools.partial(
+                    self._shrink_rows, len(rows), regrew=regrew, draw_round=draw_round
+                )
+            QTimer.singleShot(0, self, rest)
+
+        def _shrink_rows(self, wanted: int, *, regrew: bool, draw_round: int) -> None:
+            """Take the rows past ``wanted`` off the bottom, ``SHRINK_STEP_ROWS``
+            a turn, then finish ``draw_round`` and answer its ``row_count`` asks."""
+            if draw_round != self._draw_round:
+                return
+            held = self._table.rowCount()
+            keep = max(wanted, held - SHRINK_STEP_ROWS)
+            for row in range(keep, held):
+                for column in range(self._table.columnCount()):
+                    if self._table.cellWidget(row, column) is not None:
+                        self._table.removeCellWidget(row, column)
+            self._table.setRowCount(keep)
+            if keep > wanted:
+                rest = functools.partial(
+                    self._shrink_rows, wanted, regrew=regrew, draw_round=draw_round
+                )
+                QTimer.singleShot(0, self, rest)
+                return
+            self._table.horizontalHeader().setSectionResizeMode(
+                QHeaderView.ResizeToContents
+            )
             if regrew:
                 self._table.resizeRowsToContents()
+            self._drawn_round = draw_round
+            waiting, self._count_waiting = self._count_waiting, []
+            for asked, callback in waiting:
+                callback(self._table.rowCount() if asked == draw_round else -1)
+
+        def _draw_row(self, row_index: int, row: dict) -> bool:
+            """Write one row's cells, and say whether its Gates cell was built new."""
+            lights = row_lights(row)
+            regrew = False
+            for cell_index, cell in enumerate(row.get("cells", [])):
+                gates = cell.get("key") == GATES_COLUMN_KEY
+                # GateLightsCell draws the Gates text; its item stays blank.
+                text = "" if gates else str(cell.get("text", ""))
+                self._draw_cell(row_index, cell_index, cell, text)
+                if gates and self._draw_gates(row_index, cell_index, cell, lights):
+                    regrew = True
+            return regrew
 
         def _draw_cell(
             self, row_index: int, cell_index: int, cell: dict, text: str
