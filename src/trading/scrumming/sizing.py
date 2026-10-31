@@ -2711,6 +2711,28 @@ def units_at_scrum(record: dict) -> float:
     return units
 
 
+def sale_surplus_usd(
+    proceeds_usd: float,
+    sold_units: float,
+    restore_price: float,
+    fold_ratio_pct: float,
+    cap_remaining_usd: float,
+) -> float:
+    """``fold_ratio_pct`` of what ``proceeds_usd`` holds past ``sold_units`` times
+    ``restore_price``, less ``cap_remaining_usd``, never below zero."""
+    proceeds = as_finite_float(proceeds_usd)
+    units = as_finite_float(sold_units)
+    price = as_finite_float(restore_price)
+    ratio = as_finite_float(fold_ratio_pct)
+    room = as_finite_float(cap_remaining_usd)
+    if proceeds is None or units is None or price is None or ratio is None:
+        return 0.0
+    if room is None or units <= 0.0 or price <= 0.0:
+        return 0.0
+    share = max(0.0, min(1.0, ratio / 100.0))
+    return max(0.0, (proceeds - units * price) * share - max(0.0, room))
+
+
 WIRE_SHARE_KEY = "wire_share_pct"
 """The ``routed_share_pct`` of the sale behind a record, which ``fold_tranche_records`` writes."""
 
@@ -2765,21 +2787,13 @@ def ref_after_wire(record: dict, fee_pct: Optional[float]) -> float:
     )
 
 
-def tranche_distance_pct(
-    record: dict, distance: DistanceSettings, band: Any = None
-) -> float:
-    """``distance.distance_at_band`` with ``record``'s ``tranche_wire_share_pct``."""
-    return distance.distance_at_band(
-        band, tranche_wire_share_pct(record, distance.fee_pct)
-    )
-
-
 def tranche_rebuy_price(
     record: dict, distance: DistanceSettings, band: Any = None
 ) -> float:
-    """``fold_rebuy_price`` of ``record``'s ``ref`` at its ``tranche_distance_pct``."""
+    """``fold_rebuy_price`` of ``record``'s ``ref`` at ``distance.distance_at_band``
+    of ``band``."""
     return fold_rebuy_price(
-        float(record.get("ref", 0)), tranche_distance_pct(record, distance, band)
+        float(record.get("ref", 0)), distance.distance_at_band(band)
     )
 
 
@@ -3660,6 +3674,7 @@ __all__ = [
     "ratio_to_ceiling",
     "recorded_unit_rule",
     "sale_proceeds_usd",
+    "sale_surplus_usd",
     "scrum_units",
     "sector_variant",
     "scrumming_interval_usd",

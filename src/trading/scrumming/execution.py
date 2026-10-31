@@ -1152,7 +1152,7 @@ class ExecutionEngineMixin:
                             f"{len(self._fold_tranches)} queued tranche(s) is "
                             f"eligible. The highest rebuy any of them allows "
                             f"is ${_best_rebuy:.8f} (its sale price less the "
-                            f"distance and its wire share), so price must fall "
+                            f"distance), so price must fall "
                             f"${price - _best_rebuy:.8f} further. Gates are "
                             f"bypassed on this path, so it will not rebuy "
                             f"above what it sold at. Intended BUY of "
@@ -1441,7 +1441,10 @@ class ExecutionEngineMixin:
             self._record_venue_units_after_fill(-fill_amount)
 
         _manual_routed_total = self._route_scrum_proceeds_via_wires(
-            scrum_usd=fill_usd, sell_fill=fill_price, label="manual_scrum"
+            scrum_usd=fill_usd,
+            sold_units=fill_amount,
+            sell_fill=fill_price,
+            label="manual_scrum",
         )
         _manual_wire_share = routed_share_pct(fill_usd, _manual_routed_total)
         fill_usd = max(0.0, fill_usd - _manual_routed_total)
@@ -1660,8 +1663,8 @@ class ExecutionEngineMixin:
                 msg = (
                     f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
                     f"${fill_price:.8f}. Discharged {len(consumed)} tranche(s), "
-                    f"each at or under its own sale price less the distance and "
-                    f"its wire share; {_held_above} above that stay queued unpaid."
+                    f"each at or under its own sale price less the distance; "
+                    f"{_held_above} above that stay queued unpaid."
                 )
         else:
             self._main_lots.append(
@@ -1884,11 +1887,7 @@ class ExecutionEngineMixin:
         self._current_holdings = max(0.0, held_before - fill_amount)
         self._record_venue_units_after_fill(-fill_amount)
 
-        _detonation_routed_total = self._route_scrum_proceeds_via_wires(
-            scrum_usd=fill_usd, sell_fill=fill_price, label="detonation"
-        )
         try:
-            _detonation_kept = float(fill_usd) - float(_detonation_routed_total or 0.0)
             self._bus.emit(
                 "pnl.event",
                 bot_id=self.bot_id,
@@ -1898,9 +1897,7 @@ class ExecutionEngineMixin:
                     "symbol": self.config.symbol,
                     "units": float(fill_amount),
                     "fill_price": float(fill_price),
-                    "usd_captured": _detonation_kept * float(self._quote_to_usd or 1.0),
-                    "usd_routed_via_wires": float(_detonation_routed_total or 0.0)
-                    * float(self._quote_to_usd or 1.0),
+                    "usd_captured": float(fill_usd) * float(self._quote_to_usd or 1.0),
                     "operator_initiated": False,
                     "manual_kind": "DETONATION",
                 },

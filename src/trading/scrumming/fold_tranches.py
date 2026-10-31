@@ -83,9 +83,9 @@ class FoldTrancheAccountingMixin:
         """Fold-queue tranches eligible for fold-back at ``ticker_last``.
 
         ``eligible_fold_tranches`` reads each tranche at ``distance`` and
-        ``band`` with its own wire share. The FOLD_DIAG diagnostic and the
-        fold-back executor in ``tick_phases`` both call this, so the two
-        cannot report different sets.
+        ``band``. The FOLD_DIAG diagnostic and the fold-back executor in
+        ``tick_phases`` both call this, so the two cannot report different
+        sets.
         """
         return eligible_fold_tranches(self._fold_tranches, ticker_last, distance, band)
 

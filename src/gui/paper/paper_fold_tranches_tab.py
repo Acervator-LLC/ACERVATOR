@@ -30,7 +30,6 @@ from .. import design_system as ds
 from ..main_tabs.fold_tokens_surface import FOLD_COLUMN_TOOLTIPS
 from ..main_tabs.fold_tranches_tab_surface import (
     fold_distance_pct,
-    fold_tranche_distance_pct,
     min_rebuy_cell,
     status_cell,
     units_cell,
@@ -1118,17 +1117,16 @@ class PaperFoldTranchesTabMixin:
 
                 # min_rebuy_cell is the one declaration of this cell;
                 # the React page draws the same call's answer.
-                _t_pct = fold_tranche_distance_pct(self._bot, t, _otd_pct)
-                _rebuy = min_rebuy_cell(ref_v, _t_pct)
+                _rebuy = min_rebuy_cell(ref_v, _otd_pct)
                 mr_item = QTableWidgetItem(_rebuy[0])
                 if _rebuy[1] is not None:
                     set_description(mr_item, _rebuy[1])
                 table.setItem(row, 6, mr_item)
 
-                if _t_pct is None:
+                if _otd_pct is None:
                     table.setItem(row, 7, QTableWidgetItem("—"))
-                elif cur_price > 0 and ref_v is not None and ref_v > 0 and _t_pct > 0:
-                    _status = status_cell(cur_price, ref_v, _t_pct)
+                elif cur_price > 0 and ref_v is not None and ref_v > 0 and _otd_pct > 0:
+                    _status = status_cell(cur_price, ref_v, _otd_pct)
                     si_status = QTableWidgetItem(_status[0])
                     si_status.setForeground(QColor(_status[1]))
                     set_description(

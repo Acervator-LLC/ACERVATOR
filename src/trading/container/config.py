@@ -668,7 +668,8 @@ def fold_ratio_pct(config) -> int:
 
     `as_box_figure` over `FOLD_RATIO_MIN_PCT` to `FOLD_RATIO_MAX_PCT` is the
     admission, a figure it refuses answers `FOLD_RATIO_PCT_DEFAULT`, and
-    `_apply_scrum_fold_pct` and all three settings pages call it.
+    `_apply_scrum_fold_pct`, `_sale_surplus_usd` and all three settings pages
+    call it.
     """
     read = as_box_figure(
         getattr(config, "scrum_fold_pct", FOLD_RATIO_PCT_DEFAULT),

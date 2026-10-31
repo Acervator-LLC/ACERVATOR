@@ -4756,6 +4756,8 @@ src/trading/scrumming_bot.py         get_swos_inputs
 **Where the Scrum Fold Ratio is read.** One method reads it, once per sale, and it
 runs on the slice of tranches that sale appended rather than on the whole queue.
 
+Now: a sale on a bot with an outgoing wire reads it once more, as the share of the sale's profit its wire surplus is taken from (`src/trading/scrumming/wire_routing.py, in _sale_surplus_usd`).
+
 `src/trading/scrumming/fold_tranches.py` — the read and the clamp
 
 ```python
@@ -5499,7 +5501,7 @@ re-opens, and the Reset All Breakers button ends it early.
 
 Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
 
-Now: a cartridge buy pays back only the tranches whose own sale price, less the distance and that sale's wire share, sits at or above the fill, and it spends none of the dollars the unpaid tranches, the wire credits or the pool hold (`src/trading/scrumming/execution.py, in _execute_manual_rebalance`).
+Now: a cartridge buy pays back only the tranches whose own sale price, less the distance, sits at or above the fill, and it spends none of the dollars the unpaid tranches, the wire credits or the pool hold (`src/trading/scrumming/execution.py, in _execute_manual_rebalance`).
 
 A percentage from 0.0 to 200.0, at 10.0 % to start. Crossing it fires an
 aggressive rebalance that bypasses the detection, hysteresis and soft-breaker
