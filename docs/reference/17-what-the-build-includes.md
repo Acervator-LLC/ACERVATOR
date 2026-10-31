@@ -288,7 +288,7 @@ def _is_carried(module_name: str) -> bool:
 ```
 
 The registry passage and the whole function that calls this are in
-[the tab index](08-tabs/README.md), under "How a screen reaches its renderer".
+[the tab index](../manual/08-tabs/README.md), under "How a screen reaches its renderer".
 
 Read on a copy of the source folder without the seven surface files, which is
 what a packaged build carries:

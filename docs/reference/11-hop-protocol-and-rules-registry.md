@@ -890,5 +890,5 @@ pair reads both sides of the rule rather than one.
 
 - [09-updates-and-versioning.md](09-updates-and-versioning.md) — the release gate
   in full, and where the version number comes from.
-- [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) — where decisions
+- [12-adr-index-and-glossary.md](../manual/12-adr-index-and-glossary.md) — where decisions
   are recorded, and the vocabulary this manual uses.

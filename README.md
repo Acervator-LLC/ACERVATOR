@@ -1472,6 +1472,8 @@ own table in [`docs/manual/README.md`](docs/manual/README.md) and renders the
 27 pages that table names. The book runs to 346 printed pages, and it refuses
 any page under `docs/manual/` the table does not name.
 
+Now: the table names 24 pages, the book runs to 1,262 printed pages, and the pages for Parts 4, 5, 7 and 8 live in [`docs/reference/`](docs/reference/README.md), outside the book (`tools/build_product_manual.py, in read_manifest`).
+
 ### Part 3 — System Architecture and Features Catalogue
 
 **[System Architecture and Features Catalogue](docs/manual/06-trading-tab.md)**
@@ -1595,27 +1597,27 @@ any page under `docs/manual/` the table does not name.
 
 ### Part 4 — Live and Supporting Evidence
 
-**[The Year-to-Date Record and Exchange Test Coverage](docs/manual/13-live-evidence.md)**
+**[The Year-to-Date Record and Exchange Test Coverage](docs/reference/13-live-evidence.md)**
 
-- [The venue holds the authority](docs/manual/13-live-evidence.md#the-venue-holds-the-authority)
-- [Readers of the record](docs/manual/13-live-evidence.md#readers-of-the-record)
-- [The connectors](docs/manual/13-live-evidence.md#the-connectors)
-- [What the exchange tests exercise](docs/manual/13-live-evidence.md#what-the-exchange-tests-exercise)
-- [How a test stands in for a venue](docs/manual/13-live-evidence.md#how-a-test-stands-in-for-a-venue)
-- [The four refusals around an exchange call](docs/manual/13-live-evidence.md#the-four-refusals-around-an-exchange-call)
-- [The simulation battery](docs/manual/13-live-evidence.md#the-simulation-battery)
-- [Where a run carries less than it reads](docs/manual/13-live-evidence.md#where-a-run-carries-less-than-it-reads)
+- [The venue holds the authority](docs/reference/13-live-evidence.md#the-venue-holds-the-authority)
+- [Readers of the record](docs/reference/13-live-evidence.md#readers-of-the-record)
+- [The connectors](docs/reference/13-live-evidence.md#the-connectors)
+- [What the exchange tests exercise](docs/reference/13-live-evidence.md#what-the-exchange-tests-exercise)
+- [How a test stands in for a venue](docs/reference/13-live-evidence.md#how-a-test-stands-in-for-a-venue)
+- [The four refusals around an exchange call](docs/reference/13-live-evidence.md#the-four-refusals-around-an-exchange-call)
+- [The simulation battery](docs/reference/13-live-evidence.md#the-simulation-battery)
+- [Where a run carries less than it reads](docs/reference/13-live-evidence.md#where-a-run-carries-less-than-it-reads)
 
 ### Part 5 — The HOP Protocol and the Rules Registry
 
-**[Conceptual Hopscotch](docs/manual/11-hop-protocol-and-rules-registry.md)**
+**[Conceptual Hopscotch](docs/reference/11-hop-protocol-and-rules-registry.md)**
 
-- [The handoff file](docs/manual/11-hop-protocol-and-rules-registry.md#the-handoff-file)
-- [What the drift check measures](docs/manual/11-hop-protocol-and-rules-registry.md#what-the-drift-check-measures)
-- [The rules registry](docs/manual/11-hop-protocol-and-rules-registry.md#the-rules-registry)
-- [Version one of the protocol](docs/manual/11-hop-protocol-and-rules-registry.md#version-one-of-the-protocol)
-- [Version two of the protocol](docs/manual/11-hop-protocol-and-rules-registry.md#version-two-of-the-protocol)
-- [Related parts](docs/manual/11-hop-protocol-and-rules-registry.md#related-parts)
+- [The handoff file](docs/reference/11-hop-protocol-and-rules-registry.md#the-handoff-file)
+- [What the drift check measures](docs/reference/11-hop-protocol-and-rules-registry.md#what-the-drift-check-measures)
+- [The rules registry](docs/reference/11-hop-protocol-and-rules-registry.md#the-rules-registry)
+- [Version one of the protocol](docs/reference/11-hop-protocol-and-rules-registry.md#version-one-of-the-protocol)
+- [Version two of the protocol](docs/reference/11-hop-protocol-and-rules-registry.md#version-two-of-the-protocol)
+- [Related parts](docs/reference/11-hop-protocol-and-rules-registry.md#related-parts)
 
 ### Part 6 — ADR Index and Glossary
 
@@ -1627,19 +1629,19 @@ any page under `docs/manual/` the table does not name.
 
 ### Part 7 — Recent Updates and Version Tracking
 
-**[Version Tracking](docs/manual/09-updates-and-versioning.md)**
+**[Version Tracking](docs/reference/09-updates-and-versioning.md)**
 
-- [Recent updates](docs/manual/09-updates-and-versioning.md#recent-updates)
-- [Where the number comes from](docs/manual/09-updates-and-versioning.md#where-the-number-comes-from)
-- [What the string says](docs/manual/09-updates-and-versioning.md#what-the-string-says)
-- [The six readers](docs/manual/09-updates-and-versioning.md#the-six-readers)
-- [What a frozen bundle carries](docs/manual/09-updates-and-versioning.md#what-a-frozen-bundle-carries)
-- [A version that moves while the suite runs](docs/manual/09-updates-and-versioning.md#a-version-that-moves-while-the-suite-runs)
-- [The release gate](docs/manual/09-updates-and-versioning.md#the-release-gate)
+- [Recent updates](docs/reference/09-updates-and-versioning.md#recent-updates)
+- [Where the number comes from](docs/reference/09-updates-and-versioning.md#where-the-number-comes-from)
+- [What the string says](docs/reference/09-updates-and-versioning.md#what-the-string-says)
+- [The six readers](docs/reference/09-updates-and-versioning.md#the-six-readers)
+- [What a frozen bundle carries](docs/reference/09-updates-and-versioning.md#what-a-frozen-bundle-carries)
+- [A version that moves while the suite runs](docs/reference/09-updates-and-versioning.md#a-version-that-moves-while-the-suite-runs)
+- [The release gate](docs/reference/09-updates-and-versioning.md#the-release-gate)
 
 ### Part 8 — The Development Chronicle
 
-**[The Development Chronicle](docs/manual/14-development-chronicle.md)**
+**[The Development Chronicle](docs/reference/14-development-chronicle.md)**
 
 The page carries its own title and nothing under it. The author removed its 571
 lines on 6 September 2026, in commit `c324126`. Its nineteen sections were:
@@ -1810,7 +1812,7 @@ request.
 
 This software is for educational and research purposes. Simulated results —
 including the 738-sim, 96.9%, +$78.0B figures in
-[Part 4](docs/manual/13-live-evidence.md#the-simulation-battery) — do not
+[Part 4](docs/reference/13-live-evidence.md#the-simulation-battery) — do not
 guarantee live trading performance. You are solely responsible for any trading
 decision made using this software. See [`DISCLAIMER.md`](DISCLAIMER.md).
 

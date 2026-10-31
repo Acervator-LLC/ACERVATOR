@@ -318,7 +318,7 @@ No venue serves Indices or Futures / Perps yet, so each page reads
 
 A sector is the first of three nested levels. What each sector's venue list holds
 today, and what products a venue serves under it, are in
-[16-sector-exchange-product-tree.md](16-sector-exchange-product-tree.md), with
+[16-sector-exchange-product-tree.md](../reference/16-sector-exchange-product-tree.md), with
 the count behind every empty row.
 
 The hint under that card takes its article from the sector name, so the Indices
@@ -8816,7 +8816,7 @@ EQUITY_EXCHANGE_IDS = tuple(sorted(EQUITY_VENUES))
 
 Two of the nine trade nowhere today. One closed its interface on 10 May 2024 and
 one publishes none, both recorded on
-[15-venue-compatibility.md](15-venue-compatibility.md). Both stay on the list,
+[15-venue-compatibility.md](../reference/15-venue-compatibility.md). Both stay on the list,
 because this section records where the list lives and not what is on it.
 
 The paragraph above is overtaken in part, and it is kept as written. Both ids stay

@@ -447,7 +447,7 @@ page records that rather than smoothing it.
 No product file. One manual count.
 
 ```
-docs/manual/15-venue-compatibility.md
+docs/reference/15-venue-compatibility.md
     the sector counts in "Which of Robinhood's sectors the program reaches"
     now match the table printed directly beneath them
 ```
@@ -512,7 +512,7 @@ src/gui/main_tabs/asset_class_surface.py        ta                 True     3 ok
 src/exchange/robinhood_connector.py             coding             True    11 ok
 src/exchange/robinhood_connector.py             ta                 True     3 ok
 src/core/log_paths.py                           coding             True    11 ok
-docs/manual/15-venue-compatibility.md           docs               True     8 ok
+docs/reference/15-venue-compatibility.md           docs               True     8 ok
 ```
 
 Every one reported `errors` empty and `why_not_green` empty. No tool read
@@ -561,10 +561,10 @@ the non-index futures contract lists
 
 ## Related pages
 
-- [`docs/manual/15-venue-compatibility.md`](../../manual/15-venue-compatibility.md)
+- [`docs/reference/15-venue-compatibility.md`](../../reference/15-venue-compatibility.md)
   — the venue table and the sector rows this page reads against, and the counts
   it corrects
-- [`docs/manual/16-sector-exchange-product-tree.md`](../../manual/16-sector-exchange-product-tree.md)
+- [`docs/reference/16-sector-exchange-product-tree.md`](../../reference/16-sector-exchange-product-tree.md)
   — the sector, venue and product levels
 - [`docs/manual/10-live-trade-history.md`](../../manual/10-live-trade-history.md)
   — the gate log path shape this page's control reads

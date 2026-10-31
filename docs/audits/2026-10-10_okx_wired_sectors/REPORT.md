@@ -631,7 +631,7 @@ src/trading/scrumming/sizing.py           the comment beside
 src/gui/main_tabs/asset_class_surface.py  the okx row carries the venue's own
                                           category vocabulary and why indices
                                           lists no market
-docs/manual/15-venue-compatibility.md     one add-only section, with the
+docs/reference/15-venue-compatibility.md     one add-only section, with the
                                           overtaken row quoted whole
 docs/audits/                              this page
 ```
@@ -655,7 +655,7 @@ company.
 
 ## Related pages
 
-- [../../manual/15-venue-compatibility.md](../../manual/15-venue-compatibility.md)
+- [../../reference/15-venue-compatibility.md](../../reference/15-venue-compatibility.md)
 - [../2026-10-10_bitget_wired_sectors/REPORT.md](../2026-10-10_bitget_wired_sectors/REPORT.md)
 - [../2026-10-10_gateio_wired_six_sectors/REPORT.md](../2026-10-10_gateio_wired_six_sectors/REPORT.md)
 - [../2026-10-07_venue_sector_readiness_matrix/REPORT.md](../2026-10-07_venue_sector_readiness_matrix/REPORT.md)

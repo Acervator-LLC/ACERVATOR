@@ -787,9 +787,9 @@ whether the two demo contracts have a live sibling
 
 ## Related pages
 
-- [`docs/manual/15-venue-compatibility.md`](../../manual/15-venue-compatibility.md)
+- [`docs/reference/15-venue-compatibility.md`](../../reference/15-venue-compatibility.md)
   the venue table and the variant definitions this page reads against
-- [`docs/manual/16-sector-exchange-product-tree.md`](../../manual/16-sector-exchange-product-tree.md)
+- [`docs/reference/16-sector-exchange-product-tree.md`](../../reference/16-sector-exchange-product-tree.md)
   the sector, venue and product levels
 - [`docs/audits/2026-10-10_gateio_wired_six_sectors/REPORT.md`](../2026-10-10_gateio_wired_six_sectors/REPORT.md)
   the venue whose record this one is read beside, and the shape this page follows

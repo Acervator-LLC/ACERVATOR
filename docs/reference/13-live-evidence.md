@@ -3,7 +3,7 @@
 Reference. What reads the venue's own trade record, and how far the tests
 around the exchange integration reach, measured rather than asserted.
 
-[Part 9](10-live-trade-history.md) holds the fill record itself: its row counts,
+[Part 9](../manual/10-live-trade-history.md) holds the fill record itself: its row counts,
 its fills per asset, the VWAP charts, the trade grading and the gate logs. This
 part covers the readers of that record and the exchange code beneath them.
 
@@ -37,7 +37,7 @@ async def sync_ytd_trade_count(self) -> Optional[int]:
     """Walk ``get_my_trades`` from the YTD anchor to the present in 30-day windows."""
 ```
 
-The anchor is 2026-04-01T00:00:00Z. [Part 9](10-live-trade-history.md) records
+The anchor is 2026-04-01T00:00:00Z. [Part 9](../manual/10-live-trade-history.md) records
 the fleet's first fill as 12 April, so the anchor is a floor eleven days before
 the earliest fill the venue holds. It is fixed because the start of a record does
 not move; a rolling date would drop the oldest fills out of the count.
@@ -824,7 +824,7 @@ that base's own price on 2026-04-12 and left untouched from that day.
 `hodl_rows` in `tools/build_product_manual.py` builds it. Net cash is every
 buy's price times quantity less every sell's, taken from the Price at
 Transaction and Quantity Transacted columns that the charts of
-[Part 9](10-live-trade-history.md) read, so both metrics run on the same rows.
+[Part 9](../manual/10-live-trade-history.md) read, so both metrics run on the same rows.
 
 Four of the 38 bases took no net cash at all. On each of them the sales returned
 more dollars than the purchases spent, and units are still held. A05 is $73.54
@@ -863,9 +863,9 @@ market did; the unit figure is 34 separate answers to the question the engine is
 built to answer. Eight of those answers go the other way, and they are in the
 figure with the rest.
 
-![Units held now against the units the same net cash buys and holds from the baseline day, by charted base.](figures/evidence_hodl_units.png)
+![Units held now against the units the same net cash buys and holds from the baseline day, by charted base.](../manual/figures/evidence_hodl_units.png)
 
-![Both positions valued at the same final recorded price, by charted base.](figures/evidence_hodl_dollars.png)
+![Both positions valued at the same final recorded price, by charted base.](../manual/figures/evidence_hodl_dollars.png)
 
 ## What the market did across the window
 
@@ -945,7 +945,7 @@ The accumulation result above does not rest on any of this. It is an arithmetic
 comparison of units against units at one price, and it reads the same whichever
 way the market went.
 
-![Each base's change across the first stretch beside its change across the second, and the equal-weight index and median through the whole window.](figures/evidence_market.png)
+![Each base's change across the first stretch beside its change across the second, and the equal-weight index and median through the whole window.](../manual/figures/evidence_market.png)
 
 ## CITED AS ABSENT
 

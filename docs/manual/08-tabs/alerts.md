@@ -121,7 +121,7 @@ It stands as written. This is the reading that replaced it.
 | written above | what it reads now |
 | --- | --- |
 | "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this page |
-| "Both builds of the screen are complete and both draw the same six columns. The window does not open either one." | Both stay in the source folder. A packaged build carries neither: no call asks the screen registry for `ALERTS`, so the build leaves `src.gui.alerts_tab` and `src.gui.react_alerts_tab` out. The rule is on [17-what-the-build-includes.md](../17-what-the-build-includes.md) |
+| "Both builds of the screen are complete and both draw the same six columns. The window does not open either one." | Both stay in the source folder. A packaged build carries neither: no call asks the screen registry for `ALERTS`, so the build leaves `src.gui.alerts_tab` and `src.gui.react_alerts_tab` out. The rule is on [17-what-the-build-includes.md](../../reference/17-what-the-build-includes.md) |
 | "The screen's own surface loads only when a request for this page arrives, so a session that never asks for it never imports it." | A packaged build does not carry the surface either, and its registry holds no handler for this page's method. A request for the page gets `UnknownMethod`, and no import runs. A run from the source folder still answers it |
 
 Back to [the subsystem index](README.md).

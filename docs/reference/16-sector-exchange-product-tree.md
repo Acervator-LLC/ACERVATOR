@@ -8,7 +8,7 @@ Sector is the operator's word for an investment product category. The six are
 Crypto, Stocks, Commodities, Forex, Indices and Futures / Perps.
 
 The index is [README.md](README.md). The sector segments and the layer each one
-draws are described in [06-trading-tab.md](06-trading-tab.md). Every venue set
+draws are described in [06-trading-tab.md](../manual/06-trading-tab.md). Every venue set
 beside the classes it serves and the shape its orders take is in
 [15-venue-compatibility.md](15-venue-compatibility.md).
 
@@ -450,7 +450,7 @@ read the sector. The Configured list read the wing.
 The array also draws each stored entry whose venue no sector lists, after the
 sector's own venues, so Remove Selected can delete it. Fidelity, TD Ameritrade's
 id and the second Interactive Brokers id are the three such ids, and
-[08-tabs/settings.md](08-tabs/settings.md) carries the readings.
+[08-tabs/settings.md](../manual/08-tabs/settings.md) carries the readings.
 
 Settings opens on a wing, and there are two wings for six sectors.
 `settings_dialog_surface.wing_or_default` collapses Commodities, Forex, Indices

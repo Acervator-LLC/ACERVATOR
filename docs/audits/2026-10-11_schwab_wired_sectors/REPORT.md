@@ -489,7 +489,7 @@ control, one existing row reworded   gained 473, LOST 1, and the lost row named
 ```
 
 The page is add-only, measured against
-`git show origin/current:docs/manual/15-venue-compatibility.md` decoded as UTF-8.
+`git show origin/current:docs/reference/15-venue-compatibility.md` decoded as UTF-8.
 Three of its sentences are contradicted by Schwab's own pages, and each is kept
 verbatim in a blockquote under `OVERTAKEN, quoted whole:` with a `True today:`
 line beneath it.

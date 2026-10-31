@@ -978,8 +978,8 @@ The step names every file it read and marks each one judged or reported, so a
 green lane never hides a page the lane did not judge.
 
 ```
-docs_archetype docs/manual/09-updates-and-versioning.md passed=false (exit 1)
-reported only, this verdict cannot fail the lane: docs/manual/09-updates-and-versioning.md
+docs_archetype docs/reference/09-updates-and-versioning.md passed=false (exit 1)
+reported only, this verdict cannot fail the lane: docs/reference/09-updates-and-versioning.md
 coding_archetype src/core/log_paths.py passed=true
 judged, a red verdict fails this lane: src/core/log_paths.py
 scanned=2 judged=1 reported=1 unowned=0 exempt=0 failed=0

@@ -38,12 +38,12 @@ works, what matches the specification, and what is worth doing.
 | `docs/manual/06-trading-tab.md` | the Live tab and the hedge |
 | `docs/manual/07-indicators.md` | every indicator, and the gate chain |
 | `docs/manual/08-tabs.md` | the tab set, and the table of every converted file |
-| `docs/manual/09-updates-and-versioning.md` | versions and the release cascade |
+| `docs/reference/09-updates-and-versioning.md` | versions and the release cascade |
 | `docs/manual/10-live-trade-history.md` | the trade record |
-| `docs/manual/11-hop-protocol-and-rules-registry.md` | the handoff protocol |
+| `docs/reference/11-hop-protocol-and-rules-registry.md` | the handoff protocol |
 | `docs/manual/12-adr-index-and-glossary.md` | decisions and vocabulary |
-| `docs/manual/13-live-evidence.md` | evidence from live running |
-| `docs/manual/14-development-chronicle.md` | the history |
+| `docs/reference/13-live-evidence.md` | evidence from live running |
+| `docs/reference/14-development-chronicle.md` | the history |
 | `docs/manual/FIGURES.md` | the figures the manual embeds |
 
 One page per tab:

@@ -724,9 +724,9 @@ date  May 30, 2024
 
 ## Related
 
-- [15-venue-compatibility.md](../../manual/15-venue-compatibility.md) — the
+- [15-venue-compatibility.md](../../reference/15-venue-compatibility.md) — the
   venue-and-class table
-- [16-sector-exchange-product-tree.md](../../manual/16-sector-exchange-product-tree.md)
+- [16-sector-exchange-product-tree.md](../../reference/16-sector-exchange-product-tree.md)
   — what each sector's venue list holds
 - [06-trading-tab.md](../../manual/06-trading-tab.md) — "One venue list, read from
   one place"

@@ -545,7 +545,7 @@ CONTROL  a tampered recording            6 answers moved
 ```
 
 The manual edit is add-only, proved against `git show origin/current:` on
-`docs/manual/15-venue-compatibility.md`, decoded as UTF-8:
+`docs/reference/15-venue-compatibility.md`, decoded as UTF-8:
 
 ```
 before    420,912 bytes   7,922 sentences

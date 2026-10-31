@@ -12,7 +12,7 @@ different question.
   and on tests. `CLAUDE.md` at the root holds the repository rules above them:
   one role per folder, and no machine-specific path anywhere committed.
 - `CHANGELOG.md` and the commit history. See
-  [09-updates-and-versioning.md](09-updates-and-versioning.md) for what the
+  [09-updates-and-versioning.md](../reference/09-updates-and-versioning.md) for what the
   changelog holds today.
 
 Beside those, `docs/audits/` holds ten audit directories and one audit page.
@@ -177,7 +177,7 @@ The Simulator rebuild removed the fleet-replay files this glossary once named.
   `RULE_META` now lives at `unreached/core/rule_registry.py`, moved out of
   `src/` because no file in the tree imports it.
 
-[11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md)
+[11-hop-protocol-and-rules-registry.md](../reference/11-hop-protocol-and-rules-registry.md)
 describes all three.
 
 ### The title page

@@ -9,14 +9,14 @@ Five part files hold that transcription alone.
 and [08-tabs.md](08-tabs.md) transcribe the PDF and add sections of their own.
 The PDF carries no body text for the parts the files below belong to, so they
 transcribe nothing:
-[09-updates-and-versioning.md](09-updates-and-versioning.md),
+[09-updates-and-versioning.md](../reference/09-updates-and-versioning.md),
 [10-live-trade-history.md](10-live-trade-history.md) and
-[13-live-evidence.md](13-live-evidence.md), written from the source
+[13-live-evidence.md](../reference/13-live-evidence.md), written from the source
 and from measurements over the operator's own venue export; and
-[11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md)
+[11-hop-protocol-and-rules-registry.md](../reference/11-hop-protocol-and-rules-registry.md)
 and [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md), written from
 the source alone; and
-[14-development-chronicle.md](14-development-chronicle.md), written from the
+[14-development-chronicle.md](../reference/14-development-chronicle.md), written from the
 git history, the audits in [docs/audits](../audits), the operator's own
 pre-git record, and a memory record kept across sessions. The `NN-` prefix of a file is its own name and carries no
 meaning; the Part column below is what places a file in the manual.
@@ -33,14 +33,7 @@ meaning; the Part column below is what places a file in the manual.
 | [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
 | [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Market Inspector and Asset Charts, and the pointers to every other screen's own section under [08-tabs/](08-tabs/README.md) |
-| [13-live-evidence.md](13-live-evidence.md) | 4 | — | The readers of the year-to-date venue record, the connectors, and what the exchange tests reach |
-| [15-venue-compatibility.md](15-venue-compatibility.md) | 4 | — | Every API-reachable venue against the classes it serves, how each one names an order's size, and whether a scrum's excess survives that size rule |
-| [16-sector-exchange-product-tree.md](16-sector-exchange-product-tree.md) | 4 | — | The three nested levels — the six sectors, the venues each one reaches, and the products a venue serves under it with the size rule each product publishes |
-| [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
-| [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate, how dependency updates reach the branch |
-| [17-what-the-build-includes.md](17-what-the-build-includes.md) | 7 | — | The reading that decides which source modules a build carries, what leaves with a module, the outside packages named outright, and what the reading cannot see |
-| [14-development-chronicle.md](14-development-chronicle.md) | 8 | — | The three records of the work, the corrections that became the instruments, the audits they produced, and what they cost and missed |
 | [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
 | [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
 
@@ -50,6 +43,12 @@ and is not rendered. An em dash in the Manual pages column means a different
 thing, that the PDF is not that file's source. The rows run in the order the PDF
 prints them, the first row is the title page, and a new row here folds a further
 file into its part.
+
+The reference pages for Parts 4, 5, 7 and 8 live in
+[../reference/](../reference/README.md). They hold research, history, process
+and evidence. This table has no row for them, and
+`tools/build_product_manual.py, in read_manifest` gives the PDF only the pages
+that a row lists.
 
 `tools/build_product_manual.py` — `read_manifest` refuses a table and a
 directory that disagree
@@ -133,7 +132,7 @@ them beside the first set. Counting both sets, the built PDF embeds 77 images.
 `splash-mark.png` under Part 3 belongs to neither set, so the built PDF embeds
 78 images.
 
-Now: the built PDF embeds 200 images, one for each image line in the pages it lays out (`tools/build_product_manual.py, in _figure_flowables`).
+Now: the built PDF embeds 197 images, one for each image line in the pages it lays out (`tools/build_product_manual.py, in _figure_flowables`).
 
 ```
 docs/manual/figures/            the 38 manual images and the 39 charts
@@ -155,12 +154,12 @@ sit. That is the flag for a corrected PDF.
 
 `PART_FILES` in that tool names the eight files the PDF is the source of. The
 files under [08-tabs/](08-tabs/README.md),
-[09-updates-and-versioning.md](09-updates-and-versioning.md),
+[09-updates-and-versioning.md](../reference/09-updates-and-versioning.md),
 [10-live-trade-history.md](10-live-trade-history.md),
-[11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md),
+[11-hop-protocol-and-rules-registry.md](../reference/11-hop-protocol-and-rules-registry.md),
 [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) and
-[13-live-evidence.md](13-live-evidence.md) and
-[14-development-chronicle.md](14-development-chronicle.md) are not
+[13-live-evidence.md](../reference/13-live-evidence.md) and
+[14-development-chronicle.md](../reference/14-development-chronicle.md) are not
 among them and are never written.
 
 - 44 pages, 9,759 whitespace-separated tokens, 38 embedded images.
