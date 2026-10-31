@@ -1729,6 +1729,7 @@ BAND_BAR_NAME = "1d"
 BAND_FILL_ALPHA = 0.55
 STEP_DOT_MAX_FILLS = 30
 COMBINED_BASES = 8
+RANKED_BASES = 38
 PRICE_PANEL = (0.08, 0.34, 0.77, 0.50)
 UNITS_PANEL = (0.08, 0.12, 0.77, 0.16)
 COMBINED_PANEL = (0.08, 0.16, 0.74, 0.68)
@@ -1896,38 +1897,31 @@ def newest_export(indexed: Mapping[Path, list[Fill]]) -> Path:
 
 
 def label_export(indexed: Mapping[Path, list[Fill]]) -> Path:
-    """Return the oldest export carrying every base ``newest_export`` carries.
-
-    When ``newest_export`` carries a base no earlier export does, ``label_export``
-    returns the oldest earlier export carrying the most bases."""
-    newest = newest_export(indexed)
-    earlier = {p: fills for p, fills in indexed.items() if p != newest}
-    if not earlier:
-        return newest
-    bases = {fill.asset for fill in indexed[newest]}
-    whole = [p for p, fills in earlier.items() if {f.asset for f in fills} == bases]
-    if whole:
-        return min(whole, key=lambda p: max(f.when for f in earlier[p]))
-    widest = max(len({f.asset for f in fills}) for fills in earlier.values())
-    return min(
-        (p for p, fills in earlier.items() if len({f.asset for f in fills}) == widest),
-        key=lambda p: max(f.when for f in earlier[p]),
-    )
+    """Return the oldest export with ``RANKED_BASES`` bases, else the newest export."""
+    ranked = [
+        path
+        for path, fills in indexed.items()
+        if len({fill.asset for fill in fills}) >= RANKED_BASES
+    ]
+    if not ranked:
+        return newest_export(indexed)
+    return min(ranked, key=lambda p: max(f.when for f in indexed[p]))
 
 
 def labels_across(indexed: Mapping[Path, list[Fill]]) -> dict[str, str]:
-    """Return every base's A-label, ``label_export`` fixing the ones it ranks.
-
-    A base ``label_export`` does not carry takes the next number after them, most
-    fills first, so a label already published never moves to another base."""
+    """Return each base's A-label, ``label_export`` ranking the bases it carries and
+    ``first_fill`` ordering the rest."""
     pinned = base_labels(indexed[label_export(indexed)])
-    arrived = Counter(
-        fill.asset
-        for fill in indexed[newest_export(indexed)]
-        if fill.asset not in pinned
-    )
+    first_fill: dict[str, datetime] = {}
+    counts: Counter[str] = Counter()
+    for fill in indexed[newest_export(indexed)]:
+        if fill.asset in pinned:
+            continue
+        counts[fill.asset] += 1
+        first_fill[fill.asset] = min(fill.when, first_fill.get(fill.asset, fill.when))
+    arrived = sorted(first_fill, key=lambda a: (first_fill[a], -counts[a], a))
     out = dict(pinned)
-    for n, (asset, _) in enumerate(arrived.most_common(), len(pinned) + 1):
+    for n, asset in enumerate(arrived, len(pinned) + 1):
         out[asset] = f"A{n:02d}"
     return out
 

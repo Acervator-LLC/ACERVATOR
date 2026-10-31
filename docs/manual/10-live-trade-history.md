@@ -673,6 +673,8 @@ Net units rise from 12.128 to 14.895. The buy line runs from 2.0423 down to
 A39 has no position card. The venue's card set covers 37 of the 39 bases, and
 A33 is the other base without one.
 
+Now: the card set covers 37 of the 40 bases, and A33, A39 and A40 have no card (`tools/build_product_manual.py, in placard_sources`).
+
 A39 has no VWAP chart. The 39 charts above arrived with the record, and no
 committed file draws a fortieth, so the weekly chart and the price trace carry
 this base. `tools/build_product_manual.py`, in `labels_across`, numbers a base
@@ -690,6 +692,18 @@ draws one for every label the newest export carries, and that export carries
 A39.
 
 ![A39, 10 fills with every step dotted, and no band: its 15 one-day bars are fewer than the 20 the band needs.](figures/vwap_a39.png)
+
+Now: the A39 chart draws 20 fills, dots every step, and carries a band over the last 8 of its 27 one-day bars (`tools/build_product_manual.py, in fill_band`).
+
+### A40
+
+![A40, 21 fills with every step dotted, and no band: its 4 one-day bars are fewer than the 20 the band needs.](figures/vwap_a40.png)
+
+![A40 weekly chart, 18 weekly candles built from 28,776 five-minute rows.](figures/weekly_a40.png)
+
+![A40 price trace, 28,776 five-minute closes across the recorded window.](figures/trace_a40.png)
+
+A40 has 21 fills, 15 buys and 6 sells, between 27 October and 30 October, and no position card. Its Stone Tablet rows end on 1 August, so its weekly chart and price trace stop before its first fill (`tools/build_product_manual.py, in tablet_candles`).
 
 
 ## What this repository holds for these charts
@@ -770,6 +784,8 @@ control
 for each of the 39 labelled bases, and the combined view. Below, each overtaken
 sentence appears whole, and what the code does today follows it.
 
+Now: the builder draws 41 VWAP charts, one for each of the 40 labelled bases in the newest export and the combined view (`tools/build_product_manual.py, in _write_asset_vwap`).
+
 > No committed file produces these charts.
 
 `write_evidence_figures` draws them first among the evidence figures, before
@@ -832,6 +848,8 @@ price.set_title(f"{label} — {len(fills)} fills, {note}")
 The file names run from `vwap_a01.png` to `vwap_a39.png`, and none names the
 asset.
 
+Now: the file names run to `vwap_a40.png`, one for each label (`tools/build_product_manual.py, in asset_figure_name`).
+
 > The combined chart near the top of this part draws the eight assets with the
 > most fills of the earlier export. Those are no longer the eight with the most
 > fills, and nothing in this repository redraws that chart.
@@ -843,6 +861,8 @@ its axis counts the bases that export carries:
 ```
 39 charted bases. USD and USDC are excluded as quote currencies.
 ```
+
+Now: the eight lines are A01 to A06, A11 and A19, and the note counts 40 charted bases (`tools/build_product_manual.py, in _draw_combined`).
 
 > No committed module computes an average sell price, and none computes a ratio
 > of one average over the other.
@@ -870,11 +890,15 @@ every step with a dot: A36, A37, A38 and A39.
 marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
 ```
 
+Now: the axis turns logarithmic for A01 at 16.72 and A03 at 43.35, and the four charts that dot every step are A37, A38, A39 and A40 (`tools/build_product_manual.py, in _draw_vwap`).
+
 ### What a redrawn chart reads
 
 Every chart reads the newest export in the input folder: 8,310 fills on 39
 bases, the last on 19 October. The fill count in each chart's title matches the
 table under "Every base, measured on the October export".
+
+Now: every chart reads 9,052 fills on 40 bases, the last on 31 October, and each title's fill count matches the table `python -m tools.build_product_manual --measure` prints (`tools/build_product_manual.py, in measurement_lines`).
 
 The band table, the table under "The 38 per-asset charts" and the description
 under each base's heading take their numbers from the earlier exports. They

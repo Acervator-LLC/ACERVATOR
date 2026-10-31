@@ -275,6 +275,8 @@ Part 9 embeds 40 VWAP charts. `_write_asset_vwap` in
 `tools/build_product_manual.py` draws them from that export, one for each
 labelled base and one combined view.
 
+Now: Part 9 embeds 41 VWAP charts, one for each of the 40 labelled bases and the combined view (`tools/build_product_manual.py, in _write_asset_vwap`).
+
 > Every chart has its asset name painted out of the pixels, every page carries a
 > label such as `A01` in place of a symbol, and the PDF's own text holds no
 > symbol a reader could copy out.
