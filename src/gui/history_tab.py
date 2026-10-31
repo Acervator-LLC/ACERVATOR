@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import csv
+import json
 import logging
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Callable, Generator, Optional
 
 from src.core.trade_historian import missing_history_line
 from src.exchange import history_read_contract as hrc
@@ -123,8 +125,21 @@ def join_bucket_keys(rows: list, bot_manager) -> set:
     return keys
 
 
-def read_join_indexes(since, wanted_keys: set) -> tuple[dict, dict, int]:
-    """The gate and voting indexes from ``since``, holding only ``wanted_keys``.
+#: Seconds one step of ``read_join_indexes`` reads log entries before it yields.
+JOIN_STEP_S = 0.008
+
+#: Rows one step of ``join_steps``, ``landing_steps`` or ``view_steps`` reads.
+STEP_ROWS = 1000
+
+#: Rows one step of ``HistoryTab._page_steps`` builds.
+RENDER_STEP_ROWS = 25
+
+
+def read_join_indexes(
+    since, wanted_keys: set
+) -> Generator[None, None, tuple[dict, dict, int]]:
+    """The gate and voting indexes from ``since``, holding only ``wanted_keys``,
+    each entry kept as its JSON text, ``JOIN_STEP_S`` of reading a step.
 
     Answers the two indexes and the entries kept; a raising read empties that
     side's index while the count stands, so a caller can see the loss.
@@ -137,27 +152,204 @@ def read_join_indexes(since, wanted_keys: set) -> tuple[dict, dict, int]:
     gate_index: dict = {}
     voting_index: dict = {}
     kept = 0
+    began = time.monotonic()
     try:
         for entry in live_gate_decisions(since=since, validate=False):
             key = _entry_bucket_key(entry)
-            if key is None or key not in wanted_keys:
-                continue
-            gate_index.setdefault(key, []).append(entry)
-            kept += 1
+            if key is not None and key in wanted_keys:
+                gate_index.setdefault(key, []).append(json.dumps(entry))
+                kept += 1
+            if time.monotonic() - began >= JOIN_STEP_S:
+                yield
+                began = time.monotonic()
     except Exception as _gate_exc:  # noqa: BLE001 - a torn log read
         logger.debug("history: gate index read fail-soft: %s", _gate_exc)
         gate_index = {}
     try:
         for entry in live_voting_panel_snapshots(since=since):
             key = _entry_bucket_key(entry)
-            if key is None or key not in wanted_keys:
-                continue
-            voting_index.setdefault(key, []).append(entry)
-            kept += 1
+            if key is not None and key in wanted_keys:
+                voting_index.setdefault(key, []).append(json.dumps(entry))
+                kept += 1
+            if time.monotonic() - began >= JOIN_STEP_S:
+                yield
+                began = time.monotonic()
     except Exception as _vote_exc:  # noqa: BLE001 - a torn log read
         logger.debug("history: voting index read fail-soft: %s", _vote_exc)
         voting_index = {}
-    return gate_index, voting_index, kept
+    return (
+        {key: tuple(held) for key, held in gate_index.items()},
+        {key: tuple(held) for key, held in voting_index.items()},
+        kept,
+    )
+
+
+def join_since(rows: list) -> Optional[datetime]:
+    """The read's lower bound: the earliest row less the join tolerance."""
+    from src.exchange.history_helpers import JOIN_TOLERANCE_SECONDS
+
+    stamps = [
+        float(r.get("timestamp", 0) or 0) for r in rows if (r.get("timestamp") or 0) > 0
+    ]
+    if not stamps:
+        return None
+    return datetime.fromtimestamp(
+        max(0.0, min(stamps) - JOIN_TOLERANCE_SECONDS), tz=timezone.utc
+    )
+
+
+def join_steps(rows: list, bot_manager) -> Generator[None, None, dict]:
+    """``read_join_indexes`` for the keys ``rows`` can reach, the keys built
+    ``STEP_ROWS`` rows a step."""
+    began = time.monotonic()
+    wanted: set = set()
+    for start in range(0, len(rows), STEP_ROWS):
+        wanted |= join_bucket_keys(rows[start : start + STEP_ROWS], bot_manager)
+        yield
+    gate, voting, kept = yield from read_join_indexes(join_since(rows), wanted)
+    return {
+        "gate": gate,
+        "voting": voting,
+        "kept": kept,
+        "rows": len(rows),
+        "seconds": time.monotonic() - began,
+    }
+
+
+def page_join_indexes(
+    rows: list, bot_manager, gate_text: dict, voting_text: dict
+) -> tuple[dict, dict]:
+    """The gate and voting entries ``rows`` can reach, parsed from the JSON text
+    ``read_join_indexes`` holds."""
+    keys = join_bucket_keys(rows, bot_manager)
+    return (
+        {
+            key: [json.loads(t) for t in gate_text[key]]
+            for key in keys & gate_text.keys()
+        },
+        {
+            key: [json.loads(t) for t in voting_text[key]]
+            for key in keys & voting_text.keys()
+        },
+    )
+
+
+def admissible_rows(rows: list, since_ts: float, seen: set) -> int:
+    """How many of ``rows`` are not stamped before ``since_ts`` and carry an id
+    whose ``(exchange, symbol, id)`` ``seen`` lacks; ``seen`` takes each triple."""
+    admissible = 0
+    for row in rows:
+        key = (row.get("exchange"), row.get("symbol"), row.get("id"))
+        dupe = key in seen
+        seen.add(key)
+        stamp = float(row.get("timestamp", 0) or 0)
+        if dupe or not row.get("id"):
+            continue
+        if 0 < stamp < since_ts:
+            continue
+        admissible += 1
+    return admissible
+
+
+def landing_steps(rows: list, since_ts: float) -> Generator[None, None, dict]:
+    """The pickers' ``hrc.filter_options`` and the ``admissible_rows`` count of
+    ``rows``, one ``STEP_ROWS`` slice a step."""
+    began = time.monotonic()
+    options = hrc.filter_options(rows)
+    options_s = time.monotonic() - began
+    yield
+    seen: set = set()
+    admissible = 0
+    for start in range(0, len(rows), STEP_ROWS):
+        admissible += admissible_rows(rows[start : start + STEP_ROWS], since_ts, seen)
+        yield
+    return {
+        "admissible": admissible,
+        "distinct": len(seen),
+        "options": options,
+        "options_s": options_s,
+    }
+
+
+def refused_rows(rows: list, from_ts: int, verify: hrc.HistoryFilters) -> int:
+    """How many of ``rows`` ``from_ts`` or the read-back ``verify`` refuses."""
+    refused = 0
+    for row in rows:
+        stamp = float(row.get("timestamp", 0) or 0)
+        if from_ts > 0 and stamp < from_ts:
+            refused += 1
+        elif verify.to_ts > 0 and stamp > verify.to_ts:
+            refused += 1
+        elif verify.exchange != hrc.ALL and row.get("exchange") != verify.exchange:
+            refused += 1
+        elif verify.symbol != hrc.ALL and row.get("symbol") != verify.symbol:
+            refused += 1
+        elif verify.side != hrc.ALL and row.get("side") != verify.side:
+            refused += 1
+    return refused
+
+
+@dataclass(frozen=True)
+class HistoryView:
+    """The rows ``predicate`` keeps, filed by asset class, with each class's
+    ``SummaryTotals`` and the rows ``verify`` refuses."""
+
+    kept: dict
+    totals: dict
+    refused: dict
+    predicate: hrc.HistoryFilters
+    verify: hrc.HistoryFilters
+    seconds: float
+
+    def rows_of(self, key: str) -> list:
+        """The kept rows of asset class ``key``, in the order ``view_steps``
+        read them."""
+        return self.kept.get(key, [])
+
+    def totals_of(self, key: str) -> hrc.SummaryTotals:
+        """The ``SummaryTotals`` of ``rows_of(key)``."""
+        return self.totals.get(key, hrc.SummaryTotals())
+
+
+def view_steps(
+    rows: list, predicate: hrc.HistoryFilters, verify: hrc.HistoryFilters
+) -> Generator[None, None, HistoryView]:
+    """The ``HistoryView`` of ``rows`` under ``predicate``, its refusals read
+    against ``verify``, one ``STEP_ROWS`` slice a step."""
+    seconds = 0.0
+    matched: list = []
+    for start in range(0, len(rows), STEP_ROWS):
+        began = time.monotonic()
+        matched.extend(hrc.apply_filters(rows[start : start + STEP_ROWS], predicate))
+        seconds += time.monotonic() - began
+        yield
+    answered: dict = {}
+    kept: dict = {}
+    for start in range(0, len(matched), STEP_ROWS):
+        began = time.monotonic()
+        part = matched[start : start + STEP_ROWS]
+        for key, held in class_filter_surface.trades_by_class(part, answered).items():
+            kept.setdefault(key, []).extend(held)
+        seconds += time.monotonic() - began
+        yield
+    totals: dict = {}
+    refused: dict = {}
+    for key, held in kept.items():
+        totals[key] = hrc.summary_totals(held)
+        yield
+        refused[key] = 0
+        for start in range(0, len(held), STEP_ROWS):
+            part = held[start : start + STEP_ROWS]
+            refused[key] += refused_rows(part, predicate.from_ts, verify)
+            yield
+    return HistoryView(
+        kept=kept,
+        totals=totals,
+        refused=refused,
+        predicate=predicate,
+        verify=verify,
+        seconds=seconds,
+    )
 
 
 if _HAS_QT:
@@ -167,8 +359,7 @@ if _HAS_QT:
 
         PAGE_SIZE = 100
 
-        history_refreshed = Signal(list)
-        join_indexes_ready = Signal(object)
+        history_refreshed = Signal(object)
 
         def __init__(self, parent=None) -> None:
             super().__init__(parent)
@@ -176,13 +367,26 @@ if _HAS_QT:
             self._bot_manager = None
             self._all_trades: list[dict] = []
             self._filtered: list[dict] = []
+            self._filtered_totals = hrc.SummaryTotals()
+            self._view: Optional[HistoryView] = None
+            self._view_options: dict = hrc.filter_options([])
+            self._view_build_id: int = 0
+            self._landing_build_id: int = 0
             self._asset_class = class_filter_surface.active()
             self._page = 0
             self._fetch_in_flight = False
             self._last_fetched_ts: float = 0.0
             self._page_gate_index: dict = {}
             self._page_voting_index: dict = {}
+            self._rows_version: int = 0
+            self._join_version: int = 0
+            self._page_cache: Optional[tuple] = None
+            self._render_build_id: int = 0
+            self._drawn_render_id: int = 0
+            self._step_chains: list[tuple] = []
+            self._drive_due = False
             self._join_build_id: int = 0
+            self._join_due = False
             self._to_default_ts: int = 0
             # The historian calls back off its own thread, so the two sets
             # are read and written under _history_lock.
@@ -190,24 +394,24 @@ if _HAS_QT:
             self._history_scanned: set[str] = set()
             self._history_refused: set[str] = set()
             self._build_ui()
-            self.join_indexes_ready.connect(self._on_join_indexes_ready)
 
         def set_bot_manager(self, bot_manager) -> None:
             self._bot_manager = bot_manager
 
         def set_asset_class(self, name) -> tuple:
-            """Hold ``name`` as the class this table shows.
+            """Hold ``name`` as the class this table shows, drawn from the held
+            ``HistoryView`` when the class moves.
 
-            Answers the rows kept for ``name`` and the rows ``_all_trades``
-            holds in all; ``_apply_filters`` narrows them through
-            ``class_filter_surface.trades_of_class``.
+            Answers the rows kept for ``name`` and the rows ``_all_trades`` holds.
             """
-            self._asset_class = class_filter_surface.normalise(name)
-            if self._all_trades:
-                self._apply_filters()
-                self._render_page()
-            else:
-                self._filtered = []
+            key = class_filter_surface.normalise(name)
+            moved = key != self._asset_class
+            self._asset_class = key
+            if self._view is not None:
+                if moved:
+                    self._show_view()
+            elif not self._all_trades:
+                self._hold_rows([], hrc.SummaryTotals())
             return (len(self._filtered), len(self._all_trades))
 
         def refresh(self) -> None:
@@ -416,8 +620,9 @@ if _HAS_QT:
             self._sym_combo.setCurrentIndex(0)
             self._side_combo.setCurrentIndex(0)
 
-        def _build_model(self) -> dict:
-            """The payload the table draws for the current page."""
+        def _build_model(self, rendered: Optional[hrc.HistoryPage] = None) -> dict:
+            """The payload the table draws for ``rendered``, by default the
+            ``_current_page``."""
             from .react_history_panel import TABLE_ONLY_CHROME, build_view_model
 
             return build_view_model(
@@ -427,9 +632,43 @@ if _HAS_QT:
                 self._bot_manager,
                 last_fetched_ts=self._last_fetched_ts,
                 filtered=self._filtered,
-                gate_index=self._page_gate_index,
-                voting_index=self._page_voting_index,
                 chrome=TABLE_ONLY_CHROME,
+                totals=self._filtered_totals,
+                options=self._view_options,
+                rendered=self._current_page() if rendered is None else rendered,
+            )
+
+        def _page_key(self) -> tuple:
+            """The ``_rows_version``, clamped page number and ``_join_version``
+            the page ``_page`` names is built from."""
+            return (
+                self._rows_version,
+                hrc.clamp_page(self._page, len(self._filtered)),
+                self._join_version,
+            )
+
+        def _cached_page(self, key: tuple) -> Optional[hrc.HistoryPage]:
+            """The page ``_draw_page`` last drew when it was built from ``key``."""
+            held = self._page_cache
+            if held is not None and held[0] == key:
+                return held[1]
+            return None
+
+        def _current_page(self) -> hrc.HistoryPage:
+            """The page ``_page`` names: the ``_cached_page``, else built in one
+            turn."""
+            key = self._page_key()
+            held = self._cached_page(key)
+            if held is not None:
+                return held
+            gate_index, voting_index = page_join_indexes(
+                hrc.page_slice(self._filtered, key[1]),
+                self._bot_manager,
+                self._page_gate_index,
+                self._page_voting_index,
+            )
+            return hrc.build_page(
+                self._filtered, key[1], self._bot_manager, gate_index, voting_index
             )
 
         def _paint_chrome(self, total: int, max_page: int) -> None:
@@ -437,8 +676,11 @@ if _HAS_QT:
             self._page_label.setText(hrc.page_label(self._page, total))
             self._prev_btn.setEnabled(self._page > 0)
             self._next_btn.setEnabled(self._page < max_page)
-            summary = hrc.summary_line(
-                self._filtered, len(self._all_trades), self._last_fetched_ts
+            summary = hrc.summary_text(
+                total,
+                len(self._all_trades),
+                self._filtered_totals,
+                self._last_fetched_ts,
             )
             missing = self.missing_history_status()
             self._set_status(f"{summary}  {missing}" if missing else summary)
@@ -520,40 +762,9 @@ if _HAS_QT:
                             logger.warning("history fetch raised: %s", rx)
                             return
                         self._all_trades = list(result or [])
-                        self._start_join_index_build()
+                        self._view = None
+                        self._join_due = True
                         _dur_elapsed = time.monotonic() - start_ts
-                        # _admissible re-counts _all_trades against since_ts
-                        # and (exchange, symbol, id) uniqueness.
-                        _seen_keys: set = set()
-                        _admissible = 0
-                        for _row in self._all_trades:
-                            _key = (
-                                _row.get("exchange"),
-                                _row.get("symbol"),
-                                _row.get("id"),
-                            )
-                            _dupe = _key in _seen_keys
-                            _seen_keys.add(_key)
-                            _row_ts = float(_row.get("timestamp", 0) or 0)
-                            if _dupe or not _row.get("id"):
-                                continue
-                            if 0 < _row_ts < since_ts:
-                                continue
-                            _admissible += 1
-                        with contextlib.suppress(Exception):
-                            from src.core.signal_contract import emit as _hist_emit
-
-                            _hist_emit(
-                                "history.05.002.postcondition.trades_stored",
-                                actual=_admissible,
-                                expected=len(self._all_trades),
-                                duration=_dur_elapsed,
-                                context={
-                                    "since_ts": float(since_ts),
-                                    "distinct_keys": len(_seen_keys),
-                                    "poll_interval_s": 0.4,
-                                },
-                            )
                         self._last_fetched_ts = time.time()
                         if self.history_refreshed is not None:
                             try:
@@ -562,8 +773,7 @@ if _HAS_QT:
                                 logger.debug(
                                     "history_refreshed emit failed: %s", _sig_exc
                                 )
-                        self._populate_filter_options()
-                        self._apply_filters()
+                        self._start_landing_build(since_ts, _dur_elapsed)
                         return
                     if time.monotonic() - start_ts > hrc.FETCH_TIMEOUT_S:
                         poll_timer.stop()
@@ -577,13 +787,17 @@ if _HAS_QT:
             poll_timer.timeout.connect(_check)
             poll_timer.start()
 
-        def _populate_filter_options(self) -> None:
-            """Refresh the exchange and symbol choices from the loaded data."""
+        def _populate_filter_options(self, options: dict, options_s: float) -> None:
+            """Refill the exchange and symbol choices from ``options``, which
+            ``landing_steps`` read off the loaded rows in ``options_s``."""
             _build_t0 = time.monotonic()
-            _want_exch = {r["exchange"] for r in self._all_trades if r.get("exchange")}
-            _want_sym = {r["symbol"] for r in self._all_trades if r.get("symbol")}
-            self._set_filter_options(sorted(_want_exch), sorted(_want_sym))
-            _build_s = time.monotonic() - _build_t0
+            self._view_options = options
+            _want_exch = set(options["exchange"][1:])
+            _want_sym = set(options["symbol"][1:])
+            self._set_filter_options(
+                list(options["exchange"][1:]), list(options["symbol"][1:])
+            )
+            _build_s = options_s + time.monotonic() - _build_t0
 
             _offered = self._filter_options()
             _have_exch = _offered["exchange"]
@@ -619,72 +833,147 @@ if _HAS_QT:
                 )
                 self._kick_async_fetch()
                 return
+            self._start_view_build()
+
+        def _start_landing_build(self, since_ts: float, fetch_s: float) -> None:
+            """Run ``landing_steps`` over ``_all_trades``; ``_take_landing``
+            takes the newest build's answer."""
+            self._landing_build_id += 1
+            build_id = self._landing_build_id
+            rows = self._all_trades
+            self._run_steps(
+                landing_steps(rows, since_ts),
+                lambda: build_id == self._landing_build_id and rows is self._all_trades,
+                lambda facts: self._take_landing(facts, since_ts, fetch_s),
+            )
+
+        def _start_view_build(self) -> None:
+            """Run ``view_steps`` over ``_all_trades`` and the filter controls;
+            ``_take_view`` takes the newest build's answer."""
+            self._view_build_id += 1
+            build_id = self._view_build_id
+            rows = self._all_trades
             to_ts = self._to_bound_ts()
             chosen = self._current_filters()
-            from_ts = chosen.from_ts
-            exch_f = chosen.exchange
-            sym_f = chosen.symbol
-            side_f = chosen.side
-
-            _filter_t0 = time.monotonic()
-            out: list[dict] = []
-            for r in self._all_trades:
-                ts = float(r.get("timestamp", 0) or 0)
-                if from_ts > 0 and ts < from_ts:
-                    continue
-                if to_ts > 0 and ts > to_ts:
-                    continue
-                if exch_f != "(all)" and r.get("exchange") != exch_f:
-                    continue
-                if sym_f != "(all)" and r.get("symbol") != sym_f:
-                    continue
-                if side_f != "(all)" and r.get("side") != side_f:
-                    continue
-                out.append(r)
-            self._filtered = class_filter_surface.trades_of_class(
-                out, self._asset_class
+            predicate = hrc.HistoryFilters(
+                from_ts=chosen.from_ts,
+                to_ts=to_ts,
+                exchange=chosen.exchange,
+                symbol=chosen.symbol,
+                side=chosen.side,
             )
-            _filter_s = time.monotonic() - _filter_t0
-            # Read back from the controls, not the loop locals, so a
-            # mis-wired predicate disagrees here.
-            _verify = self._current_filters()
-            _v_exch = _verify.exchange
-            _v_sym = _verify.symbol
-            _v_side = _verify.side
-            _v_to = _verify.to_ts
-            _violations = 0
-            for _r in self._filtered:
-                _rts = float(_r.get("timestamp", 0) or 0)
-                if from_ts > 0 and _rts < from_ts:
-                    _violations += 1
-                elif _v_to > 0 and _rts > _v_to:
-                    _violations += 1
-                elif _v_exch != "(all)" and _r.get("exchange") != _v_exch:
-                    _violations += 1
-                elif _v_sym != "(all)" and _r.get("symbol") != _v_sym:
-                    _violations += 1
-                elif _v_side != "(all)" and _r.get("side") != _v_side:
-                    _violations += 1
+            # ``verify`` reads the controls again for ``refused_rows``.
+            verify = self._current_filters()
+            self._run_steps(
+                view_steps(rows, predicate, verify),
+                lambda: build_id == self._view_build_id and rows is self._all_trades,
+                self._take_view,
+            )
+
+        def _run_steps(
+            self,
+            steps: Generator,
+            current: Callable[[], bool],
+            finish: Callable,
+        ) -> None:
+            """Queue ``steps`` on ``_step_chains`` for ``_drive_steps``, which
+            hands its answer to ``finish`` while ``current`` holds."""
+            self._step_chains.append((steps, current, finish))
+            self._post_drive()
+
+        def _post_drive(self) -> None:
+            """Post one ``_drive_steps`` call while ``_step_chains`` holds a
+            chain and none is posted."""
+            if self._step_chains and not self._drive_due:
+                self._drive_due = True
+                QTimer.singleShot(0, self, self._drive_steps)
+
+        def _drive_steps(self) -> None:
+            """Run one step of the first chain in ``_step_chains`` and requeue it
+            last, or drop it when finished or ``current`` fails."""
+            self._drive_due = False
+            if not self._step_chains:
+                return
+            steps, current, finish = self._step_chains.pop(0)
+            try:
+                if not current():
+                    steps.close()
+                    return
+                try:
+                    next(steps)
+                except StopIteration as done:
+                    finish(done.value)
+                    return
+                self._step_chains.append((steps, current, finish))
+            finally:
+                self._post_drive()
+
+        def _take_landing(self, facts: dict, since_ts: float, fetch_s: float) -> None:
+            """Refill the pickers from a finished ``landing_steps``, then apply
+            the filters to the rows it read."""
+            with contextlib.suppress(Exception):
+                from src.core.signal_contract import emit as _hist_emit
+
+                _hist_emit(
+                    "history.05.002.postcondition.trades_stored",
+                    actual=facts["admissible"],
+                    expected=len(self._all_trades),
+                    duration=fetch_s,
+                    context={
+                        "since_ts": float(since_ts),
+                        "distinct_keys": facts["distinct"],
+                        "poll_interval_s": 0.4,
+                    },
+                )
+            self._populate_filter_options(facts["options"], facts["options_s"])
+            self._apply_filters()
+
+        def _take_view(self, view: HistoryView) -> None:
+            """Hold a finished ``HistoryView`` of the rows in hand and draw it."""
+            self._view = view
+            self._show_view()
+
+        def _show_view(self) -> None:
+            """Draw page one of the held ``HistoryView`` for ``_asset_class``."""
+            view = self._view
+            if view is None:
+                return
+            key = self._asset_class
+            self._hold_rows(view.rows_of(key), view.totals_of(key))
             with contextlib.suppress(Exception):
                 from src.core.signal_contract import emit as _hist_emit
 
                 _hist_emit(
                     "history.05.004.postcondition.filters_applied",
-                    actual=_violations,
+                    actual=view.refused.get(key, 0),
                     expected=0,
                     context={
                         "kept": len(self._filtered),
                         "loaded": len(self._all_trades),
-                        "exchange": _v_exch,
-                        "symbol": _v_sym,
-                        "side": _v_side,
-                        "from_ts": float(from_ts),
-                        "to_ts": float(to_ts),
+                        "exchange": view.verify.exchange,
+                        "symbol": view.verify.symbol,
+                        "side": view.verify.side,
+                        "from_ts": float(view.predicate.from_ts),
+                        "to_ts": float(view.predicate.to_ts),
                     },
-                    duration=_filter_s,
+                    duration=view.seconds,
                 )
             self._page = 0
             self._render_page()
+
+        def _hold_rows(self, rows: list, totals: hrc.SummaryTotals) -> None:
+            """Hold ``rows`` as ``_filtered`` with their ``totals``, the one
+            write of both, and step ``_rows_version``."""
+            self._filtered = rows
+            self._filtered_totals = totals
+            self._rows_version += 1
+
+        def _hold_indexes(self, gate: dict, voting: dict) -> None:
+            """Hold the two join indexes a page reads, the one write of both, and
+            step ``_join_version``."""
+            self._page_gate_index = gate
+            self._page_voting_index = voting
+            self._join_version += 1
 
         def _reset_filters(self) -> None:
             self._reset_filter_values()
@@ -706,11 +995,59 @@ if _HAS_QT:
             )
 
         def _render_page(self) -> None:
+            """Draw the page ``_page`` names, its rows built ``RENDER_STEP_ROWS``
+            a step; a newer ``_render_page`` drops this one."""
             total = len(self._filtered)
             last_page = max(0, (total - 1) // self.PAGE_SIZE)
             self._page = min(max(self._page, 0), last_page)
+            self._render_build_id += 1
+            build_id = self._render_build_id
+            key = self._page_key()
+            steps = self._page_steps(
+                key,
+                self._filtered,
+                (self._page_gate_index, self._page_voting_index),
+            )
+            self._run_steps(
+                steps,
+                lambda: build_id == self._render_build_id,
+                lambda rendered: self._draw_page(key, rendered, total, last_page),
+            )
 
-            model = self._build_model()
+        def _page_steps(
+            self, key: tuple, rows: list, indexes: tuple
+        ) -> Generator[None, None, hrc.HistoryPage]:
+            """The page ``key`` names: the ``_cached_page``, else the
+            ``page_join_indexes`` of ``rows`` and ``indexes``, then
+            ``hrc.build_page_steps``."""
+            held = self._cached_page(key)
+            if held is not None:
+                return held
+            page = key[1]
+            gate_index, voting_index = page_join_indexes(
+                hrc.page_slice(rows, page), self._bot_manager, *indexes
+            )
+            yield
+            rendered = yield from hrc.build_page_steps(
+                rows,
+                page,
+                self._bot_manager,
+                gate_index,
+                voting_index,
+                RENDER_STEP_ROWS,
+            )
+            yield
+            return rendered
+
+        def _draw_page(
+            self, key: tuple, rendered: hrc.HistoryPage, total: int, last_page: int
+        ) -> None:
+            """Hold ``rendered`` as the page ``key`` names and push it to the
+            table, then the counter, the pager buttons, the summary and the join
+            read a landing left due."""
+            self._page_cache = (key, rendered)
+            self._drawn_render_id = self._render_build_id
+            model = self._build_model(rendered)
             self._table.set_model(model)
 
             # _want_rows recomputes the slice from total and the clamped page.
@@ -745,6 +1082,9 @@ if _HAS_QT:
                 _emit_drawn(-1)
 
             self._paint_chrome(total, last_page)
+            if self._join_due:
+                self._join_due = False
+                self._start_join_index_build()
 
         def _grade_row(self, row_i: int, page_rows: list, r: dict) -> str:
             """Return the A-to-F grade for one row, delegating to grade_row."""
@@ -753,73 +1093,31 @@ if _HAS_QT:
             return grade_row(row_i, page_rows, r)
 
         def _start_join_index_build(self) -> None:
-            """Read the gate and voting indexes for ``_all_trades`` off this thread.
+            """Run ``join_steps`` over ``_all_trades``; ``_on_join_indexes_ready``
+            takes the newest build's answer.
 
             ``_render_page`` then reads the held indexes, so no page draw and no
-            pager press touches disk; the newest build wins and an older
-            build's answer is dropped.
+            pager press touches disk.
             """
             self._join_build_id += 1
             build_id = self._join_build_id
-            rows = list(self._all_trades)
+            rows = self._all_trades
             if not rows:
-                self._page_gate_index = {}
-                self._page_voting_index = {}
+                self._hold_indexes({}, {})
                 return
-            wanted_keys = join_bucket_keys(rows, self._bot_manager)
-            since = self._join_since(rows)
-            row_count = len(rows)
-            emit_ready = self.join_indexes_ready.emit
-
-            def _read_indexes() -> None:
-                read_t0 = time.monotonic()
-                try:
-                    gate_index, voting_index, kept = read_join_indexes(
-                        since, wanted_keys
-                    )
-                except Exception as _read_exc:  # noqa: BLE001 - a torn log read
-                    logger.debug("history: join index read failed: %s", _read_exc)
-                    gate_index, voting_index, kept = {}, {}, 0
-                with contextlib.suppress(RuntimeError):
-                    emit_ready(
-                        {
-                            "build_id": build_id,
-                            "gate": gate_index,
-                            "voting": voting_index,
-                            "kept": kept,
-                            "rows": row_count,
-                            "seconds": time.monotonic() - read_t0,
-                        }
-                    )
-
-            threading.Thread(
-                target=_read_indexes,
-                name=f"history-join-{build_id}",
-                daemon=True,
-            ).start()
-
-        @staticmethod
-        def _join_since(rows: list) -> Optional[datetime]:
-            """The read's lower bound: the earliest row less the join tolerance."""
-            from src.exchange.history_helpers import JOIN_TOLERANCE_SECONDS
-
-            stamps = [
-                float(r.get("timestamp", 0) or 0)
-                for r in rows
-                if (r.get("timestamp") or 0) > 0
-            ]
-            if not stamps:
-                return None
-            return datetime.fromtimestamp(
-                max(0.0, min(stamps) - JOIN_TOLERANCE_SECONDS), tz=timezone.utc
+            self._run_steps(
+                join_steps(rows, self._bot_manager),
+                lambda: build_id == self._join_build_id,
+                lambda payload: self._on_join_indexes_ready(
+                    dict(payload, build_id=build_id)
+                ),
             )
 
         def _on_join_indexes_ready(self, payload: dict) -> None:
             """Hold a finished index pair and redraw the page it covers."""
             if payload.get("build_id") != self._join_build_id:
                 return
-            self._page_gate_index = payload.get("gate") or {}
-            self._page_voting_index = payload.get("voting") or {}
+            self._hold_indexes(payload.get("gate") or {}, payload.get("voting") or {})
 
             # An emptied index collapses _bucketed while kept stands.
             _bucketed = sum(len(v) for v in self._page_gate_index.values()) + sum(
@@ -836,7 +1134,7 @@ if _HAS_QT:
                         "gate_buckets": len(self._page_gate_index),
                         "voting_buckets": len(self._page_voting_index),
                         "loaded_rows": int(payload.get("rows") or 0),
-                        "off_gui_thread": True,
+                        "off_gui_thread": False,
                     },
                     duration=float(payload.get("seconds") or 0.0),
                 )

@@ -13,7 +13,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Generator, Optional
 
 from src.trading.gate_vocabulary import gate_light_row
 from src.exchange.history_helpers import (
@@ -341,6 +341,50 @@ def page_label(page: int, total: int) -> str:
     return f"Page {page + 1} / {page_count(total)} ({total} trades)"
 
 
+@dataclass(frozen=True)
+class SummaryTotals:
+    """The BUY and SELL counts and dollar totals ``summary_text`` prints."""
+
+    buy_count: int = 0
+    buy_usd: float = 0
+    sell_count: int = 0
+    sell_usd: float = 0
+
+
+def summary_totals(filtered: list[dict]) -> SummaryTotals:
+    """The ``SummaryTotals`` of ``filtered``, summing the ``cost`` field
+    ``_cost_cell`` renders."""
+    return SummaryTotals(
+        buy_count=sum(1 for r in filtered if r.get("side") == "BUY"),
+        buy_usd=sum(r.get("cost", 0) for r in filtered if r.get("side") == "BUY"),
+        sell_count=sum(1 for r in filtered if r.get("side") == "SELL"),
+        sell_usd=sum(r.get("cost", 0) for r in filtered if r.get("side") == "SELL"),
+    )
+
+
+def summary_text(
+    total: int,
+    loaded: int,
+    totals: SummaryTotals,
+    last_fetched_ts: float = 0.0,
+    now_ts: Optional[float] = None,
+) -> str:
+    """The line above the table from ``total`` retained rows, their ``totals``
+    and the fetch age."""
+    if now_ts is None:
+        now_ts = time.time()
+    if last_fetched_ts > 0:
+        fetched_str = f"fetched {int(now_ts - last_fetched_ts)}s ago"
+    else:
+        fetched_str = "no fetch yet"
+    return (
+        f"{total} of {loaded} trades shown · "
+        f"BUYs: {totals.buy_count} (${totals.buy_usd:,.2f}) · "
+        f"SELLs: {totals.sell_count} (${totals.sell_usd:,.2f}) · "
+        f"{fetched_str}"
+    )
+
+
 def summary_line(
     filtered: list[dict],
     loaded: int,
@@ -349,24 +393,10 @@ def summary_line(
 ) -> str:
     """The line above the table: retained of loaded, both sides, fetch age.
 
-    The two dollar totals sum the same ``cost`` field ``_cost_cell`` renders.
+    ``summary_text`` prints it from the ``summary_totals`` of ``filtered``.
     """
-    if now_ts is None:
-        now_ts = time.time()
-    total = len(filtered)
-    if last_fetched_ts > 0:
-        fetched_str = f"fetched {int(now_ts - last_fetched_ts)}s ago"
-    else:
-        fetched_str = "no fetch yet"
-    buy_count = sum(1 for r in filtered if r.get("side") == "BUY")
-    sell_count = sum(1 for r in filtered if r.get("side") == "SELL")
-    buy_usd = sum(r.get("cost", 0) for r in filtered if r.get("side") == "BUY")
-    sell_usd = sum(r.get("cost", 0) for r in filtered if r.get("side") == "SELL")
-    return (
-        f"{total} of {loaded} trades shown · "
-        f"BUYs: {buy_count} (${buy_usd:,.2f}) · "
-        f"SELLs: {sell_count} (${sell_usd:,.2f}) · "
-        f"{fetched_str}"
+    return summary_text(
+        len(filtered), loaded, summary_totals(filtered), last_fetched_ts, now_ts
     )
 
 
@@ -638,16 +668,34 @@ def build_page(
     ``build_join_indexes`` runs when neither index is supplied, and it is the
     only disk read on this path.
     """
+    steps = build_page_steps(filtered, page, bot_manager, gate_index, voting_index)
+    while True:
+        try:
+            next(steps)
+        except StopIteration as done:
+            return done.value
+
+
+def build_page_steps(
+    filtered: list[dict],
+    page: int = 0,
+    bot_manager: Any = None,
+    gate_index: Optional[dict] = None,
+    voting_index: Optional[dict] = None,
+    step_rows: int = PAGE_SIZE,
+) -> Generator[None, None, HistoryPage]:
+    """``build_page``, yielding after every ``step_rows`` rows it builds."""
     total = len(filtered)
     page = clamp_page(page, total)
     rows_in = page_slice(filtered, page)
     if gate_index is None and voting_index is None:
         gate_index, voting_index = build_join_indexes(rows_in)
     pages = page_count(total)
-    rows = [
-        build_row(i, rows_in, r, bot_manager, gate_index, voting_index)
-        for i, r in enumerate(rows_in)
-    ]
+    rows: list[HistoryRow] = []
+    for i, r in enumerate(rows_in):
+        rows.append(build_row(i, rows_in, r, bot_manager, gate_index, voting_index))
+        if (i + 1) % step_rows == 0 and i + 1 < len(rows_in):
+            yield
     return HistoryPage(
         rows=rows,
         page=page,
@@ -727,9 +775,11 @@ __all__ = [
     "HistoryFilters",
     "HistoryPage",
     "HistoryRow",
+    "SummaryTotals",
     "apply_filters",
     "build_join_indexes",
     "build_page",
+    "build_page_steps",
     "build_row",
     "clamp_page",
     "csv_rows",
@@ -742,4 +792,6 @@ __all__ = [
     "page_slice",
     "sort_trades",
     "summary_line",
+    "summary_text",
+    "summary_totals",
 ]

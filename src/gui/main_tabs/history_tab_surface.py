@@ -288,9 +288,13 @@ def progress_visible(fetching: bool) -> bool:
     return bool(fetching)
 
 
-def filter_bar(trades: list, filters: Any) -> dict:
-    """The filter bar: its two date bounds as text and its three combos."""
-    options = hrc.filter_options(trades)
+def filter_bar(trades: list, filters: Any, options: Optional[dict] = None) -> dict:
+    """The filter bar: its two date bounds as text and its three combos.
+
+    A supplied ``options`` stands in for ``hrc.filter_options`` over ``trades``.
+    """
+    if options is None:
+        options = hrc.filter_options(trades)
     values = filters.as_dict()
     return {
         "from": {
@@ -334,6 +338,10 @@ def build_view_model(
     gate_index: Optional[dict] = None,
     voting_index: Optional[dict] = None,
     painted: bool = True,
+    retained: Optional[list] = None,
+    totals: Optional[hrc.SummaryTotals] = None,
+    options: Optional[dict] = None,
+    rendered: Optional[hrc.HistoryPage] = None,
 ) -> dict:
     """The whole tab -- chrome, controls and rows -- as one dict.
 
@@ -346,22 +354,28 @@ def build_view_model(
     so the page a renderer draws and the page the Qt table draws are one
     answer.
     """
-    retained = hrc.apply_filters(trades, filters)
+    if retained is None:
+        retained = hrc.apply_filters(trades, filters)
+    if totals is None:
+        totals = hrc.summary_totals(retained)
     total = len(retained)
     page = hrc.clamp_page(page, total)
-    rendered = hrc.build_page(retained, page, bot_manager, gate_index, voting_index)
+    if rendered is None:
+        rendered = hrc.build_page(retained, page, bot_manager, gate_index, voting_index)
     enabled = buttons_enabled(page, total, fetching)
     model = {
         "widgets": [dict(node) for node in WIDGETS],
         "title": TAB_TITLE,
         "accessible_name": ACCESSIBLE_NAME,
         "filter_group_title": FILTER_GROUP_TITLE,
-        "filters": filter_bar(trades, filters),
+        "filters": filter_bar(trades, filters, options),
         "summary": {
             "text": (
                 status
                 if status is not None
-                else summary_line(retained, len(trades), last_fetched_ts, now_ts)
+                else hrc.summary_text(
+                    total, len(trades), totals, last_fetched_ts, now_ts
+                )
             ),
             "style_sheet": SUMMARY_STYLE,
         },

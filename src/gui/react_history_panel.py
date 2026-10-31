@@ -222,15 +222,21 @@ def build_view_model(
     gate_index: Optional[dict] = None,
     voting_index: Optional[dict] = None,
     chrome: Optional[dict] = None,
+    totals: Optional[hrc.SummaryTotals] = None,
+    options: Optional[dict] = None,
+    rendered: Optional[hrc.HistoryPage] = None,
 ) -> dict:
     """Everything the page draws, as one JSON-serialisable dict.
 
-    A supplied ``filtered`` skips the second ``hrc.apply_filters`` pass, and
-    ``gate_index`` and ``voting_index`` keep ``hrc.build_page`` to one log
-    read per page.
+    A supplied ``filtered``, ``totals``, ``options`` and ``rendered`` page skip
+    every pass over ``trades``, and ``gate_index`` and ``voting_index`` skip the
+    log read.
     """
     retained = hrc.apply_filters(trades, filters) if filtered is None else filtered
-    rendered = hrc.build_page(retained, page, bot_manager, gate_index, voting_index)
+    if rendered is None:
+        rendered = hrc.build_page(retained, page, bot_manager, gate_index, voting_index)
+    if totals is None:
+        totals = hrc.summary_totals(retained)
     return {
         "columns": [
             {
@@ -242,9 +248,11 @@ def build_view_model(
             for c in hrc.COLUMNS
         ],
         "page": rendered.as_dict(),
-        "summary": hrc.summary_line(retained, len(trades), last_fetched_ts, now_ts),
+        "summary": hrc.summary_text(
+            len(retained), len(trades), totals, last_fetched_ts, now_ts
+        ),
         "filters": filters.as_dict(),
-        "filter_options": hrc.filter_options(trades),
+        "filter_options": hrc.filter_options(trades) if options is None else options,
         "loaded": len(trades),
         "from_text": _date_text(filters.from_ts),
         "to_text": _date_text(filters.to_ts),

@@ -188,6 +188,8 @@ read when the tab draws, because the tab hands it both join indexes. The tab
 reads the logs once per fetch, on its own thread, and the page builder's own
 read only runs for a caller that supplies neither index.
 
+Now: the tab reads the logs once per fetch, in steps of about 8 ms on the window thread, after the first page draws (`src/gui/history_tab.py, in join_steps`).
+
 Thirteen columns each yield one cell carrying a value, its text, its colour and
 its tooltip.
 
@@ -357,6 +359,8 @@ The tab reads the gate log and the voting log once, when a fetch lands, on a
 thread of its own. Drawing a page and pressing Prev or Next read the indexes
 already in hand and touch no file.
 
+Now: the read waits until the first page draws, then runs in steps of about 8 ms on the window thread (`src/gui/history_tab.py, in HistoryTab._start_join_index_build`).
+
 `src/gui/history_tab.py` — `HistoryTab._start_join_index_build`
 
 ```python
@@ -437,6 +441,8 @@ builder makes that connection once both tabs exist.
 ```python
 history_refreshed = Signal(list)
 ```
+
+Now: the signal is a `Signal(object)`, so it hands the rows over without converting them (`src/gui/history_tab.py, in HistoryTab.history_refreshed`).
 
 ## Paper History
 

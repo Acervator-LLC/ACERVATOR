@@ -1672,6 +1672,8 @@ rotations and active file. Every reader goes through it.
 | `src/simulator/sim_bus.py, in sim_log_paths` | the paths the parity report prints |
 | `tools/capture_live_baseline.py, in gate_members` | the baseline snapshot's latch distribution |
 
+Now: the History tab reads that index in steps of about 8 ms on the GUI thread, not off it (`src/gui/history_tab.py, in read_join_indexes`).
+
 #### What became of the records written before the split
 
 `src/core/logging_engine.py, in migrate_legacy_gate_logs` carries them, once,
