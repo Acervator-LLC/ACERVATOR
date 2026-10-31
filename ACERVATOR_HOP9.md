@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-10-30 against `aaadc00d`. **Every claim here names one command that
+Written 2026-10-31 against `2893e406`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -29,15 +29,17 @@ gh issue view 1621                        # the History tab freeze, rows 1-2
 gh issue view 1622                        # a buy-back that comes back short in units
 ```
 
-- **In flight when written:** #1621 rows 1 and 2, in pull request #1625, armed to
-  merge itself. Read it before resuming; a row the body marks built is done.
-- **Built:** #1622 rows 1 and 4 and his two wire-credit rules, in `aaadc00d`.
-- **Build nothing from `aaadc00d` on into his trees until #1622 row 6 lands.** Row 2
-  lifted the buy-back distance by a wire's share, and his ruling overturned it: a
-  wire carries surplus only. His launch builds stay on `b37c750e` until then.
-- **Held until the reset:** #1622 rows 3, 5 and 6; #412 rows 12 to 16, the manual
-  rewrite, the evidence presentation and the charts from his newest export; the
-  open-row check of #665.
+- **In flight when written:** nothing. Every unit merged before the break.
+- **Built in the last stretch:** #1621, the History tab scan no longer holds the
+  window; #1622 rows 1, 4 and 6 with his two wire-credit rules, so a wire carries
+  surplus only and a buy-back keeps the normal distance; #412 rows 13, 15 and 16,
+  the research parts moved to `docs/reference/`, every chart drawn from his
+  31 October export, and the evidence deck under `docs/prototyping-evidence/`.
+- **His builds:** both trees built at `22ab4273`. Nothing merged since changes the
+  application.
+- **Held until the reset:** #1622 rows 3 and 5 and the three wire questions on it;
+  #412 row 12, the dated readings, row 14, the final PDF rebuild, and row 16's
+  correction, one slide per asset; the open-row check of #665.
 
 ---
 
@@ -168,23 +170,18 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
-- **#1621, History tab freeze.** The scan's fetch runs on the bot manager's loop,
-  which a timer on the window's thread pumps every 50 ms
-  (`src/core/tick_driver.py, in pump_once`), so it holds the window and the
-  trading ticks together. Resume from the PR or from rows 1 and 2.
-- **#1622, buy-back short in units.** Rows 1 and 4 built: the cartridge fold tests
-  every tranche it pays off (`src/trading/scrumming/execution.py, in
-  _execute_manual_rebalance`), and a fold logs the units it gained. Row 2, a wire
-  term in the distance (`src/trading/otd_math.py, in wired_distance_pct`), is
-  overturned: row 6 makes a wire carry surplus only
-  (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`) and
-  takes the wire term out. Row 3 held: `src/exchange/idempotency.py, in
-  TradeIntent.fingerprint` carries no time. Row 5: a cartridge leaves other bots'
-  reserved dollars alone.
-- **#412, the manual.** Rows 12 to 16 wait on the reset: his sentences verbatim
-  with one cited "Now:" line each; the PDF holds his text plus how to use it; one
-  PDF rebuild; every chart from his newest export; an evidence presentation under
-  `docs/`. The builder is `tools/build_product_manual.py`.
+- **#1622, buy-back short in units.** Rows 1, 4 and 6 built: the cartridge fold
+  tests every tranche it pays off (`src/trading/scrumming/execution.py, in
+  _execute_manual_rebalance`), and a wire carries surplus only
+  (`src/trading/scrumming/sizing.py, in sale_surplus_usd`). Row 3 held:
+  `src/exchange/idempotency.py, in TradeIntent.fingerprint` carries no time.
+  Row 5: a cartridge leaves other bots' reserved dollars alone. Three questions
+  from row 6 wait for him on the issue.
+- **#412, the manual.** Row 12 waits on the reset: his sentences verbatim with one
+  cited "Now:" line each, every dated reading gone. Row 16 carries his correction:
+  one slide per asset, in `tools/build_product_manual.py, in write_evidence_deck`.
+  The PDF builder is `tools/build_product_manual.py`; pass the gitignored export
+  folder with `--evidence-dir`.
 - **#433, novel concepts.** Concept 1, hunger and satiety, is built with a per-bot
   switch, off by default. Concepts 2 to 4 are unbuilt. Paper and the Simulator run
   none of the favours and no hunger: a gap against his one-trading-logic rule,
