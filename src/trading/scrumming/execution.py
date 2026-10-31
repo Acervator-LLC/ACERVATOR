@@ -21,22 +21,25 @@ from ..otd_math import (
     DistanceSettings,
     DistanceSettingUnreadable,
     distance_settings,
-    fold_rebuy_factor_from_pct,
 )
 from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
 from .sizing import (
     FRACTIONAL_UNITS,
+    discharge_gain_usd,
     fold_tranche_records,
     fold_units,
+    held_wire_usd,
     opposing_event_id,
     priced_usd,
+    rebalance_held_usd,
+    routed_share_pct,
     sale_proceeds_usd,
     scrum_units,
     spend_less_unsettled_usd,
     target_delta_usd,
-    unsettled_usd,
+    tranche_rebuy_price,
     wallet_capped_spend_usd,
 )
 
@@ -201,6 +204,7 @@ class ExecutionEngineMixin:
     _refresh_quote_to_usd: Callable[..., Any]
     _reset_opposing_hysteresis_after_fill: Callable[..., None]
     _resting_order_for: Callable[..., Any]
+    _return_wire_credits_to_pool: Callable[..., float]
     _route_scrum_proceeds_via_wires: Callable[..., Any]
     _run_booker: Callable[..., Any]
     _spawn_stack_from_fold: Callable[..., Any]
@@ -690,11 +694,7 @@ class ExecutionEngineMixin:
 
     def opposing_trade_distance_pct(self, band: Any = None) -> float:
         """The Minimum Opposing Trade Distance at ``band``, a percentage, read through ``opposing_distance_settings``."""
-        return self.opposing_distance_settings().distance_pct(
-            float(getattr(band, "upper", 0.0) or 0.0),
-            float(getattr(band, "lower", 0.0) or 0.0),
-            float(getattr(band, "middle", 0.0) or 0.0),
-        )
+        return self.opposing_distance_settings().distance_at_band(band)
 
     def _pivot_distance_text(self) -> str:
         """``opposing_trade_distance_pct`` as a pivot line prints it, or the ``DistanceSettingUnreadable`` it raised."""
@@ -810,7 +810,6 @@ class ExecutionEngineMixin:
 
         _INTENT_MAP = {
             "manual_button": ("MANUAL_SCRUM", "MANUAL_FOLD", True),
-            "wire_stack": ("WIRE_STACK_SCRUM", "WIRE_STACK_FOLD", False),
             "max_cartridge": ("CARTRIDGE_SCRUM", "CARTRIDGE_FOLD", False),
         }
         if caller_intent not in _INTENT_MAP:
@@ -1063,25 +1062,28 @@ class ExecutionEngineMixin:
             )
 
         else:
+            if await self._refuses_stacked_buy(price, _announce_every_refusal):
+                return
 
+            _floor: Optional[DistanceSettings] = None
+            _unpaid: list[dict] = []
             if caller_intent != "manual_button" and self._fold_tranches:
-                _fold_factor = 1.0
                 _best_rebuy = 0.0
                 _distance_ok = False
 
                 _unreadable_refs = 0
                 _thresholds: list[float] = []
                 try:
-                    _fold_factor = fold_rebuy_factor_from_pct(
-                        self.opposing_trade_distance_pct()
-                    )
+                    _floor = self.opposing_distance_settings()
 
                     for _t in self._fold_tranches:
-                        _t_thresh = float(_t.get("ref", 0)) * _fold_factor
+                        _t_thresh = tranche_rebuy_price(_t, _floor)
                         if not math.isfinite(_t_thresh):
                             _unreadable_refs += 1
                             continue
                         _thresholds.append(_t_thresh)
+                        if price > _t_thresh:
+                            _unpaid.append(_t)
                     if _thresholds:
                         _best_rebuy = max(_thresholds)
                         _distance_ok = price <= _best_rebuy
@@ -1149,8 +1151,8 @@ class ExecutionEngineMixin:
                             f"${price:.8f} not one of the "
                             f"{len(self._fold_tranches)} queued tranche(s) is "
                             f"eligible. The highest rebuy any of them allows "
-                            f"is ${_best_rebuy:.8f} (its ref x "
-                            f"{_fold_factor:.4f}), so price must fall "
+                            f"is ${_best_rebuy:.8f} (its sale price less the "
+                            f"distance and its wire share), so price must fall "
                             f"${price - _best_rebuy:.8f} further. Gates are "
                             f"bypassed on this path, so it will not rebuy "
                             f"above what it sold at. Intended BUY of "
@@ -1167,6 +1169,16 @@ class ExecutionEngineMixin:
                         _unreadable_refs,
                     )
                     return
+            elif caller_intent != "manual_button":
+                try:
+                    _floor = self.opposing_distance_settings()
+                except DistanceSettingUnreadable:
+                    _floor = None
+            _fee: Optional[float] = None
+            try:
+                _fee = self.opposing_distance_settings().fee_pct
+            except DistanceSettingUnreadable:
+                _fee = None
 
             _denom_pre = price * _qrate
             _growth_preview = 0.0
@@ -1175,7 +1187,7 @@ class ExecutionEngineMixin:
             if _denom_pre > 0:
                 for _ in range(4):
                     _units_pre = ((-delta_usd) + _growth_preview) / _denom_pre
-                    _g = self._preview_fold_growth(_units_pre, price)
+                    _g = self._preview_fold_growth(_units_pre, price, _floor, _fee)
                     if abs(_g - _growth_preview) <= 1e-9:
                         break
                     _growth_preview = _g
@@ -1270,13 +1282,22 @@ class ExecutionEngineMixin:
                 _settlement = getattr(_fold_rules, "settlement_days", None)
             except Exception:
                 _settlement = None
-            _unsettled = unsettled_usd(
-                getattr(self, "_fold_tranches", ()), time.time(), _settlement
+            # The spend leaves unpaid tranches' dollars, wire credits and the
+            # pool in the wallet.
+            _paying = [
+                t for t in self._fold_tranches if not any(t is u for u in _unpaid)
+            ]
+            _unsettled, _held_back = rebalance_held_usd(
+                _paying,
+                _unpaid,
+                time.time(),
+                _settlement,
+                getattr(self, "_pending_wire_credits", 0.0),
             )
             buy_usd = spend_less_unsettled_usd(
                 wallet_capped_spend_usd(buy_usd_target, usd_balance),
                 usd_balance,
-                _unsettled,
+                _unsettled + _held_back,
             )
             if buy_usd <= 0:
                 err_tail = f" (fetch error: {_bal_err})" if _bal_err else ""
@@ -1284,6 +1305,11 @@ class ExecutionEngineMixin:
                     f", of which ${_unsettled:.4f} is cash the venue has not "
                     f"settled at {_settlement} day(s)"
                     if _unsettled > 1e-9
+                    else ""
+                ) + (
+                    f", of which ${_held_back:.4f} is held for tranches above "
+                    f"their own floor and for wire credits"
+                    if _held_back > 1e-9
                     else ""
                 )
                 held_tail = (
@@ -1348,6 +1374,12 @@ class ExecutionEngineMixin:
                 "label": _fold_label,
                 "operator_initiated": _operator_initiated,
                 "price": float(price),
+                "floor_distance": (
+                    [_floor.interval_pct, _floor.fee_pct, _floor.band_travel_pct]
+                    if _floor is not None
+                    else None
+                ),
+                "fee_pct": _fee,
             }
             self._hold_resting_order(
                 order,
@@ -1391,7 +1423,7 @@ class ExecutionEngineMixin:
         price: float,
         venue_units: Optional[float] = None,
     ) -> None:
-        """Book one settled piece of a Manual Fire, cartridge or wire-stack sale as fold
+        """Book one settled piece of a Manual Fire or cartridge sale as fold
         tranches, and announce it.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
@@ -1411,6 +1443,7 @@ class ExecutionEngineMixin:
         _manual_routed_total = self._route_scrum_proceeds_via_wires(
             scrum_usd=fill_usd, sell_fill=fill_price, label="manual_scrum"
         )
+        _manual_wire_share = routed_share_pct(fill_usd, _manual_routed_total)
         fill_usd = max(0.0, fill_usd - _manual_routed_total)
 
         self._main_lots.sort(key=lambda l: l["initial_buy_price"], reverse=True)
@@ -1423,6 +1456,7 @@ class ExecutionEngineMixin:
             fill_usd,
             opposing_event_id(label, _manual_event_ts),
             _manual_event_ts,
+            _manual_wire_share,
         )
         for _record in _manual_records:
             _record["operator_initiated"] = operator_initiated
@@ -1533,16 +1567,22 @@ class ExecutionEngineMixin:
         operator_initiated: bool,
         price: float,
         venue_units: Optional[float] = None,
+        floor_distance: Optional[list] = None,
+        fee_pct: Optional[float] = None,
     ) -> None:
-        """Book one settled piece of a Manual Fire, cartridge or wire-stack buy against
-        the queued tranches, and announce it.
+        """Book one settled piece of a Manual Fire or cartridge buy against the
+        queued tranches, and announce it.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
-        piece, which moves ``_audited_venue_units`` by ``units``.
+        piece, which moves ``_audited_venue_units`` by ``units``. With
+        ``floor_distance``, a tranche whose ``tranche_rebuy_price`` sits under
+        ``fill_price`` stays unpaid. A tranche pays its units from its own sale
+        dollars, and one that ends returns its wire credit to the pool.
         """
         fill_amount = units
         if fill_price <= 0:
             fill_price = price
+        _floor = DistanceSettings(*floor_distance) if floor_distance else None
 
         _manual_fold_accum_profit = 0.0
         if self._fold_tranches:
@@ -1551,14 +1591,16 @@ class ExecutionEngineMixin:
             for t in self._fold_discharge_order():
                 if remaining <= 1e-12:
                     break
+                if _floor is not None and fill_price > tranche_rebuy_price(t, _floor):
+                    continue
                 # _fold_discharge_order yields finite units.
                 t_units = float(t.get("units", 0.0) or 0.0)
                 take = min(t_units, remaining)
                 if take <= 1e-12:
                     continue
-                _t_ref = float(t.get("ref", 0.0) or 0.0)
-                if _t_ref > fill_price:
-                    _manual_fold_accum_profit += take * (_t_ref - fill_price)
+                _manual_fold_accum_profit += discharge_gain_usd(
+                    t, take, fill_price, fee_pct
+                )
                 self._main_lots.append(
                     {
                         "units": take,
@@ -1566,14 +1608,17 @@ class ExecutionEngineMixin:
                         "operator_initiated": operator_initiated,
                     }
                 )
+                _credit = held_wire_usd(t)
+                _t_usd = float(t.get("usd", 0.0) or 0.0)
                 t["units"] = t_units - take
                 if t_units > 0:
-                    t["usd"] *= t["units"] / t_units
+                    t["usd"] = _credit + (_t_usd - _credit) * (t["units"] / t_units)
                 remaining -= take
                 if t["units"] <= 1e-12:
                     consumed.append(t)
 
             for t in consumed:
+                self._return_wire_credits_to_pool(t)
                 self._fold_tranches.remove(t)
             if consumed:
                 try:
@@ -1599,12 +1644,25 @@ class ExecutionEngineMixin:
 
             self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
 
-            msg = (
-                f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
-                f"${fill_price:.8f}. Discharged "
-                f"{len(consumed)} tranche(s) bypassing price-floor "
-                f"gates (operator override)."
-            )
+            if _floor is None:
+                msg = (
+                    f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
+                    f"${fill_price:.8f}. Discharged "
+                    f"{len(consumed)} tranche(s) bypassing price-floor "
+                    f"gates (operator override)."
+                )
+            else:
+                _held_above = sum(
+                    1
+                    for t in self._fold_tranches
+                    if fill_price > tranche_rebuy_price(t, _floor)
+                )
+                msg = (
+                    f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
+                    f"${fill_price:.8f}. Discharged {len(consumed)} tranche(s), "
+                    f"each at or under its own sale price less the distance and "
+                    f"its wire share; {_held_above} above that stay queued unpaid."
+                )
         else:
             self._main_lots.append(
                 {
@@ -1863,6 +1921,8 @@ class ExecutionEngineMixin:
                 int(getattr(self, "_tranches_discarded_lifetime", 0) or 0)
                 + _detonated_tranches
             )
+        for _cleared in list(self._fold_tranches):
+            self._return_wire_credits_to_pool(_cleared)
         self._fold_tranches.clear()
         self._fold_queue_usd = 0.0
         _discharged_surplus = float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
@@ -2296,6 +2356,59 @@ class ExecutionEngineMixin:
         await self._run_booker(booker, filled_units, actual_fill, asked, True, booking)
         return actual_fill
 
+    async def _refuses_stacked_buy(
+        self, price: Any, announce_every: bool = False
+    ) -> bool:
+        """True where ``get_open_orders`` raises or names an open BUY on
+        ``config.symbol``, after the P0b line ``_refusal_is_new`` admits, or every
+        line with ``announce_every``."""
+        try:
+            _open = await self.exchange.get_open_orders(self.config.symbol)
+        except Exception as _oo_exc:
+            if announce_every or self._refusal_is_new(
+                "buy_open_orders_unreadable", price
+            ):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"P0b BUY REFUSED (fail-closed): "
+                        f"get_open_orders raised {type(_oo_exc).__name__}: "
+                        f"{_oo_exc}. Cannot verify absence of stacked "
+                        f"orders. Refusing."
+                    ),
+                )
+            return True
+        try:
+            _open_buys = [
+                o
+                for o in (_open or [])
+                if getattr(o, "side", None) == OrderSide.BUY
+                and getattr(o, "symbol", None) == self.config.symbol
+            ]
+        except Exception:
+            _open_buys = [
+                o
+                for o in (_open or [])
+                if getattr(o, "symbol", None) == self.config.symbol
+            ]
+        if not _open_buys:
+            return False
+        _ids = ", ".join(str(getattr(o, "id", "?")) for o in _open_buys[:3])
+        if announce_every or self._refusal_is_new("buy_stacked", price):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"P0b STACKED BUY REFUSED: {len(_open_buys)} open "
+                    f"BUY order(s) already on exchange for "
+                    f"{self.config.symbol} (ids: {_ids}). "
+                    f"Refusing to place a second BUY on top. "
+                    f"Wait for existing order(s) to fill or cancel."
+                ),
+            )
+        return True
+
     async def _verify_buy_safe_or_refuse(
         self,
         *,
@@ -2448,50 +2561,7 @@ class ExecutionEngineMixin:
                 )
             return None
 
-        try:
-            _open = await self.exchange.get_open_orders(self.config.symbol)
-        except Exception as _oo_exc:
-            if self._refusal_is_new("buy_open_orders_unreadable", price):
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"P0b BUY REFUSED (fail-closed): "
-                        f"get_open_orders raised {type(_oo_exc).__name__}: "
-                        f"{_oo_exc}. Cannot verify absence of stacked "
-                        f"orders. Refusing."
-                    ),
-                )
-            return None
-        try:
-            from ...exchange.base import OrderSide as _OS
-
-            _open_buys = [
-                o
-                for o in (_open or [])
-                if getattr(o, "side", None) == _OS.BUY
-                and getattr(o, "symbol", None) == self.config.symbol
-            ]
-        except Exception:
-            _open_buys = [
-                o
-                for o in (_open or [])
-                if getattr(o, "symbol", None) == self.config.symbol
-            ]
-        if _open_buys:
-            _ids = ", ".join(str(getattr(o, "id", "?")) for o in _open_buys[:3])
-            if self._refusal_is_new("buy_stacked", price):
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"P0b STACKED BUY REFUSED: {len(_open_buys)} open "
-                        f"BUY order(s) already on exchange for "
-                        f"{self.config.symbol} (ids: {_ids}). "
-                        f"Refusing to place a second BUY on top. "
-                        f"Wait for existing order(s) to fill or cancel."
-                    ),
-                )
+        if await self._refuses_stacked_buy(price):
             return None
 
         _ctx = trace_context or {}

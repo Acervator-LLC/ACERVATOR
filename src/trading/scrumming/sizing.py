@@ -68,6 +68,12 @@ from ...exchange.base import SETTLEMENT_DAY_SECONDS
 from ..bot_container import as_finite_float
 from ...stocks.market_hours import MarketSession, accepts_order, session_at
 from ..container.config import CEILING_MULTIPLE_MAX, CEILING_MULTIPLE_MIN
+from ..otd_math import (
+    WIRE_ABSENT_PCT,
+    DistanceSettings,
+    clamped_wire_pct,
+    fold_rebuy_price,
+)
 
 #: The ``state`` an ``ExtractorBot`` writes on a position below its entry value.
 DRAWDOWN_STATE = "drawdown"
@@ -1517,6 +1523,27 @@ def unsettled_usd(tranches: Any, moment_s: Any, settlement_days: Any) -> float:
     return held
 
 
+def rebalance_held_usd(
+    paying: list,
+    unpaid: list,
+    moment_s: Any,
+    settlement_days: Any,
+    pool_usd: Any,
+) -> tuple[float, float]:
+    """``(unsettled, held)`` for a rebalance buy: ``unsettled_usd`` of ``paying``,
+    and beside it every ``usd`` in ``unpaid``, the ``held_wire_usd`` of each
+    settled record in ``paying``, and ``pool_usd``."""
+    unsettled = unsettled_usd(paying, moment_s, settlement_days)
+    held = sum((as_finite_float(one.get("usd", 0.0)) or 0.0 for one in unpaid), 0.0)
+    for one in paying:
+        if unsettled_usd([one], moment_s, settlement_days) <= 0.0:
+            held += held_wire_usd(one)
+    pool = as_finite_float(pool_usd)
+    if pool is not None and pool > 0.0:
+        held += pool
+    return unsettled, held
+
+
 def spend_less_unsettled_usd(spend: float, cash_usd: Any, held_usd: Any) -> float:
     """``spend`` held to ``cash_usd`` less ``held_usd``, never below zero.
 
@@ -2684,12 +2711,97 @@ def units_at_scrum(record: dict) -> float:
     return units
 
 
+WIRE_SHARE_KEY = "wire_share_pct"
+"""The ``routed_share_pct`` of the sale behind a record, which ``fold_tranche_records`` writes."""
+
+
+def routed_share_pct(proceeds_usd: float, routed_usd: float) -> float:
+    """``routed_usd`` as a percent of ``proceeds_usd`` through ``clamped_wire_pct``,
+    ``WIRE_ABSENT_PCT`` where ``proceeds_usd`` is no positive finite figure."""
+    proceeds = as_finite_float(proceeds_usd)
+    routed = as_finite_float(routed_usd)
+    if proceeds is None or routed is None or proceeds <= 0.0:
+        return WIRE_ABSENT_PCT
+    return clamped_wire_pct(100.0 * routed / proceeds)
+
+
+def recorded_wire_share_pct(record: dict) -> float:
+    """``record``'s ``WIRE_SHARE_KEY`` through ``clamped_wire_pct``,
+    ``WIRE_ABSENT_PCT`` where it holds no finite figure."""
+    held = as_finite_float(record.get(WIRE_SHARE_KEY, WIRE_ABSENT_PCT))
+    if held is None:
+        return WIRE_ABSENT_PCT
+    return clamped_wire_pct(held)
+
+
+def tranche_wire_share_pct(record: dict, fee_pct: Optional[float]) -> float:
+    """The percent of ``units`` times ``ref`` after ``fee_pct`` that
+    ``tranche_sale_usd`` does not hold, ``WIRE_ABSENT_PCT`` inside
+    ``units_dust_at`` of that figure or where a figure is unreadable."""
+    units = as_finite_float(record.get("units", 0.0))
+    ref = as_finite_float(record.get("ref", 0.0))
+    fee = as_finite_float(fee_pct)
+    if units is None or ref is None or fee is None or units <= 0.0 or ref <= 0.0:
+        return WIRE_ABSENT_PCT
+    produced = units * ref * (1.0 - fee / 100.0)
+    if produced <= 0.0:
+        return WIRE_ABSENT_PCT
+    short = produced - tranche_sale_usd(record)
+    if short <= units_dust_at(produced):
+        return WIRE_ABSENT_PCT
+    return clamped_wire_pct(100.0 * short / produced)
+
+
+def rate_after_wire(ref: float, wire_share_pct: float) -> float:
+    """``ref`` less ``clamped_wire_pct`` of ``wire_share_pct``: the sale price a
+    record's own dollars stand for."""
+    return float(ref) * (1.0 - clamped_wire_pct(wire_share_pct) / 100.0)
+
+
+def ref_after_wire(record: dict, fee_pct: Optional[float]) -> float:
+    """``rate_after_wire`` of ``record``'s ``ref`` at its ``tranche_wire_share_pct``."""
+    return rate_after_wire(
+        float(record.get("ref", 0.0) or 0.0), tranche_wire_share_pct(record, fee_pct)
+    )
+
+
+def tranche_distance_pct(
+    record: dict, distance: DistanceSettings, band: Any = None
+) -> float:
+    """``distance.distance_at_band`` with ``record``'s ``tranche_wire_share_pct``."""
+    return distance.distance_at_band(
+        band, tranche_wire_share_pct(record, distance.fee_pct)
+    )
+
+
+def tranche_rebuy_price(
+    record: dict, distance: DistanceSettings, band: Any = None
+) -> float:
+    """``fold_rebuy_price`` of ``record``'s ``ref`` at its ``tranche_distance_pct``."""
+    return fold_rebuy_price(
+        float(record.get("ref", 0)), tranche_distance_pct(record, distance, band)
+    )
+
+
 def eligible_fold_tranches(
-    tranches: list, ticker_last: float, otd_factor: float
+    tranches: list, ticker_last: float, distance: DistanceSettings, band: Any = None
 ) -> list:
-    """The tranches in ``tranches`` whose ``ref`` times ``otd_factor`` is at or
-    above ``ticker_last``."""
-    return [t for t in tranches if ticker_last <= float(t.get("ref", 0)) * otd_factor]
+    """The tranches in ``tranches`` whose ``tranche_rebuy_price`` at ``distance``
+    and ``band`` is at or above ``ticker_last``."""
+    return [
+        t for t in tranches if ticker_last <= tranche_rebuy_price(t, distance, band)
+    ]
+
+
+def discharge_gain_usd(
+    record: dict, units: float, price: float, fee_pct: Optional[float]
+) -> float:
+    """``units`` taken off ``record`` at ``price`` times what ``ref_after_wire``
+    exceeds ``price`` by, 0.0 where it does not exceed it."""
+    rate = ref_after_wire(record, fee_pct)
+    if rate > price:
+        return units * (rate - price)
+    return 0.0
 
 
 WIRE_CREDIT_DETAIL_KEY = "wire_credits"
@@ -2731,6 +2843,87 @@ def tranche_sale_usd(record: dict) -> float:
     return (as_finite_float(record.get("usd", 0.0)) or 0.0) - tranche_wire_usd(record)
 
 
+def held_wire_usd(record: dict) -> float:
+    """``tranche_wire_usd`` of ``record`` held to its ``usd``, never below zero."""
+    usd = as_finite_float(record.get("usd", 0.0)) or 0.0
+    return max(0.0, min(tranche_wire_usd(record), usd))
+
+
+def scale_wire_credits(record: dict, kept: float) -> None:
+    """Multiply each ``WIRE_CREDIT_DETAIL_KEY`` entry's ``usd`` and every
+    ``WIRE_CREDIT_ROLLED_KEY`` total of ``record`` by ``kept``."""
+    for entry in record.get(WIRE_CREDIT_DETAIL_KEY) or []:
+        if isinstance(entry, dict):
+            entry["usd"] = (as_finite_float(entry.get("usd", 0.0)) or 0.0) * kept
+    rolled = record.get(WIRE_CREDIT_ROLLED_KEY)
+    if isinstance(rolled, dict):
+        rolled["total_usd"] = (
+            as_finite_float(rolled.get("total_usd", 0.0)) or 0.0
+        ) * kept
+        by_source = rolled.get("by_source")
+        if isinstance(by_source, dict):
+            for source in list(by_source):
+                by_source[source] = (as_finite_float(by_source[source]) or 0.0) * kept
+
+
+def merge_wire_credit_records(survivor: dict, absorbed: dict) -> None:
+    """Add ``absorbed``'s ``WIRE_CREDIT_DETAIL_KEY`` entries and
+    ``WIRE_CREDIT_ROLLED_KEY`` totals to ``survivor``'s."""
+    entries = [
+        e for e in absorbed.get(WIRE_CREDIT_DETAIL_KEY) or [] if isinstance(e, dict)
+    ]
+    if entries:
+        survivor.setdefault(WIRE_CREDIT_DETAIL_KEY, []).extend(dict(e) for e in entries)
+    rolled = absorbed.get(WIRE_CREDIT_ROLLED_KEY)
+    if not isinstance(rolled, dict):
+        return
+    held = survivor.setdefault(
+        WIRE_CREDIT_ROLLED_KEY,
+        {
+            "count": 0,
+            "total_usd": 0.0,
+            "by_source": {},
+            "first_ts": None,
+            "last_ts": None,
+        },
+    )
+    held["count"] = int(held.get("count", 0) or 0) + int(rolled.get("count", 0) or 0)
+    held["total_usd"] = (as_finite_float(held.get("total_usd", 0.0)) or 0.0) + (
+        as_finite_float(rolled.get("total_usd", 0.0)) or 0.0
+    )
+    by_source = held.setdefault("by_source", {})
+    for source, usd in (rolled.get("by_source") or {}).items():
+        by_source[source] = (as_finite_float(by_source.get(source, 0.0)) or 0.0) + (
+            as_finite_float(usd) or 0.0
+        )
+    stamps = [
+        s for s in (held.get("first_ts"), rolled.get("first_ts")) if s is not None
+    ]
+    held["first_ts"] = min(stamps) if stamps else None
+    stamps = [s for s in (held.get("last_ts"), rolled.get("last_ts")) if s is not None]
+    held["last_ts"] = max(stamps) if stamps else None
+
+
+def wire_credit_entries(record: dict) -> list:
+    """``record``'s ``WIRE_CREDIT_DETAIL_KEY`` entries, then one entry per
+    ``by_source`` total of its ``WIRE_CREDIT_ROLLED_KEY``, as ledger entries."""
+    entries = [
+        dict(e) for e in record.get(WIRE_CREDIT_DETAIL_KEY) or [] if isinstance(e, dict)
+    ]
+    rolled = record.get(WIRE_CREDIT_ROLLED_KEY)
+    if isinstance(rolled, dict):
+        for source, usd in (rolled.get("by_source") or {}).items():
+            entries.append(
+                {
+                    "ts": rolled.get("last_ts"),
+                    "source": source,
+                    "usd": as_finite_float(usd) or 0.0,
+                    "ref": WIRE_CREDIT_ROLLED_KEY,
+                }
+            )
+    return entries
+
+
 def unproduced_fold_amount(record: dict, fee_pct: Optional[float]) -> str:
     """Why no sale produced this fold tranche's amount, or "" where one could,
     read as ``tranche_sale_usd`` against ``units`` times ``tranche_sale_rate``
@@ -2764,24 +2957,28 @@ def unproduced_fold_amount(record: dict, fee_pct: Optional[float]) -> str:
     fee = as_finite_float(fee_pct)
     if fee is None or fee < 0.0:
         return ""
-    if share < produced * (1.0 - fee / 100.0) * (1.0 - MERGE_THRESHOLD):
+    wired = 1.0 - recorded_wire_share_pct(record) / 100.0
+    if share < produced * (1.0 - fee / 100.0) * wired * (1.0 - MERGE_THRESHOLD):
         return FEWER_DOLLARS_THAN_PRODUCED
     return ""
 
 
 def tranche_implied_fee_pct(record: dict) -> Optional[float]:
     """The fee per cent a fold tranche's own figures imply, ``tranche_sale_usd``
-    against ``units`` times ``tranche_sale_rate``.
+    against ``units`` times ``tranche_sale_rate`` less ``recorded_wire_share_pct``.
 
     None answers a record whose units or rate are not a positive finite number,
-    and ``unaligned_fold_tranches`` reads it to find the records whose figure no
-    other standing record shares.
+    or whose wire took the whole sale, and ``unaligned_fold_tranches`` reads it to
+    find the records whose figure no other standing record shares.
     """
     units = as_finite_float(record.get("units", 0.0))
     rate = as_finite_float(tranche_sale_rate(record))
     if units is None or rate is None or units <= 0.0 or rate <= 0.0:
         return None
-    return 100.0 * (1.0 - tranche_sale_usd(record) / (units * rate))
+    kept = 1.0 - recorded_wire_share_pct(record) / 100.0
+    if kept <= 0.0:
+        return None
+    return 100.0 * (1.0 - tranche_sale_usd(record) / (units * rate * kept))
 
 
 def _fee_reading_shared(record: dict, queue: list) -> bool:
@@ -2981,6 +3178,28 @@ def combined_event_reference(survivor: dict, absorbed: dict) -> dict:
     return out
 
 
+def combined_wire_share(survivor: dict, absorbed: dict) -> dict:
+    """``WIRE_SHARE_KEY`` for two combining records, each ``recorded_wire_share_pct``
+    weighted by its ``units`` times ``tranche_sale_rate``; empty where neither
+    carries one."""
+    if WIRE_SHARE_KEY not in survivor and WIRE_SHARE_KEY not in absorbed:
+        return {}
+    pair = (survivor, absorbed)
+    weights = [
+        (as_finite_float(one.get("units", 0.0)) or 0.0) * tranche_sale_rate(one)
+        for one in pair
+    ]
+    total = sum(weights)
+    if total <= 0.0:
+        return {WIRE_SHARE_KEY: max(recorded_wire_share_pct(one) for one in pair)}
+    return {
+        WIRE_SHARE_KEY: sum(
+            w * recorded_wire_share_pct(one) for w, one in zip(weights, pair)
+        )
+        / total
+    }
+
+
 def fold_tranche_records(
     lots: list,
     fill_price: float,
@@ -2988,11 +3207,14 @@ def fold_tranche_records(
     proceeds_usd: float,
     event_id: str,
     created_ts: float,
+    wire_share_pct: float = WIRE_ABSENT_PCT,
 ) -> tuple[list, float]:
     """One sale's fold-tranche records out of ``lots``, every amount handed out
     of that sale's own ``sold_units`` and ``proceeds_usd``, plus the units no
-    lot covered; each record carries ``fill_price`` as ``ref``, ``event_id``
-    and the sale's two amounts."""
+    lot covered; each record carries ``fill_price`` as ``ref``, ``event_id``,
+    the sale's two amounts, and ``WIRE_SHARE_KEY`` where ``wire_share_pct`` is
+    above ``WIRE_ABSENT_PCT``."""
+    share = clamped_wire_pct(wire_share_pct)
     units_budget = as_finite_float(sold_units)
     usd_budget = as_finite_float(proceeds_usd)
     price = as_finite_float(fill_price)
@@ -3016,18 +3238,19 @@ def fold_tranche_records(
         take = min(lot_units, remaining)
         if take <= 1e-12:
             continue
-        records.append(
-            {
-                "usd": (take / units_budget) * usd_budget,
-                "units": take,
-                "ref": price,
-                "initial_buy_price": basis,
-                "created_ts": created_ts,
-                EVENT_ID_KEY: event_id,
-                EVENT_UNITS_KEY: units_budget,
-                EVENT_USD_KEY: usd_budget,
-            }
-        )
+        record = {
+            "usd": (take / units_budget) * usd_budget,
+            "units": take,
+            "ref": price,
+            "initial_buy_price": basis,
+            "created_ts": created_ts,
+            EVENT_ID_KEY: event_id,
+            EVENT_UNITS_KEY: units_budget,
+            EVENT_USD_KEY: usd_budget,
+        }
+        if share > WIRE_ABSENT_PCT:
+            record[WIRE_SHARE_KEY] = share
+        records.append(record)
         lot["units"] = lot_units - take
         remaining -= take
         if lot["units"] <= 1e-12:
@@ -3042,7 +3265,8 @@ def merge_fold_tranches_within_distance(tranches: list) -> tuple[list, int, floa
 
     A survivor keeps the lower ``ref``, sums ``usd`` and ``units``, takes the
     units-weighted ``initial_buy_price`` and carries
-    ``combined_event_reference``."""
+    ``combined_event_reference``, ``combined_wire_share`` and both records'
+    wire credits through ``merge_wire_credit_records``."""
     from ..stack_math import within_merge_distance
 
     kept: list = []
@@ -3077,6 +3301,7 @@ def merge_fold_tranches_within_distance(tranches: list) -> tuple[list, int, floa
         target_usd = as_finite_float(target.get("usd", 0.0)) or 0.0
         target_basis = as_finite_float(target.get("initial_buy_price", 0.0)) or 0.0
         target_ref = as_finite_float(target.get("ref", 0.0)) or 0.0
+        wire_share = combined_wire_share(target, record)
         total_units = target_units + units
         target["usd"] = target_usd + usd
         target["units"] = total_units
@@ -3085,6 +3310,8 @@ def merge_fold_tranches_within_distance(tranches: list) -> tuple[list, int, floa
             target_units * target_basis + units * basis
         ) / total_units
         target.update(combined_event_reference(target, record))
+        target.update(wire_share)
+        merge_wire_credit_records(target, record)
         merged_n += 1
         merged_usd += usd
     return kept, merged_n, merged_usd
@@ -3146,14 +3373,18 @@ def plan_fold_consumption(
 
 
 def settle_fold_plan(tranches: list, plan: list) -> tuple[list, int, int]:
-    """Take from each source tranche in ``plan`` what it says, and answer the
-    tranches left, how many records left ``tranches``, and how many were
-    drained to nothing."""
+    """Take from each source tranche in ``plan`` what it says, the same share of
+    its wire credits through ``scale_wire_credits``, and answer the tranches
+    left, how many records left ``tranches``, and how many were drained to
+    nothing."""
     pre_remove = len(tranches)
     spent: set[int] = set()
     for src, took_usd, took_units in plan:
-        src["usd"] = max(0.0, float(src.get("usd", 0) or 0) - took_usd)
+        held_usd = float(src.get("usd", 0) or 0)
+        src["usd"] = max(0.0, held_usd - took_usd)
         src["units"] = max(0.0, float(src.get("units", 0) or 0) - took_units)
+        if held_usd > 0.0:
+            scale_wire_credits(src, src["usd"] / held_usd)
         if src["usd"] <= 1e-9 or src["units"] <= 1e-12:
             spent.add(id(src))
         else:

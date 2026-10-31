@@ -60,6 +60,7 @@ class StateSerializerMixin:
     # is created.
     _anchor_target_balance: float
     _bus: Any
+    close_spent_tranches: Callable[..., float]
     _compact_wire_credits: Callable[..., int]
     _current_holdings: float
     _dist_sets: list[dict]
@@ -74,6 +75,7 @@ class StateSerializerMixin:
     _last_trade_price: float
     _last_trade_side: str | None
     _main_lots: list[dict]
+    _park_wire_credits: Callable[..., float]
     _quote_to_usd: float
     _scrum_target_mode: str
     _scrum_target_side: str | None
@@ -107,9 +109,6 @@ class StateSerializerMixin:
             "quote_to_usd": float(self._quote_to_usd or 1.0),
             "highest_venue_fee_pct": float(
                 as_finite_float(getattr(self, "highest_venue_fee_pct", 0.0)) or 0.0
-            ),
-            "pending_stack_buy_usd": float(
-                getattr(self, "_pending_stack_buy_usd", 0.0) or 0.0
             ),
             # Written verbatim; _check_detonation_trigger retires the latch.
             "detonation_last_signal_bullish": bool(
@@ -336,12 +335,6 @@ class StateSerializerMixin:
             if _venue_fee_saved is not None and 0.0 < _venue_fee_saved < 100.0
             else 0.0
         )
-        try:
-            self._pending_stack_buy_usd = float(
-                data.get("pending_stack_buy_usd", 0.0) or 0.0
-            )
-        except (TypeError, ValueError):
-            self._pending_stack_buy_usd = 0.0
         self._hyst_armed_fold_side = bool(data.get("hyst_armed_fold_side", False))
         self._hyst_armed_scrum_side = bool(data.get("hyst_armed_scrum_side", False))
         try:
@@ -547,6 +540,24 @@ class StateSerializerMixin:
                 self._target_grow_last_side = None
         except Exception:
             self._target_grow_last_side = None
+
+        # A saved pending_stack_buy_usd joins _pending_wire_credits.
+        _stack_usd = as_finite_float(data.get("pending_stack_buy_usd"))
+        if _stack_usd is not None and _stack_usd > 0.0:
+            self._park_wire_credits(
+                _stack_usd,
+                [
+                    {
+                        "ts": None,
+                        "source": "pending_stack_buy_usd",
+                        "usd": _stack_usd,
+                        "ref": "restore",
+                    }
+                ],
+            )
+        # Ordered before the landing, so a closed tranche's credit lands on the
+        # tranches that stay.
+        self.close_spent_tranches()
 
         # _land_pending_wire_credits moves _pending_wire_credits into the
         # fold tranches restored above.

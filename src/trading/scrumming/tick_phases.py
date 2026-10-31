@@ -9,7 +9,6 @@ import time
 from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
-from ...core.event_bus import LINE_KIND_WIRE_STACK
 from ...exchange.base import OrderSide, OrderType
 from ..container.config import (
     CEILING_MULTIPLE_MAX,
@@ -24,7 +23,11 @@ from ..container.config import (
     target_growth_pct,
 )
 from ..indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
-from ..otd_math import DistanceSettingUnreadable
+from ..otd_math import (
+    DistanceSettings,
+    DistanceSettingUnreadable,
+    fold_rebuy_factor_from_pct,
+)
 from ..stack_math import rung_is_pending
 from ..target_bands import at_target_dust_band
 from ..ta_engine import (
@@ -53,8 +56,11 @@ from .sizing import (
     fold_tranche_records,
     opposing_event_id,
     priced_usd,
+    routed_share_pct,
     scrum_units,
     target_delta_usd,
+    tranche_distance_pct,
+    tranche_rebuy_price,
     units_at_scrum,
 )
 from .snapshots import yes_no as _yes_no
@@ -130,7 +136,6 @@ class TickPhaseMixin:
     _main_lots: list[dict]
     _manual_fire_pending: bool
     _open_stack_from_scrum: Callable[..., Any]
-    _pending_stack_buy_usd: float
     _pending_wire_credits: float
     _phantom_gate_logged: bool
     _phantom_mgr: Any
@@ -537,45 +542,6 @@ class TickPhaseMixin:
                 message=f"MANUAL FIRE: exception during rebalance: {exc}",
             )
             logger.exception("Manual fire rebalance failed")
-
-    async def _tick_wire_stack_fire(self, ticker: Any, _stack_pending: float) -> None:
-        """Acquire a pending wire-stack allocation by aggressive rebalance."""
-        self._bus.emit(
-            "bot.log",
-            bot_id=self.bot_id,
-            message=(
-                f"WIRE STACK FIRE: acquiring ${_stack_pending:.2f} of "
-                f"{self.config.target_asset} via aggressive rebalance "
-                f"to new target ${self._target_balance:.2f}."
-            ),
-            kind=LINE_KIND_WIRE_STACK,
-        )
-        try:
-            self._emit_trade_notification(
-                "WIRE_STACK", "SENT", f"${_stack_pending:.2f} acquisition"
-            )
-        except Exception as _sup:
-            logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
-        self._pending_stack_buy_usd = 0.0
-        _verified_units, _refuse_msg = await self._verify_buy_safe_or_refuse(
-            path="wire_stack"
-        )
-        if _refuse_msg:
-            self._bus.emit("bot.log", bot_id=self.bot_id, message=_refuse_msg)
-            logger.warning("Bot %s %s", self.bot_id, _refuse_msg)
-            return
-        try:
-            await self._execute_manual_rebalance(ticker, caller_intent="wire_stack")
-        except Exception as exc:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"WIRE STACK FIRE: rebalance raised " f"{type(exc).__name__}: {exc}"
-                ),
-                kind=LINE_KIND_WIRE_STACK,
-            )
-            logger.exception("Wire stack rebalance failed")
 
     def _tick_smart_cartridge_pct(self, _cartridge_pct: float) -> float:
         """Return the cartridge threshold percent, BB-calibrated when enabled."""
@@ -1608,6 +1574,7 @@ class TickPhaseMixin:
         _scrum_routed_total = self._route_scrum_proceeds_via_wires(
             scrum_usd=scrum_usd, sell_fill=sell_fill, label="scrum"
         )
+        _scrum_wire_share = routed_share_pct(scrum_usd, _scrum_routed_total)
 
         scrum_usd = scrum_usd - _scrum_routed_total
 
@@ -1621,6 +1588,7 @@ class TickPhaseMixin:
             scrum_usd,
             opposing_event_id("SCRUM", _scrum_event_ts),
             _scrum_event_ts,
+            _scrum_wire_share,
         )
         self._fold_tranches.extend(_scrum_records)
         self._tranches_created_lifetime += len(_scrum_records)
@@ -1737,15 +1705,16 @@ class TickPhaseMixin:
         fold_ok_midline: bool,
         _bb_below_lower_dt: bool,
         _fold_blockers: list,
-        _otd_pct_for_gate: float,
-        _otd_factor: float,
+        distance: DistanceSettings,
+        band: Any,
     ) -> None:
-        """Emit the fold-queue diagnostics for this tick's gate outcome."""
+        """Emit the fold-queue diagnostics for this tick's gate outcome, each
+        tranche read at ``distance`` and ``band`` through ``tranche_distance_pct``."""
         try:
             self._fold_diag_tick += 1
             if self._fold_tranches:
                 _per_tranche_eligible = len(
-                    self._fold_eligible_tranches(ticker.last, _otd_factor)
+                    self._fold_eligible_tranches(ticker.last, distance, band)
                 )
                 _patent_only_eligible = sum(
                     1
@@ -1816,11 +1785,12 @@ class TickPhaseMixin:
                     )
 
                 if _per_tranche_eligible == 0 and self._fold_diag_tick % 500 == 0:
-                    _min_ref = min(
-                        float(_t.get("ref", 0)) for _t in self._fold_tranches
+                    _lowest = min(
+                        self._fold_tranches, key=lambda _t: float(_t.get("ref", 0))
                     )
-                    _otd_diag = _otd_pct_for_gate
-                    _activation = _min_ref * _otd_factor
+                    _min_ref = float(_lowest.get("ref", 0))
+                    _otd_diag = tranche_distance_pct(_lowest, distance, band)
+                    _activation = tranche_rebuy_price(_lowest, distance, band)
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -1850,10 +1820,13 @@ class TickPhaseMixin:
         ticker: Any,
         summary: Any,
         delta: float,
-        _otd_factor: float,
+        distance: DistanceSettings,
+        band: Any,
         _fold_chain_result: Any,
     ) -> bool:
-        """Rebuy the eligible tranches; True means the tick must stop."""
+        """Rebuy the tranches ``_fold_eligible_tranches`` names at ``distance`` and
+        ``band``; True means the tick must stop."""
+        _otd_factor = fold_rebuy_factor_from_pct(distance.distance_at_band(band))
         try:
             self._emit_trade_fire_snapshot(
                 "fold",
@@ -1870,7 +1843,7 @@ class TickPhaseMixin:
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
         self._drop_malformed_fold_tranches()
-        _eligible = self._fold_eligible_tranches(ticker.last, _otd_factor)
+        _eligible = self._fold_eligible_tranches(ticker.last, distance, band)
         try:
             self._bus.emit(
                 "bot.log",
@@ -2333,7 +2306,7 @@ class TickPhaseMixin:
             f"part-consumed {partial_count}, out of "
             f"{_pre_remove} queued "
             f"(others held by the OTD price gate: needs "
-            f"price <= ref x {otd_factor:.4f}"
+            f"price <= ref x {otd_factor:.4f}, less each tranche's wire share"
             + (
                 f"; {excluded} more were price-eligible "
                 f"but skipped by the per-cycle cap"

@@ -49,7 +49,11 @@ from ..exchange.base import MarketRules
 from ..exchange.market_rules_store import recorded_rules
 from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext, effective_gate_flags
-from ..trading.otd_math import DEFAULT_TRADING_FEE_PCT, fold_rebuy_factor
+from ..trading.otd_math import (
+    BAND_TRAVEL_OFF_PCT,
+    DEFAULT_TRADING_FEE_PCT,
+    DistanceSettings,
+)
 from ..trading.scrumming.sizing import (
     BELOW_ONE_UNIT,
     BELOW_POSITION_MINIMUM,
@@ -1371,7 +1375,7 @@ def apply_fold(
     wires: Any = None,
 ) -> Optional[SimTrade]:
     """Rebuy the eligible tranches as ``_tick_execute_fold`` does: the tranches
-    ``eligible_fold_tranches`` names under ``fold_rebuy_factor``, sorted highest
+    ``eligible_fold_tranches`` names under the bot's ``DistanceSettings``, sorted highest
     ``initial_buy_price`` first, planned under ``cycle_growth_cap_usd`` by
     ``plan_fold_consumption``, spent as ``fold_spend_usd`` under ``fold_taper``,
     booked as ``fold_units`` at ``price`` under ``rule``, and settled by
@@ -1418,8 +1422,10 @@ def apply_fold(
             on_refusal(held)
         return None
     fee_pct = bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT
-    factor = fold_rebuy_factor(bot.scrumming_interval_pct, fee_pct)
-    eligible = eligible_fold_tranches(position.fold_tranches, float(price), factor)
+    distance = DistanceSettings(
+        bot.scrumming_interval_pct, fee_pct, BAND_TRAVEL_OFF_PCT
+    )
+    eligible = eligible_fold_tranches(position.fold_tranches, float(price), distance)
     if not eligible:
         return None
     ordered = sorted(

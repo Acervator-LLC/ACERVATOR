@@ -57,7 +57,12 @@ from .container.config import (
     ceiling_multiple,
     target_growth_pct,
 )
-from .otd_math import DistanceSettingUnreadable, opposing_sale_price
+from .otd_math import (
+    WIRE_ABSENT_PCT,
+    DistanceSettings,
+    DistanceSettingUnreadable,
+    opposing_sale_price,
+)
 from .stack_math import rung_floor_ref
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
@@ -110,13 +115,18 @@ from .scrumming.sizing import (
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
+    discharge_gain_usd,
     fold_size_taper,
     position_ceiling,
     priced_usd,
+    rate_after_wire,
     ratio_to_ceiling,
     scrumming_interval_usd,
     target_delta_pct,
     target_delta_usd,
+    tranche_rebuy_price,
+    tranche_sale_usd,
+    tranche_wire_share_pct,
 )
 
 logger = logging.getLogger("acervator.scrumming")
@@ -294,57 +304,6 @@ def _hunger_skew(idle_candles: int, gain_per_candle: object, skew_max: object) -
     if gain is None or ceiling is None or gain <= 0.0 or ceiling <= 0.0:
         return 0.0
     return min(ceiling, idle_candles * gain)
-
-
-_WIRE_CREDIT_CAP = 20
-"""Per-tranche cap on wire-credit DETAIL entries.
-
-Everything older is folded into ``wire_credits_rolled``, which keeps the
-totals exactly. See ``ScrummingBot._add_wire_credits`` for the measurement
-that motivated this.
-"""
-
-
-def _roll_wire_credit_overflow(tranche: dict) -> int:
-    """Trim ``wire_credits`` to the cap, folding excess into ``wire_credits_rolled``.
-
-    Returns:
-      How many detail entries were rolled up.
-
-    """
-    wc = tranche.get("wire_credits")
-    if not isinstance(wc, list) or len(wc) <= _WIRE_CREDIT_CAP:
-        return 0
-    overflow = wc[:-_WIRE_CREDIT_CAP]
-    del wc[:-_WIRE_CREDIT_CAP]
-    rolled = tranche.setdefault(
-        "wire_credits_rolled",
-        {
-            "count": 0,
-            "total_usd": 0.0,
-            "by_source": {},
-            "first_ts": None,
-            "last_ts": None,
-        },
-    )
-    by_source = rolled.setdefault("by_source", {})
-    for e in overflow:
-        if not isinstance(e, dict):
-            continue
-        try:
-            usd = float(e.get("usd", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            usd = 0.0
-        src = str(e.get("source", "") or "unknown")
-        rolled["count"] = int(rolled.get("count", 0)) + 1
-        rolled["total_usd"] = round(float(rolled.get("total_usd", 0.0) or 0.0) + usd, 8)
-        by_source[src] = round(float(by_source.get(src, 0.0) or 0.0) + usd, 8)
-        ts = e.get("ts")
-        if ts is not None:
-            if rolled.get("first_ts") is None:
-                rolled["first_ts"] = ts
-            rolled["last_ts"] = ts
-    return len(overflow)
 
 
 _USD_STABLE_QUOTES = frozenset(
@@ -622,8 +581,6 @@ class ScrummingBot(
 
         self._pending_wire_credits: float = 0.0
         self._pending_wire_ledger: list[dict] = []
-
-        self._pending_stack_buy_usd: float = 0.0
 
         self._target_grow_last_side: Optional[str] = None
 
@@ -1091,7 +1048,13 @@ class ScrummingBot(
             )
         return _growth_applied
 
-    def _preview_fold_growth(self, units: float, price: float) -> float:
+    def _preview_fold_growth(
+        self,
+        units: float,
+        price: float,
+        distance: Optional[DistanceSettings] = None,
+        fee_pct: Optional[float] = None,
+    ) -> float:
         """What ``_apply_fold_target_growth`` would add for ``units`` at ``price``,
         moving no money.
 
@@ -1103,6 +1066,9 @@ class ScrummingBot(
         Args:
           units: base units the prospective buy would acquire.
           price: quote price used in place of the unknown fill price.
+          distance: where given, a tranche whose ``tranche_rebuy_price`` sits
+            under ``price`` takes none of ``units``.
+          fee_pct: the fee ``discharge_gain_usd`` reads each wire share at.
 
         """
         if not self.config.profit_folding_active:
@@ -1133,11 +1099,12 @@ class ScrummingBot(
             if not math.isfinite(_t_units):
                 _unreadable_units += 1
                 continue
+            if distance is not None and price > tranche_rebuy_price(t, distance):
+                continue
             take = min(_t_units, _remaining)
             if take <= 1e-12:
                 continue
-            if _ref > price:
-                _accum += take * (_ref - price)
+            _accum += discharge_gain_usd(t, take, price, fee_pct)
             _remaining -= take
         self._fold_preview_unreadable_units = _unreadable_units
         _quote = float(self._quote_to_usd or 1.0)
@@ -1784,13 +1751,19 @@ class ScrummingBot(
             }
 
         tranche = self._fold_tranches[tranche_index]
-        cost = float(tranche.get("usd", 0) or 0)
+        cost = tranche_sale_usd(tranche)
         ibp = float(tranche.get("initial_buy_price", tranche.get("ref", 0)) or 0)
         if cost <= 0:
             return {
                 "applied": False,
-                "reason": f"tranche #{tranche_index+1} has zero USD",
+                "reason": f"tranche #{tranche_index+1} has zero USD of its own sale",
             }
+        try:
+            _wire_share = tranche_wire_share_pct(
+                tranche, self.opposing_distance_settings().fee_pct
+            )
+        except DistanceSettingUnreadable:
+            _wire_share = WIRE_ABSENT_PCT
 
         try:
             ticker = await self._get_ticker(self.config.symbol)
@@ -1842,6 +1815,7 @@ class ScrummingBot(
                 "ibp": float(ibp),
                 "ref": float(tranche.get("ref", 0.0) or 0.0),
                 "tranche_units": float(tranche.get("units", 0.0) or 0.0),
+                "wire_share_pct": float(_wire_share),
                 EVENT_ID_KEY: str(tranche.get(EVENT_ID_KEY, "") or ""),
             },
             sources=[tranche],
@@ -1877,19 +1851,24 @@ class ScrummingBot(
         ref: float,
         tranche_units: float,
         sources: Optional[list] = None,
+        wire_share_pct: float = WIRE_ABSENT_PCT,
         **fingerprint: Any,
     ) -> None:
         """Book one settled piece of a manual tranche fire: a lot at ``ibp``, the
-        tranche settled by the share of ``asked`` filled, and the growth.
+        tranche settled by the share of ``asked`` filled, and the growth at
+        ``rate_after_wire`` of ``ref`` and ``wire_share_pct``.
 
         ``_planned_fold_sources`` finds the tranche again through ``sources`` or the
-        ``fingerprint`` it carried when the order went out.
+        ``fingerprint`` it carried when the order went out. A tranche that ends
+        returns its wire credit through ``_return_wire_credits_to_pool``.
         """
         rebought_units = float(units)
         _share_filled = min(1.0, rebought_units / asked) if asked > 0 else 1.0
         _cost = float(cost) * _share_filled
-        _mf_ref = float(ref)
-        _mf_profit = _cost * (1.0 - float(fill_price) / _mf_ref) if _mf_ref > 0 else 0.0
+        _mf_rate = rate_after_wire(ref, wire_share_pct)
+        _mf_profit = (
+            _cost * (1.0 - float(fill_price) / _mf_rate) if _mf_rate > 0 else 0.0
+        )
         try:
             _mf_growth = self._apply_fold_target_growth(
                 _mf_profit, source="MANUAL_TRANCHE_FOLD"
@@ -1922,6 +1901,8 @@ class ScrummingBot(
                 self.bot_id,
             )
         elif _share_filled >= 1.0:
+            tranche["usd"] = max(0.0, float(tranche.get("usd", 0.0) or 0.0) - _cost)
+            self._return_wire_credits_to_pool(tranche)
             self._fold_tranches = [t for t in self._fold_tranches if t is not tranche]
             _removed_ok = True
         else:
@@ -1932,6 +1913,7 @@ class ScrummingBot(
                 - float(tranche_units) * _share_filled,
             )
             if tranche["usd"] <= 1e-9 or tranche["units"] <= 1e-12:
+                self._return_wire_credits_to_pool(tranche)
                 self._fold_tranches = [
                     t for t in self._fold_tranches if t is not tranche
                 ]
@@ -3252,14 +3234,6 @@ class ScrummingBot(
             return
 
         try:
-            _stack_pending = float(getattr(self, "_pending_stack_buy_usd", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            _stack_pending = 0.0
-        if _stack_pending > 0:
-            await self._tick_wire_stack_fire(ticker, _stack_pending)
-            return
-
-        try:
             _cartridge_pct = float(
                 getattr(self.config, "max_cartridge_size_pct", 10.0) or 0.0
             )
@@ -4489,15 +4463,6 @@ class ScrummingBot(
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
 
-        from .otd_math import fold_rebuy_factor_from_pct
-
-        _otd_pct_for_gate = _distance.distance_pct(
-            float(getattr(bb_result, "upper", 0.0) or 0.0),
-            float(getattr(bb_result, "lower", 0.0) or 0.0),
-            float(getattr(bb_result, "middle", 0.0) or 0.0),
-        )
-        _otd_factor = fold_rebuy_factor_from_pct(_otd_pct_for_gate)
-
         self._tick_fold_diagnostics(
             ticker,
             bb_pos,
@@ -4505,8 +4470,8 @@ class ScrummingBot(
             fold_ok_midline,
             _bb_below_lower_dt,
             _fold_blockers,
-            _otd_pct_for_gate,
-            _otd_factor,
+            _distance,
+            bb_result,
         )
 
         # Both chains have been evaluated and both banks written, so one line
@@ -4518,7 +4483,7 @@ class ScrummingBot(
             self._emit_gate_decision_at_quiet_tick(GATE_CHAIN_EXIT)
         if _fold_chain_result.should_fire:
             if await self._tick_execute_fold(
-                ticker, summary, delta, _otd_factor, _fold_chain_result
+                ticker, summary, delta, _distance, bb_result, _fold_chain_result
             ):
                 return
 
