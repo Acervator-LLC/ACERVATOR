@@ -936,6 +936,18 @@ The channel on a redrawn chart sits on bars that open seven hours later than
 the bars that table counts. The builder opens every bar at 00:00 UTC, the
 boundary `week_start_ms` also uses, on any machine that runs it.
 
+### The evidence slides
+
+The same run writes the evidence slide show,
+[Prototyping-Trading-Evidence.pptx](../prototyping-evidence/Prototyping-Trading-Evidence.pptx),
+after the charts and before the PDF. Every number on a slide comes from the
+newest export, and every chart on a slide is one this run drew.
+
+```python
+evidence = read_evidence(args.evidence_dir)
+deck = write_evidence_deck(args.deck, args.figures_dir, evidence)
+```
+
 ## The 38 per-asset charts
 
 One chart per charted base, in fill-count order. The table gives what each
