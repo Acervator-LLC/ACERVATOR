@@ -251,28 +251,61 @@ Which gate each override covers is on the gate table in
 
 #### The first buy reads three agreeing indicators
 
-**Current reading.** The entry above places the first buy in the lower extent of
-the band. The first buy also reads the vote, at the twelve published weights.
-Before this change one bearish indicator was enough. Now the bearish vote must
-top what two indicators reach on that same vote, which is 0.1966 with all twelve
-voting. A bot whose own twelve weights are all zero still buys on the direction
-alone. Every new bot starts that way.
+The first buy votes with the bot's own weights, the ones its later trades read.
+Price must sit in the lowest 30% of the band, past the Detect distance or within
+the Fire Threshold of the lower band. The bot's vote must then be bearish and top
+what two indicators reach on that same vote.
+
+A new bot holds twelve zeros, so it has no vote. It makes no first buy until you
+press Save on the TA Indicators page, and its line in the log says so.
+
+A position worth under 1% of target, with no fold tranche queued, holds its Max
+Cartridge Size. A first buy therefore reaches this vote at every size. A bot that
+holds a position keeps its cartridge. An Extractor arrival does not count toward
+that 1%, because its target rises by the same amount.
+
+The wallet must hold the whole buy. The check leaves out this bot's parked wire
+credits and what the other bots on the venue have not deployed.
 
 `src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_initial_entry`
 
 ```python
-if not three_agree(
-    summary.consensus_confidence,
-    summary.signals,
-    self._voting_engine.indicator_weights,
-):
+summary = self._voting_engine.compute_all(
+    parsed, self.config.ta_timeframe, symbol=self.config.symbol
+)
 ```
 
-Driven on a stand-in exchange, against the code before this change taken from
-git. One MACD reading at 0.1 gave a bearish vote of 0.0103. It bought before and
-it waits now. Two agreeing indicators read 0.1966 and wait now. Three read 0.2821
-and buy on both. A bot with every weight at zero bought on the one and on the
-two, before and after.
+```python
+if not three_agree(summary.consensus_confidence, summary.signals):
+```
+
+The test the cartridge and the first buy share:
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_owed`
+
+```python
+own_usd = current_value - self._contained_usd(current_value)
+return (
+    not self._fold_tranches
+    and own_usd < empty_position_usd(self._target_balance)
+    and current_value < self._target_balance
+)
+```
+
+What the other bots leave free:
+
+`src/trading/container/aggregation.py` — `FleetAggregationMixin._undeployed_pool_units`
+
+```python
+return max((target_usd - held_usd) / rate, earmarked)
+```
+
+Paper and the Simulator make no first buy. Each opens a bot at its target.
+
+```
+src/paper/paper_run.py, in opening_balance
+src/simulator/back_test.py, in opening_position
+```
 
 ## 2 - The Phantom Bot
 
@@ -2259,10 +2292,10 @@ DEFAULT_WEIGHTS = {
 }
 ```
 
-Since 2026-10-28 a new bot starts with all twelve at 0.0, written by
-`src/trading/ta_engine.py, in new_bot_weights`, and votes neutral until Save on
-the Settings window hands it the TA Indicators figures. The published figures
-above are unchanged, and a saved bot votes as it did.
+A new bot starts with all twelve at 0.0, written by
+`src/trading/ta_engine.py, in new_bot_weights`. It votes neutral and makes no
+first buy until Save on the Settings window hands it the TA Indicators figures.
+The published figures above are the start figures of those sliders.
 
 **The build this specifies.** A tier is a second map beside the weights, and the
 veto is one test in the aggregator. The signal record grows one field, and it
@@ -2302,14 +2335,15 @@ Issue #433 carries the build.
 not built. What a trade the vote decides needs today is three agreeing
 indicators: the vote must top what the two heaviest voters reach at full
 confidence. That holds at every floor, where a landing strip sets the side, and
-on a bot's first buy. A bot with every weight at zero is outside the rule and
-trades as it did.
+on a bot's first buy. A bot with every weight at zero is outside the rule on a
+later trade. It makes no first buy, because
+`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_initial_entry`
+refuses it before any vote.
 
 `src/trading/ta_engine.py` — `three_agree`
 
 ```python
-held = [sig.weight for sig in signals] if weights is None else list(weights)
-if not any(weight > 0.0 for weight in held):
+if not any(sig.weight > 0.0 for sig in signals):
     return True
 return confidence > two_indicator_ceiling(signals)
 ```

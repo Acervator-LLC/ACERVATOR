@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
 from ..exchange.base import OrderSide, OrderType
-from .target_bands import at_target_dust_band
+from .target_bands import at_target_dust_band, empty_position_usd
 from .bot_container import (
     BotContainer,
     BotConfig,
@@ -109,6 +109,7 @@ from .scrumming.execution import SettledFillFee, venue_fee_record
 from .scrumming.shadow import REGIME_NONE, regime_of
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
+from .scrumming.tick_phases import CONTAINED_LOT_KEY
 from .scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
     _STRONG_TREND_MIN_BULL_CANDLES,
@@ -1547,6 +1548,7 @@ class ScrummingBot(
             "units": b,
             "initial_buy_price": arrival_price,
             "operator_initiated": False,
+            CONTAINED_LOT_KEY: True,
         }
 
         # ATOMIC ARRIVAL: four writes, nothing suspends between them.
@@ -3286,8 +3288,9 @@ class ScrummingBot(
             _cartridge_pct = 0.0
 
         _cartridge_pct = self._tick_smart_cartridge_pct(_cartridge_pct)
+        _first_buy_owed = self._first_buy_owed(current_value)
 
-        if _cartridge_pct > 0 and self._target_balance > 0:
+        if _cartridge_pct > 0 and self._target_balance > 0 and not _first_buy_owed:
             _cartridge_threshold = cartridge_threshold_usd(
                 self._target_balance, _cartridge_pct
             )
@@ -3376,7 +3379,7 @@ class ScrummingBot(
         if await self._tick_detonation(ticker):
             return
 
-        if current_value < self._target_balance * 0.01:
+        if _first_buy_owed or current_value < empty_position_usd(self._target_balance):
             await self._tick_initial_entry(ticker, symbol, current_value)
             return
 

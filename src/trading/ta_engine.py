@@ -47,7 +47,7 @@ from __future__ import annotations
 import logging
 import math
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import replace
 from typing import Optional
 
@@ -543,15 +543,10 @@ def two_indicator_ceiling(signals: Sequence[Signal]) -> float:
     return VotingEngine._aggregate(tally, "").consensus_confidence
 
 
-def three_agree(
-    confidence: float,
-    signals: Sequence[Signal],
-    weights: Optional[Iterable[float]] = None,
-) -> bool:
-    """True when ``confidence`` tops ``two_indicator_ceiling(signals)``, or ``weights``,
-    the ``signals`` weights by default, holds none above zero."""
-    held = [sig.weight for sig in signals] if weights is None else list(weights)
-    if not any(weight > 0.0 for weight in held):
+def three_agree(confidence: float, signals: Sequence[Signal]) -> bool:
+    """True when ``confidence`` tops ``two_indicator_ceiling(signals)``, or no
+    ``signals`` weight sits above zero."""
+    if not any(sig.weight > 0.0 for sig in signals):
         return True
     return confidence > two_indicator_ceiling(signals)
 

@@ -29,7 +29,7 @@ from ..otd_math import (
     fold_rebuy_factor_from_pct,
 )
 from ..stack_math import rung_is_pending
-from ..target_bands import at_target_dust_band
+from ..target_bands import at_target_dust_band, empty_position_usd
 from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
     VotingEngine,
@@ -73,6 +73,9 @@ from .target_ramp import (
 )
 
 logger = logging.getLogger("acervator.scrumming")
+
+#: The ``_main_lots`` key on a lot ``apply_extractor_tranche_return`` booked.
+CONTAINED_LOT_KEY = "contained_arrival"
 
 
 class TickPhaseMixin:
@@ -306,7 +309,8 @@ class TickPhaseMixin:
             int(getattr(self, "_tranches_created_lifetime", 0) or 0) == 0
             and float(getattr(self, "_tranches_counters_reset_ts", 0.0) or 0.0) <= 0.0
         )
-        if _never_scrummed and _h2 > 0:
+        _contained_lot = any(CONTAINED_LOT_KEY in lot for lot in self._main_lots)
+        if _never_scrummed and _h2 > 0 and not _contained_lot:
             _sib_units = 0.0
             _mgr = getattr(self, "_bot_manager", None)
             if _mgr is not None:
@@ -873,10 +877,51 @@ class TickPhaseMixin:
             fee=self._fill_fee_fields(fill_price),
         )
 
+    def _contained_usd(self, current_value: float) -> float:
+        """The share of ``current_value`` held in ``CONTAINED_LOT_KEY`` lots."""
+        contained = sum(
+            float(lot.get("units", 0) or 0)
+            for lot in self._main_lots
+            if CONTAINED_LOT_KEY in lot
+        )
+        held = float(self._current_holdings or 0.0)
+        if contained <= 0.0 or held <= 0.0:
+            return 0.0
+        return current_value * min(1.0, contained / held)
+
+    def _first_buy_owed(self, current_value: float) -> bool:
+        """True while ``_fold_tranches`` is empty and ``current_value``, under target,
+        sits under ``empty_position_usd`` without its ``_contained_usd``."""
+        own_usd = current_value - self._contained_usd(current_value)
+        return (
+            not self._fold_tranches
+            and own_usd < empty_position_usd(self._target_balance)
+            and current_value < self._target_balance
+        )
+
     async def _tick_initial_entry(
         self, ticker: Any, symbol: str, current_value: float
     ) -> None:
         """Decide and place the structural entry buy for an empty position."""
+        _weights = self._voting_engine.indicator_weights
+        if not any(weight > 0.0 for weight in _weights):
+            if self._refusal_is_new("entry_no_weights", ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"INITIAL ENTRY BLOCKED: TA=NEUTRAL (0%) — need BEARISH. "
+                        f"All {len(_weights)} TA Indicator weights on this bot "
+                        f"are zero, so it has no vote and makes no first buy. "
+                        f"Press Save on the TA Indicators page of Settings to "
+                        f"give it your weights."
+                    ),
+                )
+            return
+
+        _qrate = float(self._quote_to_usd or 1.0)
+        _contained = self._contained_usd(current_value)
+        _first_buy_usd = self._target_balance - _contained
         try:
             _fresh_bal = await self._get_balance(self.config.target_asset)
             _fresh_units = float(_fresh_bal.free or 0)
@@ -894,14 +939,15 @@ class TickPhaseMixin:
             )
 
         if _fresh_units is not None:
-            _qrate = float(self._quote_to_usd or 1.0)
             _attributed_units = sum(
                 float(lot.get("units", 0) or 0) for lot in self._main_lots
             )
             _fresh_units_eff = _attributed_units
-            _fresh_usd = priced_usd(_attributed_units, ticker.last, _qrate)
+            _fresh_usd = priced_usd(_attributed_units, ticker.last, _qrate) - _contained
 
-            if self._current_holdings > 0 and _fresh_units_eff == 0:
+            if _fresh_units_eff == 0 and current_value >= at_target_dust_band(
+                self._target_balance
+            ):
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
@@ -918,7 +964,8 @@ class TickPhaseMixin:
                 return
 
             _value_threshold = max(
-                self._target_balance * 0.25, max(self._target_balance * 0.01, 1.0)
+                self._target_balance * 0.25,
+                max(empty_position_usd(self._target_balance), 1.0),
             )
             if _fresh_usd >= _value_threshold:
                 self._bus.emit(
@@ -1023,22 +1070,29 @@ class TickPhaseMixin:
                         f"over-allocated capital across bots on this "
                         f"exchange. Refusing to fire until allocations "
                         f"are rebalanced. Reduce another bot's "
-                        f"target_balance OR add base-currency funds OR "
-                        f"pause a sibling bot to release its claim."
+                        f"target_balance OR add base-currency funds."
                     ),
                 )
             return
 
-        if _quote_free < self._target_balance:
+        _parked_usd = max(0.0, as_finite_float(self._pending_wire_credits) or 0.0)
+        _spendable_usd = _quote_free * _qrate - _parked_usd
+        if _spendable_usd < _first_buy_usd:
             self._underfunded_log_counter = (
                 getattr(self, "_underfunded_log_counter", 0) + 1
             )
             if self._underfunded_log_counter % 60 == 1:
                 _have_str = (
-                    f"${_quote_free:.2f} after sibling claims "
-                    f"${_sibling_claims:.2f} (raw ${_quote_free_raw:.2f})"
+                    f"${_spendable_usd:.2f} after sibling claims "
+                    f"${_sibling_claims * _qrate:.2f} "
+                    f"(raw ${_quote_free_raw * _qrate:.2f})"
                     if _sibling_claims > 0
-                    else f"${_quote_free:.2f}"
+                    else f"${_spendable_usd:.2f}"
+                )
+                _parked_str = (
+                    f", with ${_parked_usd:.2f} of wire credits held back"
+                    if _parked_usd > 0.0
+                    else ""
                 )
                 self._bus.emit(
                     "bot.log",
@@ -1046,8 +1100,8 @@ class TickPhaseMixin:
                     message=(
                         f"INITIAL ENTRY BLOCKED: insufficient "
                         f"{self.config.base_currency} — have "
-                        f"{_have_str}, need "
-                        f"${self._target_balance:.2f}. "
+                        f"{_have_str}{_parked_str}, need "
+                        f"${_first_buy_usd:.2f}. "
                         f"({self.config.target_asset} position: "
                         f"{self._current_holdings:.6f} @ "
                         f"${ticker.last:.8f} = "
@@ -1059,15 +1113,14 @@ class TickPhaseMixin:
 
         candles = await self._get_ohlcv(symbol, self.config.ta_timeframe, limit=100)
         if candles and len(candles) >= MIN_CANDLES_FOR_TA:
-            engine = VotingEngine()
             parsed = candles_from_raw(candles)
-            summary = engine.compute_all(
+            summary = self._voting_engine.compute_all(
                 parsed, self.config.ta_timeframe, symbol=self.config.symbol
             )
             self._last_summary = summary
 
             _wallet = (
-                f" [{self.config.base_currency}: ${_quote_free:.2f} · "
+                f" [{self.config.base_currency}: ${_spendable_usd:.2f} · "
                 f"{self.config.target_asset}: "
                 f"{self._current_holdings:.6f} = "
                 f"${current_value:.2f}]"
@@ -1154,24 +1207,28 @@ class TickPhaseMixin:
                 )
                 return
 
-            if not three_agree(
-                summary.consensus_confidence,
-                summary.signals,
-                self._voting_engine.indicator_weights,
-            ):
+            if not three_agree(summary.consensus_confidence, summary.signals):
+                _two_reach = two_indicator_ceiling(summary.signals)
+                _no_third = (
+                    " No vote can top that, so this bot needs a third weight "
+                    "above zero on the TA Indicators page of Settings."
+                    if _two_reach >= 1.0
+                    else ""
+                )
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
                     message=f"INITIAL ENTRY BLOCKED: TA=BEARISH at confidence "
                     f"{summary.consensus_confidence:.4f}, and two indicators "
-                    f"reach {two_indicator_ceiling(summary.signals):.4f} on this "
-                    f"vote, so the first buy waits for a third to agree. "
+                    f"reach {_two_reach:.4f} on this "
+                    f"vote, so the first buy waits for a third to agree."
+                    f"{_no_third} "
                     f"BB OK (pos={_init_bb_pos:.2f}, dist={_dist_down:.0%})."
                     f"{_wallet}",
                 )
                 return
 
-            buy_cost = self._target_balance
+            buy_cost = _first_buy_usd
             price = _init_price
             self._bus.emit(
                 "bot.log",
@@ -1192,7 +1249,7 @@ class TickPhaseMixin:
                     "bb_pos": f"{_init_bb_pos:.3f}",
                     "dist_down": f"{_dist_down:.1%}",
                     "gate_current_value": f"${current_value:.6f}",
-                    "gate_threshold": f"${self._target_balance * 0.01:.6f}",
+                    "gate_threshold": f"${empty_position_usd(self._target_balance):.6f}",
                 },
                 booker="_book_entry_fill",
                 booking={"buy_cost": float(buy_cost), "intended": float(price)},
@@ -1210,6 +1267,16 @@ class TickPhaseMixin:
                         f"still pass."
                     ),
                 )
+        elif self._refusal_is_new("entry_short_candles", ticker.last):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"INITIAL ENTRY BLOCKED: {len(candles or [])} candles on "
+                    f"{self.config.ta_timeframe}, and the vote needs "
+                    f"{MIN_CANDLES_FOR_TA}. No first buy until it can vote."
+                ),
+            )
 
     async def _book_entry_fill(
         self,
@@ -1233,7 +1300,9 @@ class TickPhaseMixin:
                 "initial_buy_price": entry_fill,
             }
         )
-        _entry_usd = priced_usd(self._current_holdings, entry_fill)
+        _entry_usd = priced_usd(
+            self._current_holdings, entry_fill, float(self._quote_to_usd or 1.0)
+        )
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -1245,6 +1314,9 @@ class TickPhaseMixin:
                 f"intended ${intended:.8f})"
             ),
         )
+        self._last_trade_side = "FOLD"
+        self._last_trade_price = entry_fill
+        self._reset_opposing_hysteresis_after_fill()
         self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="ENTRY")
         self._emit_gate_decision_at_fire(side="BUY", trade_action="ENTRY")
         self._announce_fill(

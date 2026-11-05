@@ -148,9 +148,9 @@ Each slider runs 0.00 to 2.00 and sets how far that indicator's vote counts. Sav
 | Vote | Which figures it reads |
 | --- | --- |
 | A running Scrumming bot | These sliders. `src/trading/scrumming_bot.py, in ScrummingBot.set_ta_weights` |
-| A new Scrumming bot from the Live wizard | Twelve zeros until the next Save on this window. It votes neutral, though a landing strip still sets its side. `src/gui/main_tabs/bot_wizard_surface.py, in with_new_bot_weights` |
+| A new Scrumming bot from the Live wizard | Twelve zeros until the next Save on this window. It has no vote, so it makes no first buy. If it holds a position, a landing strip still sets its side. `src/gui/main_tabs/bot_wizard_surface.py, in with_new_bot_weights` |
 | A running phantom | The figures its set was built with, so a wizard bot started before that Save keeps a twelve-zero phantom until it stops. `src/trading/scrumming_bot.py, in ScrummingBot.set_ta_weights` |
-| A bot's first-entry check | The start figures. A bot at twelve zeros also skips the wait for a third indicator. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_initial_entry` |
+| A bot's first-entry check | These sliders, through the same vote as its later trades, at every Max Cartridge Size. It waits for a third indicator. A bot at twelve zeros waits for Save, and its line says so. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_initial_entry` |
 | A Simulator run | These sliders, read from the file when the run starts. `src/simulator/back_test.py, in walk` |
 | A Paper run | The start figures. `src/paper/paper_run.py, in PaperRunner.__init__` |
 | An Extractor | The start figures. `src/trading/extractor_bot.py, in ExtractorBot.__init__` |

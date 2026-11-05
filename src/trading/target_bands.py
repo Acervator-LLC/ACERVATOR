@@ -6,6 +6,7 @@
 action its figure decides, so neither reads as the other's.
 ``target_territory`` and ``manual_fire_will_noop`` answer the same two
 questions from a position value, which is what the dashboard holds.
+``empty_position_usd`` names the value a position stays under to count as empty.
 """
 
 from __future__ import annotations
@@ -25,6 +26,9 @@ MANUAL_FIRE_REFUSE_PCT = 0.01
 #: Floor for both bands, in quote currency.
 BAND_FLOOR_USD = 0.01
 
+#: The fraction of target a position stays under to count as empty.
+EMPTY_POSITION_PCT = 0.01
+
 #: The three answers ``target_territory`` returns, named once for its readers.
 TERRITORY_SCRUM = "scrum"
 TERRITORY_FOLD = "fold"
@@ -39,6 +43,11 @@ def at_target_dust_band(target_balance: float) -> float:
 def manual_fire_dust_band(target_balance: float) -> float:
     """The band inside which Manual Fire refuses: 1% of target, min $0.01."""
     return max(float(target_balance) * MANUAL_FIRE_REFUSE_PCT, BAND_FLOOR_USD)
+
+
+def empty_position_usd(target_balance: float) -> float:
+    """The value a position stays under to count as empty: 1% of target."""
+    return float(target_balance) * EMPTY_POSITION_PCT
 
 
 def target_delta(position_value: float, target_balance: float) -> float:
