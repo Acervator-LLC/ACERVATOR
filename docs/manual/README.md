@@ -132,7 +132,7 @@ them beside the first set. Counting both sets, the built PDF embeds 77 images.
 `splash-mark.png` under Part 3 belongs to neither set, so the built PDF embeds
 78 images.
 
-Now: the built PDF embeds 197 images, one for each image line in the pages it lays out (`tools/build_product_manual.py, in _figure_flowables`).
+Now: the built PDF embeds 160 images, one for each image line in the pages it lays out (`tools/build_product_manual.py, in _figure_flowables`).
 
 ```
 docs/manual/figures/            the 38 manual images and the 39 charts
@@ -231,7 +231,7 @@ sentence that replaces it beneath.
 All 77 images live together in `docs/manual/figures/`, tracked, and
 [FIGURES.md](FIGURES.md) inventories both sets there.
 
-Now: the folder holds 206 images, every one tracked (`tools/build_product_manual.py, in DEFAULT_FIGURES_DIR`).
+Now: the folder holds 169 images, every one tracked (`tools/build_product_manual.py, in DEFAULT_FIGURES_DIR`).
 
 > The build writes the PDF beside the figures, under the same ignore rule.
 
