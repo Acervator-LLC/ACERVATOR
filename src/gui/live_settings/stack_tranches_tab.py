@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
 
 from ..main_tabs.stack_tranches_tab_surface import (
     ALIGNMENT_ROW_LABEL,
+    SHADOW_ROW_LABEL,
     compose_event_alignment_row,
+    compose_shadow_rows,
 )
 from .. import design_system as ds
 from ..descriptions import STACK_TRANCHES_TAB_DESCRIPTIONS
@@ -468,6 +470,9 @@ class StackTranchesTabMixin:
                 "Lifetime tranches discarded (removed, not filled):",
                 QLabel(str(discarded_lifetime)),
             )
+        shadow_text, shadow_lines = compose_shadow_rows(self._bot, now_ts)
+        if shadow_text:
+            sf.addRow(SHADOW_ROW_LABEL, QLabel(shadow_text))
 
         layout.addWidget(summary)
 
@@ -526,7 +531,7 @@ class StackTranchesTabMixin:
         stack_btn_row.addStretch()
         layout.addLayout(stack_btn_row)
 
-        if not tranches:
+        if not tranches and not shadow_lines:
             empty_lbl = QLabel(
                 "No stack tranches yet. When Stack Mode is enabled "
                 "and a SCRUM fires, tranches will appear here."
@@ -537,7 +542,7 @@ class StackTranchesTabMixin:
             layout.addStretch()
             return w
 
-        detail_group = QGroupBox(f"Tranches ({len(tranches)})")
+        detail_group = QGroupBox(f"Tranches ({len(tranches) + len(shadow_lines)})")
         dg = QVBoxLayout(detail_group)
 
         header = QLabel(
@@ -582,6 +587,10 @@ class StackTranchesTabMixin:
                     else f" color: {ds.ERROR};" if status == "cancelled" else ""
                 )
             )
+            dg.addWidget(row)
+        for line in shadow_lines:
+            row = QLabel(line)
+            row.setStyleSheet("font-family: monospace; padding: 1px;")
             dg.addWidget(row)
 
         layout.addWidget(detail_group)

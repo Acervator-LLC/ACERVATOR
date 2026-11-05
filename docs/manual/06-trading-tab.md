@@ -6134,7 +6134,7 @@ group emits, in the order of the rows above
 
 Next we use the Strategy Gate Flags which allows top-level trade restrictions to be enabled or disabled thus relaxing or restricting the conditions under which a trade action can occur. The settings, in this case, are self-descriptive.
 
-Now: on a running Scrumming bot this group also holds a Hunger tick box and a Hunger Pace box, which ease the scrum and fold vote floor over idle candles (`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_hunger_rows`).
+Now: on a running Scrumming bot this group also holds a Hunger tick box and a Hunger Pace box, which ease the scrum and fold vote floor over idle candles (`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_hunger_rows`), and an Accumulation Shadow tick box, which sends a bearish fold's extra units to a Shadow Tranche (`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_shadow_row`).
 
 **Functional.** The box draws five checkboxes, all ticked at the start: SCRUM
 requires bullish TA, SCRUM holds in sustained uptrend, SCRUM defers to

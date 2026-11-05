@@ -19,6 +19,7 @@ from ..container.config import (
     ceiling_multiple,
 )
 from .distribution import dist_sets_from_saved, dist_units
+from .shadow import shadow_rows_from_saved
 from .target_ramp import RAMP_MODES, RAMP_SEARCH
 
 if TYPE_CHECKING:
@@ -67,6 +68,7 @@ class StateSerializerMixin:
     _export_resting_orders: Callable[..., list]
     _fold_queue_usd: float
     _fold_tranches: list[dict]
+    _shadow_tranches: list[dict]
     _hedge_bal: float
     _hedge_trades: int
     _import_resting_orders: Callable[..., None]
@@ -140,6 +142,7 @@ class StateSerializerMixin:
             "scrum_target_side": self._scrum_target_side,
             "main_lots": [dict(lot) for lot in self._main_lots],
             "fold_tranches": [dict(t) for t in self._fold_tranches],
+            **self._shadow_state(),
             "hyst_armed_fold_side": bool(getattr(self, "_hyst_armed_fold_side", False)),
             "hyst_armed_scrum_side": bool(
                 getattr(self, "_hyst_armed_scrum_side", False)
@@ -214,6 +217,12 @@ class StateSerializerMixin:
             "_format_version": 8,
         }
 
+    def _shadow_state(self) -> dict:
+        """``shadow_tranches`` while a row stands, nothing for a bot with none."""
+        if not self._shadow_tranches:
+            return {}
+        return {"shadow_tranches": [dict(row) for row in self._shadow_tranches]}
+
     def _release_unpriced_dist(self, data: dict) -> None:
         """Log the ``dist_accumulator`` units a save holds with no ``dist_sets``
         beside it, which no distribution sells."""
@@ -239,6 +248,8 @@ class StateSerializerMixin:
         """
         if not isinstance(data, dict):
             return
+
+        self._shadow_tranches = shadow_rows_from_saved(data.get("shadow_tranches"))
 
         # _anchor_target_balance is restored first; the ceiling check below
         # reads it.

@@ -88,6 +88,7 @@ class TickPhaseMixin:
     _apply_scrum_fold_pct: Callable[..., None]
     _below_min_fold_log_ts: float
     _below_min_scrum_log_ts: float
+    _book_shadow_take: Callable[..., None]
     _bound_new_fold_tranches: Callable[..., Any]
     _bus: Any
     _cartridge_last_smart_pct: float
@@ -165,6 +166,9 @@ class TickPhaseMixin:
     _take_filled_units_off_lots: Callable[..., int]
     _target_balance: Any
     _target_grow_last_side: Optional[str]
+    _mark_shadow_rows: Callable[..., int]
+    _return_shadows_to_lots: Callable[..., float]
+    _shadow_take: Callable[..., float]
     _top_up_remnant_fold_tranches: Callable[..., Any]
     _tranches_closed_lifetime: int
     _tranches_created_lifetime: int
@@ -712,6 +716,7 @@ class TickPhaseMixin:
         if decision["action"] != EXPIRY_CLOSE_SELL_ALL:
             return False
 
+        self._return_shadows_to_lots("expiry close")
         held = self._current_holdings
         if type(held) not in (int, float):
             return False
@@ -1612,6 +1617,7 @@ class TickPhaseMixin:
         # object, so _first_new_tranche is re-read from the list.
         if self._bound_new_fold_tranches(_tranche_count_before):
             _first_new_tranche = self._fold_tranches[_tranche_count_before]
+        self._mark_shadow_rows(_tranche_count_before)
 
         if (
             _first_new_tranche is not None
@@ -2139,10 +2145,14 @@ class TickPhaseMixin:
 
         ``sources`` holds the queued tranche objects the plan named when the order went
         out; ``_planned_fold_sources`` finds each again for a piece that settles later.
+        ``_shadow_take`` of the fill leaves the parent's books for a Shadow Tranche, and
+        every figure below ``buy_asset`` reads what stays.
         """
         buy_fill = fill_price
-        buy_asset = float(units)
-        _share_filled = min(1.0, buy_asset / asked) if asked > 0 else 1.0
+        _shadow_units = self._shadow_take(units, asked, {"eligible": eligible})
+        self._book_shadow_take(_shadow_units, buy_fill)
+        buy_asset = float(units) - _shadow_units
+        _share_filled = min(1.0, float(units) / asked) if asked > 0 else 1.0
         _cost = float(buy_cost) * _share_filled
         asset_at_scrum = sum(units_at_scrum(t) for t in eligible) * _share_filled
         extra_asset = buy_asset - asset_at_scrum
@@ -2353,7 +2363,7 @@ class TickPhaseMixin:
         self._announce_fill(
             kind="FOLD",
             side=FILL_BUY,
-            units=buy_asset,
+            units=float(units),
             price=buy_fill,
             usd=_cost,
             profit=_growth_applied,

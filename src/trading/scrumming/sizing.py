@@ -68,6 +68,7 @@ from ...exchange.base import SETTLEMENT_DAY_SECONDS
 from ..bot_container import as_finite_float
 from ...stocks.market_hours import MarketSession, accepts_order, session_at
 from ..container.config import CEILING_MULTIPLE_MAX, CEILING_MULTIPLE_MIN
+from ..stack_math import SHADOW_KIND, TRANCHE_KIND_KEY, is_shadow
 from ..otd_math import (
     WIRE_ABSENT_PCT,
     DistanceSettings,
@@ -3280,13 +3281,17 @@ def merge_fold_tranches_within_distance(tranches: list) -> tuple[list, int, floa
     A survivor keeps the lower ``ref``, sums ``usd`` and ``units``, takes the
     units-weighted ``initial_buy_price`` and carries
     ``combined_event_reference``, ``combined_wire_share`` and both records'
-    wire credits through ``merge_wire_credit_records``."""
+    wire credits through ``merge_wire_credit_records``; an ``is_shadow`` record
+    neither combines nor takes one in."""
     from ..stack_math import within_merge_distance
 
     kept: list = []
     merged_n = 0
     merged_usd = 0.0
     for record in tranches:
+        if is_shadow(record):
+            kept.append(record)
+            continue
         ref = as_finite_float(record.get("ref", 0.0))
         units = as_finite_float(record.get("units", 0.0))
         usd = as_finite_float(record.get("usd", 0.0))
@@ -3299,6 +3304,8 @@ def merge_fold_tranches_within_distance(tranches: list) -> tuple[list, int, floa
             continue
         target = None
         for standing in kept:
+            if is_shadow(standing):
+                continue
             standing_ref = as_finite_float(standing.get("ref", 0.0))
             standing_units = as_finite_float(standing.get("units", 0.0))
             if standing_ref is None or standing_units is None:
@@ -3346,6 +3353,35 @@ def fold_cap_remaining_usd(cycle_cap_usd: float, consumed_usd: float) -> float:
     return max(0.0, cycle_cap_usd - consumed_usd)
 
 
+SHADOW_SALE_USD_KEY = "shadow_sale_usd"
+"""The dollars of a marked fold slice its own sale produced, ``tranche_sale_usd``'s
+share of what ``plan_fold_consumption`` took; wire dollars stay out of it."""
+
+
+def shadow_take_units(
+    eligible: list, bought_units: float, share_filled: float
+) -> float:
+    """The units of one fold fill past ``units_at_scrum`` that the
+    ``SHADOW_SALE_USD_KEY`` dollars of the ``is_shadow`` slices in ``eligible``
+    bought, never more than the fill's whole extra and 0.0 where no slice is
+    marked."""
+    marked = [one for one in eligible if is_shadow(one)]
+    bought = as_finite_float(bought_units)
+    share = as_finite_float(share_filled)
+    if not marked or bought is None or share is None or bought <= 0.0:
+        return 0.0
+    spent = math.fsum(float(one.get("usd", 0.0) or 0.0) for one in eligible)
+    if spent <= 0.0:
+        return 0.0
+    take = math.fsum(
+        bought * float(one.get(SHADOW_SALE_USD_KEY, 0.0) or 0.0) / spent
+        - units_at_scrum(one) * share
+        for one in marked
+    )
+    extra = bought - math.fsum(units_at_scrum(one) for one in eligible) * share
+    return max(0.0, min(take, extra))
+
+
 def plan_fold_consumption(
     eligible: list, cap_remaining: float
 ) -> tuple[list, list, int]:
@@ -3371,16 +3407,20 @@ def plan_fold_consumption(
             take_usd = room
             take_units = tranche_units * (take_usd / tranche_usd)
             partial_count += 1
-        slices.append(
-            {
-                "usd": take_usd,
-                "units": take_units,
-                "ref": float(_t.get("ref", 0) or 0),
-                "blend_rate": float(_t.get("blend_rate", 0) or 0),
-                "initial_buy_price": _t["initial_buy_price"],
-                "created_ts": _t.get("created_ts", 0.0),
-            }
-        )
+        taken = {
+            "usd": take_usd,
+            "units": take_units,
+            "ref": float(_t.get("ref", 0) or 0),
+            "blend_rate": float(_t.get("blend_rate", 0) or 0),
+            "initial_buy_price": _t["initial_buy_price"],
+            "created_ts": _t.get("created_ts", 0.0),
+        }
+        if is_shadow(_t):
+            taken[TRANCHE_KIND_KEY] = SHADOW_KIND
+            taken[SHADOW_SALE_USD_KEY] = take_usd * (
+                max(0.0, tranche_sale_usd(_t)) / tranche_usd
+            )
+        slices.append(taken)
         plan.append((_t, take_usd, take_units))
         running_usd += take_usd
     return plan, slices, partial_count

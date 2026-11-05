@@ -26,6 +26,8 @@ class SimLiveSettingsTabModel(live.LiveSettingsTabModel):
     #: ``src.simulator.back_test.ta_direction`` reads no hunger, so no Hunger row
     #: is drawn.
     runs_hunger = False
+    #: ``src.simulator.back_test`` keeps its own tranches and opens no Shadow Tranche.
+    runs_shadow = False
 
     def __init__(
         self,

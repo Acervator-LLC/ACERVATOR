@@ -26,6 +26,7 @@ CONTENT_SPACING_PX = 8
 CONTENT_MARGINS_SET = False
 
 TRANCHES_ATTRIBUTE = "_stack_tranches"
+SHADOW_ATTRIBUTE = "_shadow_tranches"
 CREATED_ATTRIBUTE = "_stack_created"
 DISCARDED_ATTRIBUTE = "_stack_discarded"
 RESET_TS_ATTRIBUTE = "_stack_counters_reset_ts"
@@ -60,6 +61,7 @@ OPENED_ROW_LABEL = "Lifetime tranches opened:"
 FILL_RATIO_ROW_LABEL = "Fill ratio (filled/opened):"
 DISCARDED_ROW_LABEL = "Lifetime tranches discarded (removed, not filled):"
 ALIGNMENT_ROW_LABEL = "Standing size vs the events that produced it:"
+SHADOW_ROW_LABEL = "Shadow Tranches:"
 
 EVENT_ID_KEY = "opposing_event_id"
 EVENT_UNITS_KEY = "opposing_event_units"
@@ -143,6 +145,11 @@ PRICE_REFUSED_FORMAT = "{dash:>11}"
 SIZE_FORMAT = "{value:>10.6f}"
 SIZE_REFUSED_FORMAT = "{dash:>10}"
 FILL_FORMAT = "${value:.8f}"
+
+SHADOW_SUMMARY_FORMAT = "{count} holding {units:,.6f} base units"
+SHADOW_INDEX_FORMAT = "S{number}"
+SHADOW_MODE = "SHADOW"
+SHADOW_STATUS = "holding"
 
 MODE_VISIBLE = "VISIBLE"
 MODE_INVISIBLE = "INVISIBLE"
@@ -698,6 +705,9 @@ class StackTranchesTabModel:
                 DISCARDED_ROW_LABEL,
                 counter_text(self.state.discarded_lifetime),
             )
+        shadow_text, shadow_lines = compose_shadow_rows(self.bot, now_ts)
+        if shadow_text:
+            self._add_row(SHADOW_ROW_LABEL, shadow_text)
 
         self._record(STEP_BUTTONS)
         self.state.droppable = len(
@@ -723,17 +733,22 @@ class StackTranchesTabModel:
         )
         self.state.counters_button_enabled = counters_stand
 
-        if not tranches:
+        if not tranches and not shadow_lines:
             self._record(STEP_EMPTY)
             self.state.empty_shown = True
             return self
 
         self._record(STEP_DETAIL)
         self.state.detail_shown = True
-        self.state.detail_title = DETAIL_GROUP_TITLE_FORMAT.format(count=len(tranches))
+        self.state.detail_title = DETAIL_GROUP_TITLE_FORMAT.format(
+            count=len(tranches) + len(shadow_lines)
+        )
         for row in tranches:
             self.state.detail_rows.append(self._detail_line(row, now_ts))
             self.state.detail_styles.append(self._detail_style(row))
+        for line in shadow_lines:
+            self.state.detail_rows.append(line)
+            self.state.detail_styles.append(ROW_BASE_STYLE + ROW_PLAIN_STYLE)
         return self
 
     def _add_row(self, label: str, value: str, style: str = RATIO_NO_STYLE) -> None:
@@ -1025,9 +1040,55 @@ def pane_model() -> StackTranchesTabModel:
     return PANE_MODEL
 
 
+def compose_shadow_rows(bot: Any, now_ts: float) -> tuple:
+    """The ``SHADOW_ROW_LABEL`` text and one ``ROW_FORMAT`` line per row of ``bot``.
+
+    A line's price is the row's sale floor and its fill is what the row paid. ``""``
+    and no lines answer a bot with no row; the Qt tab and the React page draw this.
+    """
+    from ...trading.bot_container import as_finite_float as admitted
+    from ...trading.otd_math import DistanceSettingUnreadable, opposing_sale_price
+
+    rows = list(getattr(bot, SHADOW_ATTRIBUTE, None) or [])
+    if not rows:
+        return "", []
+    try:
+        otd_pct = float(bot.opposing_trade_distance_pct())
+    except (AttributeError, DistanceSettingUnreadable):
+        otd_pct = None
+    lines = []
+    total = 0.0
+    for number, row in enumerate(rows, start=1):
+        units = admitted(row.get("units", 0)) or 0.0
+        paid = admitted(row.get("price", 0)) or 0.0
+        created = admitted(row.get("created_ts"))
+        total += units
+        lines.append(
+            ROW_FORMAT.format(
+                index=SHADOW_INDEX_FORMAT.format(number=number),
+                price=(
+                    PRICE_REFUSED_FORMAT.format(dash=NO_VALUE)
+                    if otd_pct is None
+                    else PRICE_FORMAT.format(value=opposing_sale_price(paid, otd_pct))
+                ),
+                size=SIZE_FORMAT.format(value=units),
+                mode=SHADOW_MODE,
+                status=SHADOW_STATUS,
+                fill=FILL_FORMAT.format(value=paid),
+                age=(
+                    format_age(now_ts - created)
+                    if created is not None and created > 0
+                    else NO_VALUE
+                ),
+            )
+        )
+    return SHADOW_SUMMARY_FORMAT.format(count=len(rows), units=total), lines
+
+
 def payload_labels() -> dict:
     """The summary row labels, keyed by the row they name."""
     return {
+        "shadow": SHADOW_ROW_LABEL,
         "pending": PENDING_ROW_LABEL,
         "filled": FILLED_ROW_LABEL,
         "cancelled": CANCELLED_ROW_LABEL,
