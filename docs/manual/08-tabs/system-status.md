@@ -77,7 +77,7 @@ sends its own emits to another sink of the same class until it calls
 `unroute_thread`, and `get_sink` answers per thread. The Simulator routes each
 run's worker thread to its own sink under the sim bucket, so a run's rows
 never rotate the process sink; every other thread's emits reach the process
-sink as before. See [simulator.md](simulator.md).
+sink as before. See [simulator.md](simulator.md#what-a-run-writes).
 
 `src/core/signal_contract.py` — the routing
 

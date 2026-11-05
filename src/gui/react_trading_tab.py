@@ -30,6 +30,7 @@ from .react_history_panel import STYLE_SOURCE_ASSETS, page_html, read_asset
 from .react_main_window import read_renderer_asset
 
 try:
+    from PySide6.QtCore import QTimer
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout, QWidget
@@ -183,11 +184,7 @@ _HOST_SOURCE = """(function (global, doc) {
   var IVP = %(ivp)s;
   var LOG = %(log)s;
   var TAB = %(tab)s;
-  var TOGGLE = %(toggle)s;
-  var SORT = %(sort)s;
-  var PICK = %(pick)s;
-  var CELL = %(cell)s;
-  var COMMAND = %(command)s;
+  var PRESSES = %(presses)s;
   var PREFIX = %(prefix)s;
   var FORGETS = %(forgets)s;
   var VENUES = %(venues)s;
@@ -291,31 +288,26 @@ _HOST_SOURCE = """(function (global, doc) {
     return tab && typeof tab.redraw === "function" ? tab.redraw() : 0;
   }
 
-  // Four presses leave this page. A privacy toggle, a column sort and a
-  // row press go out on PREFIX, because the register, the fleet and the
-  // panel that answer them live in Python. An ask naming an ACTION changes
-  // what the window holds, so it goes out on its own line and is answered
-  // by its own id. Every other call is a read and is answered from the
-  // payload this page is already holding.
-  // Overtaken: "Four presses leave this page." Five do. A COMMAND press
-  // goes out on PREFIX as well, because the bot manager lives in Python.
-  // Overtaken again: six do. A CELL press goes out on PREFIX, because the
-  // system browser is opened in Python and never by this page.
+  // PRESSES names the fields that make a call a press. A press goes out on
+  // PREFIX. The voting panel's ACTION ask goes out on its own line and is
+  // answered by its id. Every other call is answered from this page's payload.
+  function isPress(method, params) {
+    if (!params || !owns(PRESSES, method)) {
+      return false;
+    }
+    return PRESSES[method].some(function (name) {
+      return owns(params, name);
+    });
+  }
+
   global.acervator = {
     call: function (method, params) {
-      if (
-        params &&
-        (owns(params, TOGGLE) ||
-          owns(params, SORT) ||
-          owns(params, PICK) ||
-          owns(params, CELL) ||
-          owns(params, COMMAND))
-      ) {
+      if (isPress(method, params)) {
         global.console.log(
           PREFIX + JSON.stringify({ method: method, params: params })
         );
       }
-      if (params && owns(params, ACTION)) {
+      if (method === IVP && params && owns(params, ACTION)) {
         var id = nextAsk;
         nextAsk += 1;
         global.console.log(
@@ -501,11 +493,7 @@ def host_script(built: dict, venues: Optional[dict] = None) -> str:
         "ivp": json.dumps(indicator_panel_surface.METHOD, ensure_ascii=True),
         "log": json.dumps(status_log_surface.METHOD, ensure_ascii=True),
         "tab": json.dumps(trading_tab_surface.METHOD, ensure_ascii=True),
-        "toggle": json.dumps(scrum_surface.PRIVACY_TOGGLE_PARAM, ensure_ascii=True),
-        "sort": json.dumps(scrum_surface.SORT_COLUMN_PARAM, ensure_ascii=True),
-        "pick": json.dumps(scrum_surface.SELECT_BOT_PARAM, ensure_ascii=True),
-        "cell": json.dumps(scrum_surface.CELL_CLICK_PARAM, ensure_ascii=True),
-        "command": json.dumps(venue_surface.COMMAND_PARAM, ensure_ascii=True),
+        "presses": json.dumps(trading_tab_surface.press_fields(), ensure_ascii=True),
         "prefix": json.dumps(ACTION_PREFIX, ensure_ascii=True),
         "forgets": json.dumps(MODULE_FORGETS, ensure_ascii=True),
         "venues": json.dumps(dict(venues or {}), ensure_ascii=True),
@@ -719,10 +707,14 @@ if _HAS_WEBENGINE:
             self._owner = owner
 
         def javaScriptConsoleMessage(self, level, message, line, source) -> None:
-            """Hand a privacy toggle or a bridge ask on, and drop every other line."""
+            """Hand a press on after this callback, an ask now, and drop the rest.
+
+            ``QTimer.singleShot`` lets a press open a modal window from the event loop.
+            """
             del level, line, source
             if message.startswith(ACTION_PREFIX):
-                self._owner.run_action(message[len(ACTION_PREFIX) :])
+                press = message[len(ACTION_PREFIX) :]
+                QTimer.singleShot(0, lambda: self._owner.run_action(press))
             elif message.startswith(ASK_PREFIX):
                 self._owner.run_ask(message[len(ASK_PREFIX) :])
 
@@ -752,6 +744,7 @@ if _HAS_WEBENGINE:
             self._tab_request: dict = {}
             self._waiting: dict = {}
             self._votes_handler: Any = None
+            self._window_presses: dict = {}
             self._page_ready = False
             self._web: Any = None
             self._layout = QVBoxLayout(self)
@@ -799,6 +792,13 @@ if _HAS_WEBENGINE:
             the page then draws.
             """
             self._votes_handler = handler
+
+        def set_window_presses(self, presses: dict) -> None:
+            """Take each ``trading.tab`` press field beside the callable that answers it.
+
+            ``TradingTabMixin._wire_live_feeds`` binds the window's own handlers here.
+            """
+            self._window_presses = dict(presses)
 
         def run_ask(self, payload: str) -> None:
             """Answer one bridge ask the page reported and hand it back by id."""
@@ -892,27 +892,21 @@ if _HAS_WEBENGINE:
             )
             return self.show_models({trading_tab_surface.METHOD: handler(built)})
 
-        # The four presses the venue answers, each naming the field it is on.
-        # The command bar is answered beside them, on COMMAND_PARAM.
+        # The presses a venue answers, each naming the field it is on. The
+        # command bar and a cell press are answered beside them.
         VENUE_PRESSES = (
             (scrum_surface.PRIVACY_TOGGLE_PARAM, "toggle_privacy"),
             (scrum_surface.SORT_COLUMN_PARAM, "sort_by"),
             (scrum_surface.SELECT_BOT_PARAM, "select_bot"),
             (scrum_surface.VIEW_BAND_PARAM, "scroll_view"),
+            (scrum_surface.FIRE_PARAM, "fire_bot"),
+            (scrum_surface.DETAIL_PARAM, "open_detail"),
+            (venue_surface.NEW_BOT_PARAM, "new_bot"),
+            (venue_surface.PRIVACY_PARAM, "flip_privacy"),
         )
 
         def run_action(self, payload: str) -> bool:
-            """Answer one bot-table press the page sent, and push the fleet back.
-
-            ``VENUE_PRESSES`` names the four this tab answers; every other
-            press on this page stays with the page, which owns it. A row
-            press also moves the Voting Panel, so the panel is redrawn from
-            the window's own reading rather than at the next tick. A scroll
-            band does not, so the panel keeps its bot.
-            ``venue_surface.COMMAND_PARAM`` carries the command bar's press
-            and ``scrum_surface.CELL_CLICK_PARAM`` a cell press, and this tab
-            answers both beside those four.
-            """
+            """Read one press line the page sent and hand it to ``run_press``."""
             try:
                 asked = json.loads(payload)
             except ValueError:
@@ -921,16 +915,55 @@ if _HAS_WEBENGINE:
             params = asked.get("params")
             if not isinstance(params, dict):
                 return False
+            return self.run_press(str(asked.get("method") or ""), params)
+
+        def _press_window(self, params: dict) -> bool:
+            """Run each ``_window_presses`` entry whose field ``params`` names."""
+            named = [name for name in self._window_presses if name in params]
+            for name in named:
+                self._window_presses[name](params[name])
+            return bool(named)
+
+        def _press_ticker(self, params: dict) -> bool:
+            """Run one headline press on the strip and push every venue back."""
+            ticker_surface.view_model(params)
+            for venue in self._venues.values():
+                venue.publish()
+            return True
+
+        def _press_extractor(self, venue: Any, params: dict) -> bool:
+            """Run one Extractor row or Detail press on ``venue``."""
+            action = params.get(extractor_surface.ACTION_PARAM)
+            bot_id = params.get(extractor_surface.BOT_ID_PARAM)
+            if action == extractor_surface.DETAIL_ACTION:
+                venue.open_extractor_detail(bot_id)
+                return True
+            if action == extractor_surface.SELECT_ACTION:
+                venue.select_extractor(bot_id)
+                return True
+            return False
+
+        def run_press(self, method: str, params: dict) -> bool:
+            """Answer one press from the page or ``desktop_bridge`` and push the fleet.
+
+            ``VENUE_PRESSES`` routes a venue field; a row press also redraws the Voting Panel.
+            """
+            if method == trading_tab_surface.METHOD:
+                return self._press_window(params)
+            if method == ticker_surface.METHOD:
+                return self._press_ticker(params)
             venue = self._venues.get(venue_of_press(params))
+            if venue is not None and method == extractor_surface.METHOD:
+                return self._press_extractor(venue, params)
             answered = False
             for name, method_name in self.VENUE_PRESSES:
                 sent = params.get(name)
                 if sent is None:
                     continue
-                method = getattr(venue, method_name, None)
-                if not callable(method):
+                handler = getattr(venue, method_name, None)
+                if not callable(handler):
                     continue
-                method(sent)
+                handler(sent)
                 answered = True
             if params.get(scrum_surface.CELL_CLICK_PARAM) is not None:
                 if self._open_cell_address(

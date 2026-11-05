@@ -151,7 +151,7 @@ def _score_outcome(...): ...
   entry and exit criteria for each.
 - **Gate-latch criterion** — the Simulator's own criterion. It passes when the
   gates latch identically on the same candles as live, not when profit or trade
-  count matches. See [08-tabs/simulator.md](08-tabs/simulator.md).
+  count matches. See [08-tabs/simulator.md](08-tabs/simulator.md#the-gate-latch-criterion).
 - **Stone Tablet** — a stored candle history a Simulator run reads.
   `src/simulator/tablet_source.py` serves the candles, and
   `src/simulator/back_test.py` walks them through the live gate chain.

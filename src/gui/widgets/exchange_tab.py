@@ -19,6 +19,7 @@ from ..main_tabs.exchange_tab_surface import (
     PULL_RATE_TOOLTIP,
     SCRUM_TABLE_STRETCH,
     cleared_words,
+    flip_privacy_masks,
     pool_stopped_words,
     pull_rate_text,
     shift_held_after_key,
@@ -514,13 +515,7 @@ if _HAS_QT:
             consumer so the change is immediately visible.
             """
             try:
-                reg = get_privacy_mask_registry()
-                # set_all(True) masks.
-                snapshot = reg.to_dict()
-                any_revealed = any(
-                    not snapshot.get(fid, False) for fid in reg.known_field_ids()
-                )
-                reg.set_all(any_revealed)
+                any_revealed = flip_privacy_masks()
             except Exception as flip_exc:
                 logger.warning(
                     "Privacy Mode click did nothing: the mask register could "

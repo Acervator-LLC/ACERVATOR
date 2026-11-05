@@ -192,7 +192,7 @@ thread. A Simulator run routes its worker thread to the Simulator's own sink
 under the sim bucket, so the walk's pins, the TA engine's thirteen
 postcondition pins per evaluation among them, no longer reach this pane; the
 Simulator's own presses on the GUI thread and the one `sim.sink.routed` row
-each run leaves at its end do. See [simulator.md](simulator.md).
+each run leaves at its end do. See [simulator.md](simulator.md#what-a-run-writes).
 
 `src/core/signal_contract.py` — the sink the drain reads
 
@@ -1168,7 +1168,7 @@ def _create_bot(self, exchange_id="", defaults_override=None):
 | the press | how it reaches the stop |
 | --- | --- |
 | + New Bot, Qt build | `src/gui/widgets/exchange_tab.py, in ExchangeTab.__init__` hands it to `in _create_bot` |
-| + New Bot, React build | `src/gui/react_exchange_tab.py, in ExchangeTabReact._answer` hands it to `in _create_bot` |
+| + New Bot, React build | `src/gui/react_exchange_tab.py, in ExchangeTabReact.new_bot` hands it to `in _create_bot` |
 | Adopt, both builds | `in _adopt_topology_proposal` asks the stop before its confirm box and before its wire snapshot |
 
 These are the only presses that make a live bot. The restore at launch and the

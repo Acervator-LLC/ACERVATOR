@@ -221,6 +221,7 @@
   var EXCHANGE_PARAM = "exchange";
   var ACTIVITY_PAUSED_PARAM = "activity_paused";
   var API_PAUSED_PARAM = "api_paused";
+  var ADD_EXCHANGE_PARAM = "add_exchange";
   var LOG_API = "acervatorLog";
 
   var PART_ATTR = "data-part";
@@ -670,9 +671,11 @@
   }
 
   // `_add_exchange` ends in `_sync_exchange_tabs`, which re-reads the
-  // configured exchanges; the answer carries whatever was added.
+  // configured exchanges and pushes the tab back to this page.
   function addExchangeAsked() {
-    return askTrading({});
+    var params = {};
+    params[ADD_EXCHANGE_PARAM] = true;
+    return askTrading(params);
   }
 
   // Qt's toggle pauses the pane as well as flipping the caption.

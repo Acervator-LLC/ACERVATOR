@@ -77,6 +77,16 @@ class LiveSystem:
         self._lock = threading.Lock()
         self._sections: Dict[str, dict] = {}
         self._push: Any = None
+        self._press_runner: Any = None
+
+    def bind_presses(self, runner: Any) -> None:
+        """Hand every later ``offer_press`` to ``runner``; ``None`` hands none."""
+        self._press_runner = runner
+
+    def offer_press(self, method: str, params: dict) -> None:
+        """Hand one page press to the runner ``bind_presses`` holds."""
+        if self._press_runner is not None:
+            self._press_runner(method, dict(params))
 
     def attach_push(self, push: Any) -> None:
         """Offer every later ``publish`` to ``push``; ``None`` offers none."""
@@ -209,6 +219,18 @@ class PushChannel:
                 self._writer.write(encode_frame(frame))
             except Exception as exc:
                 logger.warning("bridge push %r failed: %s", frame.get("push"), exc)
+
+
+def pressing(method: str, handler: Handler, live: Any) -> Handler:
+    """``handler`` with each press ``carries_press`` finds offered to ``live`` first."""
+    from src.gui.main_tabs.trading_tab_surface import carries_press
+
+    def answer(params: dict) -> Any:
+        if carries_press(method, params):
+            live.offer_press(method, params)
+        return handler(params)
+
+    return answer
 
 
 def build_registry(live: Any = None) -> Dict[str, Handler]:
@@ -381,6 +403,8 @@ def build_registry(live: Any = None) -> Dict[str, Handler]:
         registry[spendable_profits_surface.METHOD] = (
             spendable_profits_surface.bind_live(live)
         )
+        for method in trading_tab_surface.press_fields():
+            registry[method] = pressing(method, registry[method], live)
     crypto_news_ticker_surface.use_fetch(SafeRequest, safe_urlopen, time.monotonic)
     return registry
 

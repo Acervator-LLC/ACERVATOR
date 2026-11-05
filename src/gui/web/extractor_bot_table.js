@@ -47,6 +47,7 @@
   var ACTION_PARAM_FIELD = "action_param";
   var BOT_ID_PARAM_FIELD = "bot_id_param";
   var DETAIL_ACTION_FIELD = "detail_action";
+  var SELECT_ACTION_FIELD = "select_action";
   // MODEL_KEY names the payload each drawn host keeps beside its React root.
   var MODEL_KEY = "model";
 
@@ -115,7 +116,7 @@
     "reset_param",
     ROW_COUNT,
     ROWS,
-    "select_action",
+    SELECT_ACTION_FIELD,
     "select_path",
     "select_paths",
     SELECTED_BOT_ID,
@@ -552,7 +553,9 @@
       title: label(button[TOOLTIP]),
       type: BUTTON_TYPE,
       disabled: button[ENABLED] !== true,
-      onClick: function () {
+      // Detail selects the row itself, so the row's own press must not run.
+      onClick: function (event) {
+        event.stopPropagation();
         sendDetail(model, props.botId);
       }
     };
@@ -656,7 +659,12 @@
         column: column
       });
     });
-    var rowProps = { className: TABLE_CLASS };
+    var rowProps = {
+      className: TABLE_CLASS,
+      onClick: function () {
+        sendRowPress(model, row[BOT_ID]);
+      }
+    };
     rowProps[PART_ATTR] = ROW_PART;
     rowProps[ROW_ATTR] = text(at);
     rowProps[BOT_ID_ATTR] = text(row[BOT_ID]);
@@ -1051,6 +1059,11 @@
 
   function sendDetail(model, botId) {
     return dispatch(model, model[DETAIL_ACTION_FIELD], botId);
+  }
+
+  // A press on one row, which selects it for the command bar.
+  function sendRowPress(model, botId) {
+    return dispatch(model, model[SELECT_ACTION_FIELD], botId);
   }
 
   function sent() {

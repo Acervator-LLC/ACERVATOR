@@ -1401,6 +1401,7 @@ def main() -> int:
     follow_fills(live_system, bus)
     if bridge_requested(sys.argv):
         try:
+            live_system.bind_presses(crypto_window.livePressAsked.emit)
             start_bridge(live_system)
             log_manager.info(
                 "Desktop bridge serving on this process's stdin and stdout."

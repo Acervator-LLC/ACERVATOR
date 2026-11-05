@@ -106,6 +106,7 @@ class FoldTranchesTabMixin:
     _bot: Any
     _configure_form: Callable[..., Any]
     _format_age: Callable[..., Any]
+    _message_boxes: Callable[..., Any]
     _save_fleet_state_now: Callable[..., Any]
     _wrap_scrollable: Callable[..., Any]
 
@@ -120,7 +121,7 @@ class FoldTranchesTabMixin:
         tranche. The confirmation states that consequence before
         the operator acts.
         """
-        from PySide6.QtWidgets import QMessageBox
+        QMessageBox = self._message_boxes()
 
         bot = self._bot
         tranches = list(getattr(bot, "_fold_tranches", []) or [])
@@ -218,7 +219,7 @@ class FoldTranchesTabMixin:
         src/, and all bots share one exchange wallet, so the
         amount returns to spendable balance.
         """
-        from PySide6.QtWidgets import QMessageBox
+        QMessageBox = self._message_boxes()
 
         bot = self._bot
         parked = fold_parked_credit(bot)
@@ -302,7 +303,7 @@ class FoldTranchesTabMixin:
         SCRUM. No tranche is removed. The confirmation states this
         before the operator acts.
         """
-        from PySide6.QtWidgets import QMessageBox
+        QMessageBox = self._message_boxes()
 
         bot = self._bot
         _counts = {
@@ -1266,7 +1267,7 @@ class FoldTranchesTabMixin:
         returns None and the button is left unchanged; nothing is
         written.
         """
-        from PySide6.QtWidgets import QMessageBox
+        QMessageBox = self._message_boxes()
 
         # Each warning below names the check that actually ran and
         # states plainly that nothing was written.
@@ -1352,7 +1353,7 @@ class FoldTranchesTabMixin:
         confirmation states it when the two disagree, since the
         queue moved after the panel was built.
         """
-        from PySide6.QtWidgets import QMessageBox
+        QMessageBox = self._message_boxes()
         import asyncio as _asyncio
 
         # Same `as_finite_float` helper the row builder used, so

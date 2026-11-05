@@ -24,7 +24,11 @@ from . import asset_class_surface as acs
 from ..widgets.status_log import StatusLog
 from .main_window_surface import LIVE_TAB
 from .trading_tab_surface import (
+    ACTIVITY_PAUSED_PARAM,
+    ADD_EXCHANGE_PARAM,
+    API_PAUSED_PARAM,
     BOTTOM_SPLITTER_SIZES_PX,
+    EXCHANGE_PARAM,
     LOG_SPLITTER_SIZES_PX,
     MAIN_SPLITTER_SIZES_PX,
     PLACEHOLDER_TAB_TOOLTIP,
@@ -51,12 +55,16 @@ class TradingTabMixin:
     # Annotations only; MainWindow supplies these at runtime.
     _add_exchange: Callable[..., Any]
     _bot_manager: Any
+    _activity_pause_btn: Any
+    _api_pause_btn: Any
+    _class_layers: dict
     _cross_api_event: Callable[..., Any]
     _main_tabs: Any
     _on_api_event: Callable[..., Any]
     _settings: Any
     apiEntryLogged: Any  # noqa: N815 - Qt signal name
     _status_log: Any
+    _tab_widget: Any
     _trading_tab: Any
 
     def _react_trading_page(self, qt_page: QWidget) -> QWidget:
@@ -100,6 +108,33 @@ class TradingTabMixin:
         answer = getattr(self, "_answer_votes", None)
         if callable(bind) and callable(answer):
             bind(answer)
+        presses = getattr(
+            getattr(self, "_trading_tab", None), "set_window_presses", None
+        )
+        if callable(presses):
+            presses(self._live_window_presses())
+
+    def _live_window_presses(self) -> dict:
+        """Each ``trading.tab`` press field beside the handler a Qt press reaches.
+
+        ``setChecked`` runs the Pause toggles' own ``toggled`` closures.
+        """
+        return {
+            ADD_EXCHANGE_PARAM: lambda _pressed: self._add_exchange(),
+            ACTIVITY_PAUSED_PARAM: self._activity_pause_btn.setChecked,
+            API_PAUSED_PARAM: self._api_pause_btn.setChecked,
+            EXCHANGE_PARAM: self._show_exchange_tab,
+        }
+
+    def _show_exchange_tab(self, exchange_id: str) -> None:
+        """Move the active layer to ``exchange_id``, as a press on its Qt tab does."""
+        for held in self._class_layers.values():
+            if (
+                held["tabs"] is self._tab_widget
+                and exchange_id in held["exchange_tabs"]
+            ):
+                self._tab_widget.setCurrentWidget(held["exchange_tabs"][exchange_id])
+        self._push_live_tab({EXCHANGE_PARAM: exchange_id})
 
     def _make_unlayered_page(self) -> QWidget:
         """Build the page every asset class with no trading layer shows.
