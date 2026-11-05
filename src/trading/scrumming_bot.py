@@ -115,16 +115,21 @@ from .scrumming.fold_tranches import (
 )
 from .scrumming.sizing import (
     EVENT_ID_KEY,
+    HEDGE_BUY,
+    SIDE_BUY,
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
+    fold_decision,
     discharge_gain_usd,
     fold_size_taper,
     position_ceiling,
     priced_usd,
     rate_after_wire,
     ratio_to_ceiling,
+    repeated_fold_decision,
     scrumming_interval_usd,
+    stack_rung_decision,
     target_delta_pct,
     target_delta_usd,
     tranche_rebuy_price,
@@ -1838,6 +1843,8 @@ class ScrummingBot(
                 EVENT_ID_KEY: str(tranche.get(EVENT_ID_KEY, "") or ""),
             },
             sources=[tranche],
+            decision=repeated_fold_decision([tranche], self._unanswered_sends(SIDE_BUY))
+            or fold_decision([tranche]),
         )
         if fill_price is None or fill_price <= 0:
             return {
@@ -1845,7 +1852,7 @@ class ScrummingBot(
                 "reason": (
                     "_execute_buy refused or failed (Smart "
                     "Ceiling / fail-closed buy safety / P0b guard, or "
-                    "exchange rejection); tranche unchanged"
+                    "exchange rejection); the activity log names the outcome"
                 ),
             }
         return {
@@ -1856,6 +1863,11 @@ class ScrummingBot(
             "units_returned": float(self._last_buy_filled_units or 0.0),
             "remaining_tranches": len(self._fold_tranches),
         }
+
+    def _audit_next_tick(self) -> None:
+        """Bring ``tick``'s periodic ``_reconcile_holdings`` to the next tick, ahead of
+        every decision that tick takes."""
+        self._reconcile_tick_counter = self._reconcile_interval
 
     async def _book_manual_tranche_fill(
         self,
@@ -2416,6 +2428,8 @@ class ScrummingBot(
                     type(_sup).__name__,
                     _sup,
                 )
+            for _cleared in self._fold_tranches:
+                self._return_wire_credits_to_pool(_cleared)
             self._fold_tranches = []
             self._fold_queue_usd = 0.0
             self._current_holdings = 0.0
@@ -2616,6 +2630,8 @@ class ScrummingBot(
             logger.debug(
                 "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
             )
+        for _cleared in self._fold_tranches:
+            self._return_wire_credits_to_pool(_cleared)
         self._fold_tranches = []
         self._fold_queue_usd = 0.0
         self._current_holdings = max(0.0, self._current_holdings - fill_amount)
@@ -4677,6 +4693,7 @@ class ScrummingBot(
                             "bb_pos": float(bb_pos),
                             "intended": float(ticker.last),
                         },
+                        decision=HEDGE_BUY,
                     )
                     if (hedge_fill is None or hedge_fill <= 0) and self._refusal_is_new(
                         "hedge_buy_refused", ticker.last
@@ -5531,6 +5548,7 @@ class ScrummingBot(
                     summary=_vote,
                     bypass_stack=True,
                     label="STACK",
+                    decision=stack_rung_decision(t),
                     booker="_book_stack_spend",
                     booking={
                         "rung_index": t.get("index"),

@@ -3,8 +3,9 @@
 Smart wire profit routing between accumulation bots.
 
 SmartWireManager holds the wire topology and one BotLedger per bot.
-distribute_fold_profit moves a percentage of a source bot's realized
-fold profit to each wired target, capped by compute_safe_outflow_pct.
+WireRoutingMixin._route_scrum_proceeds_via_wires reads that topology and sends
+each wired target its share of a sale's surplus, capped by
+compute_safe_outflow_pct.
 """
 
 from __future__ import annotations
@@ -13,8 +14,6 @@ import math
 import time
 from dataclasses import dataclass, field
 from typing import Optional
-
-from ..core.event_bus import LINE_KIND_WIRE_FLOW
 
 logger = logging.getLogger("acervator.smart_wire")
 
@@ -216,31 +215,27 @@ class SmartWireManager:
     """The wire topology and the BotLedger set shared by every bot.
 
     register_wire and import_wires write the source-to-target map that
-    distribute_fold_profit reads on each fold. attach_bot and
-    detach_bot hold the bot references distribute_fold_profit routes
-    income to.
+    get_outgoing_wires reads on each sale. attach_bot and detach_bot hold
+    the bot references a sale routes income to.
     """
 
     def __init__(
         self,
-        min_wire_amount: float = 0.01,
         bus=None,
     ):
         # None makes each emit site call get_event_bus(); an injected bus
         # stays off the live bus.
         self._bus = bus
-        self._min_wire = min_wire_amount
         self._ledgers: dict[str, BotLedger] = {}
         self._transactions: list[WireTransaction] = []
-        self._enabled = True
         # source_bot_id -> {target_bot_id: pct}, written by register_wire
-        # and import_wires, read by distribute_fold_profit.
+        # and import_wires, read by get_outgoing_wires.
         self._wires: dict[str, dict[str, float]] = {}
         # Plain dict, not a weakref map; detach_bot drops the reference.
         self._bot_refs: dict[str, object] = {}
 
     def attach_bot(self, bot_id: str, bot_ref: object) -> None:
-        """Store the bot reference distribute_fold_profit routes income to.
+        """Store the bot reference a sale routes income to.
 
         BotManager calls this at bot creation, next to
         bot.set_smart_wire(self) and a separate register_bot.
@@ -674,421 +669,15 @@ class SmartWireManager:
             pass
         return n
 
-    def distribute_fold_profit(
-        self, source_id: str, profit_usd: float, ref: str = ""
-    ) -> list[dict]:
-        """Route each wire's share of source_id's realised fold profit to
-        the target bot's apply_wire_income.
-
-        A share is capped by compute_safe_outflow_pct, skipped under
-        _min_wire, and reported in a per-wire result dict; no failure
-        raises.
-        """
-        results: list[dict] = []
-        if not self._enabled or profit_usd <= 0:
-            return results
-        outgoing = self._wires.get(source_id)
-        if not outgoing:
-            return results
-        _vis_bus = getattr(self, "_bus", None)
-        if _vis_bus is None:
-            try:
-                from ..core.event_bus import get_event_bus as _gb_skip
-
-                _vis_bus = _gb_skip()
-            except Exception:  # bus init optional; None is the safe fallback
-                _vis_bus = None
-        _src_short_skip = (
-            str(source_id)[:8] + "\u2026" if len(str(source_id)) > 8 else str(source_id)
-        )
-        # Emit failures are counted and reported once after the loop, not per wire.
-        _notice_emit_fails: list[str] = []
-        # Split evenly across the outbound wires; 100.0 when the source
-        # bot has no get_swos_inputs.
-        _per_wire_safe_pct = 100.0
-        _swos_safe_pct = 100.0
-        try:
-            _src_bot = self._bot_refs.get(source_id)
-            _swos_getter = getattr(_src_bot, "get_swos_inputs", None)
-            if _swos_getter is not None:
-                _swos_inputs = _swos_getter()
-                if _swos_inputs:
-                    _swos_safe_pct = compute_safe_outflow_pct(
-                        scrum_profit_usd=float(profit_usd), **_swos_inputs
-                    )
-                    _n_wires = max(1, len(outgoing))
-                    _per_wire_safe_pct = _swos_safe_pct / _n_wires
-                    logger.debug(
-                        "SWOS %s: safe=%.2f%% \u00f7 %d wires = "
-                        "%.2f%% per-wire (profit=$%.4f)",
-                        _src_short_skip,
-                        _swos_safe_pct,
-                        _n_wires,
-                        _per_wire_safe_pct,
-                        profit_usd,
-                    )
-        except Exception as _swos_exc:  # noqa: BLE001 - best-effort
-            logger.debug(
-                "SWOS %s pre-check raised %s \u2014 falling back to "
-                "raw operator pct (no safety cap this fire).",
-                _src_short_skip,
-                _swos_exc,
-            )
-        for target_id, raw_pct in outgoing.items():
-            admitted_pct = routable_pct(raw_pct)
-            if admitted_pct is None:
-                logger.warning(
-                    "SmartWire: %s -> %s carries pct %r, which the Bot "
-                    "Swarm tab draws as an em dash. No share is routed "
-                    "rather than one computed from the figure that kind "
-                    "converts to",
-                    _src_short_skip,
-                    target_id,
-                    raw_pct,
-                )
-                results.append(
-                    {
-                        "target_id": target_id,
-                        "pct": None,
-                        "share": 0.0,
-                        "applied": False,
-                        "reason": "stored pct is not a number this reading admits",
-                    }
-                )
-                continue
-            pct = min(admitted_pct, _per_wire_safe_pct)
-            share = profit_usd * float(pct) / 100.0
-            _tgt_short_skip = (
-                str(target_id)[:8] + "\u2026"
-                if len(str(target_id)) > 8
-                else str(target_id)
-            )
-            if share < self._min_wire:
-                results.append(
-                    {
-                        "target_id": target_id,
-                        "pct": pct,
-                        "share": share,
-                        "applied": False,
-                        "reason": "below min_wire_amount",
-                    }
-                )
-                # WIRE FLOW prefix gets magenta styling in StatusLog._render.
-                # Overtaken: "WIRE FLOW prefix gets magenta styling in
-                # StatusLog._render." The emit's ``kind`` gets the magenta.
-                if _vis_bus is not None:
-                    _dust_msg = (
-                        f"WIRE FLOW (dust skip): ${share:.4f} from "
-                        f"{_src_short_skip} \u2192 {_tgt_short_skip} below "
-                        f"floor ${self._min_wire:.2f} (pct={pct:.1f}%)"
-                    )
-                    try:
-                        _vis_bus.emit(
-                            "bot.log",
-                            bot_id=source_id,
-                            message=_dust_msg,
-                            kind=LINE_KIND_WIRE_FLOW,
-                        )
-                        _vis_bus.emit(
-                            "bot.log",
-                            bot_id=target_id,
-                            message=_dust_msg,
-                            kind=LINE_KIND_WIRE_FLOW,
-                        )
-                    except Exception as _emit_exc:
-                        _notice_emit_fails.append("dust-skip")
-                        logger.debug(
-                            "SmartWire: dust-skip notice for %s -> %s "
-                            "did not reach the bus (%s: %s)",
-                            _src_short_skip,
-                            _tgt_short_skip,
-                            type(_emit_exc).__name__,
-                            _emit_exc,
-                        )
-                continue
-            target = self._bot_refs.get(target_id)
-            if target is None or not hasattr(target, "apply_wire_income"):
-                results.append(
-                    {
-                        "target_id": target_id,
-                        "pct": pct,
-                        "share": share,
-                        "applied": False,
-                        "reason": "target bot not attached",
-                    }
-                )
-                if _vis_bus is not None:
-                    _orphan_msg = (
-                        f"WIRE FLOW (target unreachable): ${share:.4f} "
-                        f"from {_src_short_skip} \u2192 {_tgt_short_skip} "
-                        f"\u2014 target bot not attached. Wire is orphaned."
-                    )
-                    try:
-                        _vis_bus.emit(
-                            "bot.log",
-                            bot_id=source_id,
-                            message=_orphan_msg,
-                            kind=LINE_KIND_WIRE_FLOW,
-                        )
-                    except Exception as _emit_exc:
-                        _notice_emit_fails.append("target-unreachable")
-                        logger.debug(
-                            "SmartWire: orphan-wire notice for %s -> "
-                            "%s did not reach the bus (%s: %s)",
-                            _src_short_skip,
-                            _tgt_short_skip,
-                            type(_emit_exc).__name__,
-                            _emit_exc,
-                        )
-                continue
-            try:
-                r = target.apply_wire_income(share, source=source_id, ref=ref)
-                # apply_wire_income returns {"applied": False, "reason": ...}
-                # on bad input; a transaction is recorded only when applied is True.
-                _target_applied = (
-                    bool(r.get("applied", False)) if isinstance(r, dict) else False
-                )
-                _src_short = (
-                    str(source_id)[:8] + "…"
-                    if len(str(source_id)) > 8
-                    else str(source_id)
-                )
-                _tgt_short = (
-                    str(target_id)[:8] + "…"
-                    if len(str(target_id)) > 8
-                    else str(target_id)
-                )
-
-                if not _target_applied:
-                    _refusal_reason = (
-                        r.get("reason", "target refused without reason")
-                        if isinstance(r, dict)
-                        else f"target returned non-dict: {type(r).__name__}"
-                    )
-                    if _vis_bus is not None:
-                        try:
-                            _vis_bus.emit(
-                                "bot.log",
-                                bot_id=source_id,
-                                message=(
-                                    f"WIRE FLOW (target refused): "
-                                    f"${share:.4f} from {_src_short} → "
-                                    f"{_tgt_short} ({pct:.1f}% of fold "
-                                    f"profit) — target apply_wire_income "
-                                    f"returned applied=False. Reason: "
-                                    f"{_refusal_reason}. NO transfer "
-                                    f"booked."
-                                ),
-                                kind=LINE_KIND_WIRE_FLOW,
-                            )
-                            _vis_bus.emit(
-                                "bot.log",
-                                bot_id=target_id,
-                                message=(
-                                    f"WIRE FLOW (own apply refused): "
-                                    f"${share:.4f} from {_src_short} → "
-                                    f"{_tgt_short} — apply_wire_income "
-                                    f"refused. Reason: {_refusal_reason}."
-                                ),
-                                kind=LINE_KIND_WIRE_FLOW,
-                            )
-                        except (
-                            AttributeError,
-                            TypeError,
-                            RuntimeError,
-                            ValueError,
-                        ) as _emit_exc:
-                            # EventBus.emit already swallows a subscriber error.
-                            logger.warning(
-                                "SmartWire: target-refused notice for "
-                                "%s -> %s ($%.4f) did not reach the "
-                                "operator console (%s: %s); the "
-                                "refusal stands and is in the result",
-                                _src_short,
-                                _tgt_short,
-                                share,
-                                type(_emit_exc).__name__,
-                                _emit_exc,
-                            )
-                    results.append(
-                        {
-                            "target_id": target_id,
-                            "pct": pct,
-                            "share": share,
-                            "applied": False,
-                            "reason": _refusal_reason,
-                            "result": r,
-                        }
-                    )
-                    continue
-
-                import time as _t
-
-                self._transactions.append(
-                    WireTransaction(
-                        timestamp=int(_t.time()),
-                        source_bot=source_id,
-                        target_bot=target_id,
-                        amount=share,
-                        wire_type="WIRE_BACK",
-                        reason=f"fold_profit pct={pct}% ref={ref}",
-                    )
-                )
-                self.book_transfer(source_id, target_id, share)
-                _placement = ""
-                try:
-                    if isinstance(r, dict):
-                        _placement = " → " + str(r.get("placement", "tranche"))
-                        _tranche_idx = r.get("tranche_index")
-                        if _tranche_idx is not None:
-                            _placement += " #" + str(_tranche_idx)
-                except Exception as _place_exc:
-                    # The transfer is already booked; _placement resets to ""
-                    # on a broken __str__ in the target's result.
-                    _placement = ""
-                    logger.warning(
-                        "SmartWire: could not render placement for the "
-                        "%s -> %s wire ($%.4f) (%s: %s); the WIRE FLOW "
-                        "line omits where the income landed",
-                        _src_short,
-                        _tgt_short,
-                        share,
-                        type(_place_exc).__name__,
-                        _place_exc,
-                    )
-                _flow_msg = (
-                    f"WIRE FLOW: ${share:.2f} from {_src_short} → "
-                    f"{_tgt_short} ({pct:.1f}% of fold profit"
-                    f"{f', ref={ref}' if ref else ''}){_placement}"
-                )
-                try:
-                    _bus = getattr(self, "_bus", None)
-                    if _bus is None:
-                        from ..core.event_bus import get_event_bus as _gb
-
-                        _bus = _gb()
-                    _bus.emit(
-                        "bot.log",
-                        bot_id=source_id,
-                        message=_flow_msg,
-                        kind=LINE_KIND_WIRE_FLOW,
-                    )
-                    _bus.emit(
-                        "bot.log",
-                        bot_id=target_id,
-                        message=_flow_msg,
-                        kind=LINE_KIND_WIRE_FLOW,
-                    )
-                except Exception as _emit_exc:
-                    # The transfer is already in _transactions; only the
-                    # console notice is lost.
-                    logger.warning(
-                        "SmartWire: WIRE FLOW notice for a COMPLETED "
-                        "transfer of $%.4f from %s to %s did not reach "
-                        "the operator console (%s: %s); the transfer "
-                        "stands and is in the audit trail",
-                        share,
-                        source_id,
-                        target_id,
-                        type(_emit_exc).__name__,
-                        _emit_exc,
-                    )
-                results.append(
-                    {
-                        "target_id": target_id,
-                        "pct": pct,
-                        "share": share,
-                        "applied": True,
-                        "result": r,
-                    }
-                )
-            except Exception as exc:
-                logger.warning(
-                    "SmartWire: route %s->%s raised: %s", source_id, target_id, exc
-                )
-                results.append(
-                    {
-                        "target_id": target_id,
-                        "pct": pct,
-                        "share": share,
-                        "applied": False,
-                        "reason": f"exception: {exc}",
-                    }
-                )
-                if _vis_bus is not None:
-                    try:
-                        _vis_bus.emit(
-                            "bot.log",
-                            bot_id=source_id,
-                            message=(
-                                f"WIRE FLOW (error): ${share:.4f} from "
-                                f"{_src_short_skip} \u2192 {_tgt_short_skip} "
-                                f"raised {type(exc).__name__}: {exc}"
-                            ),
-                            kind=LINE_KIND_WIRE_FLOW,
-                        )
-                    except Exception as _emit_exc:
-                        logger.debug(
-                            "SmartWire: route-error notice for %s -> "
-                            "%s did not reach the bus (%s: %s)",
-                            _src_short_skip,
-                            _tgt_short_skip,
-                            type(_emit_exc).__name__,
-                            _emit_exc,
-                        )
-        # Emitted once when no wire in results applied.
-        try:
-            applied_count = sum(1 for r in results if r.get("applied"))
-            if results and applied_count == 0 and _vis_bus is not None:
-                dust = sum(
-                    1 for r in results if r.get("reason") == "below min_wire_amount"
-                )
-                unreach = sum(
-                    1 for r in results if r.get("reason") == "target bot not attached"
-                )
-                errs = sum(
-                    1
-                    for r in results
-                    if str(r.get("reason", "")).startswith("exception")
-                )
-                _vis_bus.emit(
-                    "bot.log",
-                    bot_id=source_id,
-                    message=(
-                        f"WIRE FLOW: fold ${profit_usd:.4f} produced "
-                        f"no routed shares ({len(results)} wire(s) "
-                        f"checked: {dust} dust-skipped, "
-                        f"{unreach} unreachable, {errs} errored)"
-                    ),
-                    kind=LINE_KIND_WIRE_FLOW,
-                )
-        except Exception as _emit_exc:
-            logger.debug(
-                "SmartWire: no-flow summary for %s did not reach the " "bus (%s: %s)",
-                _src_short_skip,
-                type(_emit_exc).__name__,
-                _emit_exc,
-            )
-        if _notice_emit_fails:
-            logger.warning(
-                "SmartWire: %d wire-notice emit(s) failed during the "
-                "fold on %s (%s); those wire events are missing from "
-                "the operator console",
-                len(_notice_emit_fails),
-                _src_short_skip,
-                ", ".join(sorted(set(_notice_emit_fails))),
-            )
-        return results
-
     def book_transfer(self, source_id: str, target_id: str, usd: float) -> bool:
         """Book one wire transfer onto the two ledgers it moves money between.
 
         ``usd`` is added to the source ledger's wired_out, to the target
         ledger's wired_in, and to the target ledger's provenance entry for
-        ``source_id`` - the per-funder breakdown the Bot Swarm tab draws. Both
-        live transfer paths book here, distribute_fold_profit on a compounded
-        fold and WireRoutingMixin._route_scrum_proceeds_via_wires on a scrum, so
-        one transfer cannot reach the totals without reaching the breakdown.
+        ``source_id`` - the per-funder breakdown the Bot Swarm tab draws. The
+        live transfer path books here, WireRoutingMixin.
+        _route_scrum_proceeds_via_wires on a sale or a detonation, so one
+        transfer cannot reach the totals without reaching the breakdown.
 
         A usd no reading admits as an amount books nothing and answers False. A
         funder entry already unreadable keeps the entry it has, because adding
