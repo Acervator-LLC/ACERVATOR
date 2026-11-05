@@ -221,8 +221,9 @@ class SettingsTabMixin:
             f"This will MARKET-SELL the entire {sym} position "
             f"on bot {bid} and PAUSE the bot.\n\n"
             f"State (lots, tranches, fold queue) will be CLEARED.\n"
-            f"All auto gates (BB threshold, hysteresis, circuit\n"
-            f"breakers, higher-TF bias) BYPASSED.\n\n"
+            f"All auto gates (BB threshold, hysteresis, soft circuit\n"
+            f"breaker, higher-TF bias) BYPASSED. A tripped hard circuit\n"
+            f"breaker refuses this until Reset All Breakers.\n\n"
             f"To confirm, type SELF-DESTRUCT (case-sensitive):",
             QLineEdit.Normal,
             "",
@@ -981,7 +982,8 @@ class SettingsTabMixin:
             "AGGRESSIVE FULL-POSITION EXIT. Market-sells the "
             "entire holdings of this bot's target asset and "
             "PAUSES the bot. State (lots, fold tranches) is "
-            "cleared. Auto gates bypassed (operator override).\n\n"
+            "cleared. Auto gates bypassed (operator override); "
+            "a tripped hard breaker refuses it until reset.\n\n"
             "Confirmation required."
         )
         sd_hint.setWordWrap(True)

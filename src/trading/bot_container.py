@@ -214,10 +214,17 @@ class BotContainer:
         self._resting_sources: dict[str, list] = {}
         # The newest order body read for a booking, which _write_fill_figures reads.
         self._last_settled_order: object = None
+        # (order_hold_reason, side) pairs _report_held_order has already logged.
+        self._held_orders_named: set[tuple[str, str]] = set()
 
     def force_fire(self, aggressive: bool = False) -> None:
         """Manual fire hook; the base implementation does nothing."""
         return
+
+    def order_hold_reason(self) -> str:
+        """Why ``guarded_place_order`` sends nothing now, empty while it may send;
+        ``CircuitBreakerMixin`` answers the hard breaker."""
+        return ""
 
     def _invalidate_balance(
         self,
@@ -869,6 +876,18 @@ class BotContainer:
                 logger.debug("bot.log emit for a refused order raised: %s", exc)
         raise Exception(message)
 
+    def _report_held_order(self, side: str, symbol: str, reason: str) -> None:
+        """Put one ``HELD`` line on the Console per ``side`` and ``reason``."""
+        key = (reason, side)
+        if key in self._held_orders_named:
+            return
+        self._held_orders_named.add(key)
+        self._warn_order(
+            f"HELD: {side} {symbol} is not sent: {reason}. Nothing is submitted, "
+            f"nothing is booked, and every later {side} waits the same way. "
+            f"API not called."
+        )
+
     # OVERTAKEN in the docstring below: "``amount`` reaches ``place_order``
     # unchanged; the market's rules are read to refuse a sub-minimum size and a
     # sub-minimum notional, and ``CCXTConnector.place_order`` is where a size is
@@ -917,12 +936,18 @@ class BotContainer:
         ``amount`` reaches ``place_order`` unchanged; the market's rules are read
         to refuse a sub-minimum size and a sub-minimum notional, and
         ``CCXTConnector.place_order`` is where a size is stepped.
+
+        Answers None and sends nothing while ``order_hold_reason`` names a hold.
         """
         from ..exchange.base import OrderSide, OrderType
 
         # Exact type test: ``isinstance`` would admit bool, and every
         # comparison against NaN below is False.
         _side_str = "BUY" if side == OrderSide.BUY else "SELL"
+        _hold = self.order_hold_reason()
+        if _hold:
+            self._report_held_order(_side_str, symbol, _hold)
+            return None
         _amt_is_number = type(amount) in (int, float)
         _amt = 0.0
         if _amt_is_number:
@@ -1378,6 +1403,10 @@ class BotContainer:
         """Launch the bot's trading loop in a guarded asyncio task."""
         if self.state in (BotState.RUNNING, BotState.STARTING):
             logger.warning("Bot %s already running", self.bot_id)
+            return
+        _hold = self.order_hold_reason()
+        if _hold and self._task and not self._task.done():
+            self._warn_order(f"START WAITS: {_hold}. Its tick loop is still running.")
             return
 
         # A fresh start reports no error from the previous run.
@@ -1912,10 +1941,14 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
 
     def force_fire(self, bot_id: str, aggressive: bool = False) -> bool:
         """Call ``force_fire`` on ``bot_id``; returns False for an
-        unknown bot or one without ``scrum_target_mode``."""
+        unknown bot or one without ``scrum_target_mode``, and raises
+        ``RuntimeError`` naming ``order_hold_reason`` while its orders are held."""
         bot = self._bots.get(bot_id)
         if bot is None:
             return False
+        hold = bot.order_hold_reason()
+        if hold:
+            raise RuntimeError(hold)
         try:
             # Fall back to the no-argument signature on TypeError.
             try:
@@ -2244,14 +2277,17 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         )
 
     async def _await_running(self, bot, timeout_seconds: float) -> bool:
-        """Poll ``bot.state`` every 0.25 s and return True on RUNNING,
-        False on ``timeout_seconds`` or on a ``cancel_start_all``."""
+        """Poll ``bot.state`` every 0.25 s and return True on RUNNING, or on the
+        PAUSED ``order_hold_reason`` keeps a held bot at, False on
+        ``timeout_seconds`` or on a ``cancel_start_all``."""
         poll_interval = 0.25
         elapsed = 0.0
         while elapsed < timeout_seconds:
             if getattr(self, "_start_all_cancel", False):
                 return False
-            if bot.state == BotState.RUNNING:
+            if bot.state == BotState.RUNNING or (
+                bot.state == BotState.PAUSED and bot.order_hold_reason()
+            ):
                 return True
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
