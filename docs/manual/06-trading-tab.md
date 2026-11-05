@@ -11303,7 +11303,7 @@ Each of those now changes once for each fill, by the count the exchange reports
 filled, on every path an order can take. A count the exchange did not report
 changes nothing.
 
-Now: each order takes its own id, so the venue cannot hand an old fill back under a new sale. A send with no answer gives its id to the bot's next send on that market and side, until an order comes back on that market or the holdings audit adopts the venue's count (`src/exchange/idempotency.py, in IdempotencyLayer.derive_coid`).
+Now: each order takes its own id, so the venue cannot hand back a fill the books already hold. A send with no answer gives its id to the bot's next send on that market and side, until an order comes back on that market or the holdings audit adopts the venue's count (`src/exchange/idempotency.py, in IdempotencyLayer.derive_coid`).
 
 ### A resting order is booked when the exchange fills it
 
