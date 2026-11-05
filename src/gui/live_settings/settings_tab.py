@@ -209,16 +209,25 @@ class SettingsTabMixin:
 
         The sale runs on ``_bm._async_loop``, as Fold Fire and Position Fire do.
         """
-        from ..main_tabs.live_settings_tab_surface import REFUSED_FORMAT, REFUSED_TITLE
+        from ..main_tabs.live_settings_tab_surface import (
+            CANCELLED_TEXT,
+            CANCELLED_TITLE,
+            CONFIRM_INITIAL_TEXT,
+            CONFIRM_TITLE,
+            DISPATCHED_TITLE,
+            REFUSED_FORMAT,
+            REFUSED_TITLE,
+            SELF_DESTRUCT_PHRASE,
+            UNAVAILABLE_TEXT,
+            UNAVAILABLE_TITLE,
+            confirm_prompt,
+            dispatched_text,
+        )
 
         QInputDialog = self._text_prompts()
         QMessageBox = self._message_boxes()
         if not hasattr(self._bot, "self_destruct"):
-            QMessageBox.warning(
-                self,
-                "Self-Destruct Unavailable",
-                "This bot type does not support self-destruct.",
-            )
+            QMessageBox.warning(self, UNAVAILABLE_TITLE, UNAVAILABLE_TEXT)
             return
         hold = self._bot.order_hold_reason()
         if hold:
@@ -228,26 +237,16 @@ class SettingsTabMixin:
         bid = self._bot.bot_id[:8] if getattr(self._bot, "bot_id", None) else "?"
         text, ok = QInputDialog.getText(
             self,
-            "Confirm SELF-DESTRUCT",
-            f"This will MARKET-SELL the entire {sym} position "
-            f"on bot {bid} and PAUSE the bot.\n\n"
-            f"State (lots, tranches, fold queue) will be CLEARED.\n"
-            f"All auto gates (BB threshold, hysteresis, soft circuit\n"
-            f"breaker, higher-TF bias) BYPASSED. A tripped hard circuit\n"
-            f"breaker refuses this until Reset All Breakers.\n\n"
-            f"To confirm, type SELF-DESTRUCT (case-sensitive):",
+            CONFIRM_TITLE,
+            confirm_prompt(sym, bid),
             QLineEdit.Normal,
-            "",
+            CONFIRM_INITIAL_TEXT,
         )
         if not ok:
             return
         typed = (text or "").strip()
-        if typed != "SELF-DESTRUCT":
-            QMessageBox.information(
-                self,
-                "Self-Destruct Cancelled",
-                "Confirmation token did not match. No action taken.",
-            )
+        if typed != SELF_DESTRUCT_PHRASE:
+            QMessageBox.information(self, CANCELLED_TITLE, CANCELLED_TEXT)
             return
         loop = getattr(self._bm, "_async_loop", None) if self._bm else None
         if loop is None:
@@ -271,14 +270,7 @@ class SettingsTabMixin:
             )
             return
         outcome.add_done_callback(partial(_log_destruct_outcome, bid))
-        QMessageBox.information(
-            self,
-            "Self-Destruct Dispatched",
-            f"Self-destruct dispatched for bot {bid} — "
-            f"check the Activity Log for SELF-DESTRUCT FIRING "
-            f"or SELF-DESTRUCT FAILED to confirm outcome.\n"
-            f"Bot will be PAUSED on completion.",
-        )
+        QMessageBox.information(self, DISPATCHED_TITLE, dispatched_text(bid))
 
     def _cb_reset_pressed(self) -> None:
         """Run the Qt Reset All Breakers button, whose all-bots form is SHIFT."""
