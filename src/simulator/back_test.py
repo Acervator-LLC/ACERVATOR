@@ -46,10 +46,9 @@ from typing import Any, Callable, Optional, Sequence
 
 from ..core.signal_contract import emit as pin_emit
 from ..exchange.base import MarketRules
-from ..exchange.market_rules_store import quote_currency, recorded_rules
+from ..exchange.market_rules_store import recorded_rules
 from ..trading.container.config import BotState, fold_ratio_pct
 from ..trading.gate_chain import GateContext, effective_gate_flags
-from ..trading.wallet_reservations import wallet_key
 from ..trading.otd_math import (
     BAND_TRAVEL_OFF_PCT,
     DEFAULT_TRADING_FEE_PCT,
@@ -1743,11 +1742,7 @@ def walk(
 
     position = opening_position(bot, float(candles[MIN_CANDLES - 1].close), rule, rules)
     if wires is not None:
-        wires.attach_bot(
-            bot.bot_id,
-            position,
-            wallet_key(str(bot.exchange_id), quote_currency(bot.symbol)),
-        )
+        wires.attach_bot(bot.bot_id, position)
         land_wire_credits(wires, bot.bot_id, position)
     start_units = position.units
     trades: list[SimTrade] = []

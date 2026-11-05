@@ -3237,7 +3237,11 @@ DETONATION_SALE = "detonation_sale"
 DIST_SALE = "dist_sale"
 
 FOLD_DECISION_PREFIX = "fold:"
+TRANCHE_FIRE_PREFIX = "tranche_fire:"
 SHADOW_EXIT_PREFIX = "shadow_exit:"
+
+#: How far two sizes of one order may sit apart and read as one size.
+SAME_SIZE_REL = 1e-6
 STACK_RUNG_PREFIX = "stack_rung:"
 
 
@@ -3263,9 +3267,14 @@ def _named_events(prefix: str, records: list) -> str:
 
 
 def fold_decision(tranches: list) -> str:
-    """The decision a fold or a manual tranche fire of ``tranches`` names,
-    ``FOLD_DECISION_PREFIX`` and their events."""
+    """The decision a fold of ``tranches`` names, ``FOLD_DECISION_PREFIX`` and their
+    events."""
     return _named_events(FOLD_DECISION_PREFIX, tranches)
+
+
+def tranche_fire_decision(tranche: dict) -> str:
+    """The decision a manual tranche fire of ``tranche`` names."""
+    return _named_events(TRANCHE_FIRE_PREFIX, [tranche])
 
 
 def shadow_exit_decision(rows: list) -> str:
@@ -3288,9 +3297,11 @@ def _decision_events(decision: str, prefix: str) -> frozenset:
 
 
 def lost_fold_tranches(decision: str, queue: list) -> list:
-    """The tranches of ``queue`` sharing an event with the fold ``decision``, so a
-    tranche merged after the send stays named."""
-    events = _decision_events(decision, FOLD_DECISION_PREFIX)
+    """The tranches of ``queue`` sharing an event with the fold or tranche fire
+    ``decision``, so a tranche merged after the send stays named."""
+    events = _decision_events(decision, FOLD_DECISION_PREFIX) | _decision_events(
+        decision, TRANCHE_FIRE_PREFIX
+    )
     return [one for one in queue if tranche_event_names(one) & events]
 
 
@@ -3313,14 +3324,22 @@ def standing_shadow_exit(decisions: list, rows: list) -> str:
     return ""
 
 
-def retry_fold_plan(eligible: list, decisions: list) -> tuple[list, str]:
-    """The tranches of ``eligible`` the next fold takes while ``decisions`` stand
-    unanswered, and the decision it repeats: the oldest that is ``SHORTFALL_BUY`` or
-    names one of them, with those it names, else every tranche under no decision."""
-    for decision in decisions:
-        if decision == SHORTFALL_BUY:
-            return eligible, decision
-        lost = lost_fold_tranches(decision, eligible)
+def retry_fold_plan(eligible: list, sends: list) -> tuple[list, str]:
+    """The tranches of ``eligible`` the next fold takes while ``sends`` stand unanswered,
+    and the decision it repeats: the oldest send that names some of them, or a
+    ``SHORTFALL_BUY`` sent after some were queued, else every tranche under no decision.
+    """
+    for send in sends:
+        decision = send.intent.decision
+        lost = (
+            [
+                one
+                for one in eligible
+                if float(one.get(FOLD_AGE_KEY, 0.0) or 0.0) <= send.issued_at
+            ]
+            if decision == SHORTFALL_BUY
+            else lost_fold_tranches(decision, eligible)
+        )
         if lost:
             return lost, decision
     return eligible, ""
@@ -3353,10 +3372,14 @@ def answer_fits_plan(
 
 def booked_at_audit(decision: str) -> bool:
     """True where ``_settle_lost_order`` may book ``decision`` through the cartridge's
-    bookers: the excess sale, the shortfall buy and a fold, each read by units."""
-    return decision in (EXCESS_SALE, SHORTFALL_BUY) or decision.startswith(
-        FOLD_DECISION_PREFIX
-    )
+    bookers: the excess sale, the shortfall buy, a fold and a tranche fire."""
+    return decision in (EXCESS_SALE, SHORTFALL_BUY) or pays_its_tranches(decision)
+
+
+def pays_its_tranches(decision: str) -> bool:
+    """True where ``decision`` is a fold or a tranche fire, whose order was sized for
+    the tranches it names, past any floor."""
+    return decision.startswith((FOLD_DECISION_PREFIX, TRANCHE_FIRE_PREFIX))
 
 
 def fold_spends_credit(decision: str) -> bool:

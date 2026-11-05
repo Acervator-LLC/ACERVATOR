@@ -165,7 +165,7 @@ class TickPhaseMixin:
     _settle_fold_plan: Callable[..., Any]
     _settled_fill: Callable[..., Any]
     _settled_sale_proceeds: Callable[..., float]
-    _unanswered_decisions: Callable[..., list]
+    _unanswered_sends: Callable[..., list]
     _stack_tranches: list[dict]
     _standing_surplus_usd: float
     _sum_sibling_base_currency_claims: Callable[..., Optional[float]]
@@ -1867,7 +1867,7 @@ class TickPhaseMixin:
                 for one in self._fold_eligible_tranches(ticker.last, distance, band)
                 if not tranche_short_at_fill(one, distance, _ask)
             ],
-            self._unanswered_decisions(SIDE_BUY),
+            self._unanswered_sends(SIDE_BUY),
         )
         try:
             self._bus.emit(

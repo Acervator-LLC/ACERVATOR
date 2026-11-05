@@ -62,12 +62,11 @@ from ..simulator.back_test import (
     trend_reading,
 )
 from ..exchange.base import MarketRules
-from ..exchange.market_rules_store import quote_currency, recorded_rules
+from ..exchange.market_rules_store import recorded_rules
 from ..simulator.validation import BB_MIDLINE, bb_reading, latch
 from ..trading.container.config import BotState, fold_ratio_pct
 from ..trading.gate_chain import GateContext, effective_gate_flags
 from ..trading.otd_math import BAND_TRAVEL_OFF_PCT, DistanceSettings
-from ..trading.wallet_reservations import wallet_key
 from ..trading.scrumming.sizing import (
     BELOW_POSITION_MINIMUM,
     CLASS_CRYPTO,
@@ -1204,11 +1203,7 @@ class PaperRunner:
             self._run.balances[bot.bot_id] = balance
             opened = True
             if self._wires is not None:
-                self._wires.attach_bot(
-                    bot.bot_id,
-                    balance,
-                    wallet_key(str(bot.exchange_id), quote_currency(bot.symbol)),
-                )
+                self._wires.attach_bot(bot.bot_id, balance)
                 land_wire_credits(self._wires, bot.bot_id, balance)
         held = balance or FakeBalance()
         seen = tick(

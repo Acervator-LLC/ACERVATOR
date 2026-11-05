@@ -87,10 +87,14 @@ class TradeIntent:
 
 
 @dataclass
-class _UnansweredCoid:
+class UnansweredSend:
+    """A ``coid`` the venue has not answered: ``intent`` as first sent, ``issued_at`` its
+    first send, and ``sizes`` each ``(amount, price read)`` it went out at."""
+
     coid: str
     issued_at: float
     intent: TradeIntent
+    sizes: list[tuple[float, float]]
 
 
 class IdempotencyLayer:
@@ -100,16 +104,18 @@ class IdempotencyLayer:
         self.max_entries = max_entries
         # Not persisted, so a restart gives new coids for the same intent.
         self.session_nonce = uuid.uuid4().hex[:8]
-        self._unanswered: dict[str, _UnansweredCoid] = {}
+        self._unanswered: dict[str, UnansweredSend] = {}
         self._issued = 0
         self._lock = threading.RLock()
 
-    def derive_coid(self, intent: TradeIntent) -> str:
-        """The ``coid`` held for ``intent``, or a new one no earlier order carried."""
+    def derive_coid(self, intent: TradeIntent, price_read: float = 0.0) -> str:
+        """The ``coid`` held for ``intent``, or a new one no earlier order carried, with
+        ``intent.amount`` and ``price_read`` added to ``UnansweredSend.sizes``."""
         with self._lock:
             fp = intent.fingerprint(self.session_nonce)
             held = self._unanswered.get(fp)
             if held is not None:
+                held.sizes.append((intent.amount, price_read))
                 logger.info(
                     "Idempotency: reusing coid=%s for retry of "
                     "%s %s %.8f@%s (issued %.1fs ago)",
@@ -123,8 +129,11 @@ class IdempotencyLayer:
                 return held.coid
             self._issued += 1
             coid = f"acrv-{_short_hash(f'{fp}|{self._issued}')}"
-            self._unanswered[fp] = _UnansweredCoid(
-                coid=coid, issued_at=time.time(), intent=intent
+            self._unanswered[fp] = UnansweredSend(
+                coid=coid,
+                issued_at=time.time(),
+                intent=intent,
+                sizes=[(intent.amount, price_read)],
             )
             self._enforce_size_limit()
             return coid
@@ -140,14 +149,14 @@ class IdempotencyLayer:
         with self._lock:
             self._unanswered.pop(intent.fingerprint(self.session_nonce), None)
 
-    def unanswered_intents(
+    def unanswered_sends(
         self, bot_id: str, symbol: str, side: str
-    ) -> list[TradeIntent]:
-        """The intents naming a decision that hold a ``coid`` for ``bot_id`` on
-        ``symbol`` and ``side``, oldest first."""
+    ) -> list[UnansweredSend]:
+        """The sends naming a decision that hold a ``coid`` for ``bot_id`` on ``symbol``
+        and ``side``, oldest first."""
         with self._lock:
             return [
-                held.intent
+                held
                 for held in self._unanswered.values()
                 if held.intent.decision
                 and held.intent.bot_id == bot_id
@@ -156,9 +165,9 @@ class IdempotencyLayer:
             ]
 
     def unanswered_decisions(self, bot_id: str, symbol: str, side: str) -> list[str]:
-        """The decisions of ``unanswered_intents``."""
+        """The decisions of ``unanswered_sends``."""
         return [
-            intent.decision for intent in self.unanswered_intents(bot_id, symbol, side)
+            held.intent.decision for held in self.unanswered_sends(bot_id, symbol, side)
         ]
 
     def _enforce_size_limit(self) -> None:

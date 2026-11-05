@@ -10,9 +10,9 @@ import logging
 import math
 from typing import Any, Optional
 
-from ...exchange.market_rules_store import quote_currency
 from ..smart_wire import is_mature, mature_profit_usd
 from ..target_bands import ammo_units, fleet_ammo
+from ..wallet_reservations import wallet_currency
 from .config import (
     DOLLAR_PEGGED_CURRENCIES,
     UNREADABLE_TOTALS_KEY,
@@ -504,8 +504,10 @@ class FleetAggregationMixin:
             try:
                 other_cfg = other_bot.config
                 same_exchange = other_cfg.exchange_id == exchange_id
-                other_quote = quote_currency(other_cfg.symbol).upper()
-                if not same_exchange or other_quote != currency_norm:
+                other_wallet = wallet_currency(
+                    other_cfg.symbol, getattr(other_cfg, "base_currency", "")
+                )
+                if not same_exchange or other_wallet != currency_norm:
                     continue
                 held = self._one_sibling_hold(other_bot)
             except Exception as _read_exc:

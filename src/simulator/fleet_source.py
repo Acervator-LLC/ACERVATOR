@@ -66,6 +66,7 @@ from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.scrumming.target_ramp import RAMP_MODES
 from ..trading.smart_wire import mature_profit_usd
 from ..trading.target_bands import fleet_ammo
+from ..trading.wallet_reservations import wallet_currency, wallet_key
 from .sim_wire import SimWireManager
 from .tablet_source import SendRefused
 
@@ -1329,6 +1330,14 @@ class FleetSource:
         manager = SimWireManager()
         manager.import_wires(self.wire_rows())
         manager.import_ledgers(self.wire_ledger_rows())
+        for bot in self.bots():
+            manager.note_wallet(
+                bot.bot_id,
+                wallet_key(
+                    str(bot.exchange_id),
+                    wallet_currency(bot.symbol, bot.base_currency),
+                ),
+            )
         return manager
 
     def hold_wire_manager(self, manager: SimWireManager) -> dict[str, int]:

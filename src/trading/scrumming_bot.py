@@ -120,7 +120,6 @@ from .scrumming.sizing import (
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
-    fold_decision,
     discharge_gain_usd,
     fold_size_taper,
     position_ceiling,
@@ -132,6 +131,7 @@ from .scrumming.sizing import (
     stack_rung_decision,
     target_delta_pct,
     target_delta_usd,
+    tranche_fire_decision,
     tranche_rebuy_price,
     tranche_sale_usd,
     tranche_wire_share_pct,
@@ -1843,8 +1843,8 @@ class ScrummingBot(
                 EVENT_ID_KEY: str(tranche.get(EVENT_ID_KEY, "") or ""),
             },
             sources=[tranche],
-            decision=retry_fold_plan([tranche], self._unanswered_decisions(SIDE_BUY))[1]
-            or fold_decision([tranche]),
+            decision=retry_fold_plan([tranche], self._unanswered_sends(SIDE_BUY))[1]
+            or tranche_fire_decision(tranche),
         )
         if fill_price is None or fill_price <= 0:
             return {
@@ -1852,7 +1852,7 @@ class ScrummingBot(
                 "reason": (
                     "_execute_buy refused or failed (Smart "
                     "Ceiling / fail-closed buy safety / P0b guard, or "
-                    "exchange rejection); tranche unchanged"
+                    "exchange rejection); the activity log names the outcome"
                 ),
             }
         return {

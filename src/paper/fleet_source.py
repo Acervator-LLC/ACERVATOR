@@ -55,6 +55,7 @@ from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.scrumming.target_ramp import RAMP_MODES
 from ..trading.smart_wire import mature_profit_usd
 from ..trading.target_bands import fleet_ammo
+from ..trading.wallet_reservations import wallet_currency, wallet_key
 from .live_feed_source import VENUE, SendRefused
 from .paper_paths import PAPER_FLEET_NAME, get_paper_root
 from .paper_wire import PaperWireManager
@@ -1430,6 +1431,14 @@ class PaperFleetSource:
         manager = PaperWireManager()
         manager.import_wires(self.wire_rows())
         manager.import_ledgers(self.wire_ledger_rows())
+        for bot in self.bots():
+            manager.note_wallet(
+                bot.bot_id,
+                wallet_key(
+                    str(bot.exchange_id),
+                    wallet_currency(bot.symbol, bot.base_currency),
+                ),
+            )
         return manager
 
     def hold_wire_manager(self, manager: PaperWireManager) -> dict[str, int]:

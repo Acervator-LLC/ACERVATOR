@@ -26,14 +26,20 @@ from ..otd_math import (
 from ..stack_math import is_shadow
 from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
-from ..wallet_reservations import get_wallet_reservations, wallet_key
+from ..wallet_reservations import (
+    get_wallet_reservations,
+    wallet_currency,
+    wallet_key,
+)
 from .shadow import SHADOW_BOOKER
 from .sizing import (
     DETONATION_SALE,
     EXCESS_SALE,
+    FOLD_AGE_KEY,
     FRACTIONAL_UNITS,
     SHORTFALL_BUY,
     SIDE_BUY,
+    SAME_SIZE_REL,
     SIDE_SELL,
     answer_fits_plan,
     discharge_gain_usd,
@@ -43,6 +49,7 @@ from .sizing import (
     held_wire_usd,
     narrower_shadow_exit,
     opposing_event_id,
+    pays_its_tranches,
     priced_usd,
     rebalance_held_usd,
     routed_share_pct,
@@ -70,9 +77,6 @@ OWN_TRANCHE_PATHS = ("fold_rebuy", "manual_tranche_fire")
 
 #: The booker of an order a repeated decision got back that no plan sized.
 EARLIER_ORDER_BOOKER = "_book_earlier_order"
-
-#: How far an answer's size may sit from the send's and still be the send's own order.
-_EARLIER_ORDER_SIZE_REL = 1e-9
 
 
 @dataclass(frozen=True)
@@ -737,6 +741,44 @@ class ExecutionEngineMixin:
             self.bot_id, self.config.symbol, side
         )
 
+    def _unanswered_sends(self, side: str) -> list:
+        """The sends ``get_idempotency_layer`` holds an unanswered id for on this bot,
+        ``config.symbol`` and ``side``."""
+        return get_idempotency_layer().unanswered_sends(
+            self.bot_id, self.config.symbol, side
+        )
+
+    def _lost_buy(self, decision: str) -> Any:
+        """The ``_unanswered_sends`` buy ``decision`` names, None where it stands answered."""
+        for send in self._unanswered_sends(SIDE_BUY):
+            if send.intent.decision == decision:
+                return send
+        return None
+
+    def _wallet_currency(self) -> str:
+        """``wallet_currency`` of ``config.symbol`` and ``config.base_currency``."""
+        return wallet_currency(self.config.symbol, self.config.base_currency)
+
+    def _earlier_order_booking(self, send: Any, price: float) -> dict:
+        """The ``_pay_queue_by_units`` keywords for the earlier order ``send`` names, at
+        ``price``: a shortfall buy keeps the floor and pays tranches queued before it.
+        """
+        decision = send.intent.decision
+        floor = None
+        if not pays_its_tranches(decision):
+            try:
+                held = self.opposing_distance_settings()
+                floor = [held.interval_pct, held.fee_pct, held.band_travel_pct]
+            except DistanceSettingUnreadable:
+                floor = None
+        return {
+            "price": float(price),
+            "fee_pct": self._fee_pct_read(),
+            "credit_spent": fold_spends_credit(decision),
+            "floor_distance": floor,
+            "queued_before": None if pays_its_tranches(decision) else send.issued_at,
+        }
+
     def _held_for_other_bots(self) -> Optional[float]:
         """What ``sum_sibling_held_usd`` of the attached ``_bot_manager`` answers for
         this wallet, 0.0 with no fleet to ask and None where it cannot read a bot."""
@@ -745,9 +787,7 @@ class ExecutionEngineMixin:
         )
         if not callable(reader):
             return 0.0
-        held = reader(
-            self.bot_id, self.config.exchange_id, self._venue_quote_currency()
-        )
+        held = reader(self.bot_id, self.config.exchange_id, self._wallet_currency())
         return None if held is None else float(held)
 
     async def _spends_held_dollars(self, cost: float, price: float) -> bool:
@@ -763,7 +803,7 @@ class ExecutionEngineMixin:
         )
         if held == 0.0 and own_usd <= 0.0:
             return False
-        _quote = self._venue_quote_currency()
+        _quote = self._wallet_currency()
         free_usd: Optional[float] = None
         if held is not None:
             try:
@@ -1499,7 +1539,7 @@ class ExecutionEngineMixin:
                 )
                 or SHORTFALL_BUY
             )
-            _repeats = _decision in self._unanswered_decisions(SIDE_BUY)
+            _lost = self._lost_buy(_decision)
             _reservations.reserve(_wallet_key, buy_usd)
             try:
                 order = await self.guarded_place_order(
@@ -1535,13 +1575,15 @@ class ExecutionEngineMixin:
                 ),
                 "fee_pct": _fee,
             }
-            if _repeats and not math.isclose(
+            if _lost is not None and not math.isclose(
                 self._order_asked_units(self._last_settled_order or order, buy_amount),
                 buy_amount,
-                rel_tol=_EARLIER_ORDER_SIZE_REL,
+                rel_tol=SAME_SIZE_REL,
             ):
-                _manual_purchase["floor_distance"] = None
-                _manual_purchase["credit_spent"] = fold_spends_credit(_decision)
+                _keep_floor = _manual_purchase["floor_distance"]
+                _manual_purchase.update(self._earlier_order_booking(_lost, price))
+                if _keep_floor is None:
+                    _manual_purchase["floor_distance"] = None
             self._hold_resting_order(
                 order,
                 "_book_manual_purchase",
@@ -1736,6 +1778,7 @@ class ExecutionEngineMixin:
         floor_distance: Optional[list] = None,
         fee_pct: Optional[float] = None,
         credit_spent: bool = False,
+        queued_before: Optional[float] = None,
     ) -> None:
         """Book one settled piece of a Manual Fire or cartridge buy against the
         queued tranches, and announce it.
@@ -1743,7 +1786,8 @@ class ExecutionEngineMixin:
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``. With
         ``floor_distance``, ``_pay_queue_by_units`` leaves unpaid a tranche whose
-        ``tranche_rebuy_price`` sits under ``fill_price``, and it reads ``credit_spent``.
+        ``tranche_rebuy_price`` sits under ``fill_price``, and it reads ``credit_spent``
+        and ``queued_before``.
         """
         fill_amount = units
         if fill_price <= 0:
@@ -1752,7 +1796,13 @@ class ExecutionEngineMixin:
 
         _had_queue = bool(self._fold_tranches)
         _gain_usd, _discharged = self._pay_queue_by_units(
-            fill_amount, fill_price, _floor, fee_pct, operator_initiated, credit_spent
+            fill_amount,
+            fill_price,
+            _floor,
+            fee_pct,
+            operator_initiated,
+            credit_spent,
+            queued_before,
         )
         if not _had_queue:
             msg = (
@@ -1800,6 +1850,8 @@ class ExecutionEngineMixin:
         price: float,
         fee_pct: Optional[float] = None,
         credit_spent: bool = False,
+        floor_distance: Optional[list] = None,
+        queued_before: Optional[float] = None,
     ) -> None:
         """Book one settled piece of the earlier order a repeated decision's send got
         back, which no plan sized: ``_pay_queue_by_units`` pays the queue and the rest
@@ -1810,7 +1862,13 @@ class ExecutionEngineMixin:
             fill_price = price
         self._fold_piece_laddered = False
         _gain_usd, _discharged = self._pay_queue_by_units(
-            fill_amount, fill_price, None, fee_pct, False, credit_spent
+            fill_amount,
+            fill_price,
+            DistanceSettings(*floor_distance) if floor_distance else None,
+            fee_pct,
+            False,
+            credit_spent,
+            queued_before,
         )
         self._report_fold_by_units(
             fill_amount,
@@ -1835,6 +1893,7 @@ class ExecutionEngineMixin:
         fee_pct: Optional[float],
         operator_initiated: bool,
         credit_spent: bool = False,
+        queued_before: Optional[float] = None,
     ) -> tuple[float, int]:
         """Take ``fill_amount`` units off the queue in ``_fold_discharge_order``, each a
         lot at its tranche's ``initial_buy_price`` and the rest one at ``fill_price``, and
@@ -1843,7 +1902,8 @@ class ExecutionEngineMixin:
         With ``floor``, a tranche whose ``tranche_rebuy_price`` sits under ``fill_price``
         stays unpaid. A tranche pays its units from its own sale dollars, and one that
         ends returns its wire credit to the pool; with ``credit_spent`` the units take
-        their share of the credit too, as a fold spends it.
+        their share of the credit too, as a fold spends it. A tranche queued after
+        ``queued_before`` stays unpaid.
         """
         if not self._fold_tranches:
             self._main_lots.append(
@@ -1861,6 +1921,11 @@ class ExecutionEngineMixin:
             if remaining <= 1e-12:
                 break
             if floor is not None and fill_price > tranche_rebuy_price(t, floor):
+                continue
+            if (
+                queued_before is not None
+                and float(t.get(FOLD_AGE_KEY, 0.0) or 0.0) > queued_before
+            ):
                 continue
             # _fold_discharge_order yields finite units.
             t_units = float(t.get("units", 0.0) or 0.0)
@@ -3053,7 +3118,7 @@ class ExecutionEngineMixin:
                 "FOLD", "SENT", f"{amount:.6f} @ ${price:.8f}"
             )
 
-            _repeats = decision in self._unanswered_decisions(SIDE_BUY)
+            _lost = self._lost_buy(decision)
             order = await self.guarded_place_order(
                 symbol=self.config.symbol,
                 side=OrderSide.BUY,
@@ -3098,7 +3163,7 @@ class ExecutionEngineMixin:
             )
             asked = self._order_asked_units(self._last_settled_order or order, amount)
             if (
-                _repeats
+                _lost is not None
                 and _own_tranche
                 and not answer_fits_plan(
                     asked,
@@ -3113,11 +3178,7 @@ class ExecutionEngineMixin:
                 )
             ):
                 booker = EARLIER_ORDER_BOOKER
-                booking = {
-                    "price": float(price),
-                    "fee_pct": self._fee_pct_read(),
-                    "credit_spent": fold_spends_credit(decision),
-                }
+                booking = self._earlier_order_booking(_lost, price)
                 sources = None
             self._hold_resting_order(
                 order,

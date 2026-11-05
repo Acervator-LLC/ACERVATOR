@@ -1392,7 +1392,9 @@ class BotContainer:
             purpose=purpose,
         )
         _repeated = _idem.holds(_intent)
-        _coid = _idem.derive_coid(_intent)
+        _coid = _idem.derive_coid(
+            _intent, float(price or self.stats.current_price or 0.0)
+        )
 
         try:
             order = await self.exchange.place_order(

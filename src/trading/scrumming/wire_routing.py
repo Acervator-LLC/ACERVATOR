@@ -12,10 +12,9 @@ import math
 from typing import Any, Optional, TYPE_CHECKING
 
 from ...core.event_bus import LINE_KIND_WIRE_FLOW
-from ...exchange.market_rules_store import quote_currency
 from ..container.config import fold_ratio_pct
 from ..otd_math import DistanceSettingUnreadable
-from ..wallet_reservations import wallet_key
+from ..wallet_reservations import wallet_currency, wallet_key
 from .sizing import (
     fold_cap_remaining_usd,
     held_wire_usd,
@@ -113,9 +112,13 @@ class WireRoutingMixin(_Host):
         other_config = getattr(other, "config", None)
         return wallet_key(
             getattr(other_config, "exchange_id", ""),
-            quote_currency(getattr(other_config, "symbol", "")).upper(),
+            wallet_currency(
+                getattr(other_config, "symbol", ""),
+                getattr(other_config, "base_currency", ""),
+            ),
         ) == wallet_key(
-            self.config.exchange_id, quote_currency(self.config.symbol).upper()
+            self.config.exchange_id,
+            wallet_currency(self.config.symbol, self.config.base_currency),
         )
 
     def _sale_surplus_usd(

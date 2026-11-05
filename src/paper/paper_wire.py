@@ -183,10 +183,12 @@ class PaperWireManager:
         self._bot_refs: dict[str, Any] = {}
         self._wallets: dict[str, str] = {}
 
-    def attach_bot(self, bot_id: str, bot_ref: Any, wallet: str = "") -> None:
-        """Hold the ``FakeBalance`` of ``bot_id`` that a share can reach, and the
-        ``wallet_key`` that bot trades."""
+    def attach_bot(self, bot_id: str, bot_ref: Any) -> None:
+        """Hold the ``FakeBalance`` of ``bot_id`` that a share can reach."""
         self._bot_refs[str(bot_id)] = bot_ref
+
+    def note_wallet(self, bot_id: str, wallet: str) -> None:
+        """Hold the ``wallet_key`` ``bot_id`` trades, which ``_same_wallet`` reads."""
         self._wallets[str(bot_id)] = str(wallet)
 
     def release_bot(self, bot_id: str) -> bool:
@@ -622,7 +624,7 @@ class PaperWireManager:
         }
 
     def _same_wallet(self, source_id: str, target_id: str) -> bool:
-        """False where both bots attached a ``wallet_key`` and the two differ."""
+        """False where ``note_wallet`` holds both bots' keys and the two differ."""
         source = self._wallets.get(str(source_id), "")
         target = self._wallets.get(str(target_id), "")
         return not source or not target or source == target
