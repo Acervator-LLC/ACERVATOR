@@ -653,7 +653,7 @@ The Detail button opens the bot settings window. A Scrumming bot's window carrie
 | --- | --- |
 | Apply Changes | Writes every pending edit at once, with no restart. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._apply_changes` |
 | Close | Closes the window and drops unapplied edits. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._setup_ui` |
-| Prev, Next | Closes this window and opens the neighbouring bot at the same tab position, dropping unapplied edits. The walk covers every bot the manager holds and wraps at both ends. Both buttons hide below two bots. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._navigate_to_sibling` |
+| Prev, Next | Closes this window and opens the neighbouring bot at the same tab position, dropping unapplied edits. The walk covers every bot the manager holds and wraps at both ends. Both buttons hide below two bots. Ctrl+Left and Ctrl+Right do the same, Qt build only. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._navigate_to_sibling` |
 | Pending line | Names the fields waiting for Apply, then counts what Apply changed. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._mark_changed` |
 
 ### Rows only a running bot shows
@@ -702,6 +702,7 @@ A started Extractor ranks its watch list and places no order, because its signal
 | Lifetime extracted | The running base-unit gain from sales. `src/trading/extractor_bot.py, in ExtractorBot._book_exit` |
 | Position rows | Pair, state, units held and dollar size at entry. Current and its change are priced at the average buy price, so neither follows the market. `src/trading/extractor_bot.py, in ExtractorBot.positions_for_gui` |
 | Fire, per position | Qt build only. After Yes, it sells the whole position at market and skips the profit check. `src/trading/extractor_bot.py, in ExtractorBot.manual_fire_position` |
+| Reset All Breakers, Self-Destruct | An Extractor has neither. The Qt build shows a refusal, and the React build does nothing. `src/gui/live_settings/settings_tab.py, in SettingsTabMixin._on_self_destruct_clicked` |
 
 ### Two mechanisms with no control on this tab
 
