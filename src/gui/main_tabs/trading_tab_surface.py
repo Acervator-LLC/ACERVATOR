@@ -27,6 +27,10 @@ from .. import design_system as ds
 from ..descriptions import TRADING_TAB_DESCRIPTIONS
 from ..color_alpha import rgba
 from . import asset_class_surface
+from . import bot_status_table_surface as scrum_surface
+from . import crypto_news_ticker_surface as ticker_surface
+from . import exchange_tab_surface as venue_surface
+from . import extractor_bot_table_surface as extractor_surface
 from .asset_class_surface import EQUITY_VENUES
 
 METHOD = "trading.tab"
@@ -114,6 +118,9 @@ ALIAS_LAYER = "crypto"
 
 EXCHANGES_PARAM = "exchanges"
 EXCHANGE_PARAM = "exchange"
+ACTIVITY_PAUSED_PARAM = "activity_paused"
+API_PAUSED_PARAM = "api_paused"
+ADD_EXCHANGE_PARAM = "add_exchange"
 
 CHART_PRESENT = False
 
@@ -191,6 +198,48 @@ ACTIONS = {
     "api_pause_button.toggled": "toggle_api_pause",
     "watchdog_timer.timeout": "run_activity_log_watchdog",
 }
+
+
+def press_fields() -> dict:
+    """Each bridge ``METHOD`` the Live page presses, beside the fields that make a press.
+
+    ``react_trading_tab`` and ``desktop_bridge`` both read this table.
+    """
+    return {
+        METHOD: [
+            ACTIVITY_PAUSED_PARAM,
+            API_PAUSED_PARAM,
+            ADD_EXCHANGE_PARAM,
+            EXCHANGE_PARAM,
+        ],
+        scrum_surface.METHOD: [
+            scrum_surface.PRIVACY_TOGGLE_PARAM,
+            scrum_surface.SORT_COLUMN_PARAM,
+            scrum_surface.SELECT_BOT_PARAM,
+            scrum_surface.CELL_CLICK_PARAM,
+            scrum_surface.FIRE_PARAM,
+            scrum_surface.DETAIL_PARAM,
+            scrum_surface.VIEW_BAND_PARAM,
+        ],
+        venue_surface.METHOD: [
+            venue_surface.COMMAND_PARAM,
+            venue_surface.NEW_BOT_PARAM,
+            venue_surface.PRIVACY_PARAM,
+        ],
+        extractor_surface.METHOD: [extractor_surface.ACTION_PARAM],
+        ticker_surface.METHOD: [
+            ticker_surface.ADVANCE_PARAM,
+            ticker_surface.CLICK_PARAM,
+            ticker_surface.HOVER_PARAM,
+            ticker_surface.REFRESH_PARAM,
+        ],
+    }
+
+
+def carries_press(method: Any, params: Any) -> bool:
+    """True when ``params`` names one field ``press_fields`` lists for ``method``."""
+    held = params if isinstance(params, dict) else {}
+    return any(name in held for name in press_fields().get(method, ()))
 
 
 def add_button_text(label: Any) -> str:
@@ -737,12 +786,12 @@ def view_model(params: dict) -> dict:
             API_PAUSE_BUFFER.hold(line)
         else:
             API_LOG_PANE.append(line)
-    requested = params.get("api_paused")
+    requested = params.get(API_PAUSED_PARAM)
     if requested is not None:
         API_PAUSE_BUFFER.toggle(bool(requested), API_LOG_PANE)
     return build_view_model(
         layer=params.get("layer", "crypto"),
-        activity_paused=bool(params.get("activity_paused")),
+        activity_paused=bool(params.get(ACTIVITY_PAUSED_PARAM)),
         api_buffer=API_PAUSE_BUFFER,
         api_pane=API_LOG_PANE,
         watchdog=WATCHDOG_STATE,

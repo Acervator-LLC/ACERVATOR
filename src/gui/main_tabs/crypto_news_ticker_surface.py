@@ -144,6 +144,11 @@ EVENT_LEAVE = 11
 EVENT_MOUSE_RELEASE = 3
 BROWSER_NEW_TAB = 2
 
+ADVANCE_PARAM = "advance"
+CLICK_PARAM = "click"
+HOVER_PARAM = "hover"
+REFRESH_PARAM = "refresh"
+
 REFUSED_FEED_LOG = "crypto_news_ticker: %s feed refused, no headline taken from it: %s"
 MALFORMED_FEED_LOG = "crypto_news_ticker: %s feed did not parse: %s"
 OVERSIZED_FEED_LOG = (
@@ -806,6 +811,8 @@ PANE_MODEL: Optional[CryptoNewsTickerModel] = None
 
 PANE_FETCHER: Optional[Callable[[], list]] = None
 
+PANE_BROWSER: Optional[Callable] = None
+
 FETCH_THREAD_NAME = "acervator-news-fetch"
 
 FETCH_THREAD: Optional[threading.Thread] = None
@@ -831,11 +838,19 @@ def use_fetch(request_factory, opener, clock: Callable[[], float]) -> None:
         PANE_MODEL.fetcher = PANE_FETCHER
 
 
+def use_browser(open_url: Callable) -> None:
+    """Hold ``open_url`` as what a press on a headline calls in ``handle_event``."""
+    global PANE_BROWSER
+    PANE_BROWSER = open_url
+    if PANE_MODEL is not None:
+        PANE_MODEL.open_url = PANE_BROWSER
+
+
 def pane_model() -> CryptoNewsTickerModel:
     """The strip this process is showing, built on the first request."""
     global PANE_MODEL
     if PANE_MODEL is None:
-        PANE_MODEL = CryptoNewsTickerModel(fetcher=PANE_FETCHER)
+        PANE_MODEL = CryptoNewsTickerModel(fetcher=PANE_FETCHER, open_url=PANE_BROWSER)
     return PANE_MODEL
 
 
@@ -1005,7 +1020,7 @@ def view_model(params: dict) -> dict:
     """
     global PANE_MODEL
     if params.get("reset", False):
-        PANE_MODEL = CryptoNewsTickerModel(fetcher=PANE_FETCHER)
+        PANE_MODEL = CryptoNewsTickerModel(fetcher=PANE_FETCHER, open_url=PANE_BROWSER)
     model = pane_model()
     if params.get("now") is not None:
         moment = float(params["now"])
@@ -1016,11 +1031,14 @@ def view_model(params: dict) -> dict:
     if params.get("start", False):
         model.start()
         start_fetch(model)
-    if params.get("hover") is not None:
-        model.handle_event(EVENT_ENTER if params["hover"] else EVENT_LEAVE)
-    for _step in range(int(params.get("advance", 0))):
+    if params.get(REFRESH_PARAM, False):
+        model.force_refresh()
+        start_fetch(model)
+    if params.get(HOVER_PARAM) is not None:
+        model.handle_event(EVENT_ENTER if params[HOVER_PARAM] else EVENT_LEAVE)
+    for _step in range(int(params.get(ADVANCE_PARAM, 0))):
         model.advance()
-    if params.get("click", False):
+    if params.get(CLICK_PARAM, False):
         model.handle_event(EVENT_MOUSE_RELEASE)
     if params.get("stop", False):
         model.stop()

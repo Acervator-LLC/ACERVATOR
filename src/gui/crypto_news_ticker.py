@@ -123,6 +123,23 @@ def opening_address(url: object) -> tuple[str, str]:
     return address, ""
 
 
+def open_story(url: object, new: int = 2, source: str = "") -> None:
+    """Open ``url`` in the system browser once ``opening_address`` admits it.
+
+    ``CryptoNewsTicker.eventFilter`` and ``CryptoNewsTickerModel.handle_event`` both run this.
+    """
+    address, refused = opening_address(url)
+    if not address:
+        logger.warning("News ticker: %s headline not opened, %s", source, refused)
+        return
+    try:
+        import webbrowser
+
+        webbrowser.open(address, new=new)
+    except Exception as _wb_exc:
+        logger.warning("News ticker: open failed for %r: %s", address, _wb_exc)
+
+
 def hover_text(source_name: str, address: str, refused: str) -> str:
     """The hover box's words for one headline, every character of them escaped.
 
@@ -655,21 +672,6 @@ if _HAS_QT:
                     return False
                 if et == 3 and self._headlines:
                     h = self._headlines[self._index]
-                    address, refused = opening_address(h.url)
-                    if not address:
-                        logger.warning(
-                            "News ticker: %s headline not opened, %s",
-                            h.source.name,
-                            refused,
-                        )
-                        return True
-                    try:
-                        import webbrowser
-
-                        webbrowser.open(address, new=2)
-                    except Exception as _wb_exc:  # noqa: BLE001
-                        logger.warning(
-                            "News ticker: open failed for %r: %s", address, _wb_exc
-                        )
+                    open_story(h.url, source=h.source.name)
                     return True
             return super().eventFilter(watched, event)

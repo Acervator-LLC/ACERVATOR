@@ -1168,7 +1168,7 @@ def _create_bot(self, exchange_id="", defaults_override=None):
 | the press | how it reaches the stop |
 | --- | --- |
 | + New Bot, Qt build | `src/gui/widgets/exchange_tab.py, in ExchangeTab.__init__` hands it to `in _create_bot` |
-| + New Bot, React build | `src/gui/react_exchange_tab.py, in ExchangeTabReact._answer` hands it to `in _create_bot` |
+| + New Bot, React build | `src/gui/react_exchange_tab.py, in ExchangeTabReact.new_bot` hands it to `in _create_bot` |
 | Adopt, both builds | `in _adopt_topology_proposal` asks the stop before its confirm box and before its wire snapshot |
 
 These are the only presses that make a live bot. The restore at launch and the

@@ -99,6 +99,9 @@ CLOSED_ORDER_STATUSES = frozenset(
 #: The ``side`` values a ``_resting_orders`` record carries.
 RESTING_SIDES = ("buy", "sell")
 
+#: The ``CircuitBreakerMixin.reset_circuit_breaker`` scope that clears both breakers.
+RESET_ALL_SCOPE = "all"
+
 
 def order_status_text(order: object) -> str:
     """The lower-case status text ``order`` carries, read off an ``OrderStatus`` or a
@@ -1405,8 +1408,11 @@ class BotContainer:
             logger.warning("Bot %s already running", self.bot_id)
             return
         _hold = self.order_hold_reason()
-        if _hold and self._task and not self._task.done():
-            self._warn_order(f"START WAITS: {_hold}. Its tick loop is still running.")
+        _loop_alive = bool(self._task and not self._task.done())
+        if _hold:
+            _tail = " Its tick loop is still running." if _loop_alive else ""
+            self._warn_order(f"START WAITS: {_hold}.{_tail}")
+        if _hold and _loop_alive:
             return
 
         # A fresh start reports no error from the previous run.
@@ -1572,6 +1578,7 @@ class BotContainer:
         return {
             "bot_id": self.bot_id,
             "state": self.state.value,
+            "hold_reason": self.order_hold_reason(),
             "exchange": self.config.exchange_id,
             "symbol": self.config.symbol,
             "asset_class": self._asset_class(self.config.symbol),
@@ -1959,6 +1966,20 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         except Exception as exc:
             logger.warning("force_fire failed on %s: %s", bot_id, exc)
             return False
+
+    def held_bot_ids(self) -> list[str]:
+        """Every bot whose ``order_hold_reason`` names a hold, in fleet order."""
+        return [bot_id for bot_id, bot in self._bots.items() if bot.order_hold_reason()]
+
+    def reset_all_breakers(self) -> dict[str, list[str]]:
+        """Call ``reset_circuit_breaker`` on every bot that carries it, and answer
+        each bot id with what that call cleared."""
+        cleared: dict[str, list[str]] = {}
+        for bot_id, bot in list(self._bots.items()):
+            reset = getattr(bot, "reset_circuit_breaker", None)
+            if callable(reset):
+                cleared[bot_id] = list(reset(RESET_ALL_SCOPE).get("applied", []))
+        return cleared
 
     def set_data_pool(self, pool) -> None:
         """Attach shared MarketDataPool for efficient API usage."""

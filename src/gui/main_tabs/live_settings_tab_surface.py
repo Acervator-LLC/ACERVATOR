@@ -13,12 +13,12 @@ and its config and fills every control, every read-only row and every
 group. ``mark_changed`` records one operator edit. ``reset_breakers``
 runs the Reset All Breakers button and reports which of its four
 outcomes it took. ``self_destruct`` runs the danger button and reports
-which of its five outcomes it took. ``refresh_denom_rows`` repaints the
+which of its six outcomes it took. ``refresh_denom_rows`` repaints the
 two cross-pair rows the shipped tab repaints every 5 s.
 
 ``BotConfigSource``, ``BotSource``, ``PairSource``, ``ScoutSource``,
-``RateSource`` and ``ThreadSink`` are plain stand-ins for the bot, its
-config, the market-pair scout, the currency-rate monitor and the thread
+``RateSource`` and ``LoopSink`` are plain stand-ins for the bot, its
+config, the market-pair scout, the currency-rate monitor and the loop
 the self-destruct is dispatched on, so the tab can be driven over the
 bridge from values alone.
 
@@ -204,9 +204,16 @@ RESET_FAILED_TEXT = "Reset failed"
 RESET_ALL_SCOPE = "all"
 RESET_APPLIED_KEY = "applied"
 RESET_RESTORE_DELAY_MS = 2000
+FLEET_RESET_TITLE = "Reset every bot"
+FLEET_RESET_FORMAT = (
+    "Clear the circuit breakers on all {bots} bot(s)?\n\n"
+    "{held} bot(s) held by a hard breaker run again and can send orders. "
+    "A bot paused by hand stays paused."
+)
 
 SELF_DESTRUCT_PHRASE = "SELF-DESTRUCT"
 SELF_DESTRUCT_METHOD = "self_destruct"
+HOLD_METHOD = "order_hold_reason"
 UNAVAILABLE_TITLE = "Self-Destruct Unavailable"
 UNAVAILABLE_TEXT = "This bot type does not support self-destruct."
 CONFIRM_TITLE = "Confirm SELF-DESTRUCT"
@@ -223,6 +230,8 @@ CONFIRM_ECHO_MODE = "Normal"
 CONFIRM_INITIAL_TEXT = ""
 CANCELLED_TITLE = "Self-Destruct Cancelled"
 CANCELLED_TEXT = "Confirmation token did not match. No action taken."
+REFUSED_TITLE = "Self-Destruct Refused"
+REFUSED_FORMAT = "Nothing was sold and nothing changed: {reason}."
 DISPATCHED_TITLE = "Self-Destruct Dispatched"
 DISPATCHED_TEXT_FORMAT = (
     "Self-destruct dispatched for bot {bot_id} — "
@@ -230,8 +239,6 @@ DISPATCHED_TEXT_FORMAT = (
     "or SELF-DESTRUCT FAILED to confirm outcome.\n"
     "Bot will be PAUSED on completion."
 )
-THREAD_NAME_FORMAT = "self-destruct-{bot_id}"
-THREAD_IS_DAEMON = True
 BOT_ID_PREFIX_LEN = 8
 MISSING_SYMBOL = "?"
 MISSING_BOT_ID = "?"
@@ -240,6 +247,7 @@ WARNING_ICON = "warning"
 INFORMATION_ICON = "information"
 
 OUTCOME_UNAVAILABLE = "unavailable"
+OUTCOME_REFUSED = "refused"
 OUTCOME_CANCELLED = "cancelled"
 OUTCOME_PHRASE_MISMATCH = "phrase_mismatch"
 OUTCOME_DISPATCHED = "dispatched"
@@ -276,6 +284,7 @@ HUNGER_PACE_NONE_TEXT: str = ABSENT_CELL_TEXT
 
 #: The row tooltips, read from ``SETTINGS_TAB_DESCRIPTIONS``, the dict the Qt tabs read.
 TOOLTIPS = dict(SETTINGS_TAB_DESCRIPTIONS)
+TOOLTIPS["cb_reset_all_btn"] += " Hold SHIFT to clear every bot."
 
 
 def as_finite_float(value: Any) -> Optional[float]:
@@ -423,14 +432,14 @@ def confirm_prompt(symbol: Any, bot_id: Any) -> str:
     return CONFIRM_PROMPT_FORMAT.format(symbol=symbol, bot_id=bot_id)
 
 
+def fleet_reset_question(bots: Any, held: Any) -> str:
+    """The question SHIFT on Reset All Breakers asks before it clears every bot."""
+    return FLEET_RESET_FORMAT.format(bots=bots, held=held)
+
+
 def dispatched_text(bot_id: Any) -> str:
-    """The line shown once the self-destruct is handed to its thread."""
+    """The line shown once the self-destruct is handed to its loop."""
     return DISPATCHED_TEXT_FORMAT.format(bot_id=bot_id)
-
-
-def thread_name(bot_id: Any) -> str:
-    """The name the self-destruct thread carries."""
-    return THREAD_NAME_FORMAT.format(bot_id=bot_id)
 
 
 def message_box(icon: str, title: str, text: str) -> dict:
@@ -441,6 +450,13 @@ def message_box(icon: str, title: str, text: str) -> dict:
 def unavailable_box() -> dict:
     """The box shown when this bot type has no self-destruct."""
     return message_box(WARNING_ICON, UNAVAILABLE_TITLE, UNAVAILABLE_TEXT)
+
+
+def refused_box(reason: Any) -> dict:
+    """The box shown when ``order_hold_reason`` holds the press."""
+    return message_box(
+        WARNING_ICON, REFUSED_TITLE, REFUSED_FORMAT.format(reason=reason)
+    )
 
 
 def cancelled_box() -> dict:
@@ -1338,7 +1354,7 @@ def actions() -> dict:
 TIMERS = {"denom_refresh_timer": DENOM_REFRESH_INTERVAL_MS}
 TIMERS_STARTED = ("denom_refresh_timer",)
 TIMER_DELAYS_MS = (RESET_RESTORE_DELAY_MS,)
-THREADS = ("self_destruct",)
+THREADS: tuple = ()
 BUS_SUBSCRIBES: tuple = ()
 BUS_EMITS: tuple = ()
 SIGNALS_DECLARED: tuple = ()
@@ -1376,10 +1392,11 @@ RESET_FAILED = "reset.failed"
 RESET_RESTORED = "reset.restored"
 DESTRUCT_START = "destruct.start"
 DESTRUCT_UNAVAILABLE = "destruct.unavailable"
+DESTRUCT_REFUSED = "destruct.refused"
 DESTRUCT_PROMPT = "destruct.prompt"
 DESTRUCT_CANCELLED = "destruct.cancelled"
 DESTRUCT_MISMATCH = "destruct.mismatch"
-DESTRUCT_THREAD = "destruct.thread"
+DESTRUCT_SCHEDULED = "destruct.scheduled"
 DESTRUCT_DISPATCHED = "destruct.dispatched"
 CHANGED = "changed"
 
@@ -1416,10 +1433,11 @@ CALL_NAMES = (
     RESET_RESTORED,
     DESTRUCT_START,
     DESTRUCT_UNAVAILABLE,
+    DESTRUCT_REFUSED,
     DESTRUCT_PROMPT,
     DESTRUCT_CANCELLED,
     DESTRUCT_MISMATCH,
-    DESTRUCT_THREAD,
+    DESTRUCT_SCHEDULED,
     DESTRUCT_DISPATCHED,
     CHANGED,
 )
@@ -1465,22 +1483,22 @@ class RateSource:
         return self
 
 
-class ThreadSink:
+class LoopSink:
     """Where the self-destruct is handed, and what it records.
 
-    ``start`` records the name and the daemon flag it was given, and
-    raises when the caller asked for a failing hand-off.
+    ``schedule`` records the bot id it was given, and raises when the
+    caller asked for a failing hand-off.
     """
 
     def __init__(self, raises: Optional[BaseException] = None) -> None:
         self.raises = raises
-        self.started: list = []
+        self.scheduled: list = []
 
-    def start(self, name: Any, is_daemon: Any) -> int:
+    def schedule(self, bot_id: Any) -> int:
         if self.raises is not None:
             raise self.raises
-        self.started.append([name, is_daemon])
-        return len(self.started)
+        self.scheduled.append(bot_id)
+        return len(self.scheduled)
 
 
 class BotConfigSource:
@@ -1587,13 +1605,13 @@ class LiveSettingsTabModel:
         bot: Any = None,
         scout: Any = None,
         rates: Any = None,
-        thread: Any = None,
+        loop: Any = None,
         timeframes: Any = None,
     ) -> None:
         self.bot = bot
         self.scout = scout
         self.rates = rates
-        self.thread = thread if thread is not None else ThreadSink()
+        self.loop = loop if loop is not None else LoopSink()
         self.timeframes = timeframes
         self.accessible_name = ACCESSIBLE_NAME
         self.forms_configured = 0
@@ -1986,6 +2004,13 @@ class LiveSettingsTabModel:
             self.destruct_outcome = OUTCOME_UNAVAILABLE
             self.calls.append([DESTRUCT_UNAVAILABLE])
             return self.destruct_outcome
+        reader = getattr(self.bot, HOLD_METHOD, None)
+        hold = reader() if callable(reader) else ""
+        if hold:
+            self.boxes.append(refused_box(hold))
+            self.destruct_outcome = OUTCOME_REFUSED
+            self.calls.append([DESTRUCT_REFUSED])
+            return self.destruct_outcome
         symbol = getattr(self.bot.config, "symbol", MISSING_SYMBOL)
         raw_id = getattr(self.bot, "bot_id", None)
         bot_id = raw_id[:BOT_ID_PREFIX_LEN] if raw_id else MISSING_BOT_ID
@@ -2002,8 +2027,8 @@ class LiveSettingsTabModel:
             self.destruct_outcome = OUTCOME_PHRASE_MISMATCH
             self.calls.append([DESTRUCT_MISMATCH])
             return self.destruct_outcome
-        self.thread.start(thread_name(bot_id), THREAD_IS_DAEMON)
-        self.calls.append([DESTRUCT_THREAD, thread_name(bot_id)])
+        self.loop.schedule(bot_id)
+        self.calls.append([DESTRUCT_SCHEDULED, bot_id])
         self.boxes.append(dispatched_box(bot_id))
         self.destruct_outcome = OUTCOME_DISPATCHED
         self.calls.append([DESTRUCT_DISPATCHED, bot_id])
@@ -2112,7 +2137,6 @@ def build_view_model(
             "hint_text": DANGER_HINT_TEXT,
             "hint_word_wrap": DANGER_HINT_WORD_WRAP,
             "phrase": SELF_DESTRUCT_PHRASE,
-            "thread_is_daemon": THREAD_IS_DAEMON,
             "bot_id_prefix_len": BOT_ID_PREFIX_LEN,
             "outcome": model.destruct_outcome,
         },
@@ -2150,6 +2174,7 @@ def build_view_model(
         "bare_number_fields": list(bare_number_fields()),
         "outcomes": {
             "unavailable": OUTCOME_UNAVAILABLE,
+            "refused": OUTCOME_REFUSED,
             "cancelled": OUTCOME_CANCELLED,
             "phrase_mismatch": OUTCOME_PHRASE_MISMATCH,
             "dispatched": OUTCOME_DISPATCHED,
@@ -2181,7 +2206,6 @@ def build_view_model(
             "denom_tiny": DENOM_TINY_FORMAT,
             "confirm_prompt": CONFIRM_PROMPT_FORMAT,
             "dispatched": DISPATCHED_TEXT_FORMAT,
-            "thread_name": THREAD_NAME_FORMAT,
             "style": STYLE_FORMAT,
         },
         "colors": {

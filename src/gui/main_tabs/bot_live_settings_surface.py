@@ -27,6 +27,7 @@ from typing import Any, Optional
 
 from .. import design_system as ds
 from ..color_alpha import rgba
+from .bot_status_table_surface import STATE_HELD
 
 METHOD = "bot_live_settings.state"
 
@@ -55,6 +56,11 @@ STATE_STYLE_FORMAT = (
 )
 STATE_BACKGROUND_ALPHA = 34
 
+#: The line both builds draw under the header while ``order_hold_reason`` names a hold.
+HOLD_FORMAT = "HELD: {reason}."
+HOLD_STYLE = f"color: {ds.ERROR}; font-size: 12px; font-weight: bold;"
+NO_HOLD = ""
+
 STATE_RUNNING = "running"
 STATE_IDLE = "idle"
 STATE_PAUSED = "paused"
@@ -69,6 +75,7 @@ STATE_COLORS = {
     STATE_ERROR: ds.ERROR,
     STATE_STOPPED: ds.TEXT_MUTED,
     STATE_COOLDOWN: ds.WARNING,
+    STATE_HELD: ds.ERROR,
 }
 # The badge foreground and its tinted ground are one colour, so an
 # unknown state names the same token twice.
@@ -450,6 +457,18 @@ def state_style(state: Any) -> str:
             STATE_BACKGROUND_ALPHA,
         ),
     )
+
+
+def hold_text(bot: Any) -> str:
+    """``HOLD_FORMAT`` over ``bot.order_hold_reason``, empty with no hold."""
+    reader = getattr(bot, "order_hold_reason", None)
+    reason = reader() if callable(reader) else NO_HOLD
+    return HOLD_FORMAT.format(reason=reason) if reason else NO_HOLD
+
+
+def window_state(bot: Any) -> str:
+    """The state the window's badge draws: ``STATE_HELD`` while ``hold_text`` shows."""
+    return STATE_HELD if hold_text(bot) else str(getattr(bot.state, "value", bot.state))
 
 
 def tabs_for_mode(mode: Any) -> list:
@@ -1052,9 +1071,11 @@ def build_view_model(model: BotLiveSettingsModel) -> dict:
         "header_style": model.header_style,
         "header_style_format": HEADER_STYLE_FORMAT,
         "header_color": HEADER_COLOR,
-        "state_label": model.state_label,
+        "hold_label": hold_text(model.bot),
+        "hold_style": HOLD_STYLE,
+        "state_label": state_text(window_state(model.bot)),
         "state_label_format": STATE_LABEL_FORMAT,
-        "state_style": model.state_style,
+        "state_style": state_style(window_state(model.bot)),
         "state_style_format": STATE_STYLE_FORMAT,
         "state_colors": dict(STATE_COLORS),
         "state_unknown_fg": STATE_UNKNOWN_FG,

@@ -213,3 +213,63 @@ input[data-part="control"][type="checkbox"] {
 [data-part="bot-live-settings"] [hidden] {
   display: none !important;
 }
+
+/* The box a press raises covers the window, which is how a modal box behaves. */
+[data-part="press-box-shade"] {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 55%);
+}
+
+[data-part="press-box"] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  padding: 14px;
+  background: var(--btn-bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+
+[data-part="press-box-title"] {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+[data-part="press-box-text"] {
+  white-space: pre-wrap;
+}
+
+[data-part="press-box-input"] {
+  padding: 4px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--grid);
+}
+
+[data-part="press-box-buttons"] {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+[data-part="press-box-button"] {
+  min-width: 70px;
+  padding: 4px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--grid);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+[data-part="press-box-button"][data-default="true"] {
+  border-color: var(--accent);
+}

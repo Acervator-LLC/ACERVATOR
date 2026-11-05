@@ -293,6 +293,21 @@ NUMBER_FIELDS = ("current_holdings", "quote_to_usd", "live_target_balance")
 NO_NUMBER = 0.0
 
 
+def flip_privacy_masks() -> bool:
+    """Mask every field while one shows, or show them all, and answer the masking.
+
+    ``ExchangeTabModel.on_global_privacy_clicked`` and the Qt Privacy Mode button
+    both run this, so the two builds flip the register one way.
+    """
+    registry = get_privacy_mask_registry()
+    snapshot = registry.to_dict()
+    any_revealed = any(
+        not snapshot.get(field_id, False) for field_id in registry.known_field_ids()
+    )
+    registry.set_all(any_revealed)
+    return any_revealed
+
+
 def privacy_label(all_masked: bool) -> str:
     """The words on the Privacy Mode button for one register state."""
     return PRIVACY_LABEL_ON if all_masked else PRIVACY_LABEL_OFF
@@ -866,13 +881,7 @@ class ExchangeTabModel:
     def on_global_privacy_clicked(self) -> None:
         """Flip every registered privacy mask in one shot."""
         try:
-            registry = get_privacy_mask_registry()
-            snapshot = registry.to_dict()
-            any_revealed = any(
-                not snapshot.get(field_id, False)
-                for field_id in registry.known_field_ids()
-            )
-            registry.set_all(any_revealed)
+            any_revealed = flip_privacy_masks()
         except Exception:
             self.calls.append([PRIVACY_UNREADABLE])
             return

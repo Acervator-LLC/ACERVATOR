@@ -20,6 +20,7 @@ from .growth_stage import (
     stage_for,
 )
 from ..main_tabs.bot_node_surface import TOOLTIP_FORMAT
+from ..main_tabs.bot_status_table_surface import shown_state
 from .particle import Particle
 from .privacy import _mask_or
 from .themes import THEMES
@@ -244,7 +245,7 @@ if _HAS_QT:
 
             data = self._bot_data
             stats = data.get("stats", {})
-            state = data.get("state", "idle")
+            state = shown_state(data) or "idle"
             symbol = data.get("symbol", "???")
             mode = data.get("mode", "scrumming")
             pnl = stats.get("realised_pnl", 0)
@@ -259,6 +260,7 @@ if _HAS_QT:
                 "error": t["error"],
                 "stopped": QColor(80, 80, 80),
                 "cooldown": t["warning"],
+                "held": t["error"],
             }.get(state, t["text"])
             pnl_color = t["success"] if pnl >= 0 else t["error"]
 

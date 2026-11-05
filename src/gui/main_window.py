@@ -273,6 +273,9 @@ if _HAS_QT:
         #: One API Interaction Log entry, crossed to the GUI thread for `_on_api_event`.
         apiEntryLogged = Signal(object)  # noqa: N815 - Qt signal name
 
+        #: One bridge press, crossed to the GUI thread for `_run_live_press`.
+        livePressAsked = Signal(str, object)
+
         def __init__(self, bot_manager=None, settings_manager=None, parent=None):
             super().__init__(parent)
             self.setWindowTitle("Acervator v" + __version__ + "")
@@ -315,6 +318,7 @@ if _HAS_QT:
 
             self._error_log_buffer: _deque = _deque(maxlen=200)
             self._bus.subscribe("bot.error", self._on_bot_error_for_log)
+            self.livePressAsked.connect(self._run_live_press)
 
             icon_path = Path(__file__).parent.parent.parent / "resources" / "icon.ico"
             if icon_path.exists():
@@ -1716,6 +1720,12 @@ if _HAS_QT:
 
             statuses = self._bot_manager.list_bots() if self._bot_manager else []
             return votes_payload(statuses, panel.panel_reading())
+
+        def _run_live_press(self, method: str, params: dict) -> None:
+            """Run one press ``desktop_bridge`` carried on ``TradingTabReact.run_press``."""
+            run = getattr(getattr(self, "_trading_tab", None), "run_press", None)
+            if callable(run):
+                run(method, dict(params))
 
         def _publish_votes(self, bot_statuses=None) -> bool:
             """Draw the same voting reading on the React Live tab.
@@ -3923,6 +3933,8 @@ if _HAS_QT:
 
                 try:
                     self._schedule_async(bot.start())
+                    if bot.order_hold_reason():
+                        return
                     self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
                     self._spool.notify(f"Bot {bot_id} RUNNING", "success")
                     sound.play_state_change()
@@ -3968,6 +3980,8 @@ if _HAS_QT:
                     success, msg = self._connect_exchange_for_bot(bot)
                     if success:
                         self._schedule_async(bot.start())
+                        if bot.order_hold_reason():
+                            return
                         self._status_log.log(f"✓ Bot {bot_id} restarted.", "success")
                         self._spool.notify(f"Bot {bot_id} RESTARTED", "success")
                         sound.play_state_change()

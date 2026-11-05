@@ -159,6 +159,7 @@
   var ADVANCE_PARAM = "advance";
   var CLICK_PARAM = "click";
   var HOVER_PARAM = "hover";
+  var REFRESH_PARAM = "refresh";
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -525,10 +526,10 @@
     return dispatch(actionNamed(model, CYCLE_TIMEOUT), request(ADVANCE_PARAM, STEP));
   }
 
-  // No parameter reaches force_refresh, so the refresh timeout asks for the state again.
+  // One hourly timeout, which asks the bridge to fetch the feeds again.
   function refresh() {
     var model = heldModel();
-    return dispatch(actionNamed(model, REFRESH_TIMEOUT), {});
+    return dispatch(actionNamed(model, REFRESH_TIMEOUT), request(REFRESH_PARAM, true));
   }
 
   function hover() {
