@@ -5186,19 +5186,21 @@ class ScrummingBot(
         summary: Optional[VotingSummary] = None,
         origin: str = "scrum",
         floor_ref_price: float = 0.0,
+        press: bool = False,
     ) -> int:
         """Split a SCRUM decision into Stack tranches instead of one immediate sell.
 
         A ``floor_ref_price`` above zero is written on every rung as
         ``STACK_FLOOR_REF_KEY``, and a new rung combines only with a standing rung
-        holding the same figure.
+        holding the same figure. ``press`` marks the ``OrderWatch`` of a ladder a
+        tranche Fire opened.
 
         Returns:
             The number of tranches created (>=1). Populates
             ``self._stack_tranches`` and records ``origin`` on every tranche.
 
         """
-        _watch = self.order_watch()
+        _watch = self.order_watch(press=press)
         _hold = self.order_refusal(_watch)
         if _hold and not self._invisible:
             self._record_refusal(_watch, "SELL", self.config.symbol, _hold)
@@ -5831,6 +5833,7 @@ class ScrummingBot(
                 summary=summary,
                 origin="fold",
                 floor_ref_price=float(fold_price),
+                press=path == "manual_tranche_fire",
             )
         except Exception as _spawn_exc:
             logger.error(
