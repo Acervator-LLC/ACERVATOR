@@ -11303,6 +11303,8 @@ Each of those now changes once for each fill, by the count the exchange reports
 filled, on every path an order can take. A count the exchange did not report
 changes nothing.
 
+Now: each order takes its own id, so the venue cannot hand an old fill back under a new sale. A send with no answer keeps its id for the retry, until an order comes back on that market or the holdings audit adopts the venue's count (`src/exchange/idempotency.py, in IdempotencyLayer.derive_coid`).
+
 ### A resting order is booked when the exchange fills it
 
 At Order Book a scrum or a fold rests as a limit order at the last price. When
