@@ -25,7 +25,7 @@ Only the Exchanges page changes with the asset class. The title reads Settings â
 | Route | What opens and what follows |
 | --- | --- |
 | File > Settings | Opens on the User page. A Save reaches the running window at once. An exchange you add or remove here changes its tab at the next launch. `src/gui/main_window.py, in MainWindow._open_settings` |
-| Exchange > Add Exchange, or an Add button on the Trading tab | Opens on the Exchanges page, and the exchange tabs follow when the window closes. A Save here writes the file, and the running window takes the theme, weights, SMS and AI Monitor at the next launch or the next Save from File > Settings. `src/gui/main_window.py, in MainWindow._add_exchange` |
+| Exchange > Add Exchange, or in the Qt build an Add button on the Trading tab | Opens on the Exchanges page, and the exchange tabs follow when the window closes. A Save here writes the file, and the running window takes the theme, weights, SMS and AI Monitor at the next launch or the next Save from File > Settings. `src/gui/main_window.py, in MainWindow._add_exchange` |
 | Start on a broker, or on Robinhood on the Crypto class, with no stored key | Opens on the User page, for the bot's asset class. Start tries again when the window closes. `src/gui/main_window.py, in MainWindow._ask_for_venue_connection` |
 
 ### Two builds of this window
