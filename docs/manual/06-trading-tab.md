@@ -176,15 +176,15 @@ Now: Hedge Balance caps a dollar reserve separate from Target Balance; each hedg
 
 Now we arrive at some safety controls. Circuit Breakers are designed to fully inhibit trade actions for a given period should an extreme volatility (pump and dump) event occur. Soft Circuit Breakers have a candle-count based timer whereas Hard Circuit Breakers require the user to clear the bot to continue trading.
 
-Now: an up candle stops scrums and a down candle stops folds for the cooldown, and a hard breaker stops both until you reset it (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
+Now: an up candle stops scrums and a down candle stops folds for the cooldown, and a hard breaker stops every order until you press Reset All Breakers (`src/trading/bot_container.py, in BotContainer.guarded_place_order`).
 
 Soft CB Threshold - The amount of instantaneous, single-candle price action required for the bot to pause trading for a number of candles denoted by Soft CB Cooldown.
 
-Now: the breaker reads each candle once, at first sight, taking its high-to-low range so far against its open, and the soft breaker shuts only that candle's side (`src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers`).
+Now: each time the bot reads the market, both breakers read the open candle as it grows, from the shared candles and that read's price, and each trips once per candle on the high-to-low range against the open; the soft breaker shuts only that candle's side (`src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers`).
 
 Hard CB Threshold - The amount of instantaneous, single-candle price action required for the bot to be hard stopped at which point the user must re-authorize trading.
 
-Now: a trip stops scrums and folds until you reset it, but the tick keeps running, so a cartridge, a detonation, an expiry close or a first entry can still send an order (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
+Now: a trip holds every order until you press Reset All Breakers: the bot reads PAUSED, an order already at the venue can still fill and books, and Fire, Self-Destruct, a cartridge, a detonation, an expiry close and a first entry all wait (`src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin.order_hold_reason`).
 
 Soft CB Cooldown - This is the number of candles that must close before the Soft Circuit Breaker opens again.
 
@@ -433,6 +433,8 @@ On the Scrumming table, a press on a row draws that bot on the Indicator Voting 
 
 Qt build only. A press queues a market order to target on the next tick, past the gates, and it refuses inside 1% of target (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance`). A press that buys also sends nothing while the venue lists an open buy on the market, or while that list cannot be read (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._refuses_stacked_buy`).
 
+While the hard breaker holds a bot, a press queues nothing and the status log names the breaker, and the button keeps its colour (`src/trading/bot_container.py, in BotManager.force_fire`).
+
 Now: a press that buys spends only dollars no other bot's queued buy-backs or wire credits hold, and the log names those dollars when none are left (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._held_for_other_bots`).
 
 Fire and Ammo use their colours differently. Ammo is green above target, and Fire is red to sell above target.
@@ -454,7 +456,7 @@ Each command acts on the selected row. With no row selected it logs "Select a bo
 
 | Button | What it does and what it reads |
 | --- | --- |
-| Start | Connects to the exchange, then starts the bot. `src/gui/main_window.py, in MainWindow._on_bot_command` |
+| Start | Connects to the exchange, then starts the bot. `src/gui/main_window.py, in MainWindow._on_bot_command`. It does not end a hard hold, and the log names the breaker. `src/trading/bot_container.py, in BotContainer.start` |
 | Pause, Stop | Pauses or stops the bot. `src/gui/main_window.py, in MainWindow._on_bot_command` |
 | Restart | Stops the bot, connects again and starts it. `src/gui/main_window.py, in MainWindow._on_bot_command` |
 | Delete | Asks Yes or No first. Yes stops the bot and removes it. SHIFT changes nothing. `src/gui/main_window.py, in MainWindow._on_bot_command` |
@@ -579,7 +581,7 @@ The first column gives each row's range and factory opening value. Order Visibil
 | Row | What it does and what it reads |
 | --- | --- |
 | Soft CB Threshold (0 to 100%, 25%, 0 off) | Shuts one side when a candle's range reaches this share of its open. Reads `circuit_breaker_soft_pct`. `src/trading/scrumming/circuit_breakers.py, in breaker_move` |
-| Hard CB Threshold (0 to 100%, 35%, 0 off) | Trips the hard breaker at this range, and scrums and folds stop until a reset. Reads `circuit_breaker_hard_pct`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers` |
+| Hard CB Threshold (0 to 100%, 35%, 0 off) | Trips the hard breaker at this range, and every order stops until a reset. A spike between two market reads counts when the next candle fetch shows it. Reads `circuit_breaker_hard_pct`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers` |
 | Soft CB Cooldown (1 to 100, 3) | Sets the fresh candles before the shut side opens again. Reads `circuit_breaker_cooldown_candles`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers` |
 | Max Cartridge Size (0 to 200%, 10%, 0 off) | Fires a market rebalance once the Target Delta reaches this share of target. Reads `max_cartridge_size_pct`. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_cartridge_fire` |
 | Smart Cartridge (off) | Replaces that percent with the Bollinger range, floored at the interval. Reads `max_cartridge_smart`. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_smart_cartridge_pct` |
@@ -671,8 +673,8 @@ These sit on the Settings tab beside the wizard's rows.
 | Target A15, Target A14 | The target in that asset and its 24-hour gap against the dollar pair, each 5 seconds. `src/gui/live_settings/settings_tab.py, in SettingsTabMixin._refresh_target_denom_rows` |
 | Profit Folding Active (on) | Lets fold surplus grow the target. Reads `profit_folding_active`. `src/trading/scrumming_bot.py, in ScrummingBot._apply_fold_target_growth` |
 | Tranche Despawn Timer (0 to 365 days, Off) | Removes fold and stack tranches this old on each tick. It places no order, and a tranche with a resting order stays. Reads `tranche_despawn_days`. `src/trading/scrumming/fold_tranches.py, in FoldTrancheAccountingMixin._despawn_aged_tranches` |
-| Reset All Breakers | Qt build only. Clears both breakers at once. A bot the hard breaker paused runs again, and a bot paused by hand stays paused. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin.reset_circuit_breaker` |
-| Self-Destruct | Qt build only. After you type SELF-DESTRUCT, it sells the asset's whole venue balance at market, clears the fold queue and pauses the bot. `src/trading/scrumming_bot.py, in ScrummingBot.self_destruct` |
+| Reset All Breakers | Qt build only. Clears both breakers at once, and it is the only press that ends a hard hold. A bot the hard breaker paused runs again, and a bot paused by hand stays paused. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin.reset_circuit_breaker` |
+| Self-Destruct | Qt build only. After you type SELF-DESTRUCT, it sells the asset's whole venue balance at market, clears the fold queue and pauses the bot. While the hard breaker holds, it refuses and changes nothing. `src/trading/scrumming_bot.py, in ScrummingBot.self_destruct` |
 | Hunger (off) | Eases the vote floor after idle candles past the opposing distance. It never lets two indicators trade. Reads `hunger_enabled`. `src/trading/scrumming_bot.py, in ScrummingBot._count_hunger_candle` |
 | Hunger Pace (a dash means none) | Sets the idle candles to full hunger. A dash does nothing. Reads `hunger_pace_candles`. `src/trading/container/config.py, in BotConfig.hunger_gain_per_candle` |
 | Accumulation Shadow (off) | In a bearish regime, each fold's extra units go to a Shadow Tranche, held until a bullish regime. Reads `shadow_enabled`. `src/trading/scrumming/shadow.py, in ShadowTrancheMixin._mark_shadow_rows` |
@@ -682,7 +684,7 @@ These sit on the Settings tab beside the wizard's rows.
 | Tab | What it holds |
 | --- | --- |
 | Status | Read-only at open: realised profit and loss, trades, open orders, price, uptime and last error. `src/gui/live_settings/status_tab.py, in StatusTabMixin._create_status_tab` |
-| Fold Tranches | The queued buy-backs and their counters. Fire buys one tranche with its own sale dollars, skipping the vote and Target Delta gates. Each Clear button asks first and places no order. Fire and Clear are Qt build only. `src/trading/scrumming_bot.py, in ScrummingBot.manual_fire_tranche` |
+| Fold Tranches | The queued buy-backs and their counters. Fire buys one tranche with its own sale dollars, skipping the vote and Target Delta gates, and it refuses while the hard breaker holds. Each Clear button asks first and places no order. Fire and Clear are Qt build only. `src/trading/scrumming_bot.py, in ScrummingBot.manual_fire_tranche` |
 | Fold Tranches: Order, Filter | Qt build only. Order sets the row order, and Filter hides rows that do not match. `src/gui/live_settings/fold_chrome.py, in build_fold_row_controls` |
 | Fold Tranches: Arbiter button | Qt build only. Flips one label on an Extractor tranche and moves no money. `src/gui/live_settings/fold_tranches_tab.py, in FoldTranchesTabMixin._on_arbiter_toggle_clicked` |
 | Stack Tranches | The rising sell levels and their counters. Clear keeps a tranche that holds a resting order, and Clear Lifetime Counters asks first. Both are Qt build only. `src/trading/scrumming_bot.py, in ScrummingBot.clear_stack_tranches` |

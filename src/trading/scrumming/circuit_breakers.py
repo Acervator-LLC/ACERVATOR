@@ -1,18 +1,21 @@
 """Circuit-breaker logic for ScrummingBot: single-candle move interrupts.
 
 Soft breaker is a time delay that interrupts one side of the market for a
-cooldown; hard breaker pauses the bot until an operator reset.
+cooldown; hard breaker holds every order of the bot until an operator reset.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
+from ...exchange.data_pool import TF_SECONDS
 from ..bot_container import BotState
 from ..container.config import BotConfig
+from ..indicators.types import Candle, candles_from_raw
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -44,6 +47,18 @@ UP_DIRECTION = "up"
 DOWN_DIRECTION = "down"
 
 UNREADABLE_FORMAT = "{field}={value!r}"
+
+#: ``BotConfig.ta_timeframe`` default, read where a config holds an empty one.
+DEFAULT_TIMEFRAME = "1h"
+#: The rows ``ScrummingBot.tick`` asks ``_get_ohlcv`` for.
+CANDLE_ROWS = 100
+MS_PER_SECOND = 1000.0
+
+#: What ``CircuitBreakerMixin.order_hold_reason`` answers while the hard breaker holds.
+HARD_HOLD_FORMAT = (
+    "the hard circuit breaker tripped at {pct:.2f}% and holds every order until "
+    "Reset All Breakers is pressed"
+)
 
 
 @dataclass(frozen=True)
@@ -151,6 +166,56 @@ def breaker_move(candle, figures: BreakerFigures) -> Optional[BreakerMove]:
     )
 
 
+def candle_stamp(candle: Any) -> float:
+    """``candle.timestamp`` as a float, 0.0 where it is not a number."""
+    try:
+        return float(getattr(candle, "timestamp", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def forming_candle(
+    held: Optional[Candle],
+    rows: list,
+    period_s: float,
+    now_s: float,
+    price: Any,
+) -> Optional[Candle]:
+    """The candle open at ``now_s`` with ``price`` added to its range.
+
+    ``rows[-1]``, else ``held``, places the candle on the venue's ``period_s``
+    grid, a row at that open supplies its open, and ``held`` carries the range
+    earlier ticks saw. A ``price`` that is not a positive number answers ``held``.
+    """
+    try:
+        last = float(price)
+    except (TypeError, ValueError):
+        return held
+    if isinstance(price, bool) or not math.isfinite(last) or last <= 0.0:
+        return held
+    newest = rows[-1] if rows else None
+    anchor = newest or held
+    if anchor is None:
+        return None
+    anchor_ms = candle_stamp(anchor)
+    period_ms = period_s * MS_PER_SECOND
+    periods = max(0, math.floor((now_s * MS_PER_SECOND - anchor_ms) / period_ms))
+    opened_ms = anchor_ms + periods * period_ms
+    same = [
+        candle
+        for candle in (newest, held)
+        if candle is not None and candle_stamp(candle) == opened_ms
+    ]
+    return Candle(
+        timestamp=opened_ms,
+        open=same[0].open if same else last,
+        high=max([last, *(candle.high for candle in same)]),
+        low=min([last, *(candle.low for candle in same)]),
+        close=last,
+        volume=0.0,
+    )
+
+
 class CircuitBreakerMixin(_Host):
     # ScrummingBot.__init__ assigns each of these; _Host resolves back to
     # ScrummingBot, so the annotations break that cycle for a type reader.
@@ -158,107 +223,129 @@ class CircuitBreakerMixin(_Host):
     _cb_hard_tripped: bool
     _cb_hard_tripped_at: float
     _cb_hard_trip_pct: float
+    _cb_hard_candle_ts: float
     _cb_soft_active_side: Optional[str]
     _cb_soft_cooldown_remaining: int
     _cb_soft_tripped_at: float
     _cb_soft_trip_pct: float
+    _cb_soft_candle_ts: float
     _cb_last_candle_ts: float
+    _cb_row_ts: float
+    _cb_forming: Optional[Candle]
     _cb_unreadable_named: tuple
+    _manual_fire_pending: bool
 
-    def _check_circuit_breakers(self, candles) -> bool:
-        """Evaluate the most recent candle for circuit-breaker triggers.
+    def order_hold_reason(self) -> str:
+        """``HARD_HOLD_FORMAT`` while ``_cb_hard_tripped`` holds, empty otherwise."""
+        if not self._cb_hard_tripped:
+            return ""
+        return HARD_HOLD_FORMAT.format(pct=self._cb_hard_trip_pct)
+
+    async def _tick_breaker_holds(self, ticker: Any, position_usd: float) -> bool:
+        """Read the pooled candles and ``ticker.last`` into the breakers, and answer
+        True while ``_cb_hard_tripped`` holds, which ends ``ScrummingBot.tick``."""
+        timeframe = self.config.ta_timeframe or DEFAULT_TIMEFRAME
+        try:
+            raw = await self._get_ohlcv(
+                self.config.symbol, timeframe=timeframe, limit=CANDLE_ROWS
+            )
+            candles = candles_from_raw(raw)
+        except Exception as _read_exc:
+            logger.debug(
+                "Bot %s breaker candles unavailable: %s", self.bot_id, _read_exc
+            )
+            candles = []
+        try:
+            self._check_circuit_breakers(candles, getattr(ticker, "last", None))
+        except Exception as _cb_exc:
+            logger.warning(
+                "Bot %s circuit breaker check raised %s: %s",
+                self.bot_id,
+                type(_cb_exc).__name__,
+                _cb_exc,
+            )
+        if not self._cb_hard_tripped:
+            return False
+        self.stats.position_value = position_usd
+        if self._manual_fire_pending:
+            self._manual_fire_pending = False
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"MANUAL FIRE WAITS: {self.order_hold_reason()}.",
+            )
+        self._emit_gate_decision_at_quiet_tick("cb-hard-tripped")
+        return True
+
+    def _check_circuit_breakers(self, candles, price=None) -> bool:
+        """Read every candle ``_unread_candles`` names for circuit-breaker triggers.
 
         Single-candle move % = ``(high - low) / open × 100``. Direction is
         inferred from close vs open: close >= open interrupts the SCRUM side
         (don't sell into a pump); close < open interrupts the FOLD side
         (don't buy a falling knife).
 
-        A hard trip pauses the bot (``BotState.PAUSED``) until an operator
-        reset. A soft trip sets ``_cb_soft_active_side`` and a cooldown that
-        decrements per fresh candle, re-opening that side at zero.
+        A hard trip holds every order (``order_hold_reason``) and reads
+        ``BotState.PAUSED`` until an operator reset. A soft trip sets
+        ``_cb_soft_active_side`` and a cooldown that decrements per fresh
+        candle, re-opening that side at zero.
 
         Returns True while either breaker is blocking trades on either side.
-        Idempotent per candle timestamp — the same candle never double-trips.
         """
-        if not candles:
-            return self._cb_hard_tripped or self._cb_soft_active_side is not None
-        candle = candles[-1]
         figures = breaker_figures(self.config)
+        for candle in self._unread_candles(candles, price):
+            self._read_breaker_candle(candle, figures)
+        return self._cb_hard_tripped or self._cb_soft_active_side is not None
+
+    def _unread_candles(self, candles, price) -> list:
+        """The rows of ``candles`` from ``_cb_row_ts`` on, then ``_cb_forming`` grown
+        by ``price`` in place of its own row; a first read takes the newest row alone.
+
+        ``MarketDataPool`` serves one slot for a whole timeframe, so ``price`` is
+        what grows the open candle between two slot fetches.
+        """
+        rows = list(candles or [])
+        unread = rows[-1:]
+        if self._cb_row_ts > 0.0:
+            unread = [row for row in rows if candle_stamp(row) >= self._cb_row_ts]
+        if rows:
+            self._cb_row_ts = candle_stamp(rows[-1])
+        period_s = TF_SECONDS.get(self.config.ta_timeframe or DEFAULT_TIMEFRAME)
+        if period_s is None:
+            return unread
+        self._cb_forming = forming_candle(
+            self._cb_forming, rows, period_s, time.time(), price
+        )
+        forming = self._cb_forming
+        if forming is None:
+            return unread
+        opened_ms = candle_stamp(forming)
+        return [row for row in unread if candle_stamp(row) != opened_ms] + [forming]
+
+    def _read_breaker_candle(self, candle, figures: BreakerFigures) -> None:
+        """Count ``candle`` when it is newer than ``_cb_last_candle_ts``, and trip each
+        breaker it has reached; a timestamp of 0 makes every read fresh."""
         move = breaker_move(candle, figures)
         if move is None:
-            return self._cb_hard_tripped or self._cb_soft_active_side is not None
-        o = move.open_px
-        h = move.high
-        l = move.low
-        c = move.close
-
-        # Idempotency: skip if this candle was already evaluated. A timestamp
-        # that is not a number reads 0, which makes every candle fresh.
-        try:
-            ts = float(getattr(candle, "timestamp", 0) or 0)
-        except (TypeError, ValueError):
-            ts = 0.0
-        already_seen = ts > 0 and ts == self._cb_last_candle_ts
-        if not already_seen and ts > 0:
+            return
+        ts = candle_stamp(candle)
+        fresh = ts <= 0.0 or ts > self._cb_last_candle_ts
+        if fresh and ts > 0.0:
             self._cb_last_candle_ts = ts
 
-        move_pct = move.move_pct
-        direction = move.direction
-
-        hard_pct = figures.hard_pct
-        soft_pct = figures.soft_pct
-
-        if figures.unreadable and not already_seen:
+        if figures.unreadable and fresh:
             self._name_unreadable_breaker_figures(figures)
 
-        # --- Hard breaker (highest priority) ---
-        # Only trip on a fresh candle and not already tripped.
-        if not already_seen and not self._cb_hard_tripped and move.hard_trips:
-            self._cb_hard_tripped = True
-            self._cb_hard_tripped_at = time.time()
-            self._cb_hard_trip_pct = move_pct
-            try:
-                self.state = BotState.PAUSED
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "_check_circuit_breakers",
-                    type(_sup).__name__,
-                    _sup,
-                )
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"HARD CIRCUIT BREAKER TRIPPED: single-candle move "
-                    f"{move_pct:.2f}% ≥ hard threshold {hard_pct:.2f}% "
-                    f"(direction={direction}, OHLC: ${o:.8f}/${h:.8f}/"
-                    f"${l:.8f}/${c:.8f}). Bot PAUSED — operator reset "
-                    f"required. All trade paths interrupted."
-                ),
-            )
-            try:
-                self._emit_trade_notification(
-                    "ALL",
-                    "REFUSED",
-                    f"HARD breaker @ {move_pct:.2f}% (≥ {hard_pct:.2f}%)",
-                )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "_check_circuit_breakers",
-                    type(_sup).__name__,
-                    _sup,
-                )
-            return True
+        hard_is_new = ts <= 0.0 or ts > self._cb_hard_candle_ts
+        if not self._cb_hard_tripped and move.hard_trips and hard_is_new:
+            self._trip_hard_breaker(move, figures, ts)
+            return
 
-        # If hard is already tripped, all gates remain closed.
         if self._cb_hard_tripped:
-            return True
+            return
 
-        # --- Soft breaker cooldown decrement on each fresh candle ---
         if (
-            not already_seen
+            fresh
             and self._cb_soft_active_side is not None
             and self._cb_soft_cooldown_remaining > 0
         ):
@@ -277,41 +364,93 @@ class CircuitBreakerMixin(_Host):
                     ),
                 )
 
-        # Only trip on a fresh candle, not already soft-tripped.
-        if not already_seen and self._cb_soft_active_side is None and move.soft_side:
-            side = move.soft_side
-            cooldown = figures.cooldown_candles
-            self._cb_soft_active_side = side
-            self._cb_soft_cooldown_remaining = cooldown
-            self._cb_soft_tripped_at = time.time()
-            self._cb_soft_trip_pct = move_pct
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"SOFT CIRCUIT BREAKER TRIPPED: single-candle move "
-                    f"{move_pct:.2f}% ≥ soft threshold {soft_pct:.2f}% "
-                    f"(direction={direction}, side={side.upper()}). "
-                    f"Cooldown: {cooldown} candles before re-open. "
-                    f"OHLC: ${o:.8f}/${h:.8f}/${l:.8f}/${c:.8f}."
-                ),
-            )
-            try:
-                self._emit_trade_notification(
-                    side.upper(),
-                    "REFUSED",
-                    f"SOFT breaker @ {move_pct:.2f}% on {side.upper()} side",
-                )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "_check_circuit_breakers",
-                    type(_sup).__name__,
-                    _sup,
-                )
-            return True
+        soft_is_new = ts <= 0.0 or ts > self._cb_soft_candle_ts
+        if self._cb_soft_active_side is None and move.soft_side and soft_is_new:
+            self._trip_soft_breaker(move, figures, ts)
 
-        return self._cb_hard_tripped or self._cb_soft_active_side is not None
+    def _trip_hard_breaker(
+        self, move: BreakerMove, figures: BreakerFigures, ts: float
+    ) -> None:
+        """Set ``_cb_hard_tripped`` and ``BotState.PAUSED``, record ``ts`` in
+        ``_cb_hard_candle_ts``, and write the trip to ``bot.log``."""
+        move_pct = move.move_pct
+        hard_pct = figures.hard_pct
+        self._cb_hard_tripped = True
+        self._cb_hard_tripped_at = time.time()
+        self._cb_hard_trip_pct = move_pct
+        self._cb_hard_candle_ts = ts
+        try:
+            self.state = BotState.PAUSED
+        except Exception as _sup:
+            logger.debug(
+                "suppressed in %s: %s: %s",
+                "_check_circuit_breakers",
+                type(_sup).__name__,
+                _sup,
+            )
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"HARD CIRCUIT BREAKER TRIPPED: single-candle move "
+                f"{move_pct:.2f}% ≥ hard threshold {hard_pct:.2f}% "
+                f"(direction={move.direction}, OHLC: ${move.open_px:.8f}/"
+                f"${move.high:.8f}/${move.low:.8f}/${move.close:.8f}). Bot PAUSED — "
+                f"operator reset required. All trade paths interrupted."
+            ),
+        )
+        try:
+            self._emit_trade_notification(
+                "ALL",
+                "REFUSED",
+                f"HARD breaker @ {move_pct:.2f}% (≥ {hard_pct:.2f}%)",
+            )
+        except Exception as _sup:
+            logger.debug(
+                "suppressed in %s: %s: %s",
+                "_check_circuit_breakers",
+                type(_sup).__name__,
+                _sup,
+            )
+
+    def _trip_soft_breaker(
+        self, move: BreakerMove, figures: BreakerFigures, ts: float
+    ) -> None:
+        """Set ``_cb_soft_active_side`` and its cooldown, record ``ts`` in
+        ``_cb_soft_candle_ts``, and write the trip to ``bot.log``."""
+        move_pct = move.move_pct
+        side = move.soft_side
+        cooldown = figures.cooldown_candles
+        self._cb_soft_active_side = side
+        self._cb_soft_cooldown_remaining = cooldown
+        self._cb_soft_tripped_at = time.time()
+        self._cb_soft_trip_pct = move_pct
+        self._cb_soft_candle_ts = ts
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"SOFT CIRCUIT BREAKER TRIPPED: single-candle move "
+                f"{move_pct:.2f}% ≥ soft threshold {figures.soft_pct:.2f}% "
+                f"(direction={move.direction}, side={side.upper()}). "
+                f"Cooldown: {cooldown} candles before re-open. "
+                f"OHLC: ${move.open_px:.8f}/${move.high:.8f}/${move.low:.8f}/"
+                f"${move.close:.8f}."
+            ),
+        )
+        try:
+            self._emit_trade_notification(
+                side.upper(),
+                "REFUSED",
+                f"SOFT breaker @ {move_pct:.2f}% on {side.upper()} side",
+            )
+        except Exception as _sup:
+            logger.debug(
+                "suppressed in %s: %s: %s",
+                "_check_circuit_breakers",
+                type(_sup).__name__,
+                _sup,
+            )
 
     def _name_unreadable_breaker_figures(self, figures: BreakerFigures) -> None:
         """Write one bot.log line naming each unreadable breaker field.
@@ -365,6 +504,7 @@ class CircuitBreakerMixin(_Host):
             self._cb_hard_tripped = False
             self._cb_hard_tripped_at = 0.0
             self._cb_hard_trip_pct = 0.0
+            self._held_orders_named.clear()
             try:
                 if self.state == BotState.PAUSED:
                     self.state = BotState.RUNNING

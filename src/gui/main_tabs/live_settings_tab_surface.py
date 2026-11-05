@@ -182,7 +182,8 @@ DANGER_HINT_TEXT = (
     "AGGRESSIVE FULL-POSITION EXIT. Market-sells the "
     "entire holdings of this bot's target asset and "
     "PAUSES the bot. State (lots, fold tranches) is "
-    "cleared. Auto gates bypassed (operator override).\n\n"
+    "cleared. Auto gates bypassed (operator override); "
+    "a tripped hard breaker refuses it until reset.\n\n"
     "Confirmation required."
 )
 DANGER_HINT_STYLE = f"color:{ds.TEXT_INACTIVE};font-size:10px;"
@@ -213,8 +214,9 @@ CONFIRM_PROMPT_FORMAT = (
     "This will MARKET-SELL the entire {symbol} position "
     "on bot {bot_id} and PAUSE the bot.\n\n"
     "State (lots, tranches, fold queue) will be CLEARED.\n"
-    "All auto gates (BB threshold, hysteresis, circuit\n"
-    "breakers, higher-TF bias) BYPASSED.\n\n"
+    "All auto gates (BB threshold, hysteresis, soft circuit\n"
+    "breaker, higher-TF bias) BYPASSED. A tripped hard circuit\n"
+    "breaker refuses this until Reset All Breakers.\n\n"
     "To confirm, type SELF-DESTRUCT (case-sensitive):"
 )
 CONFIRM_ECHO_MODE = "Normal"
