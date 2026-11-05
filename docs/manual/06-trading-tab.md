@@ -166,7 +166,7 @@ Now: no Wire Inflow Stack row or config field exists; incoming wire dollars spre
 
 Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.
 
-Now: while ticked, the reserve reads no entry price and buys from 1% under target, past the interval or with a tranche queued, with band position under 0.40 and no bullish vote (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
+Now: while ticked, the reserve reads no entry price and buys from 1% under target, past the interval or with a tranche queued, with band position under 0.40 and no bullish vote, and a bot that has made no first buy waits for the band and its own vote first (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
 
 Hedge Balance - Sets a limit on the amount of additional liquidity a given bot is allowed to absorb when Current Price drifts below Initial Entry Price.
 
@@ -190,7 +190,7 @@ Soft CB Cooldown - This is the number of candles that must close before the Soft
 
 Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
 
-Now: at this share of Target Balance the bot fires a market rebalance past the band and vote gates, unless the opposing distance holds it or no queued tranche qualifies, and it spends only dollars no other bot's queued buy-backs or wire credits hold (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance`).
+Now: at this share of Target Balance the bot fires a market rebalance past the band and vote gates, unless the opposing distance holds it or no queued tranche qualifies, and it spends only dollars no other bot's queued buy-backs or wire credits hold (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance`); a bot that has made no first buy waits for the band and its own vote first (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_clears`).
 
 Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
 
@@ -583,7 +583,7 @@ The first column gives each row's range and factory opening value. Order Visibil
 | Soft CB Threshold (0 to 100%, 25%, 0 off) | Shuts one side when a candle's range reaches this share of its open. Reads `circuit_breaker_soft_pct`. `src/trading/scrumming/circuit_breakers.py, in breaker_move` |
 | Hard CB Threshold (0 to 100%, 35%, 0 off) | Trips the hard breaker at this range, and every order stops until a reset. The bot reads HELD and sends one alert. A spike between two market reads counts when the next candle fetch shows it. Reads `circuit_breaker_hard_pct`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers` |
 | Soft CB Cooldown (1 to 100, 3) | Sets the fresh candles before the shut side opens again. Reads `circuit_breaker_cooldown_candles`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers` |
-| Max Cartridge Size (0 to 200%, 10%, 0 off) | Fires a market rebalance once the Target Delta reaches this share of target. A position under 1% of target with no tranche queued holds it, so a first buy waits for the band and the vote. Reads `max_cartridge_size_pct`. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_cartridge_fire` |
+| Max Cartridge Size (0 to 200%, 10%, 0 off) | Fires a market rebalance once the Target Delta reaches this share of target. A bot that has made no first buy holds this buy until the band and its own vote clear. Reads `max_cartridge_size_pct`. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_cartridge_fire` |
 | Smart Cartridge (off) | Replaces that percent with the Bollinger range, floored at the interval. Reads `max_cartridge_smart`. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_smart_cartridge_pct` |
 | Smart Ceiling (1 to 100%, 30%) | Caps the Smart Cartridge figure. Reads `max_cartridge_smart_ceiling_pct`. `src/trading/container/config.py, in smart_cartridge_ceiling_pct` |
 

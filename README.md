@@ -331,23 +331,35 @@ _GATE_ORDER_SCRUM: tuple[str, ...] = (
 
 ##### The first buy reads three agreeing indicators
 
-The first buy votes with the bot's own weights, the ones its later trades read.
-Price must sit in the lowest 30% of the band, past the Detect distance or within
-the Fire Threshold of the lower band. The bot's vote must then be bearish and top
-what two indicators reach on that same vote.
+A bot owes a first buy until its first buy fill books. This is a saved fact
+about the bot, not a share of its target. A bot that held a position and lost it
+does not owe one. A saved record with no such field reads as made when it shows a
+holding or a trade.
+
+While a bot owes a first buy, its Max Cartridge rebalance, its hedge top-up and
+its fold wait for one read. Price must sit in the lowest 30% of the band, past
+the Detect distance or within the Fire Threshold of the lower band. The bot's own
+vote must then be bearish and top what two indicators reach on that same vote.
 
 A new bot holds twelve zeros, so it has no vote. It makes no first buy until you
-press Save on the TA Indicators page, and its line in the log says so.
+press Save on the TA Indicators page, and its line in the log says so. A new bot
+that finds a leftover of its coin also waits, and then the rebalance buys the
+rest.
 
-A position worth under 1% of target, with no fold tranche queued, holds its Max
-Cartridge Size. A first buy therefore reaches this vote at every size. A bot that
-holds a position keeps its cartridge. An Extractor arrival does not count toward
-that 1%, because its target rises by the same amount.
+When the read clears, the rebalance fires as it does at any other time: a market
+order sized at the Target Delta and clipped to the wallet. A press of Fire does
+not wait for the read.
 
-The wallet must hold the whole buy. The check leaves out this bot's parked wire
-credits and what the other bots on the venue have not deployed.
+A Max Cartridge Size of 0 or above 100 fires no rebalance. Under 1% of target,
+the first entry takes the same read and buys the whole target. Its wallet must
+hold that target after what the other bots claim, and in Order Book mode its
+order is a limit.
 
-`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_initial_entry`
+Both routes refuse a buy while the venue holds more of the coin than the book
+shows, past other bots and by more than 1% of target. The next tick's audit books
+those coins.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_read`
 
 ```python
 if not three_agree(summary.consensus_confidence, summary.signals):
@@ -1182,7 +1194,7 @@ indicators: the vote must top what the two heaviest voters reach at full
 confidence. That holds at every floor, where a landing strip sets the side, and
 on a bot's first buy. A bot with every weight at zero is outside the rule on a
 later trade. It makes no first buy, because
-`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_initial_entry`
+`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_read`
 refuses it before any vote.
 
 `src/trading/ta_engine.py` — `three_agree`

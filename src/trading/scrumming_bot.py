@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
 from ..exchange.base import OrderSide, OrderType
-from .target_bands import at_target_dust_band, empty_position_usd
+from .target_bands import at_target_dust_band
 from .bot_container import (
     BotContainer,
     BotConfig,
@@ -109,7 +109,6 @@ from .scrumming.execution import SettledFillFee, venue_fee_record
 from .scrumming.shadow import REGIME_NONE, regime_of
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
-from .scrumming.tick_phases import CONTAINED_LOT_KEY
 from .scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
     _STRONG_TREND_MIN_BULL_CANDLES,
@@ -558,6 +557,7 @@ class ScrummingBot(
 
         self._last_trade_price: float = 0.0
         self._last_trade_side: Optional[str] = None
+        self._first_buy_made: bool = False
 
         self._hyst_armed_fold_side: bool = False
         self._hyst_armed_scrum_side: bool = False
@@ -1553,7 +1553,6 @@ class ScrummingBot(
             "units": b,
             "initial_buy_price": arrival_price,
             "operator_initiated": False,
-            CONTAINED_LOT_KEY: True,
         }
 
         # ATOMIC ARRIVAL: four writes, nothing suspends between them.
@@ -2800,7 +2799,10 @@ class ScrummingBot(
     def _write_clock_figures(
         self, fill: SettledFill, order_id: str, filled: float, rests: bool
     ) -> None:
-        """Run ``_sate_hunger`` for ``fill``, then write the mixin's clock figures."""
+        """Set ``_first_buy_made`` on a buy, run ``_sate_hunger`` for ``fill``, then write
+        the mixin's clock figures."""
+        if fill.side == FILL_BUY:
+            self._first_buy_made = True
         self._sate_hunger(f"a {fill.type} fill")
         super()._write_clock_figures(fill, order_id, filled, rests)
 
@@ -3304,9 +3306,8 @@ class ScrummingBot(
             _cartridge_pct = 0.0
 
         _cartridge_pct = self._tick_smart_cartridge_pct(_cartridge_pct)
-        _first_buy_owed = self._first_buy_owed(current_value)
 
-        if _cartridge_pct > 0 and self._target_balance > 0 and not _first_buy_owed:
+        if _cartridge_pct > 0 and self._target_balance > 0:
             _cartridge_threshold = cartridge_threshold_usd(
                 self._target_balance, _cartridge_pct
             )
@@ -3383,6 +3384,10 @@ class ScrummingBot(
                             ),
                         )
                 else:
+                    if _direction == "FOLD" and not await self._first_buy_clears(
+                        ticker, symbol, current_value
+                    ):
+                        return
                     await self._tick_cartridge_fire(
                         ticker,
                         _direction,
@@ -3395,11 +3400,13 @@ class ScrummingBot(
         if await self._tick_detonation(ticker):
             return
 
-        if _first_buy_owed or current_value < empty_position_usd(self._target_balance):
-            await self._tick_initial_entry(ticker, symbol, current_value)
-            return
-
         self.stats.position_value = current_value
+
+        if current_value < self._target_balance * 0.01:
+            _entry_exit = await self._tick_initial_entry(ticker, symbol, current_value)
+            if _entry_exit:
+                self._emit_gate_decision_at_quiet_tick(_entry_exit)
+            return
 
         try:
             _distance = self.opposing_distance_settings()
@@ -4533,7 +4540,9 @@ class ScrummingBot(
         if not _scrum_chain_result.should_fire and not _fold_chain_result.should_fire:
             self._emit_gate_decision_at_quiet_tick(GATE_CHAIN_EXIT)
         if _fold_chain_result.should_fire:
-            if await self._tick_execute_fold(
+            if await self._first_buy_clears(
+                ticker, symbol, current_value
+            ) and await self._tick_execute_fold(
                 ticker, summary, delta, _distance, bb_result, _fold_chain_result
             ):
                 return
@@ -4678,7 +4687,9 @@ class ScrummingBot(
             _gap = _hedge_gap_usd
             if _gap / max(self._target_balance, 1e-9) >= 0.01:
                 _use = min(self._hedge_bal * 0.5, _gap)
-                if _use > 0.01:
+                if _use > 0.01 and await self._first_buy_clears(
+                    ticker, symbol, current_value
+                ):
                     hedge_fill = await self._execute_buy(
                         _use,
                         ticker.last,

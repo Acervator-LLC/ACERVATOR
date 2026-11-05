@@ -3228,7 +3228,7 @@ that reach real money.
 
 ```
 src/trading/scrumming_bot.py, in tick
-src/trading/scrumming/tick_phases.py, in _tick_initial_entry
+src/trading/scrumming/tick_phases.py, in _first_buy_read
 src/trading/ata_spm.py, in proximity_of
 src/simulator/validation.py, in bb_reading
 ```

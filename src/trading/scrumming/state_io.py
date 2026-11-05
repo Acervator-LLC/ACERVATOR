@@ -27,6 +27,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("acervator.scrumming")
 
+#: ``BotStats`` fields that stay at zero until a bot has traded or held a position.
+TRADE_HISTORY_STATS = (
+    "total_trades",
+    "total_buys",
+    "total_sells",
+    "last_trade_time",
+    "exchange_trade_count",
+    "total_scrummed_usd",
+    "total_folded_usd",
+    "position_value",
+)
+
 
 def admitted_counter(stored: Any, field: str, bot_id: Any) -> int:
     """Return one stored lifetime counter as a whole count, or zero.
@@ -66,6 +78,7 @@ class StateSerializerMixin:
     _current_holdings: float
     _dist_sets: list[dict]
     _export_resting_orders: Callable[..., list]
+    _first_buy_made: bool
     _fold_queue_usd: float
     _fold_tranches: list[dict]
     _shadow_tranches: list[dict]
@@ -79,14 +92,19 @@ class StateSerializerMixin:
     _main_lots: list[dict]
     _park_wire_credits: Callable[..., float]
     _quote_to_usd: float
+    _scrum_sells_lifetime: int
     _scrum_target_mode: str
     _scrum_target_side: str | None
+    _stack_tranches: list[dict]
     _target_balance: float
+    _tranches_closed_lifetime: int
+    _tranches_created_lifetime: int
     bot_id: Any
     config: Any
     retire_tranches_above_held: Callable[..., dict]
     retire_unaligned_tranches: Callable[..., dict]
     state: Any
+    stats: Any
 
     def export_scrumming_state(self) -> dict:
         """Export compounding state as a JSON-serializable dict.
@@ -108,6 +126,7 @@ class StateSerializerMixin:
             ),
             "last_trade_price": float(self._last_trade_price),
             "last_trade_side": self._last_trade_side,
+            "first_buy_made": bool(self._first_buy_made),
             "quote_to_usd": float(self._quote_to_usd or 1.0),
             "highest_venue_fee_pct": float(
                 as_finite_float(getattr(self, "highest_venue_fee_pct", 0.0)) or 0.0
@@ -241,6 +260,24 @@ class StateSerializerMixin:
         )
         logger.warning("Bot %s %s", self.bot_id, message)
         self._bus.emit("bot.log", bot_id=self.bot_id, message=message)
+
+    def _shows_past_trading(self) -> bool:
+        """True when restored lots, tranches, counters or ``TRADE_HISTORY_STATS`` show a
+        holding or a trade."""
+        return any(
+            (
+                self._main_lots,
+                self._fold_tranches,
+                self._shadow_tranches,
+                self._stack_tranches,
+                self._last_trade_side,
+                self._last_trade_price > 0,
+                self._tranches_created_lifetime,
+                self._tranches_closed_lifetime,
+                self._scrum_sells_lifetime,
+                self._hedge_trades,
+            )
+        ) or any(getattr(self.stats, name, 0) for name in TRADE_HISTORY_STATS)
 
     def import_scrumming_state(self, data: dict) -> None:
         """Restore compounding state from an ``export_scrumming_state`` dict.
@@ -545,6 +582,10 @@ class StateSerializerMixin:
         # back-filled from _created.
         self._scrum_sells_lifetime = admitted_counter(
             data.get("scrum_sells_lifetime", 0), "scrum_sells_lifetime", self.bot_id
+        )
+        _saved_made = data.get("first_buy_made")
+        self._first_buy_made = (
+            _saved_made if isinstance(_saved_made, bool) else self._shows_past_trading()
         )
 
         try:

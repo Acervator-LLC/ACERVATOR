@@ -305,10 +305,10 @@ class FleetAggregationMixin:
         the bot claims none of the pool, ``None`` means we do not know
         what it claims, and a bot that does not know must not guess low.
 
-        Two kinds of claim are added together. A dollar allocation counts
-        for what ``_undeployed_pool_units`` leaves of it, at the bot's own
-        cached rate. An allocated chunk is already in pool units and is
-        added as it stands.
+        Two kinds of claim are added together. A dollar allocation is
+        turned into pool units with the bot's own cached rate. An
+        allocated chunk is already in pool units and is added as it
+        stands.
         """
         claim = 0.0
         try:
@@ -326,7 +326,7 @@ class FleetAggregationMixin:
             rate, why = self._sibling_pool_rate(other_bot, dollar_pegged)
             if rate is None:
                 return None, why
-            claim += self._undeployed_pool_units(other_bot, target_usd, rate)
+            claim += target_usd / rate
         try:
             chunk_base = float(getattr(other_bot, "_chunk_size_base", 0) or 0)
         except Exception as _c_exc:
@@ -339,19 +339,6 @@ class FleetAggregationMixin:
                 f"cannot be an amount held"
             )
         return claim + chunk_base, ""
-
-    @staticmethod
-    def _undeployed_pool_units(other_bot: Any, target_usd: float, rate: float) -> float:
-        """``target_usd`` less ``other_bot``'s position, in pool units at ``rate``,
-        and at least its ``_fold_queue_usd`` and ``_pending_wire_credits``."""
-        units = as_finite_float(getattr(other_bot, "_current_holdings", 0.0)) or 0.0
-        price = as_finite_float(getattr(other_bot.stats, "current_price", 0.0)) or 0.0
-        held_usd = max(0.0, units) * max(0.0, price) * rate
-        earmarked = sum(
-            max(0.0, as_finite_float(getattr(other_bot, name, 0.0)) or 0.0)
-            for name in ("_fold_queue_usd", "_pending_wire_credits")
-        )
-        return max((target_usd - held_usd) / rate, earmarked)
 
     def _sibling_pool_rate(
         self,
@@ -397,12 +384,11 @@ class FleetAggregationMixin:
         """Sum of base-currency (quote-currency) claims by OTHER bots on
         the same exchange, in base-currency units.
 
-        A "claim" is operator-allocated capital a bot OWNS and has not yet
-        spent, which is what the caller's raw balance still holds:
+        A "claim" is operator-allocated capital a bot OWNS even when it is
+        not actively deployed:
 
           * **ScrummingBot** whose ``config.base_currency == currency``:
-            what ``_undeployed_pool_units`` leaves of its ``target_balance``,
-            converted through that bot's own
+            its ``target_balance``, converted through that bot's own
             cached ``_quote_to_usd``. That rate reads "1 unit of quote
             currency = N USD", so ``USD / _quote_to_usd`` yields quote
             units. A pool of a coin meant to be worth one dollar needs no
