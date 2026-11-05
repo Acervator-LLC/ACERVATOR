@@ -30,8 +30,6 @@ import pptx
 from matplotlib.dates import DateFormatter
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
-from PIL import Image as PilImage
-from PIL import ImageDraw, ImageFont
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches
 from pypdf import PdfReader
@@ -1721,7 +1719,6 @@ def verify_count_word(intro: str, total: int) -> tuple[bool, str]:
 
 EVIDENCE_DIR = REPO_ROOT / "artifacts" / "evidence-input"
 TRANSACTIONS_FOLDER = "transactions"
-PLACARDS_FOLDER = "placards"
 TABLETS_DIR = REPO_ROOT / "stone_tablets"
 BASELINE_DAY = datetime(2026, 4, 12, tzinfo=timezone.utc)
 QUOTE_ASSETS = frozenset({"USD", "USDC"})
@@ -1736,11 +1733,6 @@ DAY_MS = 86_400_000
 WEEK_MS = 604_800_000
 MONDAY_OFFSET_MS = 259_200_000
 LOG_AXIS_SPAN = 8.0
-PLACARD_NAME_TOP = 0.23
-PLACARD_LOGO_RIGHT = 0.66
-PLACARD_CODE_LEFT = 0.72
-PLACARD_CODE_TOP = 0.77
-LIGHT_GROUND_SUM = 382
 CHART_BAND = BollingerBands(period=20, std_dev=2.0)
 BAND_BAR_MS = DAY_MS
 BAND_BAR_NAME = "1d"
@@ -2191,39 +2183,6 @@ def _draw_trace(axis: Any, label: str, rows: Sequence[Sequence[float]]) -> None:
     axis.tick_params(labelsize=size("cap") * 0.7, colors=ink("ink_mute"))
 
 
-def obscured_placard(src: Path, label: str) -> PilImage.Image:
-    """Return the placard in grey with the mark, the asset name and the code square
-    painted out."""
-    card = PilImage.open(src).convert("L").convert("RGB")
-    width, height = card.size
-    ground = card.getpixel((width - 8, int(height * 0.18)))
-    split = int(height * 0.40)
-    for y in range(int(height * 0.20), height):
-        if card.getpixel((4, y)) != ground:
-            split = y
-            break
-    pen = ImageDraw.Draw(card)
-    pen.rectangle((0, 0, int(width * PLACARD_LOGO_RIGHT), split - 1), fill=ground)
-    pen.rectangle((0, int(height * PLACARD_NAME_TOP), width, split - 1), fill=ground)
-    pen.rectangle(
-        (
-            int(width * PLACARD_CODE_LEFT),
-            int(height * PLACARD_CODE_TOP),
-            width,
-            height,
-        ),
-        fill=card.getpixel((8, height - 8)),
-    )
-    light = sum(ground) > LIGHT_GROUND_SUM
-    pen.text(
-        (12, int(height * 0.265)),
-        label,
-        fill=(0, 0, 0) if light else (255, 255, 255),
-        font=ImageFont.truetype("arialbd.ttf", int(height * 0.062)),
-    )
-    return card
-
-
 def _save(figure: Figure, target: Path) -> str:
     """Write figure to target on the page ground and close it."""
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -2299,40 +2258,6 @@ def _write_asset_traces(
         _draw_trace(axis, f"{label} five-minute closes", rows)
         figure.autofmt_xdate()
         out.append((name, _save(figure, figures_dir / name)))
-    return out
-
-
-def placard_sources(labels: Mapping[str, str], evidence_dir: Path) -> dict[str, Path]:
-    """Return each label's supplied position card, keyed by the label its ticker maps
-    to."""
-    found: dict[str, Path] = {}
-    for path in sorted((evidence_dir / PLACARDS_FOLDER).glob("*.png")):
-        ticker = path.name.split("_")[0].upper()
-        if ticker in labels:
-            found[labels[ticker]] = path
-    return found
-
-
-def _write_asset_placards(
-    figures_dir: Path,
-    labels: Mapping[str, str],
-    evidence_dir: Path,
-) -> list[tuple[str, str]]:
-    """Write one obscured position card per charted base, named for that base's label.
-
-    A base the venue supplied no card for reports absent and writes nothing, so the
-    page that embeds it stops the build by name."""
-    sources = placard_sources(labels, evidence_dir)
-    figures_dir.mkdir(parents=True, exist_ok=True)
-    out: list[tuple[str, str]] = []
-    for label in sorted(labels.values()):
-        name = asset_figure_name("card", label)
-        src = sources.get(label)
-        if src is None:
-            out.append((name, f"absent - no position card input for {label}"))
-            continue
-        obscured_placard(src, label).save(figures_dir / name)
-        out.append((name, "wrote"))
     return out
 
 
@@ -2738,7 +2663,6 @@ def write_evidence_figures(
         asset_figure_name("vwap", "a<NN>"),
         asset_figure_name("weekly", "a<NN>"),
         asset_figure_name("trace", "a<NN>"),
-        asset_figure_name("card", "a<NN>"),
         "evidence_hodl_units.png",
         "evidence_hodl_dollars.png",
         "evidence_market.png",
@@ -2750,7 +2674,6 @@ def write_evidence_figures(
     out = _write_asset_vwap(figures_dir, labels, fills)
     out += _write_asset_weekly(figures_dir, labels, candles)
     out += _write_asset_traces(figures_dir, labels, candles)
-    out += _write_asset_placards(figures_dir, labels, evidence_dir)
     rows = hodl_rows(fills, labels, candles)
     out.append(_write_hodl_units(figures_dir, rows))
     out.append(_write_hodl_dollars(figures_dir, rows))
@@ -3309,20 +3232,6 @@ def _deck_market(
     )
 
 
-def _deck_card(
-    prs: Presentation, source: DeckSource, label: str, ledger: Ledger
-) -> None:
-    """Add one slide carrying ``label``'s position card, or the line stating it absent."""
-    slide = blank(prs)
-    heading(
-        slide,
-        f"The venue's own position card, {label}",
-        "Each card carries the entry price the venue holds for the open position,"
-        " the current price, and the gain or loss. The figures are the venue's own.",
-    )
-    _deck_asset_figure(slide, source, asset_figure_name("card", label), ledger)
-
-
 def _deck_grader(prs: Presentation) -> None:
     """Add the slide naming ``TradeGrade``'s score axes and the letter floors."""
     axes = [
@@ -3400,10 +3309,7 @@ def _deck_limits(prs: Presentation, source: DeckSource) -> None:
         "A falling average cost is not profit. It does not become profit until"
         " units are sold, and no sale enters that line."
         "\n\nA ratio above 1.000 reads the trades already closed. It says nothing"
-        f" about the units still held.\n\n{gaps}"
-        "\n\nA card's entry price is not the buy line above it. The card follows"
-        " the open position only and resets to zero on a full close. The buy line"
-        " counts every buy in the record and never resets.",
+        f" about the units still held.\n\n{gaps}",
         size=15,
     )
     source_note(slide, "tools/build_product_manual.py, in sell_over_buy")
@@ -3471,11 +3377,8 @@ def write_evidence_deck(
         _deck_base(prs, source, label, ledger)
     _deck_band_bars(prs, source)
     _deck_band_edges(prs, source)
-    every = sorted(evidence.labels.values())
-    for label in every:
+    for label in sorted(evidence.labels.values()):
         _deck_market(prs, source, label, ledger)
-    for label in every:
-        _deck_card(prs, source, label, ledger)
     _deck_grader(prs)
     _deck_limits(prs, source)
     _deck_provenance(prs, source, ledger)
