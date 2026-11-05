@@ -2826,8 +2826,8 @@ absences carry a written reason. The interval gate says in its own source that
 it needs no fold twin, because the bot returns early on the same condition. The
 trend-hold gate is declared sell-side only, and the config field that would arm
 a buy-side twin is declared and unread.
-[06-trading-tab.md](06-trading-tab.md) carries the proposal for that one, at
-the Strategy Gate Flags group.
+[06-trading-tab.md](06-trading-tab.md#strategy-gate-flags-rows) lists the flags
+the Strategy Gate Flags group holds.
 
 **Functional.** That config field is now removed. The buy side holds no flag for
 a trend hold and no gate for one, so the asymmetry is a plain absence rather

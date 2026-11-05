@@ -71,9 +71,10 @@ those nine figures under a heading of its own, and
 [07-indicators.md](07-indicators.md) adds the twelve published formulae, the
 departures the code takes from them, and the gate logic chain.
 [08-tabs.md](08-tabs.md) adds a description of the running code under each
-heading. [06-trading-tab.md](06-trading-tab.md) adds the two engine mechanisms
-the Trading Tab offers no control for. All three keep every transcribed
-sentence unaltered.
+heading. [06-trading-tab.md](06-trading-tab.md) adds one "Now:" line under each
+sentence the code has moved past, and a cited reference for every control. All
+three keep every transcribed sentence unaltered, apart from the labels that
+replace asset names.
 [07-indicators.md](07-indicators.md) holds them in the PDF's order.
 [08-tabs.md](08-tabs.md) orders its sections by the tab list in
 [04-manual-parts.md](04-manual-parts.md), and Main Window opens the part. Each

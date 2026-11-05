@@ -3287,9 +3287,8 @@ own declared figure
 
 A figure set in Settings still wins, and a paper bot's own saved record wins
 over that, so an existing paper bot keeps the figure it was created with. The
-declarations themselves, the full reader list and what the counts were before
-are on the Trading tab page under
-[Where the wizard's phantom defaults come from](../06-trading-tab.md).
+Trading tab page lists the Live wizard's rows under
+[Phantom Bots rows](../06-trading-tab.md#phantom-bots-rows).
 
 All three wizard phantom pages were built and both boxes read off the built
 widgets. With nothing stored, each falls back to the declaration and opens on

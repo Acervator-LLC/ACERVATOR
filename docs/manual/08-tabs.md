@@ -345,8 +345,8 @@ self._spendable_widget.update_profits(
 
 Turning Privacy Mode on masks that em dash to asterisks, which reads as a
 hidden number rather than an empty column.
-[06-trading-tab.md](06-trading-tab.md) carries the proposal for the first of
-the two. Issue #428 carries a second disagreement on this strip, between what
+[06-trading-tab.md](06-trading-tab.md#the-header-strip) lists what each cell
+reads. Issue #428 carries a second disagreement on this strip, between what
 the counter tooltips promise and what the cards draw.
 
 **The issue #428 clause above is overtaken.** It is not edited and not removed.
