@@ -40,6 +40,7 @@ from ..trading.container.config import (
     DETONATION_CONFIDENCE_MIN_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
     PUSHED_TARGET_DEFAULT,
+    FOLD_RATIO_PCT_DEFAULT,
     TARGET_GROWTH_PCT_DEFAULT,
     BotConfig,
     BotMode,
@@ -54,6 +55,7 @@ from ..trading.scrumming.sizing import DRAWDOWN_STATE, priced_usd
 from ..trading.scrumming.target_ramp import RAMP_MODES
 from ..trading.smart_wire import mature_profit_usd
 from ..trading.target_bands import fleet_ammo
+from ..trading.wallet_reservations import wallet_currency, wallet_key
 from .live_feed_source import VENUE, SendRefused
 from .paper_paths import PAPER_FLEET_NAME, get_paper_root
 from .paper_wire import PaperWireManager
@@ -256,6 +258,7 @@ class PaperBot:
     position_ceiling_enabled: bool = False
     position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
     max_target_growth_pct: float = TARGET_GROWTH_PCT_DEFAULT
+    scrum_fold_pct: float = FOLD_RATIO_PCT_DEFAULT
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"
     detonation_confidence_min: float = DETONATION_CONFIDENCE_MIN_DEFAULT
@@ -400,6 +403,7 @@ def paper_bot_from_record(
     venue_fresh_ts = as_finite_float(stats.get("exchange_data_fresh_ts"))
     ceiling_multiple = as_finite_float(config.get("position_ceiling_multiple"))
     growth_cap_pct = as_finite_float(config.get("max_target_growth_pct"))
+    fold_ratio = as_finite_float(config.get("scrum_fold_pct"))
     detonation_bar = as_finite_float(config.get("detonation_confidence_min"))
     cash = as_finite_float(stats.get("cash_balance_usd"))
     ytd_scrummed = as_finite_float(stats.get("ytd_scrummed_usd"))
@@ -484,6 +488,7 @@ def paper_bot_from_record(
         max_target_growth_pct=(
             TARGET_GROWTH_PCT_DEFAULT if growth_cap_pct is None else growth_cap_pct
         ),
+        scrum_fold_pct=FOLD_RATIO_PCT_DEFAULT if fold_ratio is None else fold_ratio,
         detonation_enabled=bool(config.get("detonation_enabled", False)),
         detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
         detonation_confidence_min=(
@@ -1426,6 +1431,14 @@ class PaperFleetSource:
         manager = PaperWireManager()
         manager.import_wires(self.wire_rows())
         manager.import_ledgers(self.wire_ledger_rows())
+        for bot in self.bots():
+            manager.note_wallet(
+                bot.bot_id,
+                wallet_key(
+                    str(bot.exchange_id),
+                    wallet_currency(bot.symbol, bot.base_currency),
+                ),
+            )
         return manager
 
     def hold_wire_manager(self, manager: PaperWireManager) -> dict[str, int]:

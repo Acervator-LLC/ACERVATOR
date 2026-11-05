@@ -70,7 +70,7 @@ Next we come to the combined Scrumming Bot configuration page which has several 
 
 Order Visibility - Trades are listed on the order books or tracked internally to the platform.
 
-Now: each order takes its own id, so the venue cannot hand back an order it has already answered. A send with no answer keeps its id for a resend of the same size and price, until an order comes back for it (`src/exchange/idempotency.py, in IdempotencyLayer.derive_coid`).
+Now: each order takes its own id, so the venue cannot hand back an order it has already answered. A lost send keeps its id for a retry of the same decision at any size or price, until an order comes back for it or the holdings audit finds its units and books them. A fold or a tranche fire names the tranches it buys, and an earlier order that comes back pays the queue by units (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._settle_lost_order`).
 
 Aggressive Trading - Trades are priced so that they fill immediately. Trading like this is a bit like guerilla warfare. In and out before anyone notices.
 
@@ -190,7 +190,7 @@ Soft CB Cooldown - This is the number of candles that must close before the Soft
 
 Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
 
-Now: at this share of Target Balance the bot fires a market rebalance past the band and vote gates, unless the opposing distance holds it or no queued tranche qualifies (`src/trading/scrumming_bot.py, in ScrummingBot.tick`); a position under 1% of target with no tranche queued does not fire it, and its first buy reads the band and the bot's own vote at every size (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_owed`).
+Now: at this share of Target Balance the bot fires a market rebalance past the band and vote gates, unless the opposing distance holds it or no queued tranche qualifies, and it spends only dollars no other bot's queued buy-backs or wire credits hold (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance`).
 
 Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
 
@@ -434,6 +434,8 @@ On the Scrumming table, a press on a row draws that bot on the Indicator Voting 
 A press queues a market order to target on the next tick, past the gates, and it refuses inside 1% of target (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance`). A press that buys also sends nothing while the venue lists an open buy on the market, or while that list cannot be read (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._refuses_stacked_buy`).
 
 While the hard breaker holds a bot, a press queues nothing and the status log names the breaker, and the button keeps its colour (`src/trading/bot_container.py, in BotManager.force_fire`).
+
+Now: a press that buys spends only dollars no other bot's queued buy-backs or wire credits hold, and the log names those dollars when none are left (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._held_for_other_bots`).
 
 Fire and Ammo use their colours differently. Ammo is green above target, and Fire is red to sell above target.
 

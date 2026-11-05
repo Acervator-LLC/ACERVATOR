@@ -33,11 +33,19 @@ from __future__ import annotations
 
 import logging
 
+from ..exchange.market_rules_store import quote_currency
+
 logger = logging.getLogger("acervator.trading.wallet")
 
 
 def wallet_key(exchange_id: str, currency: str) -> str:
     return f"{exchange_id}|{currency}"
+
+
+def wallet_currency(symbol: str, base_currency: str) -> str:
+    """The upper-case currency a bot on ``symbol`` spends: the symbol's quote, or
+    ``base_currency`` for a symbol with no quote leg."""
+    return (quote_currency(symbol) or str(base_currency or "")).upper()
 
 
 class WalletReservations:

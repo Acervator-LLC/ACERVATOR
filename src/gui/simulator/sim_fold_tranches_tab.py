@@ -26,6 +26,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
 
 from ...simulator.tablet_source import SendRefused
+from ...trading.scrumming.sizing import tranche_restore_price
 from .. import design_system as ds
 from ..main_tabs.fold_tokens_surface import FOLD_COLUMN_TOOLTIPS
 from ..main_tabs.fold_tranches_tab_surface import (
@@ -1117,7 +1118,8 @@ class SimFoldTranchesTabMixin:
 
                 # min_rebuy_cell is the one declaration of this cell;
                 # the React page draws the same call's answer.
-                _rebuy = min_rebuy_cell(ref_v, _otd_pct)
+                _restore = tranche_restore_price(t)
+                _rebuy = min_rebuy_cell(ref_v, _otd_pct, _restore)
                 mr_item = QTableWidgetItem(_rebuy[0])
                 if _rebuy[1] is not None:
                     set_description(mr_item, _rebuy[1])
@@ -1126,7 +1128,7 @@ class SimFoldTranchesTabMixin:
                 if _otd_pct is None:
                     table.setItem(row, 7, QTableWidgetItem("—"))
                 elif cur_price > 0 and ref_v is not None and ref_v > 0 and _otd_pct > 0:
-                    _status = status_cell(cur_price, ref_v, _otd_pct)
+                    _status = status_cell(cur_price, ref_v, _otd_pct, _restore)
                     si_status = QTableWidgetItem(_status[0])
                     si_status.setForeground(QColor(_status[1]))
                     set_description(

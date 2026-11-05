@@ -14,7 +14,7 @@ At the core of Acervator is what might not first appear as a multi-faceted conce
 
 Acervator addresses ‘fundamental market unpredictability’ by allowing volatility to “orbit” around a set point we call the Target Balance. This element is what performs the first mental trick. It forces the trader to say and establish that “my position is worth X and I will support X with an equal amount of liquidity” i.e. a Target Balance of $50 is set and a total mental position of $100 is established. Trades will be executed to maintain the truth of the Target Balance always being X. After the initial entry is executed and filled, which Acervator will only do in the lower extent of the Bollinger Band on the chosen timeframe, the Scrumming Bot will persistently shave off and “Fold” back in Y% of profits through repeating Harvest-Fold operations that continue until the bot is deactivated or the market suffers a catastrophic collapse which can and do happen so don’t not leave it unmonitored. It should also be noted that the term ‘harvest’ came to replace ‘scrum’ for the sake of clarity but they may be used interchangeably throughout this text. Essentially a Scrum or Harvest is a sale of a position’s increased value over the Target Balance. The amount that the Scrumming Bot harvests or folds is pinned to the Target Delta or the amount of variation (%delta) from the most recent trade event. Much of the finer details of trade execution can be tuned by the user as expected for any professional application but the primary point here is that the amount of profit folded back is capped by the Maximum Target Growth Per Cycle setting while the ability of Acervator to prevent inverted (profit losing: buying higher than sold / selling lower than bought) trades we also have the Minimum Opposing Trade Distance rule which dictates the next trade must be Z distance from the most recent trade event. In addition, sells are not allowed to occur or be pushed below the Bollinger Band midline while buys are not allowed to occur or be pushed above the midline. As a result of just these few component features, we already have multiple soft, non-TA or non-traditional rules protecting the investor before we even start optimizing the trades themselves (pushing them as close to volatility extents as possible) via Technical Analysis and other inventions.
 
-Now: a buy-back waits for this distance alone, wired or not, because a wire takes only the profit a sale leaves past the dollars that buy back its units and the room the growth cap leaves (`src/trading/scrumming/sizing.py, in sale_surplus_usd`).
+Now: a buy-back waits for this distance, wired or not, because a wire takes only the profit a sale leaves past the dollars that buy back its units and the room the growth cap leaves, and a tranche whose own dollars cannot restore its units at this distance waits until they can (`src/trading/scrumming/sizing.py, in tranche_rebuy_price`).
 
 The harvest-fold method itself was manually executed and tested on a multiple cryptocurrency pairs throughout 2023~2026 but it has always been the aspiration to automate it and have it executed at a high rate of frequency with the operating theory that this approach to investment, being a hybrid a HODL and active trading, creates frontline area of support for whatever markets in which it participates long term. It does this by maintaining and, utilizing as directed, all earned profits. It turns any user into an active participant and liquidity provider.
 
@@ -1181,6 +1181,8 @@ moves the share along it. The outflow is capped so a funder keeps its own growth
 capacity: a ten dollar scrum profit against a hundred dollar target releases
 ninety percent, and a zero profit releases nothing.
 
+Now: a sale moves the share along a wire, and a fold moves nothing along it (`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires`).
+
 `src/trading/smart_wire.py` — `compute_safe_outflow_pct`
 
 ```python
@@ -1236,7 +1238,7 @@ and the scrum routing sends a share of each sale's proceeds along the same
 wires. No mechanism funds a new bot out of a parent's mature profit. Deploying
 a pre-connected cluster from the Market Inspector is an intention.
 
-Now: the scrum routing sends each wire its share of a sale's surplus alone, the Scrum Fold Ratio's share of what the sale leaves past the dollars that buy back every unit it sold, less the room the growth cap leaves, and a detonation sends nothing (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
+Now: the scrum routing sends each wire its share of a sale's surplus alone, the Scrum Fold Ratio's share of what the sale leaves past the dollars that buy back every unit it sold, less the room the growth cap leaves. A detonation sends each wire its percentage of the proceeds, because none of them can be folded back, and a fold sends nothing (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
 
 ## 8 - Hunger and Satiety Indices
 
@@ -1502,6 +1504,8 @@ A Shadow Tranche holds no wire credit. A credit may land on a marked fold
 tranche and is spent inside it. The units it buys stay with the parent, under
 the growth cap. The exit routes nothing down a wire
 (`src/trading/scrumming/sizing.py, in plan_fold_consumption`).
+
+Now: the exit sends each wire its percentage of the sale, as a detonation does, because none of it can be folded back (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._route_unfoldable_proceeds`).
 
 A bullish regime sends every row at or over its floor through the detonation
 executor, in one order. The floor is the row's buy price plus the Minimum
@@ -2027,7 +2031,7 @@ times the price its sale filled at, less the trading fee.
 sale dollars / (units x sale rate)  =  1 - trading fee / 100
 ```
 
-Now: a record that a wired sale queues carries the share the wire took, and the relation reads its dollars against units times price less the fee and that share, so the sweep keeps it (`src/trading/scrumming/sizing.py, in unproduced_fold_amount`).
+Now: a record that a wired sale queues carries the share the wire took, and the relation reads its dollars against units times price less the fee and that share. A record holding fewer dollars than that stays queued, because it waits until its dollars restore its units, so the sweep keeps both (`src/trading/scrumming/sizing.py, in unaligned_fold_tranches`).
 
 `src/trading/scrumming/sizing.py`, in `unproduced_fold_amount`, reads that and
 answers why no sale produced a record's amount, or nothing where one could.
@@ -2566,7 +2570,7 @@ needs TA.* The Live, Paper and Simulator panels and both React pages draw
 `min_rebuy_cell` and `status_cell` from this one module, so no screen can carry
 a different figure.
 
-Now: each row's guide and status read the bot's one distance, so a wired tranche shows the same buy-back price an unwired one does (`src/gui/main_tabs/fold_tranches_tab_surface.py, in fold_distance_pct`).
+Now: each row's guide and status read the bot's one distance, so a wired tranche shows the same buy-back price an unwired one does, and a tranche short of dollars shows the lower price at which its own dollars restore its units (`src/gui/main_tabs/fold_tranches_tab_surface.py, in rebuy_guide`).
 
 ## 14 - Position Ceiling and Detonation
 
