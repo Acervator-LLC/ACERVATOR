@@ -14,7 +14,6 @@ import logging
 import threading
 import time
 import uuid
-from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Optional
 
@@ -29,10 +28,19 @@ NO_DECISION_PURPOSE = "trade"
 #: Opens a ``TradeIntent.purpose`` that names a decision.
 DECISION_PREFIX = "decision:"
 
+#: The ccxt error class a venue's refusal of a used client order id raises.
+USED_ID_ERROR = "DuplicateOrderId"
+
 
 def _short_hash(text: str) -> str:
     """The first ``HASH_CHARS`` hex characters of the SHA-256 of ``text``."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:HASH_CHARS]
+
+
+def refuses_used_id(error: BaseException) -> bool:
+    """True where ``error`` is a ``USED_ID_ERROR`` or a subclass of one: that
+    ``coid`` can neither place an order nor answer one again."""
+    return any(kind.__name__ == USED_ID_ERROR for kind in type(error).__mro__)
 
 
 def decision_purpose(decision: str) -> str:
@@ -121,6 +129,11 @@ class IdempotencyLayer:
             self._enforce_size_limit()
             return coid
 
+    def holds(self, intent: TradeIntent) -> bool:
+        """True where ``derive_coid`` answers a held ``coid`` for ``intent``."""
+        with self._lock:
+            return intent.fingerprint(self.session_nonce) in self._unanswered
+
     def end_retry(self, intent: TradeIntent) -> None:
         """Drop the ``coid`` held for ``intent``, leaving ``derive_coid`` to issue a new
         one for the next order."""
@@ -139,25 +152,6 @@ class IdempotencyLayer:
                 and held.intent.symbol == symbol
                 and held.intent.side == side
             ]
-
-    def end_decisions(
-        self, bot_id: str, symbol: str, side: str, decisions: Iterable[str]
-    ) -> int:
-        """Drop the ``coid`` of each of ``decisions`` for ``bot_id`` on ``symbol`` and
-        ``side``, and answer how many it dropped."""
-        named = set(decisions)
-        with self._lock:
-            ended = [
-                key
-                for key, held in self._unanswered.items()
-                if held.intent.decision in named
-                and held.intent.bot_id == bot_id
-                and held.intent.symbol == symbol
-                and held.intent.side == side
-            ]
-            for key in ended:
-                del self._unanswered[key]
-            return len(ended)
 
     def _enforce_size_limit(self) -> None:
         if len(self._unanswered) <= self.max_entries:

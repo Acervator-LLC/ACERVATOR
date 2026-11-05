@@ -47,12 +47,11 @@ from typing import Any, Callable, Optional, Sequence
 from ..core.signal_contract import emit as pin_emit
 from ..exchange.base import MarketRules
 from ..exchange.market_rules_store import recorded_rules
-from ..trading.container.config import BotState
+from ..trading.container.config import BotState, fold_ratio_pct
 from ..trading.gate_chain import GateContext, effective_gate_flags
 from ..trading.otd_math import (
     BAND_TRAVEL_OFF_PCT,
     DEFAULT_TRADING_FEE_PCT,
-    WHOLE_PCT,
     DistanceSettings,
 )
 from ..trading.scrumming.sizing import (
@@ -1180,13 +1179,14 @@ def route_sale_surplus(
     proceeds_usd: float,
     units: float,
     price: float,
-) -> float:
+) -> tuple[float, float]:
     """Hand one sale's ``restored_sale_surplus_usd`` to
-    ``wires.distribute_sale_surplus`` and answer the USD it moved, as
-    ``_route_scrum_proceeds_via_wires`` routes a live sale.
+    ``wires.distribute_sale_surplus``, as ``_route_scrum_proceeds_via_wires`` routes
+    a live sale, and answer the USD that left the sale and the USD of it that
+    reached a target's cash. A parked share stays in ``position.cash_usd`` and
+    lands as a credit alone.
 
-    A manager that raises is logged and answers 0.0, leaving every dollar with
-    the sale.
+    A refused read answers nothing moved, leaving every dollar with the sale.
     """
     surplus = restored_sale_surplus_usd(
         proceeds_usd,
@@ -1197,7 +1197,7 @@ def route_sale_surplus(
             bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT,
             BAND_TRAVEL_OFF_PCT,
         ),
-        WHOLE_PCT,
+        fold_ratio_pct(bot),
         cycle_growth_cap_usd(
             float(position.target_usd), 0.0, bot.max_target_growth_pct
         ),
@@ -1208,14 +1208,18 @@ def route_sale_surplus(
             surplus_usd=surplus,
             ref=f"scrum@{float(price):.8f}",
         )
-    except Exception as exc:  # noqa: BLE001 - the dollars stay with the sale
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
         logger.warning(
             "%s: sim wire sale route raised: %s; the sale keeps its dollars",
             bot.bot_id,
             exc,
         )
-        return 0.0
-    return sum(float(row["share"]) for row in rows if row.get("applied"))
+        return 0.0, 0.0
+    moved = [row for row in rows if row.get("applied")]
+    return (
+        sum(float(row["share"]) for row in moved),
+        sum(float(row["share"]) for row in moved if row["placement"] != "parked"),
+    )
 
 
 def land_wire_credits(wires: Any, bot_id: str, position: SimPosition) -> float:
@@ -1307,12 +1311,14 @@ def apply_scrum(
     notional = priced_usd(units, float(price))
     fee = estimated_fee_usd(notional, bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT)
     proceeds = sale_proceeds_usd(notional, fee)
-    if wires is not None:
-        proceeds -= route_sale_surplus(
-            wires, bot, position, proceeds, units, float(price)
-        )
+    routed_usd, moved_usd = (
+        route_sale_surplus(wires, bot, position, proceeds, units, float(price))
+        if wires is not None
+        else (0.0, 0.0)
+    )
     position.units -= units
-    position.cash_usd += proceeds
+    position.cash_usd += proceeds - moved_usd
+    proceeds -= routed_usd
     position.last_trade_price = float(price)
     position.last_trade_side = SCRUM_SIDE_WORD
     position.main_lots.sort(

@@ -40,6 +40,7 @@ from ..trading.container.config import (
     DETONATION_CONFIDENCE_MIN_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
     PUSHED_TARGET_DEFAULT,
+    FOLD_RATIO_PCT_DEFAULT,
     TARGET_GROWTH_PCT_DEFAULT,
     BotConfig,
     BotMode,
@@ -256,6 +257,7 @@ class PaperBot:
     position_ceiling_enabled: bool = False
     position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
     max_target_growth_pct: float = TARGET_GROWTH_PCT_DEFAULT
+    scrum_fold_pct: float = FOLD_RATIO_PCT_DEFAULT
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"
     detonation_confidence_min: float = DETONATION_CONFIDENCE_MIN_DEFAULT
@@ -400,6 +402,7 @@ def paper_bot_from_record(
     venue_fresh_ts = as_finite_float(stats.get("exchange_data_fresh_ts"))
     ceiling_multiple = as_finite_float(config.get("position_ceiling_multiple"))
     growth_cap_pct = as_finite_float(config.get("max_target_growth_pct"))
+    fold_ratio = as_finite_float(config.get("scrum_fold_pct"))
     detonation_bar = as_finite_float(config.get("detonation_confidence_min"))
     cash = as_finite_float(stats.get("cash_balance_usd"))
     ytd_scrummed = as_finite_float(stats.get("ytd_scrummed_usd"))
@@ -484,6 +487,7 @@ def paper_bot_from_record(
         max_target_growth_pct=(
             TARGET_GROWTH_PCT_DEFAULT if growth_cap_pct is None else growth_cap_pct
         ),
+        scrum_fold_pct=FOLD_RATIO_PCT_DEFAULT if fold_ratio is None else fold_ratio,
         detonation_enabled=bool(config.get("detonation_enabled", False)),
         detonation_timeframe=str(config.get("detonation_timeframe") or "1d"),
         detonation_confidence_min=(

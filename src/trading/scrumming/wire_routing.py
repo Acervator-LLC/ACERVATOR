@@ -14,6 +14,7 @@ from typing import Any, Optional, TYPE_CHECKING
 from ...core.event_bus import LINE_KIND_WIRE_FLOW
 from ..container.config import fold_ratio_pct
 from ..otd_math import DistanceSettingUnreadable
+from ..wallet_reservations import wallet_key
 from .sizing import (
     fold_cap_remaining_usd,
     held_wire_usd,
@@ -104,6 +105,15 @@ class WireRoutingMixin(_Host):
     def set_smart_wire(self, manager) -> None:
         """Attach a Smart Wire manager for cross-compounding."""
         self._smart_wire_mgr = manager
+
+    def _shares_wallet(self, other: Any) -> bool:
+        """True where ``other`` holds this bot's ``config.exchange_id`` and
+        ``config.base_currency``, the one wallet a wire moves dollars inside."""
+        other_config = getattr(other, "config", None)
+        return wallet_key(
+            getattr(other_config, "exchange_id", ""),
+            str(getattr(other_config, "base_currency", "")).upper(),
+        ) == wallet_key(self.config.exchange_id, str(self.config.base_currency).upper())
 
     def _sale_surplus_usd(
         self, proceeds_usd: float, sold_units: float, sale_price: float
@@ -233,6 +243,17 @@ class WireRoutingMixin(_Host):
                     if _tgt_bot is None:
                         continue
                     if not hasattr(_tgt_bot, "apply_wire_income"):
+                        continue
+                    if not self._shares_wallet(_tgt_bot):
+                        self._bus.emit(
+                            "bot.log",
+                            bot_id=self.bot_id,
+                            message=(
+                                f"WIRE HELD ({label.upper()}): {_tgt_id} trades "
+                                f"another wallet, so ${_routed:.4f} stays with this "
+                                f"bot."
+                            ),
+                        )
                         continue
                     _apply_result = _tgt_bot.apply_wire_income(
                         usd=_routed, source=self.bot_id, ref=f"{label}@{sell_fill:.8f}"

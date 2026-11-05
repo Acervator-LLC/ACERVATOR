@@ -1373,7 +1373,11 @@ class BotContainer:
         amount = _contracts
 
         # An order in hand ends the coid; a send with no answer keeps it for a resend.
-        from ..exchange.idempotency import get_idempotency_layer, TradeIntent
+        from ..exchange.idempotency import (
+            TradeIntent,
+            get_idempotency_layer,
+            refuses_used_id,
+        )
 
         _idem = get_idempotency_layer()
         _intent = TradeIntent(
@@ -1384,20 +1388,31 @@ class BotContainer:
             bot_id=getattr(self, "bot_id", "?"),
             purpose=purpose,
         )
+        _repeated = _idem.holds(_intent)
         _coid = _idem.derive_coid(_intent)
 
         try:
             order = await self.exchange.place_order(
                 symbol, side, order_type, amount, price, client_order_id=_coid
             )
+        except Exception as _refused:
+            if refuses_used_id(_refused):
+                _idem.end_retry(_intent)
+            raise
         finally:
             # Every live order passes here, answered or not, so its balance window ends here.
             self._invalidate_symbol_balances(symbol)
         _idem.end_retry(_intent)
+        if _repeated:
+            self._audit_next_tick()
         # A create reply can name no amount, and _hold_resting_order reads this one.
         if finite_reading(order.amount) <= 0.0:
             order.amount = float(amount)
         return order
+
+    def _audit_next_tick(self) -> None:
+        """Ask for a holdings audit at the top of the next tick, where a subclass runs
+        one: this answer may hold units an earlier audit already adopted."""
 
     async def start(self) -> None:
         """Launch the bot's trading loop in a guarded asyncio task."""

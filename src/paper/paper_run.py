@@ -64,9 +64,9 @@ from ..simulator.back_test import (
 from ..exchange.base import MarketRules
 from ..exchange.market_rules_store import recorded_rules
 from ..simulator.validation import BB_MIDLINE, bb_reading, latch
-from ..trading.container.config import BotState
+from ..trading.container.config import BotState, fold_ratio_pct
 from ..trading.gate_chain import GateContext, effective_gate_flags
-from ..trading.otd_math import BAND_TRAVEL_OFF_PCT, WHOLE_PCT, DistanceSettings
+from ..trading.otd_math import BAND_TRAVEL_OFF_PCT, DistanceSettings
 from ..trading.scrumming.sizing import (
     BELOW_POSITION_MINIMUM,
     CLASS_CRYPTO,
@@ -99,6 +99,7 @@ from ..trading.scrumming.sizing import (
     spend_less_unsettled_usd,
     target_delta_pct,
     target_delta_usd,
+    tranche_short_at_fill,
     trim_fold_plan,
     unit_rule,
     unsettled_usd,
@@ -385,13 +386,14 @@ def route_sale_surplus(
     proceeds_usd: float,
     units: float,
     price: float,
-) -> float:
+) -> tuple[float, float]:
     """Hand one sale's ``restored_sale_surplus_usd`` to
-    ``wires.distribute_sale_surplus`` and answer the USD it moved, as
-    ``_route_scrum_proceeds_via_wires`` routes a live sale.
+    ``wires.distribute_sale_surplus``, as ``_route_scrum_proceeds_via_wires`` routes
+    a live sale, and answer the USD that left the sale and the USD of it that
+    reached a target's cash. A parked share stays in ``balance.cash_usd`` and
+    lands as a credit alone.
 
-    A manager that raises is logged and answers 0.0, leaving every dollar with
-    the sale.
+    A refused read answers nothing moved, leaving every dollar with the sale.
     """
     surplus = restored_sale_surplus_usd(
         proceeds_usd,
@@ -400,7 +402,7 @@ def route_sale_surplus(
         DistanceSettings(
             bot.scrumming_interval_pct, taker_fee_pct(bot), BAND_TRAVEL_OFF_PCT
         ),
-        WHOLE_PCT,
+        fold_ratio_pct(bot),
         cycle_growth_cap_usd(float(balance.target_usd), 0.0, bot.max_target_growth_pct),
     )
     try:
@@ -409,14 +411,18 @@ def route_sale_surplus(
             surplus_usd=surplus,
             ref=f"scrum@{float(price):.8f}",
         )
-    except Exception as exc:  # noqa: BLE001 - the dollars stay with the sale
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
         logger.warning(
             "%s: paper wire sale route raised: %s; the sale keeps its dollars",
             bot.bot_id,
             exc,
         )
-        return 0.0
-    return sum(float(row["share"]) for row in rows if row.get("applied"))
+        return 0.0, 0.0
+    moved = [row for row in rows if row.get("applied")]
+    return (
+        sum(float(row["share"]) for row in moved),
+        sum(float(row["share"]) for row in moved if row["placement"] != "parked"),
+    )
 
 
 def land_wire_credits(wires: Any, bot_id: str, balance: FakeBalance) -> float:
@@ -513,12 +519,14 @@ def apply_scrum(
     notional = priced_usd(units, float(price))
     fee = estimated_fee_usd(notional, taker_fee_pct(bot))
     proceeds = sale_proceeds_usd(notional, fee)
-    if wires is not None:
-        proceeds -= route_sale_surplus(
-            wires, bot, balance, proceeds, units, float(price)
-        )
+    routed_usd, moved_usd = (
+        route_sale_surplus(wires, bot, balance, proceeds, units, float(price))
+        if wires is not None
+        else (0.0, 0.0)
+    )
     balance.units -= units
-    balance.cash_usd += proceeds
+    balance.cash_usd += proceeds - moved_usd
+    proceeds -= routed_usd
     balance.last_trade_price = float(price)
     balance.last_trade_side = SCRUM_SIDE_WORD
     balance.main_lots.sort(
@@ -636,9 +644,13 @@ def apply_fold(
     distance = DistanceSettings(
         bot.scrumming_interval_pct, fee_pct, BAND_TRAVEL_OFF_PCT
     )
-    eligible = eligible_fold_tranches(
-        balance.fold_tranches, float(ticker_last), distance
-    )
+    eligible = [
+        one
+        for one in eligible_fold_tranches(
+            balance.fold_tranches, float(ticker_last), distance
+        )
+        if not tranche_short_at_fill(one, distance, float(price))
+    ]
     if not eligible:
         return None
     ordered = sorted(

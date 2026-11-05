@@ -195,7 +195,7 @@ ledger per bot.
 | `export_wires`, `import_wires` | Carry the topology through a save and a restart |
 | `export_ledgers`, `import_ledgers` | Carry the provenance through the same |
 
-Now: a sale and a detonation move a share along a wire, and no fold does (`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires`).
+Now: a sale and a detonation move a share along a wire, and no fold does. A wire moves dollars only between two bots on one exchange and one currency (`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._shares_wallet`).
 
 ### The percent a wire is allowed to carry
 

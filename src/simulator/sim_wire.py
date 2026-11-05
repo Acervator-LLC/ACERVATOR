@@ -570,7 +570,6 @@ class SimWireManager:
             return 0.0
         landed = float(ledger.parked_usd)
         share = spread_over_fold_queue(position, landed, list(ledger.parked_credits))
-        position.cash_usd = float(position.cash_usd) + landed
         ledger.parked_usd = 0.0
         ledger.parked_credits = []
         logger.info(

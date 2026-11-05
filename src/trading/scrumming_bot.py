@@ -116,20 +116,22 @@ from .scrumming.fold_tranches import (
 from .scrumming.sizing import (
     EVENT_ID_KEY,
     HEDGE_BUY,
+    SIDE_BUY,
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
+    fold_decision,
     discharge_gain_usd,
     fold_size_taper,
     position_ceiling,
     priced_usd,
     rate_after_wire,
     ratio_to_ceiling,
+    retry_fold_plan,
     scrumming_interval_usd,
     stack_rung_decision,
     target_delta_pct,
     target_delta_usd,
-    tranche_fire_decision,
     tranche_rebuy_price,
     tranche_sale_usd,
     tranche_wire_share_pct,
@@ -1841,7 +1843,8 @@ class ScrummingBot(
                 EVENT_ID_KEY: str(tranche.get(EVENT_ID_KEY, "") or ""),
             },
             sources=[tranche],
-            decision=tranche_fire_decision(tranche),
+            decision=retry_fold_plan([tranche], self._unanswered_decisions(SIDE_BUY))[1]
+            or fold_decision([tranche]),
         )
         if fill_price is None or fill_price <= 0:
             return {
@@ -1860,6 +1863,11 @@ class ScrummingBot(
             "units_returned": float(self._last_buy_filled_units or 0.0),
             "remaining_tranches": len(self._fold_tranches),
         }
+
+    def _audit_next_tick(self) -> None:
+        """Bring ``tick``'s periodic ``_reconcile_holdings`` to the next tick, ahead of
+        every decision that tick takes."""
+        self._reconcile_tick_counter = self._reconcile_interval
 
     async def _book_manual_tranche_fill(
         self,
@@ -2620,6 +2628,8 @@ class ScrummingBot(
             logger.debug(
                 "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
             )
+        for _cleared in self._fold_tranches:
+            self._return_wire_credits_to_pool(_cleared)
         self._fold_tranches = []
         self._fold_queue_usd = 0.0
         self._current_holdings = max(0.0, self._current_holdings - fill_amount)
@@ -3187,8 +3197,7 @@ class ScrummingBot(
         ):
             self._reconcile_tick_counter = 0
             try:
-                if await self._reconcile_holdings(reason="periodic"):
-                    self._end_decisions_the_book_settled()
+                await self._reconcile_holdings(reason="periodic")
             except Exception as exc:
                 logger.debug("Bot %s periodic reconcile raised: %s", self.bot_id, exc)
 

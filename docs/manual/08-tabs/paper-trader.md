@@ -1133,7 +1133,7 @@ into the source's target balance, the wire's share of that same figure is
 credited to the other bot. The source keeps its own growth whole and the share is
 new money at the destination, which is how the live fold route behaves.
 
-Now: a paper fold sends no wire. A paper sale sends each wire its share of the sale's surplus, as a live sale does, and those dollars leave the source's cash for the target's (`src/paper/paper_run.py, in route_sale_surplus`).
+Now: a paper fold sends no wire. A paper sale sends each wire its share of the sale's surplus, as a live sale does, and those dollars leave the source's cash for the target's. A share that parks stays in the source's cash and lands as a credit alone (`src/paper/paper_run.py, in route_sale_surplus`).
 
 The share lands in the target's standing fold tranches, split evenly, the way
 wire credits land on a live bot. A paper balance opens on the target's first

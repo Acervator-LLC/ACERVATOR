@@ -1859,23 +1859,10 @@ class TickPhaseMixin:
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
         self._drop_malformed_fold_tranches()
-        _reached = self._fold_eligible_tranches(ticker.last, distance, band)
         _eligible, _repeated = retry_fold_plan(
-            _reached, self._fold_tranches, self._unanswered_decisions(SIDE_BUY)
+            self._fold_eligible_tranches(ticker.last, distance, band),
+            self._unanswered_decisions(SIDE_BUY),
         )
-        if _reached and not _eligible:
-            if self._refusal_is_new("fold_lost_order", ticker.last):
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"FOLD HELD (lost order): {len(_reached)} tranche(s) reached "
-                        f"${ticker.last:.8f}, and an earlier buy of this bot has no "
-                        f"answer from the venue. Nothing is sent until that decision "
-                        f"repeats or the holdings audit reads the venue's count."
-                    ),
-                )
-            return False
         try:
             self._bus.emit(
                 "bot.log",

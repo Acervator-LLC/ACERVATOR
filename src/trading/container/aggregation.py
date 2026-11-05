@@ -472,7 +472,7 @@ class FleetAggregationMixin:
         figures.append(getattr(other_bot, "_pending_wire_credits", 0.0))
         for figure in figures:
             try:
-                usd = float(figure or 0.0)
+                usd = float(figure)
             except (TypeError, ValueError):
                 return None
             if not math.isfinite(usd) or usd < 0.0:
