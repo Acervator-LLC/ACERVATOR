@@ -18,10 +18,11 @@ import math
 import threading
 import time
 from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from functools import lru_cache
 from urllib.error import HTTPError, URLError
 from concurrent.futures import ThreadPoolExecutor
@@ -145,6 +146,7 @@ from .base import (
     OrderType,
     Ticker,
     no_order_hold,
+    refuse_held_order,
 )
 from .api_logger import get_api_log
 from .lazy_singleton import ThrottledFault
@@ -187,6 +189,35 @@ VENUE_LOST = "lost_connection"
 VENUE_RATE_LIMITED = "rate_limited"
 VENUE_CREDENTIAL_REJECTED = "credential_rejected"
 VENUE_ANSWERED = "answered"
+
+
+@contextmanager
+def reads_hold_at_post(backend: Any, hold_reason: Callable[[], str]) -> Iterator[None]:
+    """Run ``refuse_held_order`` as ``backend.fetch`` takes its first non-GET request,
+    past ccxt's ``throttle`` at the route's own cost, and leave ``fetch`` as it was."""
+    fetch = getattr(backend, "fetch", None)
+    if fetch is None:
+        yield
+        return
+    own_fetch = vars(backend).get("fetch")
+    unread = True
+
+    def fetch_after_read(url, method="GET", headers=None, body=None):
+        """``fetch``, behind one hold read at the first request that is not a GET."""
+        nonlocal unread
+        if unread and method != "GET":
+            unread = False
+            refuse_held_order(hold_reason)
+        return fetch(url, method, headers, body)
+
+    backend.fetch = fetch_after_read
+    try:
+        yield
+    finally:
+        if own_fetch is None:
+            vars(backend).pop("fetch", None)
+        else:
+            backend.fetch = own_fetch
 
 
 def _ccxt_error_types(names: tuple[str, ...]) -> tuple[type[BaseException], ...]:
@@ -2867,8 +2898,9 @@ class CCXTConnector(ExchangeInterface):
     ) -> Order:
         """Send one order through ``create_order`` on the worker.
 
-        The worker reads ``hold_reason`` the moment the call starts, so a hold that
-        lands while the order waits behind other calls raises ``OrderHeld``.
+        The worker reads ``hold_reason`` the moment the call starts and again through
+        ``reads_hold_at_post``, so a hold that lands behind other calls or in ccxt's
+        ``throttle`` raises ``OrderHeld``.
         """
         self._ensure_connected()
         _breaker = self._order_breaker(symbol)
@@ -2916,7 +2948,14 @@ class CCXTConnector(ExchangeInterface):
         def create_order(*order: Any) -> Any:
             """``_ex.create_order``, or the ``OrderHeld`` ``hold_reason`` names."""
             held = hold_reason()
-            return OrderHeld(held) if held else self._ex.create_order(*order)
+            if held:
+                return OrderHeld(held)
+            backend = self._ex
+            try:
+                with reads_hold_at_post(backend, hold_reason):
+                    return backend.create_order(*order)
+            except OrderHeld as refused:
+                return refused
 
         start = time.monotonic()
         try:

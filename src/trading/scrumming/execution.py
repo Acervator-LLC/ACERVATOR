@@ -16,7 +16,7 @@ from typing import Any, Callable, Optional
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType
 from ...exchange.idempotency import decision_purpose, get_idempotency_layer
-from ..container.config import target_growth_pct
+from ..container.config import NO_ORDER_BACK, OrderWatch, target_growth_pct
 from ..otd_math import (
     ROUND_TRIP_FEES,
     DistanceSettings,
@@ -258,6 +258,7 @@ class ExecutionEngineMixin:
     exchange: Any
     guarded_place_order: Callable[..., Any]
     note_scrum_retention_usd: Callable[..., None]
+    order_watch: Callable[..., OrderWatch]
     refresh_priced_figures_after_fill: Callable[..., Any]
     reset_swos_cycle: Callable[..., None]
     stats: Any
@@ -988,6 +989,13 @@ class ExecutionEngineMixin:
         )
         return _net
 
+    def _refused_no_order(self, tag: str, role: str, watch: OrderWatch) -> None:
+        """Write ``tag``'s line and ``role``'s ``REFUSED`` trade line for a send that
+        came back None, naming ``OrderWatch.refusal``, else ``NO_ORDER_BACK``."""
+        reason = watch.refusal or NO_ORDER_BACK
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=f"{tag}: {reason}.")
+        self._emit_trade_notification(role, "REFUSED", reason)
+
     async def _execute_manual_rebalance(
         self, ticker, caller_intent: str = "manual_button"
     ) -> None:
@@ -1201,6 +1209,7 @@ class ExecutionEngineMixin:
                 ),
             )
 
+            _watch = self.order_watch()
             order = await self.guarded_place_order(
                 symbol=self.config.symbol,
                 side=OrderSide.SELL,
@@ -1208,14 +1217,11 @@ class ExecutionEngineMixin:
                 amount=sell_amount,
                 price=None,
                 purpose=decision_purpose(EXCESS_SALE),
+                watch=_watch,
             )
 
             if order is None:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message="MANUAL FIRE SCRUM: exchange returned no order.",
-                )
+                self._refused_no_order("MANUAL FIRE SCRUM", _scrum_label, _watch)
                 return
 
             fill_amount, fill_price, _fill_is_real = await self._settled_fill(
@@ -1575,6 +1581,7 @@ class ExecutionEngineMixin:
             )
             _lost = self._lost_buy(_decision)
             _reservations.reserve(_wallet_key, buy_usd)
+            _watch = self.order_watch()
             try:
                 order = await self.guarded_place_order(
                     symbol=self.config.symbol,
@@ -1583,16 +1590,13 @@ class ExecutionEngineMixin:
                     amount=buy_amount,
                     price=None,
                     purpose=decision_purpose(_decision),
+                    watch=_watch,
                 )
             finally:
                 _reservations.release(_wallet_key, buy_usd)
 
             if order is None:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message="MANUAL FIRE FOLD: exchange returned no order.",
-                )
+                self._refused_no_order("MANUAL FIRE FOLD", _fold_label, _watch)
                 return
 
             fill_amount, fill_price, _fill_is_real = await self._settled_fill(
@@ -2252,6 +2256,7 @@ class ExecutionEngineMixin:
         share of ``sell_amount``.
         """
         _repeats = decision in self._unanswered_decisions(SIDE_SELL)
+        _watch = self.order_watch()
         order = await self.guarded_place_order(
             symbol=self.config.symbol,
             side=OrderSide.SELL,
@@ -2259,14 +2264,11 @@ class ExecutionEngineMixin:
             amount=sell_amount,
             price=None,
             purpose=decision_purpose(decision),
+            watch=_watch,
         )
 
         if order is None:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message="DETONATION: exchange returned no order.",
-            )
+            self._refused_no_order("DETONATION", "DETONATION", _watch)
             return False
 
         fill_amount, fill_price, _ = await self._settled_fill(
@@ -2690,6 +2692,7 @@ class ExecutionEngineMixin:
                 "SCRUM", "SENT", f"{amount:.6f} @ ${price:.8f}"
             )
 
+            _watch = self.order_watch()
             order = await self.guarded_place_order(
                 symbol=self.config.symbol,
                 side=OrderSide.SELL,
@@ -2697,9 +2700,13 @@ class ExecutionEngineMixin:
                 amount=amount,
                 price=exec_price,
                 purpose=decision_purpose(decision),
+                watch=_watch,
             )
 
             if order is None:
+                self._emit_trade_notification(
+                    "SCRUM", "REFUSED", _watch.refusal or NO_ORDER_BACK
+                )
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
@@ -2888,6 +2895,7 @@ class ExecutionEngineMixin:
         booking: Optional[dict] = None,
         sources: Optional[list] = None,
         decision: str = "",
+        watch: Optional[OrderWatch] = None,
     ) -> Optional[float]:
         """Place a market buy and return the fill price, or None when refused.
 
@@ -2904,9 +2912,11 @@ class ExecutionEngineMixin:
         ``_answers_this_send`` refuses books through ``_book_earlier_order``. A path
         outside ``OWN_TRANCHE_PATHS`` reads ``cost`` in USD and refuses through
         ``_spends_held_dollars``, and one inside reads it in the quote currency.
+        A press passes its ``watch``, which ``guarded_place_order`` records a refusal on.
         """
         self._last_fill_venue_fee = None
         self._last_buy_filled_units = 0.0
+        _watch = watch or self.order_watch()
 
         try:
             _ctx = dict(trace_context or {})
@@ -3175,9 +3185,13 @@ class ExecutionEngineMixin:
                 amount=amount,
                 price=exec_price,
                 purpose=decision_purpose(decision),
+                watch=_watch,
             )
 
             if order is None:
+                self._emit_trade_notification(
+                    "FOLD", "REFUSED", _watch.refusal or NO_ORDER_BACK
+                )
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,

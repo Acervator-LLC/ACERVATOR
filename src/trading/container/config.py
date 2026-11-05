@@ -766,6 +766,32 @@ TRANCHE_HELD_SECONDS_KEY = "held_seconds"
 #: What every line and box that refuses a press during a hold says last.
 PRESS_AGAIN = "Nothing is kept, so press it again after Reset All Breakers"
 
+#: What ``BotContainer.order_refusal`` answers for a hard trip that came and went.
+HOLD_PASSED = "a hard breaker trip landed while this order waited"
+
+#: What ``ScrummingBot.tick_stop_reason`` answers while ``_pause_event`` is shut.
+TICK_PAUSED = "the bot is paused, so this tick sends nothing"
+
+#: What ``ScrummingBot.tick_stop_reason`` answers until a Self-Destruct books.
+DESTRUCT_RUNNING = "Self-Destruct is selling this position, so this tick sends nothing"
+
+#: What a line says of a send that came back None with no ``OrderWatch.refusal``.
+NO_ORDER_BACK = "exchange returned no order"
+
+#: The ``BotContainer.order_refusal`` answers no later order inherits.
+PASSING_STOPS = (HOLD_PASSED, TICK_PAUSED, DESTRUCT_RUNNING)
+
+
+@dataclass
+class OrderWatch:
+    """One decision's reads of ``BotContainer.order_refusal``: ``trips`` as it began,
+    ``press`` true for an operator's press, ``refusal`` why ``guarded_place_order``
+    stopped its newest send."""
+
+    trips: int = 0
+    press: bool = False
+    refusal: str = ""
+
 
 def despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[float]:
     """Return one tranche's despawn age in seconds, or None when it has no usable

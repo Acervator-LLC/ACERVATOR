@@ -2734,7 +2734,7 @@ submission, so the equities contract cannot carry a Robinhood crypto order.
                 amount,
                 price,
                 client_order_id=_coid,
-                hold_reason=self.order_hold_reason,
+                hold_reason=partial(self.order_refusal, _watch),
             )
 ```
 

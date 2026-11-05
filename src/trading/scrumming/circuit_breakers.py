@@ -174,6 +174,7 @@ class CircuitBreakerMixin(_Host):
     # ScrummingBot.__init__ assigns each of these; _Host resolves back to
     # ScrummingBot, so the annotations break that cycle for a type reader.
     state: BotState
+    _cb_hard_trips: int
     _cb_hard_tripped: bool
     _cb_hard_tripped_at: float
     _cb_hard_trip_pct: float
@@ -186,12 +187,17 @@ class CircuitBreakerMixin(_Host):
     _manual_fire_pending: bool
     _pause_event: Any
     _tick_candles: list
+    tick_loop_alive: Any
 
     def order_hold_reason(self) -> str:
         """``HARD_HOLD_FORMAT`` while ``_cb_hard_tripped`` holds, empty otherwise."""
         if not self._cb_hard_tripped:
             return ""
         return HARD_HOLD_FORMAT.format(pct=self._cb_hard_trip_pct)
+
+    def hard_trip_count(self) -> int:
+        """``_cb_hard_trips``, which only ``_trip_hard_breaker`` moves."""
+        return self._cb_hard_trips
 
     def _tick_breaker_holds(self, position_usd: float) -> bool:
         """Read ``_tick_candles`` into the breakers, and answer True while
@@ -295,6 +301,7 @@ class CircuitBreakerMixin(_Host):
         ``bot.log``."""
         move_pct = move.move_pct
         hard_pct = figures.hard_pct
+        self._cb_hard_trips += 1
         self._cb_hard_tripped = True
         self._cb_hard_tripped_at = time.time()
         self._cb_hard_trip_pct = move_pct
@@ -408,8 +415,9 @@ class CircuitBreakerMixin(_Host):
         The soft breaker also self-resets on cooldown elapse; the hard
         breaker only clears through this call. ``scope`` is 'all', 'soft',
         or 'hard' (clearing hard resumes a PAUSED bot while ``_pause_event``
-        is set). Returns ``{'applied': [...], 'scope': ...}`` and never
-        raises — fail-soft for GUI buttons.
+        is set and ``tick_loop_alive`` answers True). Returns
+        ``{'applied': [...], 'scope': ...}`` and never raises — fail-soft for
+        GUI buttons.
         """
         applied: list[str] = []
         scope_norm = (scope or "all").lower()
@@ -435,7 +443,11 @@ class CircuitBreakerMixin(_Host):
             self._cb_hard_trip_pct = 0.0
             self._held_orders_named.clear()
             try:
-                if self.state == BotState.PAUSED and self._pause_event.is_set():
+                if (
+                    self.state == BotState.PAUSED
+                    and self._pause_event.is_set()
+                    and self.tick_loop_alive()
+                ):
                     self.state = BotState.RUNNING
                     applied.append("bot resumed from PAUSED → RUNNING")
             except Exception as _sup:

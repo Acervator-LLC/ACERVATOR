@@ -14,6 +14,7 @@ from ..container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
     EXPIRY_CLOSE_SELL_ALL,
+    NO_ORDER_BACK,
     SMART_CARTRIDGE_CEILING_OFF,
     SMART_CARTRIDGE_CEILING_OFF_TEXT,
     as_finite_float,
@@ -130,6 +131,7 @@ class TickPhaseMixin:
     _get_ohlcv: Callable[..., Any]
     _get_ticker: Callable[..., Any]
     guarded_place_order: Callable[..., Any]
+    order_watch: Callable[..., Any]
     _hedge_bal: float
     _hedge_trades: int
     _hold_resting_order: Callable[..., Any]
@@ -785,6 +787,7 @@ class TickPhaseMixin:
         )
 
         self._expiry_close_sent_units = held
+        _watch = self.order_watch()
         try:
             order = await self.guarded_place_order(
                 symbol=symbol,
@@ -792,6 +795,7 @@ class TickPhaseMixin:
                 order_type=OrderType.MARKET,
                 amount=held,
                 price=None,
+                watch=_watch,
             )
         except Exception as exc:
             self._expiry_close_sent_units = 0.0
@@ -812,7 +816,7 @@ class TickPhaseMixin:
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"EXPIRY CLOSE FAILED: {symbol} returned no order. The "
+                    f"EXPIRY CLOSE FAILED: {_watch.refusal or NO_ORDER_BACK}. The "
                     f"position is still held and the next tick tries again."
                 ),
             )

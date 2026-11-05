@@ -14,6 +14,7 @@ import time
 import uuid
 import weakref
 from dataclasses import replace
+from functools import partial
 from typing import Any, Callable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -49,6 +50,8 @@ from .container.config import (
     EXPIRY_LEAD_FRACTION,
     EXPIRY_LEAD_FRACTION_DEFAULT,
     EXPIRY_LEAD_MODES,
+    HOLD_PASSED,
+    PASSING_STOPS,
     PRESS_AGAIN,
     STACK_MODE_DEFAULT,
     START_ALL_GAP_SECONDS,
@@ -56,6 +59,7 @@ from .container.config import (
     BotMode,
     BotState,
     BotStats,
+    OrderWatch,
     _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS,
     _BOT_CONFIG_SCRUMMING_ONLY_FIELDS,
     _BOT_CONFIG_SHARED_FIELDS,
@@ -197,6 +201,7 @@ class BotContainer:
         self._stop_event = asyncio.Event()
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # Not paused initially
+        self._cooldown_over = asyncio.Event()
         self._start_time: float = 0.0
         self._bus = get_event_bus()
         self._data_pool = None  # set by BotManager.set_data_pool
@@ -229,6 +234,29 @@ class BotContainer:
         """Why ``guarded_place_order`` sends nothing now, empty while it may send;
         ``CircuitBreakerMixin`` answers the hard breaker."""
         return ""
+
+    def hard_trip_count(self) -> int:
+        """Hard trips this bot has taken; ``CircuitBreakerMixin`` counts them."""
+        return 0
+
+    def tick_stop_reason(self) -> str:
+        """Why a send no press made stops now, empty while it may go; ``ScrummingBot``
+        answers its pause and its Self-Destruct."""
+        return ""
+
+    def order_watch(self, press: bool = False) -> OrderWatch:
+        """The ``OrderWatch`` of a decision that starts now."""
+        return OrderWatch(trips=self.hard_trip_count(), press=press)
+
+    def order_refusal(self, watch: OrderWatch) -> str:
+        """Why the decision ``watch`` follows sends nothing now: ``order_hold_reason``,
+        ``HOLD_PASSED`` for a trip since ``watch`` began, or ``tick_stop_reason``."""
+        hold = self.order_hold_reason()
+        if hold:
+            return hold
+        if self.hard_trip_count() != watch.trips:
+            return HOLD_PASSED
+        return "" if watch.press else self.tick_stop_reason()
 
     def start_settled(self) -> bool:
         """True once a start has nothing left to wait for: RUNNING, or held by
@@ -897,6 +925,20 @@ class BotContainer:
             f"{PRESS_AGAIN}. API not called."
         )
 
+    def _record_refusal(
+        self, watch: OrderWatch, side: str, symbol: str, reason: str
+    ) -> None:
+        """Keep ``reason`` on ``watch`` for the caller and put its line on the Console:
+        ``_report_held_order``, or one line for a ``PASSING_STOPS`` answer."""
+        watch.refusal = reason
+        if reason not in PASSING_STOPS:
+            self._report_held_order(side, symbol, reason)
+            return
+        self._warn_order(
+            f"NOT SENT: {side} {symbol}: {reason}. Nothing is submitted and "
+            f"nothing is booked. API not called."
+        )
+
     # OVERTAKEN in the docstring below: "``amount`` reaches ``place_order``
     # unchanged; the market's rules are read to refuse a sub-minimum size and a
     # sub-minimum notional, and ``CCXTConnector.place_order`` is where a size is
@@ -936,6 +978,7 @@ class BotContainer:
         amount: float,
         price: Optional[float] = None,
         purpose: str = "trade",
+        watch: Optional[OrderWatch] = None,
     ) -> Optional[Order]:
         """Place an order through ``exchange.send_order``, sizing ``amount``
         onto the market's own rules first and refusing a non-finite,
@@ -946,17 +989,20 @@ class BotContainer:
         to refuse a sub-minimum size and a sub-minimum notional, and
         ``CCXTConnector.place_order`` is where a size is stepped.
 
-        Answers None and sends nothing while ``order_hold_reason`` names a hold,
-        read here and again by ``ExchangeInterface.send_order`` after the waits below.
+        Answers None, sends nothing and keeps the text on ``OrderWatch.refusal`` while
+        ``order_refusal`` of ``watch`` answers, read here and again after the waits below.
+        A send that stops here is taken back, because it never left.
         """
         from ..exchange.base import OrderHeld, OrderSide, OrderType
 
         # Exact type test: ``isinstance`` would admit bool, and every
         # comparison against NaN below is False.
         _side_str = "BUY" if side == OrderSide.BUY else "SELL"
-        _hold = self.order_hold_reason()
+        _watch = watch or self.order_watch()
+        _watch.refusal = ""
+        _hold = self.order_refusal(_watch)
         if _hold:
-            self._report_held_order(_side_str, symbol, _hold)
+            self._record_refusal(_watch, _side_str, symbol, _hold)
             return None
         _amt_is_number = type(amount) in (int, float)
         _amt = 0.0
@@ -1399,9 +1445,8 @@ class BotContainer:
             purpose=purpose,
         )
         _repeated = _idem.holds(_intent)
-        _coid = _idem.derive_coid(
-            _intent, float(price or self.stats.current_price or 0.0), _amt
-        )
+        _price_read = float(price or self.stats.current_price or 0.0)
+        _coid = _idem.derive_coid(_intent, _price_read, _amt)
 
         try:
             order = await self.exchange.send_order(
@@ -1411,11 +1456,11 @@ class BotContainer:
                 amount,
                 price,
                 client_order_id=_coid,
-                hold_reason=self.order_hold_reason,
+                hold_reason=partial(self.order_refusal, _watch),
             )
         except OrderHeld as _held:
-            _idem.end_retry(_intent)
-            self._report_held_order(_side_str, symbol, str(_held))
+            _idem.withdraw_send(_intent, _price_read, _amt)
+            self._record_refusal(_watch, _side_str, symbol, str(_held))
             return None
         except Exception as _refused:
             if refuses_used_id(_refused):
@@ -1436,14 +1481,18 @@ class BotContainer:
         """Ask for a holdings audit at the top of the next tick, where a subclass runs
         one: this answer may hold units an earlier audit already adopted."""
 
+    def tick_loop_alive(self) -> bool:
+        """True while ``_run_with_guard`` runs in ``_task``."""
+        return bool(self._task and not self._task.done())
+
     async def start(self) -> None:
-        """Launch the bot's trading loop in a guarded asyncio task, or ``resume`` the
-        loop a paused bot already has."""
-        if self.state in (BotState.RUNNING, BotState.STARTING):
+        """Leave one live ``_run_with_guard`` task: launch one, or ``resume`` the one the
+        bot already has, in any state."""
+        _loop_alive = self.tick_loop_alive()
+        if _loop_alive and self.state in (BotState.RUNNING, BotState.STARTING):
             logger.warning("Bot %s already running", self.bot_id)
             return
         _hold = self.order_hold_reason()
-        _loop_alive = bool(self._task and not self._task.done())
         if _hold:
             _tail = " Its tick loop is still running." if _loop_alive else ""
             self._warn_order(f"START WAITS: {_hold}.{_tail}")
@@ -1501,19 +1550,47 @@ class BotContainer:
         self._bus.emit("bot.paused", bot_id=self.bot_id)
 
     async def resume(self) -> None:
-        """Resume from paused state."""
+        """Open ``_pause_event``, end a ``_cool_down`` and set state RUNNING."""
         self._pause_event.set()
+        self._cooldown_over.set()
         self.state = BotState.RUNNING
         self._bus.emit("bot.resumed", bot_id=self.bot_id)
+
+    def _loop_state(self, ticking: BotState = BotState.RUNNING) -> BotState:
+        """``ticking`` while ``_pause_event`` lets ``tick`` run, PAUSED while it is shut."""
+        return ticking if self._pause_event.is_set() else BotState.PAUSED
+
+    async def _wait_while_paused(self) -> None:
+        """Return once ``_pause_event`` opens, reading ``_reconcile_resting_orders`` every
+        ``tick_interval`` while it stays shut."""
+        while not self._pause_event.is_set():
+            try:
+                await self._reconcile_resting_orders()
+            except Exception as exc:
+                logger.warning(
+                    "Bot %s held-order reconcile raised: %s", self.bot_id, exc
+                )
+            try:
+                await asyncio.wait_for(self._pause_event.wait(), self.tick_interval)
+            except asyncio.TimeoutError:
+                continue
+
+    async def _cool_down(self) -> None:
+        """Wait ``COOLDOWN_SECONDS``, or until ``resume`` sets ``_cooldown_over``."""
+        self._cooldown_over.clear()
+        try:
+            await asyncio.wait_for(self._cooldown_over.wait(), self.COOLDOWN_SECONDS)
+        except asyncio.TimeoutError:
+            return
 
     async def _run_with_guard(self) -> None:
         """Run ``tick`` until stopped, emitting ``bot.error`` on failure
         and cooling down after ``MAX_CONSECUTIVE_ERRORS``."""
-        self.state = BotState.RUNNING
+        self.state = self._loop_state()
         try:
             while not self._stop_event.is_set():
                 try:
-                    await self._pause_event.wait()
+                    await self._wait_while_paused()
                     if self._stop_event.is_set():
                         break
 
@@ -1536,7 +1613,7 @@ class BotContainer:
                     self.stats.total_errors += 1  # Cumulative; never reset.
                     self.stats.last_error = f"{type(exc).__name__}: {exc}"
                     # ERROR is set on the first failed tick, not the fifth.
-                    self.state = BotState.ERROR
+                    self.state = self._loop_state(BotState.ERROR)
                     logger.error(
                         "Bot %s error (%d/%d, lifetime %d): %s",
                         self.bot_id,
@@ -1553,16 +1630,16 @@ class BotContainer:
                     )
 
                     if self.stats.consecutive_errors >= self.MAX_CONSECUTIVE_ERRORS:
-                        self.state = BotState.COOLDOWN
+                        self.state = self._loop_state(BotState.COOLDOWN)
                         self._bus.emit("bot.cooldown", bot_id=self.bot_id)
                         logger.warning(
                             "Bot %s entering cooldown for %ds",
                             self.bot_id,
                             self.COOLDOWN_SECONDS,
                         )
-                        await asyncio.sleep(self.COOLDOWN_SECONDS)
+                        await self._cool_down()
                         self.stats.consecutive_errors = 0
-                        self.state = BotState.RUNNING
+                        self.state = self._loop_state()
 
                 await asyncio.sleep(self.tick_interval)
 
