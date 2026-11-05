@@ -1108,7 +1108,7 @@ tablet by the registry's own rollup:
 | `bot_state.json` after every press | byte-identical; a copy with one byte appended reads a different digest | the same |
 | the venue image under Neon Light and Cyberpunk Dark | the top-left pixel equals each theme's ground and the foot pixel its lower ground; the two files differ; the message stamp is drawn in the theme's own axis text colour | one painter |
 
-### A sentence this entry overtakes
+### One sentence this entry overtakes
 
 It was not reworded. It is quoted here.
 
