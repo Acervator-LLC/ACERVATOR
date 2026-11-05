@@ -420,7 +420,7 @@ class PaperBotSwarmTabMixin:
                 "no wire activity yet. Outbound wires are configured "
                 "via the Bot Swarm panel (drag connections between "
                 "bot tiles). Inbound wires fire when other bots "
-                "realize fold profit and route a configured % to "
+                "sell past their own buy-back dollars and route a configured % to "
                 "this bot. Until then, this tab will populate as "
                 "swarm activity occurs."
             )

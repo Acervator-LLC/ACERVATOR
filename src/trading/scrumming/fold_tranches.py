@@ -38,9 +38,11 @@ from .sizing import (
     merge_fold_tranches_within_distance,
     merge_wire_credit_records,
     plan_fold_consumption,
+    scale_wire_credits,
     settle_fold_plan,
     tranche_sale_rate,
     tranche_sale_usd,
+    tranche_wire_usd,
     tranches_beyond_held_total,
     unaligned_fold_tranches,
 )
@@ -230,7 +232,8 @@ class FoldTrancheAccountingMixin:
         ``ref`` it came in with, and is tagged ``fold_partial_spent``.
 
         The fold-back path in ``tick_phases`` adds what this removes to
-        ``_tranches_closed_lifetime``.
+        ``_tranches_closed_lifetime``. A source that left the queue returns
+        the wire credit the plan did not spend to the pool.
 
         Args:
           plan: ``(source tranche, usd taken, units taken)`` triples,
@@ -242,6 +245,14 @@ class FoldTrancheAccountingMixin:
         self._fold_tranches, removed, spent = settle_fold_plan(
             self._fold_tranches, plan
         )
+        for source, _usd, _units in plan:
+            if any(one is source for one in self._fold_tranches):
+                continue
+            recorded = tranche_wire_usd(source)
+            left = float(source.get("usd", 0.0) or 0.0)
+            if recorded > 0.0 and left > recorded:
+                scale_wire_credits(source, left / recorded)
+            self._return_wire_credits_to_pool(source)
         return removed, spent
 
     def _top_up_remnant_fold_tranches(
