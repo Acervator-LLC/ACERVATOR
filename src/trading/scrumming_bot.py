@@ -120,18 +120,18 @@ from .scrumming.sizing import (
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
+    fold_decision,
     discharge_gain_usd,
     fold_size_taper,
     position_ceiling,
     priced_usd,
     rate_after_wire,
     ratio_to_ceiling,
-    retry_fold_plan,
+    repeated_fold_decision,
     scrumming_interval_usd,
     stack_rung_decision,
     target_delta_pct,
     target_delta_usd,
-    tranche_fire_decision,
     tranche_rebuy_price,
     tranche_sale_usd,
     tranche_wire_share_pct,
@@ -1843,8 +1843,8 @@ class ScrummingBot(
                 EVENT_ID_KEY: str(tranche.get(EVENT_ID_KEY, "") or ""),
             },
             sources=[tranche],
-            decision=retry_fold_plan([tranche], self._unanswered_sends(SIDE_BUY))[1]
-            or tranche_fire_decision(tranche),
+            decision=repeated_fold_decision([tranche], self._unanswered_sends(SIDE_BUY))
+            or fold_decision([tranche]),
         )
         if fill_price is None or fill_price <= 0:
             return {

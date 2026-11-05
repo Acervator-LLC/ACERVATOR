@@ -35,22 +35,22 @@ from .shadow import SHADOW_BOOKER
 from .sizing import (
     DETONATION_SALE,
     EXCESS_SALE,
-    FOLD_AGE_KEY,
     FRACTIONAL_UNITS,
     SHORTFALL_BUY,
     SIDE_BUY,
     SAME_SIZE_REL,
     SIDE_SELL,
     answer_fits_plan,
+    decision_tranche_events,
     discharge_gain_usd,
-    fold_spends_credit,
     fold_tranche_records,
     fold_units,
     held_wire_usd,
     narrower_shadow_exit,
     opposing_event_id,
-    pays_its_tranches,
+    order_spent_credit,
     priced_usd,
+    queued_by,
     rebalance_held_usd,
     routed_share_pct,
     sale_proceeds_usd,
@@ -62,6 +62,7 @@ from .sizing import (
     standing_fold_decision,
     standing_shadow_exit,
     target_delta_usd,
+    tranche_event_names,
     tranche_rebuy_price,
     units_at_scrum,
     wallet_capped_spend_usd,
@@ -761,11 +762,11 @@ class ExecutionEngineMixin:
 
     def _earlier_order_booking(self, send: Any, price: float) -> dict:
         """The ``_pay_queue_by_units`` keywords for the earlier order ``send`` names, at
-        ``price``: a shortfall buy keeps the floor and pays tranches queued before it.
-        """
-        decision = send.intent.decision
+        ``price``: a fold pays the tranches it named, and a shortfall buy keeps the floor
+        and pays tranches queued before it."""
+        paid_events = decision_tranche_events(send.intent.decision)
         floor = None
-        if not pays_its_tranches(decision):
+        if not paid_events:
             try:
                 held = self.opposing_distance_settings()
                 floor = [held.interval_pct, held.fee_pct, held.band_travel_pct]
@@ -774,9 +775,9 @@ class ExecutionEngineMixin:
         return {
             "price": float(price),
             "fee_pct": self._fee_pct_read(),
-            "credit_spent": fold_spends_credit(decision),
             "floor_distance": floor,
-            "queued_before": None if pays_its_tranches(decision) else send.issued_at,
+            "queued_before": None if paid_events else send.issued_at,
+            "paid_events": paid_events,
         }
 
     def _held_for_other_bots(self) -> Optional[float]:
@@ -1417,7 +1418,7 @@ class ExecutionEngineMixin:
                         f"short and could not compound."
                     ),
                 )
-            quote_currency = self.config.symbol.split("/")[-1]
+            quote_currency = self._wallet_currency()
             quote_free = 0.0
             _bal_err = None
             try:
@@ -1777,8 +1778,8 @@ class ExecutionEngineMixin:
         venue_units: Optional[float] = None,
         floor_distance: Optional[list] = None,
         fee_pct: Optional[float] = None,
-        credit_spent: bool = False,
         queued_before: Optional[float] = None,
+        paid_events: Optional[list] = None,
     ) -> None:
         """Book one settled piece of a Manual Fire or cartridge buy against the
         queued tranches, and announce it.
@@ -1786,8 +1787,8 @@ class ExecutionEngineMixin:
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``. With
         ``floor_distance``, ``_pay_queue_by_units`` leaves unpaid a tranche whose
-        ``tranche_rebuy_price`` sits under ``fill_price``, and it reads ``credit_spent``
-        and ``queued_before``.
+        ``tranche_rebuy_price`` sits under ``fill_price``, and it reads ``queued_before``
+        and ``paid_events``.
         """
         fill_amount = units
         if fill_price <= 0:
@@ -1801,8 +1802,8 @@ class ExecutionEngineMixin:
             _floor,
             fee_pct,
             operator_initiated,
-            credit_spent,
             queued_before,
+            paid_events,
         )
         if not _had_queue:
             msg = (
@@ -1849,9 +1850,9 @@ class ExecutionEngineMixin:
         *,
         price: float,
         fee_pct: Optional[float] = None,
-        credit_spent: bool = False,
         floor_distance: Optional[list] = None,
         queued_before: Optional[float] = None,
+        paid_events: Optional[list] = None,
     ) -> None:
         """Book one settled piece of the earlier order a repeated decision's send got
         back, which no plan sized: ``_pay_queue_by_units`` pays the queue and the rest
@@ -1867,8 +1868,8 @@ class ExecutionEngineMixin:
             DistanceSettings(*floor_distance) if floor_distance else None,
             fee_pct,
             False,
-            credit_spent,
             queued_before,
+            paid_events,
         )
         self._report_fold_by_units(
             fill_amount,
@@ -1892,8 +1893,8 @@ class ExecutionEngineMixin:
         floor: Optional[DistanceSettings],
         fee_pct: Optional[float],
         operator_initiated: bool,
-        credit_spent: bool = False,
         queued_before: Optional[float] = None,
+        paid_events: Optional[list] = None,
     ) -> tuple[float, int]:
         """Take ``fill_amount`` units off the queue in ``_fold_discharge_order``, each a
         lot at its tranche's ``initial_buy_price`` and the rest one at ``fill_price``, and
@@ -1901,9 +1902,10 @@ class ExecutionEngineMixin:
 
         With ``floor``, a tranche whose ``tranche_rebuy_price`` sits under ``fill_price``
         stays unpaid. A tranche pays its units from its own sale dollars, and one that
-        ends returns its wire credit to the pool; with ``credit_spent`` the units take
-        their share of the credit too, as a fold spends it. A tranche queued after
-        ``queued_before`` stays unpaid.
+        ends returns its wire credit to the pool. A tranche ``queued_by`` refuses at
+        ``queued_before`` stays unpaid, and ``paid_events`` holds the pay to the tranches
+        naming them, whose credit the units take a share of where ``order_spent_credit``
+        reads it spent.
         """
         if not self._fold_tranches:
             self._main_lots.append(
@@ -1917,15 +1919,19 @@ class ExecutionEngineMixin:
         gain_usd = 0.0
         remaining = fill_amount
         consumed = []
+        named = set(paid_events or ())
+        credit_spent = order_spent_credit(
+            fill_amount * fill_price,
+            [t for t in self._fold_tranches if tranche_event_names(t) & named],
+        )
         for t in self._fold_discharge_order():
             if remaining <= 1e-12:
                 break
             if floor is not None and fill_price > tranche_rebuy_price(t, floor):
                 continue
-            if (
-                queued_before is not None
-                and float(t.get(FOLD_AGE_KEY, 0.0) or 0.0) > queued_before
-            ):
+            if queued_before is not None and not queued_by(t, queued_before):
+                continue
+            if named and not tranche_event_names(t) & named:
                 continue
             # _fold_discharge_order yields finite units.
             t_units = float(t.get("units", 0.0) or 0.0)

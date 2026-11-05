@@ -1393,7 +1393,7 @@ class BotContainer:
         )
         _repeated = _idem.holds(_intent)
         _coid = _idem.derive_coid(
-            _intent, float(price or self.stats.current_price or 0.0)
+            _intent, float(price or self.stats.current_price or 0.0), _amt
         )
 
         try:

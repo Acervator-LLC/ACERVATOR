@@ -108,14 +108,21 @@ class IdempotencyLayer:
         self._issued = 0
         self._lock = threading.RLock()
 
-    def derive_coid(self, intent: TradeIntent, price_read: float = 0.0) -> str:
+    def derive_coid(
+        self,
+        intent: TradeIntent,
+        price_read: float = 0.0,
+        units: Optional[float] = None,
+    ) -> str:
         """The ``coid`` held for ``intent``, or a new one no earlier order carried, with
-        ``intent.amount`` and ``price_read`` added to ``UnansweredSend.sizes``."""
+        ``units``, else ``intent.amount``, and ``price_read`` added to
+        ``UnansweredSend.sizes``."""
+        size = (intent.amount if units is None else float(units), price_read)
         with self._lock:
             fp = intent.fingerprint(self.session_nonce)
             held = self._unanswered.get(fp)
             if held is not None:
-                held.sizes.append((intent.amount, price_read))
+                held.sizes.append(size)
                 logger.info(
                     "Idempotency: reusing coid=%s for retry of "
                     "%s %s %.8f@%s (issued %.1fs ago)",
@@ -133,7 +140,7 @@ class IdempotencyLayer:
                 coid=coid,
                 issued_at=time.time(),
                 intent=intent,
-                sizes=[(intent.amount, price_read)],
+                sizes=[size],
             )
             self._enforce_size_limit()
             return coid
