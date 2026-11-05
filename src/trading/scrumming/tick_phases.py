@@ -61,7 +61,7 @@ from .sizing import (
     fold_tranche_records,
     opposing_event_id,
     priced_usd,
-    retry_fold_tranches,
+    retry_fold_plan,
     routed_share_pct,
     scrum_units,
     target_delta_usd,
@@ -1860,7 +1860,9 @@ class TickPhaseMixin:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
         self._drop_malformed_fold_tranches()
         _reached = self._fold_eligible_tranches(ticker.last, distance, band)
-        _eligible = retry_fold_tranches(_reached, self._unanswered_decisions(SIDE_BUY))
+        _eligible, _repeated = retry_fold_plan(
+            _reached, self._fold_tranches, self._unanswered_decisions(SIDE_BUY)
+        )
         if _reached and not _eligible:
             if self._refusal_is_new("fold_lost_order", ticker.last):
                 self._bus.emit(
@@ -2070,7 +2072,8 @@ class TickPhaseMixin:
                         ],
                     },
                     sources=[src for src, _take_usd, _take_units in _fold_plan],
-                    decision=fold_decision(
+                    decision=_repeated
+                    or fold_decision(
                         [src for src, _take_usd, _take_units in _fold_plan]
                     ),
                 )

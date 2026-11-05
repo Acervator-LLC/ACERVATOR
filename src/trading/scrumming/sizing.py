@@ -3285,34 +3285,40 @@ def fold_decision_events(decision: str) -> frozenset:
     return frozenset(decision[len(FOLD_DECISION_PREFIX) :].split("+"))
 
 
-def standing_fold_decision(decisions: list, tranches: list) -> str:
-    """The first of ``decisions`` whose ``fold_decision_events`` all stand in
-    ``tranches``, empty where none does."""
-    queued: set[str] = set()
-    for tranche in tranches:
-        queued.update(tranche_event_names(tranche))
+def lost_fold_tranches(decision: str, queue: list) -> list:
+    """The tranches of ``queue`` that ``decision`` paid for, each naming no event past
+    its ``fold_decision_events``."""
+    events = fold_decision_events(decision)
+    if not events:
+        return []
+    return [one for one in queue if tranche_event_names(one) <= events]
+
+
+def standing_fold_decision(decisions: list, queue: list) -> str:
+    """The first of ``decisions`` with ``lost_fold_tranches`` left in ``queue``, empty
+    where none has."""
     for decision in decisions:
-        events = fold_decision_events(decision)
-        if events and events <= queued:
+        if lost_fold_tranches(decision, queue):
             return decision
     return ""
 
 
-def retry_fold_tranches(eligible: list, decisions: list) -> list:
+def retry_fold_plan(eligible: list, queue: list, decisions: list) -> tuple[list, str]:
     """The tranches of ``eligible`` the next fold may take while ``decisions`` stand
-    unanswered: none under ``SHORTFALL_BUY``, those of the first fold decision whose
-    events are all eligible, else every tranche no fold decision names."""
+    unanswered, and the decision it repeats: nothing under ``SHORTFALL_BUY``, every
+    tranche of the first lost fold ``eligible`` wholly holds, else what no lost fold
+    names."""
     if SHORTFALL_BUY in decisions:
-        return []
-    lost = [events for events in map(fold_decision_events, decisions) if events]
-    if not lost:
-        return eligible
-    decision = standing_fold_decision(decisions, eligible)
-    if decision:
-        events = fold_decision_events(decision)
-        return [one for one in eligible if tranche_event_names(one) & events]
-    barred = frozenset().union(*lost)
-    return [one for one in eligible if not tranche_event_names(one) & barred]
+        return [], ""
+    reached = {id(one) for one in eligible}
+    barred: set[int] = set()
+    for decision in decisions:
+        lost = lost_fold_tranches(decision, queue)
+        held = {id(one) for one in lost}
+        if held and held <= reached:
+            return lost, decision
+        barred |= held
+    return [one for one in eligible if id(one) not in barred], ""
 
 
 def combined_event_reference(survivor: dict, absorbed: dict) -> dict:
