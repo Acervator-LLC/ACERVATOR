@@ -1969,9 +1969,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
 
     def held_bot_ids(self) -> list[str]:
         """Every bot whose ``order_hold_reason`` names a hold, in fleet order."""
-        return [
-            bot_id for bot_id, bot in self._bots.items() if bot.order_hold_reason()
-        ]
+        return [bot_id for bot_id, bot in self._bots.items() if bot.order_hold_reason()]
 
     def reset_all_breakers(self) -> dict[str, list[str]]:
         """Call ``reset_circuit_breaker`` on every bot that carries it, and answer

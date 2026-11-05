@@ -893,7 +893,7 @@ class SettingsTabMixin:
         af.addRow(self._bb_bullseye_check)
 
         from ...trading.bot_container import despawn_threshold_days
-        from ..main_tabs.live_settings_tab_surface import DESPAWN_FIELD, TOOLTIPS
+        from ..main_tabs.live_settings_tab_surface import DESPAWN_FIELD
 
         self._tranche_despawn_days = QSpinBox()
         self._tranche_despawn_days.setRange(0, 365)

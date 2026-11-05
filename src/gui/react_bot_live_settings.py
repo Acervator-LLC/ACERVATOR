@@ -553,9 +553,7 @@ class PageFoldTable:
 
 def plain_box_text(words: Any) -> str:
     """``words`` with the two Qt rich-text marks ``_on_fire_position`` uses taken out."""
-    return (
-        str(words).replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-    )
+    return str(words).replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
 
 
 class PageBoxes:
@@ -637,9 +635,7 @@ class PagePrompt:
     """``QInputDialog`` on the page: one typed answer through ``page_box``."""
 
     @staticmethod
-    def getText(
-        parent: Any, title: Any, words: Any, _echo: Any, _text: Any
-    ) -> tuple:
+    def getText(parent: Any, title: Any, words: Any, _echo: Any, _text: Any) -> tuple:
         """Answer what the operator typed and whether OK took it."""
         pressed, typed = parent.page_box(
             PageBoxes.Question,

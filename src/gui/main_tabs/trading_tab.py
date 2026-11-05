@@ -129,7 +129,10 @@ class TradingTabMixin:
     def _show_exchange_tab(self, exchange_id: str) -> None:
         """Move the active layer to ``exchange_id``, as a press on its Qt tab does."""
         for held in self._class_layers.values():
-            if held["tabs"] is self._tab_widget and exchange_id in held["exchange_tabs"]:
+            if (
+                held["tabs"] is self._tab_widget
+                and exchange_id in held["exchange_tabs"]
+            ):
                 self._tab_widget.setCurrentWidget(held["exchange_tabs"][exchange_id])
         self._push_live_tab({EXCHANGE_PARAM: exchange_id})
 

@@ -434,9 +434,7 @@ class CircuitBreakerMixin(_Host):
                 self.order_hold_reason(),
             )
         except Exception as _alert_exc:
-            logger.warning(
-                "Bot %s hold alert not sent: %s", self.bot_id, _alert_exc
-            )
+            logger.warning("Bot %s hold alert not sent: %s", self.bot_id, _alert_exc)
 
     def _trip_soft_breaker(
         self, move: BreakerMove, figures: BreakerFigures, ts: float
