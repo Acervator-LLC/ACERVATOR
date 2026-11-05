@@ -1,11 +1,9 @@
-"""Deterministic client-order-ids, so a retried order cannot fill twice.
+"""One client order id per order, held for its retry while the venue has not answered.
 
-``IdempotencyLayer.derive_coid`` hashes a ``TradeIntent`` with a
-session-stable nonce and caches the result for ``ttl_seconds``, so the same
-intent inside that window reuses one ``coid`` and the exchange refuses the
-second order. ``mark_fulfilled`` and ``invalidate`` record the outcome.
-``BotContainer.guarded_place_order`` is the caller; it passes the ``coid``
-to ``place_order`` as ``client_order_id``.
+``IdempotencyLayer.derive_coid`` issues a ``coid`` and holds it for one bot, market and
+side, and the next ``TradeIntent`` there sends the held ``coid``, which a venue will not
+open twice. ``IdempotencyLayer.end_retries`` drops what it holds for one bot on one market.
+``BotContainer.guarded_place_order`` calls both, and ``_reconcile_holdings`` the second.
 """
 
 from __future__ import annotations
@@ -20,20 +18,25 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+#: Hex characters in a hash, and ``acrv-`` beside them fits a 36-character id field.
+HASH_CHARS = 16
+
+
+def _short_hash(text: str) -> str:
+    """The first ``HASH_CHARS`` hex characters of the SHA-256 of ``text``."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:HASH_CHARS]
+
 
 @dataclass
-class _CachedCoid:
+class _UnansweredCoid:
     coid: str
     issued_at: float
-    fulfilled: bool = False
-    intent_hash: str = ""
 
 
 @dataclass
 class TradeIntent:
-    """The exact trade the bot wants to submit. The intent is hashed to
-    derive the deterministic coid; identical intents collide deliberately
-    so a retry cannot create a second order."""
+    """The exact trade the bot wants to submit, which ``fingerprint`` hashes to seed a
+    new ``coid``."""
 
     symbol: str
     side: str  # "buy" / "sell"
@@ -43,106 +46,59 @@ class TradeIntent:
     purpose: str = ""  # "scrum" / "fold" / "cartridge" / "manual" / etc.
 
     def fingerprint(self, session_nonce: str) -> str:
-        """Deterministic hash. Same intent + same session = same coid."""
+        """Deterministic hash. Same intent + same session = same value."""
         # Round price to 8 decimals to absorb harmless float-jitter while
         # still distinguishing genuinely different price points.
         price_str = "M" if self.price is None else f"{self.price:.8f}"
-        # Round amount likewise; coid collisions on near-identical amounts
-        # are EXACTLY what we want to prevent (= duplicate retry).
         amount_str = f"{self.amount:.10f}"
-        raw = (
+        return _short_hash(
             f"{self.bot_id}|{self.symbol}|{self.side}|{amount_str}|"
             f"{price_str}|{self.purpose}|{session_nonce}"
         )
-        # 16-char prefix is plenty unique for retry-window collision-prevention,
-        # well below most exchanges' 36-char client-order-id limit.
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 class IdempotencyLayer:
-    """Per-process idempotency cache with a TTL window."""
+    """Per-process record of the ``coid`` each bot, market and side has unanswered."""
 
-    def __init__(self, ttl_seconds: float = 300.0, max_entries: int = 5000) -> None:
-        self.ttl_seconds = ttl_seconds
-        self.max_entries = max_entries
+    def __init__(self) -> None:
         # Not persisted, so a restart gives new coids for the same intent.
         self.session_nonce = uuid.uuid4().hex[:8]
-        self._cache: dict[str, _CachedCoid] = {}
+        self._unanswered: dict[tuple[str, str, str], _UnansweredCoid] = {}
+        self._issued = 0
         self._lock = threading.RLock()
 
     def derive_coid(self, intent: TradeIntent) -> str:
-        """Get (or reuse) the coid for this intent. The PRIMARY entry
-        point; callers always go through this."""
+        """The ``coid`` held for this bot, market and side, or a new one no earlier
+        order carried."""
         with self._lock:
-            self._evict_expired()
-            fp = intent.fingerprint(self.session_nonce)
-            cached = self._cache.get(fp)
-            if cached is not None:
-                # Reuse the same coid — this IS a retry of the same intent
+            key = (intent.bot_id, intent.symbol, intent.side)
+            held = self._unanswered.get(key)
+            if held is not None:
                 logger.info(
                     "Idempotency: reusing coid=%s for retry of "
                     "%s %s %.8f@%s (issued %.1fs ago)",
-                    cached.coid,
+                    held.coid,
                     intent.side,
                     intent.symbol,
                     intent.amount,
                     "MKT" if intent.price is None else f"{intent.price:.8f}",
-                    time.time() - cached.issued_at,
+                    time.time() - held.issued_at,
                 )
-                return cached.coid
-            # New intent — generate a coid and cache it
-            coid = f"acrv-{fp}"
-            self._cache[fp] = _CachedCoid(
-                coid=coid, issued_at=time.time(), intent_hash=fp
-            )
-            self._enforce_size_limit()
+                return held.coid
+            self._issued += 1
+            fp = intent.fingerprint(self.session_nonce)
+            coid = f"acrv-{_short_hash(f'{fp}|{self._issued}')}"
+            self._unanswered[key] = _UnansweredCoid(coid=coid, issued_at=time.time())
             return coid
 
-    def mark_fulfilled(self, intent: TradeIntent) -> None:
-        """Mark this intent's coid as completed. Stays cached for TTL
-        so a delayed retry still hits the cache."""
+    def end_retries(self, bot_id: str, symbol: str) -> None:
+        """Drop every ``coid`` held for ``bot_id`` on ``symbol``, leaving ``derive_coid``
+        to issue a new one for each later ``TradeIntent``."""
         with self._lock:
-            fp = intent.fingerprint(self.session_nonce)
-            cached = self._cache.get(fp)
-            if cached is not None:
-                cached.fulfilled = True
-
-    def invalidate(self, intent: TradeIntent) -> None:
-        """Remove this intent's coid from cache. Use when the order was
-        REJECTED by the exchange (4xx other than 409 duplicate) so the
-        next legitimate retry can generate a fresh coid."""
-        with self._lock:
-            fp = intent.fingerprint(self.session_nonce)
-            self._cache.pop(fp, None)
-
-    def is_known(self, intent: TradeIntent) -> bool:
-        with self._lock:
-            self._evict_expired()
-            fp = intent.fingerprint(self.session_nonce)
-            return fp in self._cache
-
-    def _evict_expired(self) -> None:
-        cutoff = time.time() - self.ttl_seconds
-        expired = [k for k, v in self._cache.items() if v.issued_at < cutoff]
-        for k in expired:
-            del self._cache[k]
-
-    def _enforce_size_limit(self) -> None:
-        if len(self._cache) <= self.max_entries:
-            return
-        # Drop the oldest entries
-        sorted_items = sorted(self._cache.items(), key=lambda kv: kv[1].issued_at)
-        for k, _ in sorted_items[: len(self._cache) - self.max_entries]:
-            del self._cache[k]
-
-    def stats(self) -> dict:
-        with self._lock:
-            self._evict_expired()
-            return {
-                "cached_intents": len(self._cache),
-                "fulfilled": sum(1 for v in self._cache.values() if v.fulfilled),
-                "ttl_seconds": self.ttl_seconds,
-                "session_nonce": self.session_nonce,
+            self._unanswered = {
+                key: held
+                for key, held in self._unanswered.items()
+                if key[:2] != (bot_id, symbol)
             }
 
 

@@ -1347,8 +1347,7 @@ class BotContainer:
             )
         amount = _contracts
 
-        # Deterministic client_order_id derived from the trade intent,
-        # so a retry of the same intent reuses the same coid.
+        # The venue's answer ends the coid; a send with no answer keeps it for the retry.
         from ..exchange.idempotency import get_idempotency_layer, TradeIntent
 
         _idem = get_idempotency_layer()
@@ -1366,13 +1365,11 @@ class BotContainer:
             order = await self.exchange.place_order(
                 symbol, side, order_type, amount, price, client_order_id=_coid
             )
-            _idem.mark_fulfilled(_intent)
-            # Every live order passes here, so the venue's figure is stale from
-            # this line on and the window ends at the one submitting site.
+        finally:
+            # Every live order passes here, answered or not, so its balance window ends here.
             self._invalidate_symbol_balances(symbol)
-            return order
-        except Exception:
-            raise
+        _idem.end_retries(_intent.bot_id, symbol)
+        return order
 
     async def start(self) -> None:
         """Launch the bot's trading loop in a guarded asyncio task."""
