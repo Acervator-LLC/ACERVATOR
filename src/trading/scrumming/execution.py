@@ -38,14 +38,16 @@ from .sizing import (
     FRACTIONAL_UNITS,
     SHORTFALL_BUY,
     SIDE_BUY,
-    SAME_SIZE_REL,
     SIDE_SELL,
+    SLIPPAGE_TOLERANCE_PCT,
     answer_fits_plan,
+    answer_is_send,
     decision_tranche_events,
     discharge_gain_usd,
     fold_tranche_records,
     fold_units,
     held_wire_usd,
+    lost_fold_tranches,
     narrower_shadow_exit,
     opposing_event_id,
     order_spent_credit,
@@ -747,6 +749,37 @@ class ExecutionEngineMixin:
         ``config.symbol`` and ``side``."""
         return get_idempotency_layer().unanswered_sends(
             self.bot_id, self.config.symbol, side
+        )
+
+    def _answers_this_send(
+        self,
+        order: Any,
+        decision: str,
+        answered: tuple,
+        cost: float,
+        sources: Optional[list],
+        booking: Optional[dict],
+    ) -> bool:
+        """True where ``answered``, the ``(asked, sent, filled, price)`` of a repeat of
+        ``decision``, is this send's own order: ``answer_is_send``, or a plan of only the
+        decision's tranches that ``answer_fits_plan`` passes."""
+        asked, sent, filled, price = answered
+        queued = sources or []
+        if answer_is_send(
+            asked, sent, filled > 0 or self._last_settled_order is not order
+        ):
+            return True
+        return len(lost_fold_tranches(decision, queued)) == len(
+            queued
+        ) and answer_fits_plan(
+            asked,
+            filled,
+            price,
+            cost,
+            math.fsum(
+                units_at_scrum(one) for one in (booking or {}).get("eligible") or queued
+            ),
+            SLIPPAGE_TOLERANCE_PCT,
         )
 
     def _lost_buy(self, decision: str) -> Any:
@@ -1576,10 +1609,20 @@ class ExecutionEngineMixin:
                 ),
                 "fee_pct": _fee,
             }
-            if _lost is not None and not math.isclose(
-                self._order_asked_units(self._last_settled_order or order, buy_amount),
-                buy_amount,
-                rel_tol=SAME_SIZE_REL,
+            _asked = self._order_asked_units(
+                self._last_settled_order or order, buy_amount
+            )
+            if (
+                _lost is not None
+                and not answer_is_send(_asked, buy_amount, True)
+                and not answer_fits_plan(
+                    _asked,
+                    fill_amount,
+                    fill_price or price,
+                    buy_usd / _qrate,
+                    0.0,
+                    SLIPPAGE_TOLERANCE_PCT,
+                )
             ):
                 _keep_floor = _manual_purchase["floor_distance"]
                 _manual_purchase.update(self._earlier_order_booking(_lost, price))
@@ -2858,7 +2901,7 @@ class ExecutionEngineMixin:
         no buy. The figure is left on ``_last_buy_filled_units`` for the
         callers that add the same units to ``_main_lots``. ``decision`` names the
         order, so a retry keeps its id at any size or price, and an answer to it that
-        ``answer_fits_plan`` refuses books through ``_book_earlier_order``. A path
+        ``_answers_this_send`` refuses books through ``_book_earlier_order``. A path
         outside ``OWN_TRANCHE_PATHS`` reads ``cost`` in USD and refuses through
         ``_spends_held_dollars``, and one inside reads it in the quote currency.
         """
@@ -2998,7 +3041,7 @@ class ExecutionEngineMixin:
         )
 
         _target_delta_usd = float(self._target_balance) - _current_position_usd
-        _slippage_tol_pct = 0.5
+        _slippage_tol_pct = SLIPPAGE_TOLERANCE_PCT
         if _path == "zero_balance_initial_entry":
             _path_budget = float(self._target_balance)
         elif _path in ("fold_rebuy", "manual_tranche_fire"):
@@ -3171,16 +3214,13 @@ class ExecutionEngineMixin:
             if (
                 _lost is not None
                 and _own_tranche
-                and not answer_fits_plan(
-                    asked,
-                    filled_units,
-                    actual_fill or price,
+                and not self._answers_this_send(
+                    order,
+                    decision,
+                    (asked, amount, filled_units, actual_fill or price),
                     cost,
-                    math.fsum(
-                        units_at_scrum(one)
-                        for one in (booking or {}).get("eligible") or sources or []
-                    ),
-                    _slippage_tol_pct,
+                    sources,
+                    booking,
                 )
             ):
                 booker = EARLIER_ORDER_BOOKER

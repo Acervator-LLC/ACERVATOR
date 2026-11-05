@@ -3241,6 +3241,9 @@ SHADOW_EXIT_PREFIX = "shadow_exit:"
 
 #: How far two sizes of one order may sit apart and read as one size.
 SAME_SIZE_REL = 1e-6
+
+#: The percent an order's dollars may slip from the dollars it was sized for.
+SLIPPAGE_TOLERANCE_PCT = 0.5
 STACK_RUNG_PREFIX = "stack_rung:"
 
 
@@ -3356,6 +3359,12 @@ def narrower_shadow_exit(decision: str, rows: list, standing: list) -> bool:
     named = _decision_events(decision, SHADOW_EXIT_PREFIX)
     sent = {name for row in rows for name in tranche_event_names(row)}
     return any((tranche_event_names(row) & named) - sent for row in standing)
+
+
+def answer_is_send(asked_units: float, sent_units: float, venue_read: bool) -> bool:
+    """True where ``venue_read`` holds the venue's own record of the order and that
+    record asked ``sent_units``, so the answer is this send's own order."""
+    return venue_read and math.isclose(asked_units, sent_units, rel_tol=SAME_SIZE_REL)
 
 
 def answer_fits_plan(
