@@ -381,6 +381,19 @@ class SettingsTabMixin:
         )
         gf.addRow(HUNGER_PACE_LABEL, self._hunger_pace)
 
+    def _add_shadow_row(self, gf: Any, cfg: Any) -> None:
+        """Add the Accumulation Shadow tick box to the Strategy Gate Flags form ``gf``."""
+        from ...trading.container.config import shadow_switched_on
+        from ..main_tabs.live_settings_tab_surface import SHADOW_SWITCH_TEXT, TOOLTIPS
+
+        self._shadow_enabled = QCheckBox(SHADOW_SWITCH_TEXT)
+        self._shadow_enabled.setChecked(shadow_switched_on(cfg))
+        set_description(self._shadow_enabled, TOOLTIPS["shadow_enabled"])
+        self._shadow_enabled.toggled.connect(
+            lambda v: self._mark_changed("shadow_enabled", v)
+        )
+        gf.addRow(self._shadow_enabled)
+
     # Tab 2: Settings (editable)
     def _create_settings_tab(self) -> QWidget:
         w = QWidget()
@@ -1125,6 +1138,7 @@ class SettingsTabMixin:
 
         if is_scrumming:
             self._add_hunger_rows(gf, cfg)
+            self._add_shadow_row(gf, cfg)
 
         layout.addWidget(gates_group)
 

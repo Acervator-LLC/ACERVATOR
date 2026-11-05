@@ -893,42 +893,103 @@ return min(floor, max(floor / denominator, past_two))
 
 The Accumulation Shadow was invented as a means of taking maximum advantage of long term and bearish conditions. It allows for a Scrumming to create a Shadow of itself that focuses on accumulating a smaller chunk of the target asset during a bearish regime. The shadow is allowed to accumulate downward but does not scrum. It was a bullish regime to be dedicated and then detonates thereby claiming all of its profits at once. Shadows operate in parallel with their parent bots and will be listed as Shadow Tranches once they are fully implemented.
 
-**Not built.** The Accumulation Shadow has no code. No shadow bot, shadow
-tranche or shadow regime exists today.
+Now: built, and off on every bot until its Accumulation Shadow box is ticked; a bearish fold's extra units then wait on a Shadow Tranche for a bullish regime (`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._tick_shadow`).
 
-Three functions collapse or remove a tranche, and none of them knows a shadow
-kind. One merges two rungs, one removes an aged row, and one discards a queue.
-Despawn removes a tranche; it does not delist one. The entry's own wording,
-"once they are fully implemented", matches the code.
+**Built, and switched off on every bot.** A shadow is a tranche kind, not a
+second bot. The switch is one tick box on a live Scrumming bot's Settings tab.
+Paper and the Simulator open no shadow, so their tabs do not draw the box
+(`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_shadow_row`).
 
-`src/trading/stack_math.py` — `_apply_merge_rule`
+The regime is a vote on 100 candles of the bot's Detonation Timeframe, read at
+most once an hour. A vote that leans bearish reads bearish, because that reading
+only marks a row and places no order. A vote reads bullish only when three
+indicators agree, because that reading sells.
 
-```python
-def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
-    """Combine adjacent tranches whose prices are within MERGE_THRESHOLD.
-
-    A merged Tranche keeps the higher `price` and the summed `size`, and the
-    survivors are re-indexed from 0.
-    """
-```
-
-**The build this specifies.** A shadow is a tranche kind, not a second bot. It
-accumulates downward, never sells, and exits in one move when the regime turns.
-The tranche dict gains a kind key, the three collapse functions skip a row that
-carries it, and the exit reuses the detonation executor that already sells a
-surplus and reseeds the lots.
-
-*Proposed, not present, in `src/trading/scrumming/fold_tranches.py`:*
+`src/trading/scrumming/shadow.py` — `regime_of`
 
 ```python
-def _despawn_aged_tranches(self, now: Optional[float] = None) -> dict:
-    for t in list(self._fold_tranches):
-        if t.get("kind") == "shadow":
-            continue
+def regime_of(summary: Any) -> str:
+    direction = summary.consensus_direction
+    if direction == SignalDirection.BEARISH:
+        return REGIME_BEARISH
+    if direction == SignalDirection.BULLISH and three_agree(
+        summary.consensus_confidence, summary.signals
+    ):
+        return REGIME_BULLISH
+    return REGIME_NONE
 ```
 
-A row with no kind key behaves exactly as it does today, so the change is
-invisible until a shadow is spawned. Issue #433 carries the build.
+A sale in a bearish regime marks its fold tranche with a kind key. The marked
+tranche is still a fold tranche. It buys back on the same chain, at the same
+Minimum Opposing Trade Distance. A merge, a despawn and a clear all skip it, so
+it survives a long regime. A row with no kind key behaves as it did.
+
+`src/trading/scrumming/fold_tranches.py` — `_despawn_aged_tranches`
+
+```python
+for _t in self._fold_tranches or []:
+    if is_shadow(_t):
+        report["shadow_kept"] = report.get("shadow_kept", 0) + 1
+        _fold_keep.append(_t)
+        continue
+```
+
+The fold gives the parent every unit its sale sold. The units past those move to
+a Shadow Tranche, off the parent's lots and holdings. No scrum, DIST sale or
+stack rung can sell them, and they grow no target. Each later fold in the regime
+adds a row at its own lower price. No setting sizes a row, because the fold
+measures it from the sale's own dollars.
+
+`src/trading/scrumming/sizing.py` — `shadow_take_units`
+
+```python
+take = math.fsum(
+    bought * float(one.get(SHADOW_SALE_USD_KEY, 0.0) or 0.0) / spent
+    - units_at_scrum(one) * share
+    for one in marked
+)
+extra = bought - math.fsum(units_at_scrum(one) for one in eligible) * share
+return max(0.0, min(take, extra))
+```
+
+A Shadow Tranche holds no wire credit. A credit may land on a marked fold
+tranche and is spent inside it. The units it buys stay with the parent, under
+the growth cap. The exit routes nothing down a wire
+(`src/trading/scrumming/sizing.py, in plan_fold_consumption`).
+
+A bullish regime sends every row at or over its floor through the detonation
+executor, in one order. The floor is the row's buy price plus the Minimum
+Opposing Trade Distance, and a row under it waits. The sale takes only what a
+row stands above its cost. The units left are worth what the row paid, and they
+join the lots at the fill price under the cycle growth cap
+(`src/trading/scrumming/execution.py, in _execute_detonation`).
+
+A worked cycle, with room under the growth cap:
+
+```
+sale    1 unit at $100.00, fee 0.60%            $99.40 queued
+fold    $99.40 at $95.00 buys 1.046316 units    the parent takes 1.000000
+                                                the row takes 0.046316, cost $4.40
+exit    bullish regime at $130.00               floor $96.52
+        sells 0.012470 units                    $1.62 of profit
+        keeps 0.033846 units                    worth $4.40, joins the lots
+```
+
+The whole cycle ends with more units than it began with, and profit in dollars.
+
+Only a fold on the chain feeds a shadow. A Manual Fire or cartridge buy takes
+what the delta names and leaves no units past its tranche. A stack rung sale
+queues no fold tranche, so on a Stack Mode bot only a cartridge sale can mark a
+row (`src/trading/scrumming_bot.py, in ScrummingBot._book_stack_spend`).
+
+A self-destruct or an
+expiry close returns every row to the lots first, so that exit sells them
+(`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._return_shadows_to_lots`).
+
+The bot log names each step: SHADOW REGIME, SHADOW OPENED, SHADOW ACCUMULATED,
+SHADOW HELD, SHADOW DETONATION and SHADOW DETONATED. The Stack Tranches tab lists
+each row with SHADOW in its Mode column, and the fill reads SHADOW_DETONATION
+(`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._book_shadow_detonation`).
 
 ### 10 - Charge Up Permission Gate
 
@@ -971,7 +1032,9 @@ build.
 
 The term tranche emerged in Acervator as the concept of placing soft boundaries around where an opposing trade 1) can initially happen in terms of price level, 2) denote the amount of the position expected to be transacted once the price thresholds are met or exceeded, 3) allows wire credits to be fed into Fold Tranches (Buys) and Extractor Tranche profits to be distributed across Stack Tranches (Scrums / Sells) for additional accumulation and profit optimization. For the sake of clarity, Fold Tranches spawn after a Scrum (Sell) occurs; Stack Tranches spawn after a Fold (Buy) occurs; and Extractor Tranches spawn when an Extractor Bot finds a favorable Alternate Currency entry on its chosen timeframe and these tranches remain until the acquired Alternate Currency stack is sold by either the Extractor Bot (Sibling) or its corresponding Scrumming Bot (Parent). All Tranches will persist under a bot’s Details > Tranches Tab.
 
-**Functional.** Three of the four tranche kinds run. Fold Tranches spawn on a
+Now: Shadow Tranches are listed on the bot's Stack Tranches tab, each with SHADOW in its Mode column (`src/gui/main_tabs/stack_tranches_tab_surface.py, in compose_shadow_rows`).
+
+**Functional.** All four tranche kinds run. Fold Tranches spawn on a
 scrum and hold the price of the sale that made them. Stack Tranches spawn on a
 fold and are priced as a ladder above the buy. A three-unit scrum at 100 with a
 one percent split and linear spacing returns rungs at 101, 102 and 103 carrying
@@ -1009,7 +1072,7 @@ it differently and disagree on the same id.
 """
 ```
 
-Shadow Tranches do not exist; entry 9 gives the measurement and the proposal.
+Shadow Tranches hold a bearish fold's extra units; entry 9 gives the build.
 
 The queue sorts the fold tranches by their reference price, highest first, and
 drops any row whose reference or unit count is not a finite number. Wire credits

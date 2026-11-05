@@ -31,6 +31,9 @@ STACK_STATUS_PENDING = "pending"
 # The buy price a rung's units must clear by the opposing trade distance.
 STACK_FLOOR_REF_KEY = "floor_ref_price"
 
+TRANCHE_KIND_KEY = "kind"
+SHADOW_KIND = "shadow"
+
 SPACING_MODES = ("quadratic", "fibonacci", "linear", "exponential")
 DEFAULT_SPACING_MODE = "quadratic"
 
@@ -49,9 +52,19 @@ class Tranche:
     index: int  # 0-based after merging, 0 nearest the scrum price
     price: float  # quote currency
     size: float  # base asset units
+    kind: str = ""  # SHADOW_KIND, or "" for a plain tranche
 
     def to_dict(self) -> dict:
-        return {"index": self.index, "price": self.price, "size": self.size}
+        record = {"index": self.index, "price": self.price, "size": self.size}
+        if self.kind:
+            record[TRANCHE_KIND_KEY] = self.kind
+        return record
+
+
+def is_shadow(record: object) -> bool:
+    """Does the tranche dict ``record`` carry ``SHADOW_KIND`` under
+    ``TRANCHE_KIND_KEY``; a row with no kind key answers False."""
+    return isinstance(record, dict) and record.get(TRANCHE_KIND_KEY) == SHADOW_KIND
 
 
 def _number(name: str, value: object) -> float:
@@ -337,15 +350,15 @@ def within_merge_distance(lower_price: float, higher_price: float) -> bool:
 def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
     """Combine adjacent tranches whose prices are within MERGE_THRESHOLD.
 
-    A merged Tranche keeps the higher `price` and the summed `size`, and the
-    survivors are re-indexed from 0.
+    A merged Tranche keeps the higher `price` and the summed `size`, the
+    survivors are re-indexed from 0, and a `SHADOW_KIND` tranche never merges.
     """
     if len(tranches) < 2:
         return list(tranches)
     out: list[Tranche] = [tranches[0]]
     for cur in tranches[1:]:
         prev = out[-1]
-        if prev.price <= 0:
+        if prev.price <= 0 or SHADOW_KIND in (prev.kind, cur.kind):
             out.append(cur)
             continue
         if within_merge_distance(prev.price, cur.price):
@@ -489,7 +502,7 @@ def _apply_min_order_size(
         return tranches
     kept = tranches[:max_viable_n]
     even = total_size / max_viable_n
-    return [Tranche(index=t.index, price=t.price, size=even) for t in kept]
+    return [Tranche(index=t.index, price=t.price, size=even, kind=t.kind) for t in kept]
 
 
 def split_scrum_into_tranches(

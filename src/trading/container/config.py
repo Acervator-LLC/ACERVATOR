@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Any, Callable, Optional
 
 from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
+from ..stack_math import is_shadow
 
 logger = logging.getLogger("acervator.bot")
 
@@ -226,6 +227,9 @@ class BotConfig:
     hunger_enabled: bool = False
     # Idle candles to full hunger, read through hunger_pace().
     hunger_pace_candles: int = HUNGER_PACE_NONE
+    # ScrummingBot marks a sale's fold tranche in a bearish regime, read through
+    # shadow_switched_on().
+    shadow_enabled: bool = False
     # The most hunger_gain_per_candle may add to the floor skew.
     hunger_skew_max: float = 0.20
 
@@ -467,6 +471,8 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "hunger_enabled",
         "hunger_pace_candles",
         "hunger_skew_max",
+        # ScrummingBot alone opens Shadow Tranches.
+        "shadow_enabled",
         # risk-control fields
         "position_ceiling_enabled",
         "position_ceiling_multiple",
@@ -687,6 +693,12 @@ def hunger_switched_on(config) -> bool:
     return getattr(config, "hunger_enabled", False) is True
 
 
+def shadow_switched_on(config) -> bool:
+    """True only while ``config.shadow_enabled`` is the boolean True, the Accumulation
+    Shadow tick box's ticked state."""
+    return getattr(config, "shadow_enabled", False) is True
+
+
 def hunger_pace(config) -> int:
     """Return ``config.hunger_pace_candles`` when ``as_whole_count`` admits it
     inside the Hunger Pace span, else ``HUNGER_PACE_NONE``."""
@@ -777,6 +789,8 @@ def _despawn_preview_fold(fold: list, cutoff: float, now: float, report: dict) -
     An ageless record counts as `ageless_kept`, never as removable.
     """
     for _t in fold:
+        if is_shadow(_t):
+            continue
         _age = _despawn_age_seconds(_t, "created_ts", now)
         if _age is None:
             report["ageless_kept"] += 1
@@ -823,8 +837,8 @@ def despawn_preview(
     Reads `fold_tranches` and `stack_tranches` without changing either list
     or any bot state. Applies the same predicate as
     `ScrummingBot._despawn_aged_tranches`: age >= days is removable, an
-    ageless record is kept, and a stack tranche holding a live exchange
-    order is kept.
+    ageless record is kept, a stack tranche holding a live exchange
+    order is kept, and an `is_shadow` record is kept.
 
     Args:
       fold_tranches: this bot's fold ledger, or None.
