@@ -114,6 +114,7 @@ from .scrumming.fold_tranches import (
 )
 from .scrumming.sizing import (
     EVENT_ID_KEY,
+    HEDGE_BUY,
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
@@ -124,8 +125,10 @@ from .scrumming.sizing import (
     rate_after_wire,
     ratio_to_ceiling,
     scrumming_interval_usd,
+    stack_rung_decision,
     target_delta_pct,
     target_delta_usd,
+    tranche_fire_decision,
     tranche_rebuy_price,
     tranche_sale_usd,
     tranche_wire_share_pct,
@@ -1825,6 +1828,7 @@ class ScrummingBot(
                 EVENT_ID_KEY: str(tranche.get(EVENT_ID_KEY, "") or ""),
             },
             sources=[tranche],
+            decision=tranche_fire_decision(tranche),
         )
         if fill_price is None or fill_price <= 0:
             return {
@@ -3153,7 +3157,8 @@ class ScrummingBot(
         ):
             self._reconcile_tick_counter = 0
             try:
-                await self._reconcile_holdings(reason="periodic")
+                if await self._reconcile_holdings(reason="periodic"):
+                    self._end_decisions_the_book_settled()
             except Exception as exc:
                 logger.debug("Bot %s periodic reconcile raised: %s", self.bot_id, exc)
 
@@ -4657,6 +4662,7 @@ class ScrummingBot(
                             "bb_pos": float(bb_pos),
                             "intended": float(ticker.last),
                         },
+                        decision=HEDGE_BUY,
                     )
                     if (hedge_fill is None or hedge_fill <= 0) and self._refusal_is_new(
                         "hedge_buy_refused", ticker.last
@@ -5506,6 +5512,7 @@ class ScrummingBot(
                     summary=_vote,
                     bypass_stack=True,
                     label="STACK",
+                    decision=stack_rung_decision(t),
                     booker="_book_stack_spend",
                     booking={
                         "rung_index": t.get("index"),

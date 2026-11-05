@@ -15,6 +15,7 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType
+from ...exchange.idempotency import decision_purpose, get_idempotency_layer
 from ..container.config import target_growth_pct
 from ..otd_math import (
     ROUND_TRIP_FEES,
@@ -28,7 +29,11 @@ from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
 from .shadow import SHADOW_BOOKER
 from .sizing import (
+    DETONATION_SALE,
+    EXCESS_SALE,
     FRACTIONAL_UNITS,
+    SHORTFALL_BUY,
+    SIDE_BUY,
     discharge_gain_usd,
     fold_tranche_records,
     fold_units,
@@ -39,7 +44,10 @@ from .sizing import (
     routed_share_pct,
     sale_proceeds_usd,
     scrum_units,
+    shadow_exit_decision,
+    spend_leaving_held_usd,
     spend_less_unsettled_usd,
+    standing_fold_decision,
     target_delta_usd,
     tranche_rebuy_price,
     wallet_capped_spend_usd,
@@ -49,6 +57,9 @@ logger = logging.getLogger("acervator.scrumming")
 
 # A fraction of the price a refusal was taken at, not a percent.
 REFUSAL_HOLD_MOVE_FRACTION: float = 0.001
+
+#: The ``_execute_buy`` paths spending the dollars their own tranche holds.
+OWN_TRANCHE_PATHS = ("fold_rebuy", "manual_tranche_fire")
 
 
 @dataclass(frozen=True)
@@ -705,6 +716,66 @@ class ExecutionEngineMixin:
         """The Minimum Opposing Trade Distance at ``band``, a percentage, read through ``opposing_distance_settings``."""
         return self.opposing_distance_settings().distance_at_band(band)
 
+    def _unanswered_decisions(self, side: str) -> list:
+        """The decisions ``get_idempotency_layer`` holds an unanswered id for on this
+        bot, ``config.symbol`` and ``side``."""
+        return get_idempotency_layer().unanswered_decisions(
+            self.bot_id, self.config.symbol, side
+        )
+
+    def _held_for_other_bots(self) -> Optional[float]:
+        """What ``sum_sibling_held_usd`` of the attached ``_bot_manager`` answers for
+        this wallet, 0.0 with no fleet to ask and None where it cannot read a bot."""
+        reader = getattr(
+            getattr(self, "_bot_manager", None), "sum_sibling_held_usd", None
+        )
+        if not callable(reader):
+            return 0.0
+        held = reader(self.bot_id, self.config.exchange_id, self.config.base_currency)
+        return None if held is None else float(held)
+
+    async def _spends_held_dollars(self, cost: float, price: float) -> bool:
+        """True where ``cost`` does not fit the free balance less
+        ``_held_for_other_bots``, after a refusal line ``_refusal_is_new`` admits."""
+        held = self._held_for_other_bots()
+        if held == 0.0:
+            return False
+        free_usd: Optional[float] = None
+        if held is not None:
+            try:
+                _bal = await self._get_balance(self.config.base_currency)
+                free_usd = float(getattr(_bal, "free", 0) or 0)
+            except Exception as _bal_exc:
+                logger.warning(
+                    "Bot %s could not read its %s balance against what other bots "
+                    "hold: %s",
+                    self.bot_id,
+                    self.config.base_currency,
+                    _bal_exc,
+                )
+        _qrate = float(self._quote_to_usd or 1.0)
+        if free_usd is not None:
+            try:
+                _fee_pct = self.opposing_distance_settings().fee_pct
+            except DistanceSettingUnreadable:
+                _fee_pct = 0.0
+            _left_usd = (free_usd - float(held)) * _qrate
+            if spend_leaving_held_usd(cost, _left_usd, _fee_pct) >= cost:
+                return False
+        if self._refusal_is_new("buy_held_for_others", price):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"BUY REFUSED (held for other bots): ${cost:.4f} does not fit "
+                    f"the {self.config.base_currency} free balance "
+                    f"({'unread' if free_usd is None else f'${free_usd:.4f}'}) less "
+                    f"what other bots' queued buy-backs and wire credits hold "
+                    f"({'unread' if held is None else f'${float(held):.4f}'})."
+                ),
+            )
+        return True
+
     def _pivot_distance_text(self) -> str:
         """``opposing_trade_distance_pct`` as a pivot line prints it, or the ``DistanceSettingUnreadable`` it raised."""
         try:
@@ -1022,6 +1093,7 @@ class ExecutionEngineMixin:
                 order_type=OrderType.MARKET,
                 amount=sell_amount,
                 price=None,
+                purpose=decision_purpose(EXCESS_SALE),
             )
 
             if order is None:
@@ -1161,7 +1233,8 @@ class ExecutionEngineMixin:
                             f"{len(self._fold_tranches)} queued tranche(s) is "
                             f"eligible. The highest rebuy any of them allows "
                             f"is ${_best_rebuy:.8f} (its sale price less the "
-                            f"distance), so price must fall "
+                            f"distance, or lower where its own dollars need it to "
+                            f"restore its units), so price must fall "
                             f"${price - _best_rebuy:.8f} further. Gates are "
                             f"bypassed on this path, so it will not rebuy "
                             f"above what it sold at. Intended BUY of "
@@ -1279,6 +1352,18 @@ class ExecutionEngineMixin:
                         quote_free = float(getattr(b, "free", 0) or 0)
                 except Exception as exc2:
                     _bal_err = exc2
+            _others_hold = self._held_for_other_bots()
+            if _others_hold is None:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"MANUAL FIRE FOLD: what other bots' queued buy-backs and "
+                        f"wire credits hold of {quote_currency} could not be read, "
+                        f"so nothing is spent. Cannot rebalance."
+                    ),
+                )
+                return
             _wallet_key = wallet_key(self.config.exchange_id, quote_currency)
             _reservations = get_wallet_reservations()
             _wallet_free = quote_free * _qrate
@@ -1306,8 +1391,14 @@ class ExecutionEngineMixin:
             buy_usd = spend_less_unsettled_usd(
                 wallet_capped_spend_usd(buy_usd_target, usd_balance),
                 usd_balance,
-                _unsettled + _held_back,
+                (_unsettled + _held_back) * _qrate,
             )
+            if _others_hold > 0.0:
+                buy_usd = spend_leaving_held_usd(
+                    buy_usd,
+                    usd_balance - (_unsettled + _held_back + _others_hold) * _qrate,
+                    _fee or 0.0,
+                )
             if buy_usd <= 0:
                 err_tail = f" (fetch error: {_bal_err})" if _bal_err else ""
                 unsettled_tail = (
@@ -1319,6 +1410,12 @@ class ExecutionEngineMixin:
                     f", of which ${_held_back:.4f} is held for tranches above "
                     f"their own floor and for wire credits"
                     if _held_back > 1e-9
+                    else ""
+                )
+                unsettled_tail += (
+                    f", of which ${_others_hold:.4f} is held by other bots' queued "
+                    f"buy-backs and wire credits"
+                    if _others_hold > 1e-9
                     else ""
                 )
                 held_tail = (
@@ -1356,6 +1453,12 @@ class ExecutionEngineMixin:
                 ),
             )
 
+            _decision = (
+                standing_fold_decision(
+                    self._unanswered_decisions(SIDE_BUY), self._fold_tranches
+                )
+                or SHORTFALL_BUY
+            )
             _reservations.reserve(_wallet_key, buy_usd)
             try:
                 order = await self.guarded_place_order(
@@ -1364,6 +1467,7 @@ class ExecutionEngineMixin:
                     order_type=OrderType.MARKET,
                     amount=buy_amount,
                     price=None,
+                    purpose=decision_purpose(_decision),
                 )
             finally:
                 _reservations.release(_wallet_key, buy_usd)
@@ -1758,6 +1862,21 @@ class ExecutionEngineMixin:
             fee=self._fill_fee_fields(fill_price),
         )
 
+    def _route_unfoldable_proceeds(
+        self, units: float, fill_price: float, label: str
+    ) -> float:
+        """Send each wire its share of a sale that queues no buy-back: every dollar
+        ``_settled_sale_proceeds`` leaves is surplus to
+        ``_route_scrum_proceeds_via_wires``. Answers the USD routed."""
+        proceeds = self._settled_sale_proceeds(units, fill_price, label=label.upper())
+        return self._route_scrum_proceeds_via_wires(
+            scrum_usd=proceeds,
+            sold_units=units,
+            sell_fill=fill_price,
+            label=label,
+            surplus_usd=proceeds,
+        )
+
     async def _execute_detonation(
         self, ticker, shadow_rows: Optional[list] = None
     ) -> bool:
@@ -1798,7 +1917,11 @@ class ExecutionEngineMixin:
                 ),
             )
             return await self._sell_detonation(
-                sell_amount, price, SHADOW_BOOKER, _booking
+                sell_amount,
+                price,
+                SHADOW_BOOKER,
+                _booking,
+                decision=shadow_exit_decision(shadow_rows),
             )
 
         venue_units, refusal = await self._venue_claimable_units()
@@ -1866,9 +1989,11 @@ class ExecutionEngineMixin:
         booker: str,
         booking: dict,
         first_piece: Optional[dict] = None,
+        decision: str = DETONATION_SALE,
     ) -> bool:
-        """Send one market sale of ``sell_amount`` and book its fill through ``booker``
-        with ``booking``, plus ``first_piece`` for the piece settled here.
+        """Send one market sale of ``sell_amount`` under ``decision`` and book its fill
+        through ``booker`` with ``booking``, plus ``first_piece`` for the piece settled
+        here.
 
         False is a venue that returned no order; True is a sent order, a filled or
         unreported one alike.
@@ -1879,6 +2004,7 @@ class ExecutionEngineMixin:
             order_type=OrderType.MARKET,
             amount=sell_amount,
             price=None,
+            purpose=decision_purpose(decision),
         )
 
         if order is None:
@@ -1927,8 +2053,9 @@ class ExecutionEngineMixin:
         excess_usd: float,
         venue_units: Optional[float] = None,
     ) -> None:
-        """Book one settled piece of a detonation: reset ``_target_balance`` to the
-        anchor, clear the fold queue and reseed ``_main_lots``.
+        """Book one settled piece of a detonation: send each wire its share of the
+        proceeds, reset ``_target_balance`` to the anchor, clear the fold queue and
+        reseed ``_main_lots``.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which takes ``units`` off ``_current_holdings``.
@@ -1942,6 +2069,9 @@ class ExecutionEngineMixin:
         self._current_holdings = max(0.0, held_before - fill_amount)
         self._record_venue_units_after_fill(-fill_amount)
 
+        _kept_usd = fill_usd - self._route_unfoldable_proceeds(
+            fill_amount, fill_price, "detonation"
+        )
         try:
             self._bus.emit(
                 "pnl.event",
@@ -1952,7 +2082,7 @@ class ExecutionEngineMixin:
                     "symbol": self.config.symbol,
                     "units": float(fill_amount),
                     "fill_price": float(fill_price),
-                    "usd_captured": float(fill_usd) * float(self._quote_to_usd or 1.0),
+                    "usd_captured": float(_kept_usd) * float(self._quote_to_usd or 1.0),
                     "operator_initiated": False,
                     "manual_kind": "DETONATION",
                 },
@@ -2025,7 +2155,7 @@ class ExecutionEngineMixin:
             side=FILL_SELL,
             units=fill_amount,
             price=fill_price,
-            usd=fill_usd,
+            usd=_kept_usd,
             profit=excess_usd,
             operator_initiated=False,
             fee=self._fill_fee_fields(fill_price),
@@ -2040,6 +2170,7 @@ class ExecutionEngineMixin:
         label: str = "SCRUM",
         booker: str = "",
         booking: Optional[dict] = None,
+        decision: str = "",
     ) -> Optional[float]:
         """Place a market sell and return the fill price, or None when refused.
 
@@ -2052,7 +2183,8 @@ class ExecutionEngineMixin:
         figure is left on ``_last_sell_filled_units`` for the callers that take
         the same units off ``_main_lots``. Both venue-fee records are cleared on
         entry and written by ``_settled_fill`` off whichever order object
-        settled.
+        settled. ``decision`` names the order, so a retry keeps its id at any
+        size or price.
         """
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
@@ -2309,6 +2441,7 @@ class ExecutionEngineMixin:
                 order_type=ot,
                 amount=amount,
                 price=exec_price,
+                purpose=decision_purpose(decision),
             )
 
             if order is None:
@@ -2499,6 +2632,7 @@ class ExecutionEngineMixin:
         booker: str = "",
         booking: Optional[dict] = None,
         sources: Optional[list] = None,
+        decision: str = "",
     ) -> Optional[float]:
         """Place a market buy and return the fill price, or None when refused.
 
@@ -2510,7 +2644,9 @@ class ExecutionEngineMixin:
         the venue never bought. A venue reporting no filled amount leaves both
         figures untouched and answers None, which every caller already reads as
         no buy. The figure is left on ``_last_buy_filled_units`` for the
-        callers that add the same units to ``_main_lots``.
+        callers that add the same units to ``_main_lots``. ``decision`` names the
+        order, so a retry keeps its id at any size or price, and a path outside
+        ``OWN_TRANCHE_PATHS`` refuses through ``_spends_held_dollars``.
         """
         self._last_fill_venue_fee = None
         self._last_buy_filled_units = 0.0
@@ -2709,6 +2845,11 @@ class ExecutionEngineMixin:
                         logger.warning("Bot %s %s", self.bot_id, _reason)
                     return None
 
+        if _path not in OWN_TRANCHE_PATHS and await self._spends_held_dollars(
+            cost, price
+        ):
+            return None
+
         try:
             amount = fold_units(cost, price, FRACTIONAL_UNITS)
             if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
@@ -2774,6 +2915,7 @@ class ExecutionEngineMixin:
                 order_type=ot,
                 amount=amount,
                 price=exec_price,
+                purpose=decision_purpose(decision),
             )
 
             if order is None:

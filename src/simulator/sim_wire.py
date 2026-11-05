@@ -2,8 +2,8 @@
 ``src/trading/smart_wire.py``.
 
 ``SimWireManager`` holds the wire topology and one ``SimWireLedger`` per sim
-bot. ``distribute_fold_profit`` moves each wire's share of a walked bot's
-realised fold growth into the target's standing fold tranches through
+bot. ``distribute_sale_surplus`` moves each wire's share of a walked bot's
+sale surplus into the target's standing fold tranches through
 ``apply_wire_income``, and onto the target ledger's ``parked_usd`` when no walk
 holds its position. ``land_parked_credits`` spreads a parked pool once the
 target's own walk builds a tranche, and ``compute_safe_outflow_pct`` caps a
@@ -31,8 +31,8 @@ logger = logging.getLogger("acervator.simulator.wire")
 #: The share below which a transfer is skipped, ``SmartWireManager``'s default.
 MIN_WIRE_USD: float = 0.01
 
-#: ``WireTransaction.wire_type`` for a fold route, the name Live books it under.
-FOLD_WIRE_TYPE = "WIRE_BACK"
+#: ``WireTransaction.wire_type`` for a sale's route, the name Live books it under.
+SALE_WIRE_TYPE = "SCRUM_ROUTE"
 
 #: The provenance key ``register_bot`` writes for capital no wire supplied.
 SEED_SOURCE = "SEED"
@@ -133,7 +133,8 @@ def apply_wire_income(position: Any, usd: float, source: str, ref: str = "") -> 
     whether it was applied.
 
     A position holding no tranche answers ``applied`` False, which
-    ``SimWireManager.distribute_fold_profit`` reads as the parked case.
+    ``SimWireManager.distribute_sale_surplus`` reads as the parked case. An applied
+    ``usd`` joins ``position.cash_usd``, the dollars the source gave up.
     """
     try:
         amount = float(usd)
@@ -151,6 +152,7 @@ def apply_wire_income(position: Any, usd: float, source: str, ref: str = "") -> 
     if not tranches:
         return {"applied": False, "reason": "no standing fold tranche"}
     share = spread_over_fold_queue(position, amount, [credit])
+    position.cash_usd = float(position.cash_usd) + amount
     logger.info(
         "sim wire income %.4f from %s spread over %d tranche(s)",
         amount,
@@ -169,7 +171,7 @@ class SimWireManager:
     """The sim fleet's wire topology and its ``SimWireLedger`` set.
 
     ``register_wire`` and ``import_wires`` write the source-to-target map
-    ``distribute_fold_profit`` reads on each fold, and ``attach_bot`` holds the
+    ``distribute_sale_surplus`` reads on each sale, and ``attach_bot`` holds the
     ``SimPosition`` of a walk in progress that a share can reach.
     """
 
@@ -432,7 +434,7 @@ class SimWireManager:
                 lost += 1
                 logger.warning(
                     "sim wire: import DROPPED wire row %d of %d, %s -> %s - "
-                    "float() refused pct %r (%s: %s); fold growth from %s never "
+                    "float() refused pct %r (%s: %s); a sale's surplus from %s never "
                     "reaches %s this session",
                     offered,
                     len(wires),
@@ -568,6 +570,7 @@ class SimWireManager:
             return 0.0
         landed = float(ledger.parked_usd)
         share = spread_over_fold_queue(position, landed, list(ledger.parked_credits))
+        position.cash_usd = float(position.cash_usd) + landed
         ledger.parked_usd = 0.0
         ledger.parked_credits = []
         logger.info(
@@ -585,7 +588,7 @@ class SimWireManager:
     ) -> dict:
         """Hold ``usd`` on ``target_id``'s ``parked_usd`` until
         ``land_parked_credits`` spreads it, and answer the result row
-        ``distribute_fold_profit`` reports."""
+        ``distribute_sale_surplus`` reports."""
         ledger = self._ledgers.get(str(target_id))
         if ledger is None:
             return {"applied": False, "reason": "target bot has no ledger"}
@@ -631,28 +634,31 @@ class SimWireManager:
             return UNCAPPED_OUTFLOW_PCT
         return compute_safe_outflow_pct(scrum_profit_usd=float(profit_usd), **inputs)
 
-    def distribute_fold_profit(
-        self, source_id: str, profit_usd: float, ref: str = ""
+    def distribute_sale_surplus(
+        self, source_id: str, surplus_usd: float, ref: str = ""
     ) -> list[dict]:
-        """Route each wire's share of ``source_id``'s realised fold growth to
-        the target and answer one result row per wire.
+        """Route each wire's share of ``source_id``'s ``surplus_usd`` to the
+        target and answer one result row per wire.
 
         A share is capped by ``_safe_outflow_pct`` divided across the outbound
-        wires, skipped under ``_min_wire``, and booked by ``_book`` onto both
+        wires, scaled so the wires carry no more than the whole surplus, skipped
+        under ``_min_wire``, and booked by ``_book`` onto both
         ledgers with one ``SimWireTransaction``; no failure raises.
         """
         results: list[dict] = []
         try:
-            profit = float(profit_usd)
+            surplus = float(surplus_usd)
         except (TypeError, ValueError):
             return results
-        if not math.isfinite(profit) or profit <= 0:
+        if not math.isfinite(surplus) or surplus <= 0:
             return results
         outgoing = self._wires.get(str(source_id))
         if not outgoing:
             return results
-        safe_pct = self._safe_outflow_pct(source_id, profit)
+        safe_pct = self._safe_outflow_pct(source_id, surplus)
         per_wire_safe_pct = safe_pct / max(1, len(outgoing))
+        total_pct = sum(routable_pct(pct) or 0.0 for pct in outgoing.values())
+        scaling = 100.0 / total_pct if total_pct > 100.0 else 1.0
         for target_id, raw_pct in outgoing.items():
             admitted_pct = routable_pct(raw_pct)
             if admitted_pct is None:
@@ -674,8 +680,8 @@ class SimWireManager:
                     }
                 )
                 continue
-            pct = min(admitted_pct, per_wire_safe_pct)
-            share = profit * pct / 100.0
+            pct = min(admitted_pct * scaling, per_wire_safe_pct)
+            share = surplus * pct / 100.0
             if share < self._min_wire:
                 results.append(
                     {
@@ -736,8 +742,8 @@ class SimWireManager:
                 source_bot=str(source_id),
                 target_bot=str(target_id),
                 amount=float(share),
-                wire_type=FOLD_WIRE_TYPE,
-                reason=f"fold_growth pct={pct} ref={ref}",
+                wire_type=SALE_WIRE_TYPE,
+                reason=f"sale_surplus pct={pct} ref={ref}",
             )
         )
 
@@ -755,7 +761,7 @@ class SimWireManager:
 
 
 __all__ = [
-    "FOLD_WIRE_TYPE",
+    "SALE_WIRE_TYPE",
     "MIN_WIRE_USD",
     "SEED_SOURCE",
     "UNCAPPED_OUTFLOW_PCT",

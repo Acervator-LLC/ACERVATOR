@@ -15,8 +15,15 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, SettledFill
 from ...exchange.base import OrderSide, Trade
+from ...exchange.idempotency import get_idempotency_layer
 from ..bot_container import FILL_DUST_UNITS
-from .sizing import priced_usd
+from .sizing import (
+    AUDIT_ENDED_BUYS,
+    AUDIT_ENDED_SALES,
+    SIDE_BUY,
+    SIDE_SELL,
+    priced_usd,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -1297,6 +1304,19 @@ class ReconciliationEngineMixin:
         _total = sum(_lot_each)
         return _total if math.isfinite(_total) else None
 
+    def _end_audited_decisions(self, side: str, decisions: tuple) -> int:
+        """Drop the ids ``decisions`` hold for this bot and ``config.symbol`` on
+        ``side``, and answer how many went."""
+        return get_idempotency_layer().end_decisions(
+            self.bot_id, self.config.symbol, side, decisions
+        )
+
+    def _end_decisions_the_book_settled(self) -> None:
+        """End ``AUDIT_ENDED_SALES`` and ``AUDIT_ENDED_BUYS`` after a periodic audit,
+        which reads the venue's count past any lag behind a lost send."""
+        self._end_audited_decisions(SIDE_SELL, AUDIT_ENDED_SALES)
+        self._end_audited_decisions(SIDE_BUY, AUDIT_ENDED_BUYS)
+
     def _adopt_drift_down(
         self,
         exchange_units: float,
@@ -1308,8 +1328,10 @@ class ReconciliationEngineMixin:
 
         A lot book above it scales every lot by the ratio; one below it books
         the gap through ``_book_reconciliation_lot`` under the
-        ``_claimable_exchange_units`` ceiling at ``stats.current_price``.
+        ``_claimable_exchange_units`` ceiling at ``stats.current_price``, and
+        ``AUDIT_ENDED_SALES`` end, because the book now holds their outcome.
         """
+        self._end_audited_decisions(SIDE_SELL, AUDIT_ENDED_SALES)
         _asset = self.config.target_asset
         _lots_before = sum(lot_each)
         _short_why = ""
@@ -1522,6 +1544,7 @@ class ReconciliationEngineMixin:
                     else None
                 )
                 if _written is not None:
+                    self._end_audited_decisions(SIDE_BUY, AUDIT_ENDED_BUYS)
                     # Booked at this pass's price and flagged
                     # reconciled_to_exchange; no fill is invented.
                     _gain = _written

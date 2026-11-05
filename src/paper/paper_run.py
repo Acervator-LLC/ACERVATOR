@@ -23,7 +23,7 @@ forked over ``src.trading.scrumming.sizing`` and a ``FakeBalance``".
 recorded and on the cited unit rule where they were not. Every ``PaperTrade``
 carries the ``rule_source`` that sized it.
 
-``route_fold_growth`` hands the growth ``grow_target`` applied to a
+``route_sale_surplus`` hands a sale's ``restored_sale_surplus_usd`` to a
 ``PaperWireManager``, which moves each wire's share onto another paper bot's
 fold tranches, and ``land_wire_credits`` spreads a pool parked for a bot whose
 balance was not yet open.
@@ -66,7 +66,7 @@ from ..exchange.market_rules_store import recorded_rules
 from ..simulator.validation import BB_MIDLINE, bb_reading, latch
 from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext, effective_gate_flags
-from ..trading.otd_math import BAND_TRAVEL_OFF_PCT, DistanceSettings
+from ..trading.otd_math import BAND_TRAVEL_OFF_PCT, WHOLE_PCT, DistanceSettings
 from ..trading.scrumming.sizing import (
     BELOW_POSITION_MINIMUM,
     CLASS_CRYPTO,
@@ -91,6 +91,7 @@ from ..trading.scrumming.sizing import (
     position_minimum_refusal,
     priced_usd,
     ratio_to_ceiling,
+    restored_sale_surplus_usd,
     sale_proceeds_usd,
     scrumming_interval_usd,
     settle_fold_plan,
@@ -377,28 +378,45 @@ def paper_tape_context(
     )
 
 
-def route_fold_growth(wires: Any, bot_id: str, growth_usd: float, price: float) -> list:
-    """Hand ``growth_usd`` to ``wires.distribute_fold_profit`` and answer its
-    result rows.
+def route_sale_surplus(
+    wires: Any,
+    bot: PaperBot,
+    balance: FakeBalance,
+    proceeds_usd: float,
+    units: float,
+    price: float,
+) -> float:
+    """Hand one sale's ``restored_sale_surplus_usd`` to
+    ``wires.distribute_sale_surplus`` and answer the USD it moved, as
+    ``_route_scrum_proceeds_via_wires`` routes a live sale.
 
-    A manager that raises is logged and answers an empty list, leaving the
-    growth booked on ``balance.target_usd``.
+    A manager that raises is logged and answers 0.0, leaving every dollar with
+    the sale.
     """
+    surplus = restored_sale_surplus_usd(
+        proceeds_usd,
+        units,
+        price,
+        DistanceSettings(
+            bot.scrumming_interval_pct, taker_fee_pct(bot), BAND_TRAVEL_OFF_PCT
+        ),
+        WHOLE_PCT,
+        cycle_growth_cap_usd(float(balance.target_usd), 0.0, bot.max_target_growth_pct),
+    )
     try:
-        return list(
-            wires.distribute_fold_profit(
-                source_id=str(bot_id),
-                profit_usd=float(growth_usd),
-                ref=f"fold-compound@{float(price):.8f}",
-            )
+        rows = wires.distribute_sale_surplus(
+            source_id=str(bot.bot_id),
+            surplus_usd=surplus,
+            ref=f"scrum@{float(price):.8f}",
         )
-    except Exception as exc:  # noqa: BLE001 - the growth stays booked locally
+    except Exception as exc:  # noqa: BLE001 - the dollars stay with the sale
         logger.warning(
-            "%s: paper wire fold route raised: %s; the fold growth stays booked",
-            bot_id,
+            "%s: paper wire sale route raised: %s; the sale keeps its dollars",
+            bot.bot_id,
             exc,
         )
-        return []
+        return 0.0
+    return sum(float(row["share"]) for row in rows if row.get("applied"))
 
 
 def land_wire_credits(wires: Any, bot_id: str, balance: FakeBalance) -> float:
@@ -443,8 +461,9 @@ def apply_scrum(
     ``FakeBalance``; nothing fills when the balance holds fewer units than
     the sell needs or a whole-unit ``delta`` buys under one unit.
 
-    A ``wires`` manager lands its parked credits on the tranches the sale
-    builds through ``land_wire_credits``.
+    A ``wires`` manager takes the sale's surplus through ``route_sale_surplus``
+    and lands its parked credits on the tranches the sale builds through
+    ``land_wire_credits``.
 
     ``price`` is the figure the venue would book, which ``booked_price`` moves
     onto ``MarketRules.price_increment``, so the sale's units and proceeds are
@@ -494,6 +513,10 @@ def apply_scrum(
     notional = priced_usd(units, float(price))
     fee = estimated_fee_usd(notional, taker_fee_pct(bot))
     proceeds = sale_proceeds_usd(notional, fee)
+    if wires is not None:
+        proceeds -= route_sale_surplus(
+            wires, bot, balance, proceeds, units, float(price)
+        )
     balance.units -= units
     balance.cash_usd += proceeds
     balance.last_trade_price = float(price)
@@ -566,7 +589,6 @@ def apply_fold(
     rule: str,
     rules: Optional[MarketRules] = None,
     on_refusal: Optional[Callable[[str], None]] = None,
-    wires: Any = None,
 ) -> Optional[PaperTrade]:
     """Rebuy the tranches ``eligible_fold_tranches`` names at ``ticker_last``
     under the bot's ``DistanceSettings``, planned under ``cycle_growth_cap_usd`` by
@@ -580,8 +602,7 @@ def apply_fold(
 
     ``grow_target`` then compounds that surplus into ``balance.target_usd``
     under the cycle cap, as ``_apply_fold_target_growth`` compounds a live
-    bot's, and a ``wires`` manager takes that same growth figure to its wire
-    targets through ``route_fold_growth``.
+    bot's.
 
     ``price`` is the figure the venue would book, which ``booked_price`` moves
     onto ``MarketRules.price_increment``, so the rebuy's units and spend are
@@ -711,9 +732,7 @@ def apply_fold(
     balance.total_folded_usd += spend
     balance.trade_volume += spend
     realized = fold_surplus_usd(units, slices, float(price))
-    growth = grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
-    if wires is not None and growth > 0.0:
-        route_fold_growth(wires, bot.bot_id, growth, float(price))
+    grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
     return PaperTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -793,7 +812,7 @@ def tick(
 
     ``reset_growth_cycle`` reads the bar's band position before the context is
     built, as the Simulator's walk reads it, so the growth cycle and the gates
-    see the same bar. ``wires`` reaches ``apply_scrum`` and ``apply_fold``
+    see the same bar. ``wires`` reaches ``apply_scrum``
     unchanged.
     """
     from ..trading.ta_engine import VotingEngine
@@ -845,7 +864,7 @@ def tick(
         )
     elif armed["fold_armed"]:
         filled = apply_fold(
-            bot, balance, ask, last, now_s, stamp, rule, rules, refused.append, wires
+            bot, balance, ask, last, now_s, stamp, rule, rules, refused.append
         )
     if filled is not None:
         filled = replace(
@@ -1011,7 +1030,7 @@ class PaperRunner:
     loop ends, ``say`` each line, and ``clock`` is the one seam time is read
     through.
 
-    ``wires`` is the ``PaperWireManager`` the run routes fold growth over: each
+    ``wires`` is the ``PaperWireManager`` the run routes sale surplus over: each
     balance is held through ``attach_bot`` on the tick that opens it and given
     back through ``release_bot`` when the loop ends."""
 
@@ -1056,7 +1075,7 @@ class PaperRunner:
 
     @property
     def wires(self) -> Optional[PaperWireManager]:
-        """The ``PaperWireManager`` this run routes fold growth over, or None."""
+        """The ``PaperWireManager`` this run routes sale surplus over, or None."""
         return self._wires
 
     @property
@@ -1276,7 +1295,7 @@ __all__ = [
     "paper_scrum_excess_usd",
     "record",
     "refusal_for",
-    "route_fold_growth",
+    "route_sale_surplus",
     "run_market_rules",
     "run_rule",
     "start",

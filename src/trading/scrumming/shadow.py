@@ -148,6 +148,7 @@ class ShadowTrancheMixin:
     _refusal_is_new: Callable[..., bool]
     _refuse_unreadable_distance: Callable[..., None]
     _resting_order_for: Callable[..., Any]
+    _route_unfoldable_proceeds: Callable[..., float]
     _shadow_regime: str
     _shadow_tranches: list[dict]
     bot_id: Any
@@ -305,8 +306,9 @@ class ShadowTrancheMixin:
         rows: list,
     ) -> None:
         """Settle one piece of a shadow detonation: each row in ``rows`` gives up the
-        share of ``asked`` filled, and what the sale left unsold joins ``_main_lots`` at
-        ``fill_price`` under the cycle growth cap.
+        share of ``asked`` filled, ``_route_unfoldable_proceeds`` sends each wire its
+        share, and what the sale left unsold joins ``_main_lots`` at ``fill_price`` under
+        the cycle growth cap.
         """
         share = min(1.0, float(units) / asked) if asked > 0 else 1.0
         standing = {row[EVENT_ID_KEY]: row for row in self._shadow_tranches}
@@ -327,7 +329,10 @@ class ShadowTrancheMixin:
             if float(row[SHADOW_UNITS_KEY]) > UNITS_DUST
         ]
         _quote = float(self._quote_to_usd or 1.0)
-        fill_usd = priced_usd(float(units), fill_price, _quote)
+        fill_usd = priced_usd(float(units), fill_price, _quote) - (
+            self._route_unfoldable_proceeds(float(units), fill_price, "shadow_exit")
+            * _quote
+        )
         self._count_trade_volume(units, fill_price)
         growth = 0.0
         if kept_units > UNITS_DUST:

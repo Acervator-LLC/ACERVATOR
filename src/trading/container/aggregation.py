@@ -461,6 +461,71 @@ class FleetAggregationMixin:
             return None
         return total
 
+    def _one_sibling_hold(self, other_bot: Any) -> Optional[float]:
+        """The dollars one other bot's ``_fold_tranches`` and
+        ``_pending_wire_credits`` hold, or None where one figure is no amount."""
+        total = 0.0
+        figures = [
+            row.get("usd", 0.0)
+            for row in getattr(other_bot, "_fold_tranches", ()) or ()
+        ]
+        figures.append(getattr(other_bot, "_pending_wire_credits", 0.0))
+        for figure in figures:
+            try:
+                usd = float(figure or 0.0)
+            except (TypeError, ValueError):
+                return None
+            if not math.isfinite(usd) or usd < 0.0:
+                return None
+            total += usd
+        return total
+
+    def sum_sibling_held_usd(
+        self,
+        bot_id: str,
+        exchange_id: str,
+        currency: str,
+    ) -> Optional[float]:
+        """Sum of what OTHER bots on ``exchange_id`` and ``currency`` hold in queued
+        fold tranches and parked wire credits, in that currency's units.
+
+        ``sum_sibling_base_currency_claims`` reads a bot's allocation, and this reads
+        the dollars its buy-backs wait on. Every run state counts. Returns ``None``,
+        never a partial sum, when one bot cannot be read, and a caller that gets
+        ``None`` must refuse to spend.
+        """
+        currency_norm = (currency or "").upper()
+        total = 0.0
+        unread: list[str] = []
+        for other_id, other_bot in self._bots.items():
+            if other_id == bot_id:
+                continue
+            try:
+                other_cfg = other_bot.config
+                same_exchange = other_cfg.exchange_id == exchange_id
+                other_base = (getattr(other_cfg, "base_currency", "") or "").upper()
+                if not same_exchange or other_base != currency_norm:
+                    continue
+                held = self._one_sibling_hold(other_bot)
+            except Exception as _read_exc:
+                unread.append(f"{other_id} ({_read_exc})")
+                continue
+            if held is None:
+                unread.append(f"{other_id} (a held figure is no amount)")
+                continue
+            total += held
+        if unread:
+            logger.warning(
+                "Could not read what %d of the other bots on %s hold of the %s "
+                "wallet: %s. Returning no total, so nothing spends on a short one.",
+                len(unread),
+                exchange_id,
+                currency_norm,
+                "; ".join(unread),
+            )
+            return None
+        return total
+
     def _bot_position_usd(self, bot: Any, stats: Any, totals: FleetTotals) -> float:
         """One bot's position value in dollars, from its holdings and price.
 

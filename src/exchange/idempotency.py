@@ -2,8 +2,9 @@
 
 ``IdempotencyLayer.derive_coid`` issues a ``coid`` and holds it, and a resend of the
 same ``TradeIntent`` sends the held ``coid``, which a venue will not open twice.
-``IdempotencyLayer.end_retry`` drops it once an order comes back for that intent.
-``BotContainer.guarded_place_order`` calls both.
+``decision_purpose`` names a decision, whose resend keeps the ``coid`` at any size or
+price, and ``IdempotencyLayer.end_retry`` drops it once an order comes back for that
+intent. ``BotContainer.guarded_place_order`` calls both.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import logging
 import threading
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Optional
 
@@ -21,16 +23,22 @@ logger = logging.getLogger(__name__)
 #: Hex characters in a hash, and ``acrv-`` beside them fits a 36-character id field.
 HASH_CHARS = 16
 
+#: ``TradeIntent.purpose`` of a send that names no decision.
+NO_DECISION_PURPOSE = "trade"
+
+#: Opens a ``TradeIntent.purpose`` that names a decision.
+DECISION_PREFIX = "decision:"
+
 
 def _short_hash(text: str) -> str:
     """The first ``HASH_CHARS`` hex characters of the SHA-256 of ``text``."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:HASH_CHARS]
 
 
-@dataclass
-class _UnansweredCoid:
-    coid: str
-    issued_at: float
+def decision_purpose(decision: str) -> str:
+    """The ``TradeIntent.purpose`` that carries ``decision``, ``NO_DECISION_PURPOSE``
+    for an empty name."""
+    return f"{DECISION_PREFIX}{decision}" if decision else NO_DECISION_PURPOSE
 
 
 @dataclass
@@ -43,10 +51,23 @@ class TradeIntent:
     amount: float  # in base asset units
     price: Optional[float]  # None for market orders
     bot_id: str
-    purpose: str = ""  # "scrum" / "fold" / "cartridge" / "manual" / etc.
+    purpose: str = ""  # NO_DECISION_PURPOSE, or decision_purpose of a named decision
+
+    @property
+    def decision(self) -> str:
+        """The decision ``purpose`` names, empty where it names none."""
+        if self.purpose.startswith(DECISION_PREFIX):
+            return self.purpose[len(DECISION_PREFIX) :]
+        return ""
 
     def fingerprint(self, session_nonce: str) -> str:
-        """Deterministic hash. Same intent + same session = same value."""
+        """Deterministic hash. Same intent + same session = same value, and a named
+        ``decision`` leaves ``amount`` and ``price`` out of it."""
+        if self.decision:
+            return _short_hash(
+                f"{self.bot_id}|{self.symbol}|{self.side}|{self.purpose}|"
+                f"{session_nonce}"
+            )
         # Round price to 8 decimals to absorb harmless float-jitter while
         # still distinguishing genuinely different price points.
         price_str = "M" if self.price is None else f"{self.price:.8f}"
@@ -55,6 +76,13 @@ class TradeIntent:
             f"{self.bot_id}|{self.symbol}|{self.side}|{amount_str}|"
             f"{price_str}|{self.purpose}|{session_nonce}"
         )
+
+
+@dataclass
+class _UnansweredCoid:
+    coid: str
+    issued_at: float
+    intent: TradeIntent
 
 
 class IdempotencyLayer:
@@ -87,7 +115,9 @@ class IdempotencyLayer:
                 return held.coid
             self._issued += 1
             coid = f"acrv-{_short_hash(f'{fp}|{self._issued}')}"
-            self._unanswered[fp] = _UnansweredCoid(coid=coid, issued_at=time.time())
+            self._unanswered[fp] = _UnansweredCoid(
+                coid=coid, issued_at=time.time(), intent=intent
+            )
             self._enforce_size_limit()
             return coid
 
@@ -96,6 +126,38 @@ class IdempotencyLayer:
         one for the next order."""
         with self._lock:
             self._unanswered.pop(intent.fingerprint(self.session_nonce), None)
+
+    def unanswered_decisions(self, bot_id: str, symbol: str, side: str) -> list[str]:
+        """The decisions holding a ``coid`` for ``bot_id`` on ``symbol`` and ``side``,
+        oldest first."""
+        with self._lock:
+            return [
+                held.intent.decision
+                for held in self._unanswered.values()
+                if held.intent.decision
+                and held.intent.bot_id == bot_id
+                and held.intent.symbol == symbol
+                and held.intent.side == side
+            ]
+
+    def end_decisions(
+        self, bot_id: str, symbol: str, side: str, decisions: Iterable[str]
+    ) -> int:
+        """Drop the ``coid`` of each of ``decisions`` for ``bot_id`` on ``symbol`` and
+        ``side``, and answer how many it dropped."""
+        named = set(decisions)
+        with self._lock:
+            ended = [
+                key
+                for key, held in self._unanswered.items()
+                if held.intent.decision in named
+                and held.intent.bot_id == bot_id
+                and held.intent.symbol == symbol
+                and held.intent.side == side
+            ]
+            for key in ended:
+                del self._unanswered[key]
+            return len(ended)
 
     def _enforce_size_limit(self) -> None:
         if len(self._unanswered) <= self.max_entries:

@@ -1560,6 +1560,12 @@ def spend_less_unsettled_usd(spend: float, cash_usd: Any, held_usd: Any) -> floa
     return min(spend, max(0.0, float(cash_usd) - float(held_usd)))
 
 
+def spend_leaving_held_usd(spend_usd: float, left_usd: float, fee_pct: float) -> float:
+    """``spend_usd`` held so that it and ``fee_pct`` of it fit ``left_usd``, never
+    below zero; the venue charges the fee on top of the order."""
+    return min(spend_usd, max(0.0, left_usd) / (1.0 + fee_pct / 100.0))
+
+
 def outside_session(session: Optional[str], moment_s: Any) -> bool:
     """True only where ``session`` names a session taking no order at
     ``moment_s``, epoch seconds; an unpublished session holds nothing."""
@@ -2734,6 +2740,25 @@ def sale_surplus_usd(
     return max(0.0, (proceeds - units * price) * share - max(0.0, room))
 
 
+def restored_sale_surplus_usd(
+    proceeds_usd: float,
+    sold_units: float,
+    sale_price: float,
+    distance: DistanceSettings,
+    fold_ratio_pct: float,
+    cap_remaining_usd: float,
+) -> float:
+    """``sale_surplus_usd`` of one sale restored at ``fold_rebuy_price`` of
+    ``sale_price`` at the unbanded ``distance``, the reading all three engines take."""
+    return sale_surplus_usd(
+        proceeds_usd,
+        sold_units,
+        fold_rebuy_price(sale_price, distance.distance_pct()),
+        fold_ratio_pct,
+        cap_remaining_usd,
+    )
+
+
 WIRE_SHARE_KEY = "wire_share_pct"
 """The ``routed_share_pct`` of the sale behind a record, which ``fold_tranche_records`` writes."""
 
@@ -2788,14 +2813,27 @@ def ref_after_wire(record: dict, fee_pct: Optional[float]) -> float:
     )
 
 
+def tranche_restore_price(record: dict) -> Optional[float]:
+    """The price at which ``tranche_sale_usd`` of ``record`` buys back its
+    ``units_at_scrum``, None where it holds no units or no readable ``usd``."""
+    units = units_at_scrum(record)
+    if units <= 0.0 or as_finite_float(record.get("usd", 0.0)) is None:
+        return None
+    return max(0.0, tranche_sale_usd(record)) / units
+
+
 def tranche_rebuy_price(
     record: dict, distance: DistanceSettings, band: Any = None
 ) -> float:
     """``fold_rebuy_price`` of ``record``'s ``ref`` at ``distance.distance_at_band``
-    of ``band``."""
-    return fold_rebuy_price(
+    of ``band``, held down to ``tranche_restore_price`` where that sits lower."""
+    floor = fold_rebuy_price(
         float(record.get("ref", 0)), distance.distance_at_band(band)
     )
+    restore = tranche_restore_price(record)
+    if restore is None or not math.isfinite(floor):
+        return floor
+    return min(floor, restore)
 
 
 def eligible_fold_tranches(
@@ -3020,10 +3058,11 @@ def unaligned_fold_tranches(
     """The standing records ``unproduced_fold_amount`` condemns, each beside its
     reason, and how many the fee window spared.
 
-    A record condemned on a ``FEE_JUDGED_REASONS`` reading is spared where
-    another standing record shares its ``tranche_implied_fee_pct``, or where no
-    record at all passed the window, because records agreeing on one fee are
-    sales at one fee and a lowered Trading Fee % is what leaves them standing.
+    A record reading ``FEWER_DOLLARS_THAN_PRODUCED`` stays, and
+    ``tranche_rebuy_price`` holds it until its dollars restore its units. A record
+    condemned on the other ``FEE_JUDGED_REASONS`` reading is spared where another
+    standing record shares its ``tranche_implied_fee_pct``, or where no record
+    passed the window.
     """
     judged = [(one, unproduced_fold_amount(one, fee_pct)) for one in tranches or []]
     queue = [one for one, _why in judged]
@@ -3031,7 +3070,7 @@ def unaligned_fold_tranches(
     out: list = []
     spared = 0
     for one, why in judged:
-        if not why:
+        if not why or why == FEWER_DOLLARS_THAN_PRODUCED:
             continue
         if why in FEE_JUDGED_REASONS and (
             not passed or _fee_reading_shared(one, queue)
@@ -3174,6 +3213,106 @@ def opposing_event_id(label: str, created_ts: float) -> str:
     """The identity every tranche of one sale or buy carries, from that trade's
     ``label`` and the ``created_ts`` its records are stamped with."""
     return f"{label}:{created_ts:.6f}"
+
+
+#: The decisions ``decision_purpose`` carries: a sale of the excess over target and a
+#: buy of the shortfall under it, shared by every path whose booker reads units.
+EXCESS_SALE = "excess_sale"
+SHORTFALL_BUY = "shortfall_buy"
+ENTRY_BUY = "entry_buy"
+HEDGE_BUY = "hedge_buy"
+DETONATION_SALE = "detonation_sale"
+DIST_SALE = "dist_sale"
+
+#: The decisions that leave no queued record behind a lost send, so
+#: ``_reconcile_holdings`` ends them once the book holds the venue's count.
+AUDIT_ENDED_SALES = (EXCESS_SALE, DETONATION_SALE)
+AUDIT_ENDED_BUYS = (SHORTFALL_BUY, ENTRY_BUY, HEDGE_BUY)
+
+FOLD_DECISION_PREFIX = "fold:"
+TRANCHE_FIRE_PREFIX = "tranche_fire:"
+SHADOW_EXIT_PREFIX = "shadow_exit:"
+STACK_RUNG_PREFIX = "stack_rung:"
+
+
+def tranche_event_names(record: dict) -> frozenset:
+    """The events ``record`` names in ``EVENT_ID_KEY``, or its ``ref`` and
+    ``initial_buy_price`` where it names none."""
+    names = frozenset(
+        name for name in str(record.get(EVENT_ID_KEY, "") or "").split("+") if name
+    )
+    if names:
+        return names
+    ref = float(record.get("ref", 0.0) or 0.0)
+    basis = float(record.get("initial_buy_price", 0.0) or 0.0)
+    return frozenset((f"{ref:.8f}@{basis:.8f}",))
+
+
+def _named_events(prefix: str, records: list) -> str:
+    """``prefix`` and the sorted ``tranche_event_names`` of ``records``."""
+    names: set[str] = set()
+    for record in records:
+        names.update(tranche_event_names(record))
+    return prefix + "+".join(sorted(names))
+
+
+def fold_decision(tranches: list) -> str:
+    """The decision a fold of ``tranches`` names, ``FOLD_DECISION_PREFIX`` and their
+    events."""
+    return _named_events(FOLD_DECISION_PREFIX, tranches)
+
+
+def tranche_fire_decision(tranche: dict) -> str:
+    """The decision a manual tranche fire of ``tranche`` names."""
+    return _named_events(TRANCHE_FIRE_PREFIX, [tranche])
+
+
+def shadow_exit_decision(rows: list) -> str:
+    """The decision a shadow detonation of ``rows`` names."""
+    return _named_events(SHADOW_EXIT_PREFIX, rows)
+
+
+def stack_rung_decision(rung: dict) -> str:
+    """The decision the spend of one stack ``rung`` names, by its ``opened_ts`` and
+    ``index``."""
+    return f"{STACK_RUNG_PREFIX}{rung.get('opened_ts')}:{rung.get('index')}"
+
+
+def fold_decision_events(decision: str) -> frozenset:
+    """The events ``fold_decision`` wrote into ``decision``, empty for any other."""
+    if not decision.startswith(FOLD_DECISION_PREFIX):
+        return frozenset()
+    return frozenset(decision[len(FOLD_DECISION_PREFIX) :].split("+"))
+
+
+def standing_fold_decision(decisions: list, tranches: list) -> str:
+    """The first of ``decisions`` whose ``fold_decision_events`` all stand in
+    ``tranches``, empty where none does."""
+    queued: set[str] = set()
+    for tranche in tranches:
+        queued.update(tranche_event_names(tranche))
+    for decision in decisions:
+        events = fold_decision_events(decision)
+        if events and events <= queued:
+            return decision
+    return ""
+
+
+def retry_fold_tranches(eligible: list, decisions: list) -> list:
+    """The tranches of ``eligible`` the next fold may take while ``decisions`` stand
+    unanswered: none under ``SHORTFALL_BUY``, those of the first fold decision whose
+    events are all eligible, else every tranche no fold decision names."""
+    if SHORTFALL_BUY in decisions:
+        return []
+    lost = [events for events in map(fold_decision_events, decisions) if events]
+    if not lost:
+        return eligible
+    decision = standing_fold_decision(decisions, eligible)
+    if decision:
+        events = fold_decision_events(decision)
+        return [one for one in eligible if tranche_event_names(one) & events]
+    barred = frozenset().union(*lost)
+    return [one for one in eligible if not tranche_event_names(one) & barred]
 
 
 def combined_event_reference(survivor: dict, absorbed: dict) -> dict:

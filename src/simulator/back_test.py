@@ -52,6 +52,7 @@ from ..trading.gate_chain import GateContext, effective_gate_flags
 from ..trading.otd_math import (
     BAND_TRAVEL_OFF_PCT,
     DEFAULT_TRADING_FEE_PCT,
+    WHOLE_PCT,
     DistanceSettings,
 )
 from ..trading.scrumming.sizing import (
@@ -80,6 +81,7 @@ from ..trading.scrumming.sizing import (
     priced_usd,
     ratio_to_ceiling,
     recorded_size_rules,
+    restored_sale_surplus_usd,
     sale_proceeds_usd,
     scrumming_interval_usd,
     order_types_for,
@@ -1171,28 +1173,49 @@ def tape_context(
 # Every zero-unit sale is logged, carrying the reason ``sized_order`` named.
 # ``variant_refuses_sale`` replaces ``variant_trades_market`` here, so a sale out
 # of a market ``MarketRules.expires`` names still fills where a fold refuses.
-def route_fold_growth(wires: Any, bot_id: str, growth_usd: float, price: float) -> list:
-    """Hand ``growth_usd`` to ``wires.distribute_fold_profit`` and answer its
-    result rows.
+def route_sale_surplus(
+    wires: Any,
+    bot: SimBot,
+    position: SimPosition,
+    proceeds_usd: float,
+    units: float,
+    price: float,
+) -> float:
+    """Hand one sale's ``restored_sale_surplus_usd`` to
+    ``wires.distribute_sale_surplus`` and answer the USD it moved, as
+    ``_route_scrum_proceeds_via_wires`` routes a live sale.
 
-    A manager that raises is logged and answers an empty list, leaving the
-    growth booked on ``position.target_usd``.
+    A manager that raises is logged and answers 0.0, leaving every dollar with
+    the sale.
     """
+    surplus = restored_sale_surplus_usd(
+        proceeds_usd,
+        units,
+        price,
+        DistanceSettings(
+            bot.scrumming_interval_pct,
+            bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT,
+            BAND_TRAVEL_OFF_PCT,
+        ),
+        WHOLE_PCT,
+        cycle_growth_cap_usd(
+            float(position.target_usd), 0.0, bot.max_target_growth_pct
+        ),
+    )
     try:
-        return list(
-            wires.distribute_fold_profit(
-                source_id=str(bot_id),
-                profit_usd=float(growth_usd),
-                ref=f"fold-compound@{float(price):.8f}",
-            )
+        rows = wires.distribute_sale_surplus(
+            source_id=str(bot.bot_id),
+            surplus_usd=surplus,
+            ref=f"scrum@{float(price):.8f}",
         )
-    except Exception as exc:  # noqa: BLE001 - the growth stays booked locally
+    except Exception as exc:  # noqa: BLE001 - the dollars stay with the sale
         logger.warning(
-            "%s: sim wire fold route raised: %s; the fold growth stays booked",
-            bot_id,
+            "%s: sim wire sale route raised: %s; the sale keeps its dollars",
+            bot.bot_id,
             exc,
         )
-        return []
+        return 0.0
+    return sum(float(row["share"]) for row in rows if row.get("applied"))
 
 
 def land_wire_credits(wires: Any, bot_id: str, position: SimPosition) -> float:
@@ -1232,8 +1255,9 @@ def apply_scrum(
 
     Nothing fills when ``position`` holds fewer units than the sell needs, or
     when a whole-unit ``delta`` buys under one unit, which is logged. A
-    ``wires`` manager lands its parked credits on the tranches the sale builds
-    through ``land_wire_credits``.
+    ``wires`` manager takes the sale's surplus through ``route_sale_surplus``
+    and lands its parked credits on the tranches the sale builds through
+    ``land_wire_credits``.
 
     ``price`` is the figure the venue would book, which ``booked_price`` moves
     onto ``MarketRules.price_increment``, so the sale's units and proceeds are
@@ -1283,6 +1307,10 @@ def apply_scrum(
     notional = priced_usd(units, float(price))
     fee = estimated_fee_usd(notional, bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT)
     proceeds = sale_proceeds_usd(notional, fee)
+    if wires is not None:
+        proceeds -= route_sale_surplus(
+            wires, bot, position, proceeds, units, float(price)
+        )
     position.units -= units
     position.cash_usd += proceeds
     position.last_trade_price = float(price)
@@ -1372,7 +1400,6 @@ def apply_fold(
     rule: str,
     rules: Optional[MarketRules] = None,
     on_refusal: Optional[Callable[[str], None]] = None,
-    wires: Any = None,
 ) -> Optional[SimTrade]:
     """Rebuy the eligible tranches as ``_tick_execute_fold`` does: the tranches
     ``eligible_fold_tranches`` names under the bot's ``DistanceSettings``, sorted highest
@@ -1390,9 +1417,7 @@ def apply_fold(
     units join ``main_lots`` per consumed tranche's share, and the surplus
     ``fold_surplus_usd`` reads grows ``position.target_usd`` through
     ``target_growth_applied`` under the cycle cap, as
-    ``_apply_fold_target_growth`` grows a live bot's target. A ``wires``
-    manager is handed that growth through ``distribute_fold_profit``, the
-    moment ``tick_phases`` hands a live bot's to ``SmartWireManager``.
+    ``_apply_fold_target_growth`` grows a live bot's target.
 
     ``price`` is the figure the venue would book, which ``booked_price`` moves
     onto ``MarketRules.price_increment``, so the rebuy's units and spend are
@@ -1520,8 +1545,6 @@ def apply_fold(
     position.total_folded_usd += spend
     position.trade_volume += spend
     growth = grow_target(bot, position, units, slices, float(price), int(ts_ms))
-    if wires is not None and growth > 0.0:
-        route_fold_growth(wires, bot.bot_id, growth, float(price))
     return SimTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -1784,7 +1807,6 @@ def walk(
                 rule=rule,
                 rules=rules,
                 on_refusal=note_refusal,
-                wires=wires,
             )
         if filled is not None:
             filled = replace(
@@ -2505,7 +2527,7 @@ __all__ = [
     "pin_stats_written",
     "reset_growth_cycle",
     "rolled_bars",
-    "route_fold_growth",
+    "route_sale_surplus",
     "rule_source_line",
     "run",
     "run_budget_usd",

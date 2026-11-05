@@ -195,6 +195,8 @@ ledger per bot.
 | `export_wires`, `import_wires` | Carry the topology through a save and a restart |
 | `export_ledgers`, `import_ledgers` | Carry the provenance through the same |
 
+Now: a sale and a detonation move a share along a wire, and no fold does (`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires`).
+
 ### The percent a wire is allowed to carry
 
 One rule decides whether a stored percent is a number, and every reader of the
@@ -270,7 +272,7 @@ compounded fold, and `src/trading/scrumming/wire_routing.py`, in
 `_route_scrum_proceeds_via_wires` on a scrum, a manual scrum and a detonation.
 A transfer cannot reach the totals without reaching the breakdown.
 
-Now: a scrum or a manual scrum books each wire's share of its surplus alone, and a detonation books no transfer (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
+Now: a scrum or a manual scrum books each wire's share of its surplus alone, a detonation books each wire's share of its proceeds, and a fold books no transfer (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
 
 `src/trading/smart_wire.py` — `book_transfer`
 

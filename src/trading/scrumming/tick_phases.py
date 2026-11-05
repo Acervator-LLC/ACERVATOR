@@ -49,13 +49,19 @@ from .distribution import (
     take_off_dist_sets,
 )
 from .sizing import (
+    DIST_SALE,
+    ENTRY_BUY,
     EVENT_ID_KEY,
+    EXCESS_SALE,
     FRACTIONAL_UNITS,
+    SIDE_BUY,
     fold_cap_remaining_usd,
+    fold_decision,
     fold_spend_usd,
     fold_tranche_records,
     opposing_event_id,
     priced_usd,
+    retry_fold_tranches,
     routed_share_pct,
     scrum_units,
     target_delta_usd,
@@ -158,7 +164,7 @@ class TickPhaseMixin:
     _settle_fold_plan: Callable[..., Any]
     _settled_fill: Callable[..., Any]
     _settled_sale_proceeds: Callable[..., float]
-    _smart_wire_mgr: Any
+    _unanswered_decisions: Callable[..., list]
     _stack_tranches: list[dict]
     _standing_surplus_usd: float
     _sum_sibling_base_currency_claims: Callable[..., Optional[float]]
@@ -1196,6 +1202,7 @@ class TickPhaseMixin:
                 },
                 booker="_book_entry_fill",
                 booking={"buy_cost": float(buy_cost), "intended": float(price)},
+                decision=ENTRY_BUY,
             )
             if (entry_fill is None or entry_fill <= 0) and self._refusal_is_new(
                 "initial_entry_refused", price
@@ -1500,6 +1507,7 @@ class TickPhaseMixin:
                 ticker.last,
                 summary,
                 label="SCRUM",
+                decision=EXCESS_SALE,
                 booker="_book_scrum_fill",
                 booking={
                     "scrum_asset": float(scrum_asset),
@@ -1851,7 +1859,21 @@ class TickPhaseMixin:
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
         self._drop_malformed_fold_tranches()
-        _eligible = self._fold_eligible_tranches(ticker.last, distance, band)
+        _reached = self._fold_eligible_tranches(ticker.last, distance, band)
+        _eligible = retry_fold_tranches(_reached, self._unanswered_decisions(SIDE_BUY))
+        if _reached and not _eligible:
+            if self._refusal_is_new("fold_lost_order", ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"FOLD HELD (lost order): {len(_reached)} tranche(s) reached "
+                        f"${ticker.last:.8f}, and an earlier buy of this bot has no "
+                        f"answer from the venue. Nothing is sent until that decision "
+                        f"repeats or the holdings audit reads the venue's count."
+                    ),
+                )
+            return False
         try:
             self._bus.emit(
                 "bot.log",
@@ -2048,6 +2070,9 @@ class TickPhaseMixin:
                         ],
                     },
                     sources=[src for src, _take_usd, _take_units in _fold_plan],
+                    decision=fold_decision(
+                        [src for src, _take_usd, _take_units in _fold_plan]
+                    ),
                 )
             if buy_fill is None or buy_fill <= 0:
                 if not _fold_skipped_below_min and self._refusal_is_new(
@@ -2246,45 +2271,6 @@ class TickPhaseMixin:
 
         _growth_applied = self._apply_fold_target_growth(accum_profit, source="auto")
 
-        try:
-            mgr = self._smart_wire_mgr
-            if (
-                mgr is not None
-                and _growth_applied > 0
-                and hasattr(mgr, "distribute_fold_profit")
-            ):
-                try:
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=(
-                            f"[WIRE FIRE] fold-compound: "
-                            f"${_growth_applied:.4f} → "
-                            f"distribute_fold_profit "
-                            f"(from realized compound growth "
-                            f"@{buy_fill:.8f})"
-                        ),
-                    )
-                except Exception as _sup:  # noqa: BLE001
-                    logger.debug(
-                        "suppressed in %s: %s: %s",
-                        "tick",
-                        type(_sup).__name__,
-                        _sup,
-                    )
-                mgr.distribute_fold_profit(
-                    source_id=self.bot_id,
-                    profit_usd=float(_growth_applied),
-                    ref=f"fold-compound@{buy_fill:.8f}",
-                )
-        except Exception as _wr_exc:
-            logger.warning(
-                "Bot %s Smart Wire compound-route raised: %s "
-                "(fold profit still booked locally)",
-                self.bot_id,
-                _wr_exc,
-            )
-
         if (
             self.config.hedge_rebalance_active
             and self._hedge_balance_initial > 0
@@ -2421,6 +2407,7 @@ class TickPhaseMixin:
                 summary,
                 bypass_stack=True,
                 label="DIST",
+                decision=DIST_SALE,
                 booker="_book_dist_fill",
                 booking={
                     "dist_asset": float(dist_asset),
