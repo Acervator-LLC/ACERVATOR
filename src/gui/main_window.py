@@ -3831,7 +3831,7 @@ if _HAS_QT:
 
             hottest = None
             for s in statuses:
-                if s.get("mode") != "scrumming":
+                if s.get("mode") != "scrumming" or s.get("hold_reason"):
                     continue
                 if s.get("state") not in ("running", "paused"):
                     continue
@@ -4120,7 +4120,8 @@ if _HAS_QT:
         def run_fleet_sequence(self, command: str = "start") -> int:
             """Move every eligible bot through ``_on_bot_command`` one at a
             time, with the Start All progress window open, waiting for each to
-            read running before the next.
+            answer ``start_settled`` before the next, and listing a held bot
+            with its hold.
 
             This is the sequence the application runs at launch: ``main.py``
             calls it after the instance consent gate, and the command bar's
@@ -4204,13 +4205,15 @@ if _HAS_QT:
                             started=idx,
                         )
                         return
-                    if bot.state.value == "running":
+                    if bot.start_settled():
+                        hold = bot.order_hold_reason()
                         bus.emit(
                             FLEET_SEQUENCE_TOPIC,
-                            phase="bot_started",
+                            phase="bot_held" if hold else "bot_started",
                             total=total,
                             started=idx + 1,
                             bot_id=bot.bot_id,
+                            reason=hold,
                         )
                     elif elapsed >= FLEET_SEQUENCE_VERIFY_TIMEOUT_S:
                         bus.emit(

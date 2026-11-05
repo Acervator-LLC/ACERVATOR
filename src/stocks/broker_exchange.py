@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import math
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from ..exchange.base import (
     AssetInfo,
@@ -28,6 +28,8 @@ from ..exchange.base import (
     OrderType,
     Ticker,
     Trade,
+    no_order_hold,
+    refuse_held_order,
 )
 from .broker_base import (
     BrokerBase,
@@ -499,6 +501,7 @@ class BrokerExchange(ExchangeInterface):
         amount: float,
         price: Optional[float] = None,
         client_order_id: Optional[str] = None,
+        hold_reason: Callable[[], str] = no_order_hold,
     ) -> Order:
         """Submit one order through ``BrokerBase.place_order``, shaped by
         ``BROKER_ORDER_TYPES``, and answer the resulting ``Order``.
@@ -506,7 +509,8 @@ class BrokerExchange(ExchangeInterface):
         A side or order type no table row holds, a size that is not a finite
         positive number, and a limit order naming no finite positive price each
         raise ``ValueError`` before the broker is reached; ``client_order_id``
-        is accepted and not sent.
+        is accepted and not sent. ``hold_reason`` is read after
+        ``BrokerBase.prepare_order`` and raises ``OrderHeld`` with nothing sent.
         """
         del client_order_id
         shape = BROKER_ORDER_TYPES.get(order_type)
@@ -539,6 +543,15 @@ class BrokerExchange(ExchangeInterface):
                         symbol=symbol,
                     )
                 )
+        prepared = await self._broker.prepare_order(
+            str(symbol),
+            broker_side,
+            size,
+            broker_type,
+            limit_price=limit_price,
+            time_in_force=time_in_force,
+        )
+        refuse_held_order(hold_reason)
         placed = await self._broker.place_order(
             str(symbol),
             broker_side,
@@ -546,6 +559,7 @@ class BrokerExchange(ExchangeInterface):
             broker_type,
             limit_price=limit_price,
             time_in_force=time_in_force,
+            **prepared,
         )
         return exchange_order(placed, symbol=str(symbol))
 

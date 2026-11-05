@@ -47,6 +47,7 @@ from ...trading.container.config import (
     HUNGER_PACE_MAX_CANDLES,
     HUNGER_PACE_NONE,
     POSITION_CEILING_MULTIPLE_DEFAULT,
+    PRESS_AGAIN,
     as_box_figure,
     as_whole_count,
     hunger_pace,
@@ -231,7 +232,7 @@ CONFIRM_INITIAL_TEXT = ""
 CANCELLED_TITLE = "Self-Destruct Cancelled"
 CANCELLED_TEXT = "Confirmation token did not match. No action taken."
 REFUSED_TITLE = "Self-Destruct Refused"
-REFUSED_FORMAT = "Nothing was sold and nothing changed: {reason}."
+REFUSED_FORMAT = f"Nothing was sold and nothing changed: {{reason}}. {PRESS_AGAIN}."
 DISPATCHED_TITLE = "Self-Destruct Dispatched"
 DISPATCHED_TEXT_FORMAT = (
     "Self-destruct dispatched for bot {bot_id} — "

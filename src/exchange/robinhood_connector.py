@@ -19,7 +19,7 @@ import time
 import uuid
 from collections import deque
 from decimal import Decimal
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from .base import (
     AssetInfo,
@@ -32,6 +32,7 @@ from .base import (
     OrderStatus,
     OrderType,
     Ticker,
+    no_order_hold,
 )
 from .market_rules_store import record_venue
 
@@ -1410,6 +1411,19 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         await self._pace()
         return await self._send("GET", path, "", headers)
 
+    async def prepare_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        order_type: OrderType,
+        amount: float,
+        price: Optional[float] = None,
+    ) -> Optional[float]:
+        """Wait out ``_pace``, the one wait ahead of ``place_order``'s send."""
+        del symbol, side, order_type, amount
+        await self._pace()
+        return price
+
     async def place_order(
         self,
         symbol: str,
@@ -1418,6 +1432,7 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         amount: float,
         price: Optional[float] = None,
         client_order_id: Optional[str] = None,
+        hold_reason: Callable[[], str] = no_order_hold,
     ) -> Order:
         """Build, sign and submit Robinhood's own order body, answering the
         ``Order`` the venue's reply names.
@@ -1425,6 +1440,7 @@ class RobinhoodCryptoConnector(ExchangeInterface):
         ``RobinhoodOrderRefused`` with no credential stored, on a symbol
         ``held_pairs`` lacks, and on a type ``VENUE_ORDER_TYPES`` lacks.
         """
+        del hold_reason
         from .api_logger import get_api_log
 
         log = get_api_log()
@@ -1492,7 +1508,6 @@ class RobinhoodCryptoConnector(ExchangeInterface):
                 "folding or the next scrum/fold cycle"
             ),
         )
-        await self._pace()
         raw = await self._send("POST", path, text, headers)
         return self._parse_order(raw, body, amount, price)
 

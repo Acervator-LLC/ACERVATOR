@@ -760,12 +760,19 @@ def despawn_threshold_days(config) -> int:
 #: Candidate windows the Fold Tranches panel offers when the timer is OFF.
 DESPAWN_PREVIEW_WINDOWS: tuple[int, ...] = (7, 14, 30, 60)
 
+#: The seconds of a tranche's age a hard hold covered, which its despawn age leaves out.
+TRANCHE_HELD_SECONDS_KEY = "held_seconds"
 
-def _despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[float]:
-    """Return one tranche's age in seconds, or None when it has no usable timestamp.
+#: What every line and box that refuses a press during a hold says last.
+PRESS_AGAIN = "Nothing is kept, so press it again after Reset All Breakers"
+
+
+def despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[float]:
+    """Return one tranche's despawn age in seconds, or None when it has no usable
+    timestamp.
 
     `as_finite_float` refuses a stored bool and a non-positive stamp reads as
-    unset, matching `ScrummingBot._tranche_age_seconds`.
+    unset. The age leaves out `TRANCHE_HELD_SECONDS_KEY`.
 
     Args:
       tranche: one fold or stack tranche record.
@@ -780,7 +787,7 @@ def _despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[fl
     _ts = as_finite_float(tranche.get(field))
     if _ts is None or _ts <= 0:
         return None
-    return now - _ts
+    return now - _ts - (as_finite_float(tranche.get(TRANCHE_HELD_SECONDS_KEY)) or 0.0)
 
 
 def _despawn_preview_fold(fold: list, cutoff: float, now: float, report: dict) -> None:
@@ -791,7 +798,7 @@ def _despawn_preview_fold(fold: list, cutoff: float, now: float, report: dict) -
     for _t in fold:
         if is_shadow(_t):
             continue
-        _age = _despawn_age_seconds(_t, "created_ts", now)
+        _age = despawn_age_seconds(_t, "created_ts", now)
         if _age is None:
             report["ageless_kept"] += 1
             continue
@@ -815,7 +822,7 @@ def _despawn_preview_stack(
     `stack_kept_live_order`, never as removable.
     """
     for _t in stack:
-        _age = _despawn_age_seconds(_t, "opened_ts", now)
+        _age = despawn_age_seconds(_t, "opened_ts", now)
         if _age is None:
             report["ageless_kept"] += 1
         elif _age < cutoff:

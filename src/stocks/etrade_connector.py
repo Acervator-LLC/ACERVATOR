@@ -121,9 +121,9 @@ JSON_PATH_SUFFIX = ".json"
 #: preview ID from the preview and the other parameters of this request must
 #: match the parameters of the preview."
 #:
-#: One order is two calls here. ``place_order`` composes one body, sends it to
-#: ``PREVIEW_ROUTE``, then sends the same body to ``PLACE_ROUTE`` with the
-#: preview's own id added. No other broker in this tree has that shape.
+#: One order is two calls here. ``prepare_order`` composes one body and sends it
+#: to ``PREVIEW_ROUTE``, then ``place_order`` sends the same body to ``PLACE_ROUTE``
+#: with the preview's own id added. No other broker in this tree has that shape.
 PREVIEW_REQUEST_KEY = "PreviewOrderRequest"
 PLACE_REQUEST_KEY = "PlaceOrderRequest"
 PREVIEW_IDS_KEY = "PreviewIds"
@@ -370,7 +370,7 @@ FILL_FEE_READS_MAX = 50
 #: whose own JSON order examples type every price and every size as a string.
 DECIMAL_PLACES = 10
 
-#: What ``place_order`` logs between the two calls, so the preview the place
+#: What ``prepare_order`` logs between the two calls, so the preview the place
 #: carries is visible and a place with no preview cannot be mistaken for one.
 PREVIEW_NOTE = "E*TRADE previewed %s as %s and the place carries preview id %s"
 
@@ -383,7 +383,7 @@ NO_SECURITY_TYPE = (
     "E*TRADE named no security type for {symbol}, so no order can be composed"
 )
 
-#: What ``place_order`` raises on when the venue previewed nothing, so a place
+#: What ``prepare_order`` raises on when the venue previewed nothing, so a place
 #: never goes out without the id its own schema requires.
 NO_PREVIEW_ID = (
     "E*TRADE answered no previewId for {symbol}; its place route requires one "
@@ -994,8 +994,8 @@ def symbol_batches(symbols: Iterable[str]) -> list[list[str]]:
 class EtradeConnector(BrokerBase):
     """E*TRADE from Morgan Stanley broker connector.
 
-    ``SECTORS_SERVED`` is left empty, and ``place_order`` previews then places,
-    which is the order pair ``PREVIEW_ROUTE`` and ``PLACE_ROUTE`` require.
+    ``SECTORS_SERVED`` is left empty, ``prepare_order`` previews and ``place_order``
+    places, which is the order pair ``PREVIEW_ROUTE`` and ``PLACE_ROUTE`` require.
     """
 
     #: Left empty, which ``alpaca_connector.broker_serves_sector`` reads as every
@@ -1252,7 +1252,7 @@ class EtradeConnector(BrokerBase):
                 return held
         return None
 
-    async def place_order(
+    async def prepare_order(
         self,
         symbol: str,
         side: OrderSide,
@@ -1261,13 +1261,12 @@ class EtradeConnector(BrokerBase):
         limit_price: float = 0,
         stop_price: float = 0,
         time_in_force: TimeInForce = TimeInForce.DAY,
-    ) -> StockOrder:
-        """Preview one order on ``PREVIEW_ROUTE``, then place it on
-        ``PLACE_ROUTE`` carrying the preview's own id.
+    ) -> dict:
+        """Preview one order on ``PREVIEW_ROUTE``, the wait ahead of ``place_order``'s
+        send, and answer the body and its ids under ``previewed``.
 
-        ``order_body`` raises on a security type outside
-        ``ORDER_SECURITY_TYPES`` and on a fractional sale, and a preview naming
-        no id raises ``NO_PREVIEW_ID``.
+        ``order_body`` raises on a security type outside ``ORDER_SECURITY_TYPES`` and
+        on a fractional sale, and a preview naming no id raises ``NO_PREVIEW_ID``.
         """
         asset = self._asset(symbol)
         body = order_body(
@@ -1293,6 +1292,33 @@ class EtradeConnector(BrokerBase):
             body[PREVIEW_REQUEST_KEY]["Order"][0]["priceType"],
             ids[0],
         )
+        return {"previewed": (body, ids)}
+
+    async def place_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        quantity: float,
+        order_type: OrderType = OrderType.MARKET,
+        limit_price: float = 0,
+        stop_price: float = 0,
+        time_in_force: TimeInForce = TimeInForce.DAY,
+        previewed: Optional[tuple] = None,
+    ) -> StockOrder:
+        """Place the body ``prepare_order`` previewed on ``PLACE_ROUTE``, carrying its
+        ids, and run ``prepare_order`` first where ``previewed`` holds none."""
+        if previewed is None:
+            ready = await self.prepare_order(
+                symbol,
+                side,
+                quantity,
+                order_type,
+                limit_price,
+                stop_price,
+                time_in_force,
+            )
+            previewed = ready["previewed"]
+        body, ids = previewed
         answered = await self._request(
             "POST",
             PLACE_ROUTE.format(account=self._account),

@@ -139,10 +139,12 @@ from .base import (
     MarketRules,
     Order,
     OrderBook,
+    OrderHeld,
     OrderSide,
     OrderStatus,
     OrderType,
     Ticker,
+    no_order_hold,
 )
 from .api_logger import get_api_log
 from .lazy_singleton import ThrottledFault
@@ -2774,28 +2776,32 @@ class CCXTConnector(ExchangeInterface):
         # The exchange did not report this currency at all.
         return Balance(currency=currency, free=0.0, used=0.0, total=0.0, absent=True)
 
-    # Submission is never retried: create_order is not idempotent without a
-    # client_order_id.
-    async def place_order(
+    def _order_breaker(self, symbol: str) -> Any:
+        """The per-(exchange, symbol) breaker every order on ``symbol`` reports to."""
+        from .circuit_breaker import get_breaker_registry
+
+        return get_breaker_registry().get(f"{self._exchange_id}:{symbol}")
+
+    async def prepare_order(
         self,
         symbol: str,
         side: OrderSide,
         order_type: OrderType,
         amount: float,
         price: Optional[float] = None,
-        client_order_id: Optional[str] = None,
-    ) -> Order:
+    ) -> Optional[float]:
+        """Wait out ``_rate_limit``, read the price a MARKET BUY needs, and answer the
+        price ``place_order`` sends."""
         self._ensure_connected()
         await self._rate_limit()
 
         # Per-(exchange, symbol) breaker short-circuits while a venue is failing.
-        from .circuit_breaker import get_breaker_registry, CircuitBreakerOpenError
+        from .circuit_breaker import CircuitBreakerOpenError
 
-        _breaker_key = f"{self._exchange_id}:{symbol}"
-        _breaker = get_breaker_registry().get(_breaker_key)
+        _breaker = self._order_breaker(symbol)
         if not _breaker.is_call_allowed():
             _breaker.record_short_circuit()
-            raise CircuitBreakerOpenError(_breaker_key, _breaker.cooldown_remaining())
+            raise CircuitBreakerOpenError(_breaker.key, _breaker.cooldown_remaining())
         _log = get_api_log()
 
         self._ex.market(symbol)
@@ -2845,7 +2851,33 @@ class CCXTConnector(ExchangeInterface):
                 refusal_error = InvalidOrder(refusal)
                 _breaker.record_failure(refusal_error)
                 raise refusal_error
+        return exec_price
 
+    # Submission is never retried: create_order is not idempotent without a
+    # client_order_id.
+    async def place_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        order_type: OrderType,
+        amount: float,
+        price: Optional[float] = None,
+        client_order_id: Optional[str] = None,
+        hold_reason: Callable[[], str] = no_order_hold,
+    ) -> Order:
+        """Send one order through ``create_order`` on the worker.
+
+        The worker reads ``hold_reason`` the moment the call starts, so a hold that
+        lands while the order waits behind other calls raises ``OrderHeld``.
+        """
+        self._ensure_connected()
+        _breaker = self._order_breaker(symbol)
+        _log = get_api_log()
+
+        self._ex.market(symbol)
+        amount = self._ex.amount_to_precision(symbol, amount)
+
+        exec_price = price
         if exec_price is not None:
             exec_price = float(self._ex.price_to_precision(symbol, exec_price))
 
@@ -2877,27 +2909,18 @@ class CCXTConnector(ExchangeInterface):
             _ccxt_type = "limit"
             extra_params["timeInForce"] = "IOC"
 
+        _order: list = [symbol, _ccxt_type, side.value, float(amount), exec_price]
+        if extra_params:
+            _order.append(extra_params)
+
+        def create_order(*order: Any) -> Any:
+            """``_ex.create_order``, or the ``OrderHeld`` ``hold_reason`` names."""
+            held = hold_reason()
+            return OrderHeld(held) if held else self._ex.create_order(*order)
+
         start = time.monotonic()
         try:
-            if extra_params:
-                raw = await self._call_sync(
-                    self._ex.create_order,
-                    symbol,
-                    _ccxt_type,
-                    side.value,
-                    float(amount),
-                    exec_price,
-                    extra_params,
-                )
-            else:
-                raw = await self._call_sync(
-                    self._ex.create_order,
-                    symbol,
-                    _ccxt_type,
-                    side.value,
-                    float(amount),
-                    exec_price,
-                )
+            raw = await self._call_sync(create_order, *_order)
         except Exception as _exc:
             _venue_said = f"{type(_exc).__name__}: {_exc}"
             _log.record(
@@ -2923,6 +2946,24 @@ class CCXTConnector(ExchangeInterface):
             # The breaker opens after enough consecutive failures.
             _breaker.record_failure(_exc)
             raise
+        if isinstance(raw, OrderHeld):
+            _log.record(
+                exchange=self._exchange_id,
+                action="ORDER_REFUSED",
+                reason=f"{self._exchange_id} order not sent for {symbol}: {raw}",
+                endpoint="create_order",
+                params={
+                    "symbol": symbol,
+                    "side": side.value,
+                    "type": order_type.value,
+                    "amount": float(amount),
+                    "price": exec_price,
+                },
+                result="Not sent. The hold landed while the order waited to send.",
+                level="warning",
+                data_usage="No order reaches the venue and no fill is booked.",
+            )
+            raise raw
         elapsed = (time.monotonic() - start) * 1000
         _breaker.record_success()  # Successful round-trip → reset failure run
         order = self._parse_order(raw)

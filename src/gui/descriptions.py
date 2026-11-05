@@ -44,7 +44,7 @@ SETTINGS_TAB_DESCRIPTIONS = {
     "cartridge_smart_chk": "ON: cartridge size comes from the Bollinger range, not the percent above. It never fires below the Opposing Trade Interval.",
     "cb_cooldown": "Number of candles the soft breaker stays active before re-opening. Default 3.",
     "cb_hard_pct": "Hard Circuit Breaker. A single candle moving this far pauses the bot until you reset it. Default 35%. 0 disables.",
-    "cb_reset_all_btn": "Operator override: clears any active soft and hard circuit breakers. Hard reset also resumes the bot if it is PAUSED.",
+    "cb_reset_all_btn": "Operator override: clears any active soft and hard circuit breakers. Hard reset also resumes a bot the hard breaker paused. A bot paused by hand stays paused.",
     "cb_soft_pct": "Soft Circuit Breaker. A single candle moving this far stops the side that moved, until cooldown. Default 25%. 0 disables.",
     "ceiling_enabled": "Caps accumulation at a multiple of the starting target. Fold size tapers toward the ceiling and stops. Scrum always allowed.",
     "ceiling_mult": "Ceiling multiplier. 1x = no accumulation beyond anchor. 10x = 10x runway. Default 5x.",
