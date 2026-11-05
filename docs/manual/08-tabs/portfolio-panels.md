@@ -548,7 +548,7 @@ if self._header_strip_reads_sim():
     return
 ```
 
-[simulator.md](simulator.md) covers what each field reads on Sim.
+[simulator.md](simulator.md#the-header-strip-with-sim-in-front) covers what each field reads on Sim.
 
 ## Bridge
 
