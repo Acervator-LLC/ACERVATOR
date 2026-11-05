@@ -1108,17 +1108,13 @@ tablet by the registry's own rollup:
 | `bot_state.json` after every press | byte-identical; a copy with one byte appended reads a different digest | the same |
 | the venue image under Neon Light and Cyberpunk Dark | the top-left pixel equals each theme's ground and the foot pixel its lower ground; the two files differ; the message stamp is drawn in the theme's own axis text colour | one painter |
 
-### Two sentences this entry overtakes
+### A sentence this entry overtakes
 
-They were not reworded. They are quoted here.
+It was not reworded. It is quoted here.
 
 `docs/manual/08-tabs/asset-charts.md, under 'The chart widget'` - "The setters
 name what they place." The table under it lacks `set_landing_strip`, which
 places the landing strip band.
-
-`docs/manual/08-tabs/simulator.md, under 'The two glyphs'` - "One definition,
-`MARK_GLYPHS`, names both marks, and both hosts read it". The definition now
-lives in the chart's surface, and the Charts painter is a third reader.
 
 **Figures.** `artifacts/u55/C3/` holds the Qt window and the React page at
 1400 by 900 and at 1960 by 1200, the painter's image at ratio 1.0 and 2.0
