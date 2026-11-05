@@ -1713,17 +1713,20 @@
     return host.mount(INDICATOR_MODULE, slot, model) ? slot : null;
   }
 
-  // The layers whose tab widget has an exchange page on show.
+  // The exchange page on show on the one layer the stack shows.
   function shownExchanges() {
     var model = held === null ? null : held.model;
+    var onShow = objectField(model, TRADING_STACK)[CURRENT_INDEX];
     return listField(model, LAYERS)
-      .filter(function (layer) {
-        return isPlainObject(layer) && layer[PLACEHOLDER_SHOWN] === false;
+      .filter(function (layer, at) {
+        return (
+          at === onShow && isPlainObject(layer) && layer[PLACEHOLDER_SHOWN] === false
+        );
       })
       .map(function (layer) {
         var tabs = objectField(layer, EXCHANGE_TABS);
         var one = text(layer[CURRENT_EXCHANGE]);
-        return { exchangeId: one, caption: text(tabs[one]) };
+        return { layerKey: text(layer[KEY]), exchangeId: one, caption: text(tabs[one]) };
       })
       .filter(function (one) {
         return one.exchangeId !== EMPTY;
@@ -1739,6 +1742,11 @@
         PART_ATTR +
         SELECT_IS +
         EXCHANGE_PANE_PART +
+        SELECT_CLOSE +
+        SELECT_OPEN +
+        LAYER_ATTR +
+        SELECT_IS +
+        shown.layerKey +
         SELECT_CLOSE +
         SELECT_OPEN +
         EXCHANGE_ATTR +

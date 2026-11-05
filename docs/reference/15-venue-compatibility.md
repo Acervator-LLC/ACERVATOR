@@ -3476,7 +3476,7 @@ The press binds the form, and `src/gui/settings_dialog.py`, in
 
 ```python
 # src/gui/settings_dialog.py, in _open_credentials_for_row
-            self._set_feedback(sds.venue_form_bound(venue), "info")
+            self._set_feedback(sds.venue_form_bound(venue, self._wing), "info")
 ```
 
 The page says it is waiting while step five is open, and it names the wait
@@ -3599,9 +3599,10 @@ coinbase    crypto        api_key_enc, api_secret_enc
 
 A connection the operator has not made is asked for at the moment a bot's route
 wants it. `src/gui/main_window.py`, in `_ask_for_venue_connection`, opens the
-same configuration window `_open_settings` draws, on the bot's own sector, and
-`_connect_broker_for_bot` and `_connect_written_crypto_for_bot` each call it once
-and then read the stored credential again.
+same configuration window `_open_settings` draws, on the Exchanges page of the
+bot's own sector with the venue pressed, and `_connect_broker_for_bot` and
+`_connect_written_crypto_for_bot` each call it once and then read the stored
+credential again.
 
 ### The sign-in is a row on the mechanism, not a second mechanism
 

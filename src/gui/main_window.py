@@ -1816,15 +1816,7 @@ if _HAS_QT:
                 if target_tabs is self._exchange_tabs:
                     self._exchange_tabs[exchange_id] = tab
                 _seated.append(name)
-                if len(_seated) > 1:
-                    continue
-                # Only TradingTabReact holds a venue, keyed by exchange id, so
-                # the first seated tab is the one it follows.
-                hold_venue = getattr(
-                    getattr(self, "_trading_tab", None), "hold_venue", None
-                )
-                if callable(hold_venue):
-                    hold_venue(tab)
+            self._hold_live_venue(layers[_seated[0]]["exchange_tabs"][exchange_id])
             self._push_live_tab({})
 
             # `_landed` asks each layer's own tab bar, never the store written above.
@@ -2988,14 +2980,18 @@ if _HAS_QT:
                 return None
             if getattr(held, "is_connected", False):
                 return held
-            self._exchange_connectors.pop(eid, None)
+            self._release_connector(eid)
+            return None
+
+        def _release_connector(self, eid: str) -> None:
+            """Drop *eid* from `_exchange_connectors` and call `release` on its connector."""
+            held = self._exchange_connectors.pop(eid, None)
             release = getattr(held, "release", None)
             if release is not None:
                 try:
                     release()
                 except Exception as exc:
                     logger.warning("connector release for %s failed: %s", eid, exc)
-            return None
 
         def _wire_connector_for_bot(self, connector, bot) -> None:
             """Register *bot*'s symbol on *connector* and feed the history tab."""
@@ -3117,14 +3113,11 @@ if _HAS_QT:
             )
 
         def _ask_for_venue_connection(self, eid: str, sector: str) -> None:
-            """Open the configuration window on *sector* so the operator can
-            connect *eid* at the moment a bot's route wants it.
-
-            ``variant_surface.SETTINGS_DIALOG`` is the same window
-            ``_open_settings`` draws, and it opens on the bot's own sector so the
-            pressed venue asks for the credential that sector's route takes.
-            """
-            from .variant_surface import SETTINGS_DIALOG, surface_class
+            """Open ``_run_settings_window`` on Exchanges with *eid* bound, on the class ``wing_showing_venue`` answers for *sector*."""
+            from .main_tabs.settings_dialog_surface import (
+                EXCHANGE_TAB,
+                wing_showing_venue,
+            )
 
             self._status_log.log(
                 CONNECTION_WANTED_FORMAT.format(
@@ -3132,11 +3125,9 @@ if _HAS_QT:
                 ),
                 "warning",
             )
-            dialog = surface_class(SETTINGS_DIALOG)(
-                self._settings, self._status_log, self, wing=sector
+            self._run_settings_window(
+                wing_showing_venue(eid, sector), EXCHANGE_TAB, eid
             )
-            dialog.settings_changed.connect(self._on_settings_changed)
-            dialog.exec()
 
         def _open_broker_session(
             self, connector, eid: str, sector: str = ""
@@ -4271,12 +4262,25 @@ if _HAS_QT:
                 self._status_log.log(f"Settings not opened: {exc}", "error")
                 return
             self._status_log.log(f"Opening settings ({_wing} wing)...")
+            self._run_settings_window(_wing)
+
+        def _run_settings_window(
+            self, wing: str, tab: str = "", venue: str = ""
+        ) -> None:
+            """Run Settings on *wing* at *tab* and *venue*, wired to ``_on_settings_changed``, then ``_sync_exchange_tabs``."""
             from .variant_surface import SETTINGS_DIALOG, surface_class
 
-            _cls = surface_class(SETTINGS_DIALOG)
-            dlg = _cls(self._settings, self._status_log, self, wing=_wing)
-            dlg.settings_changed.connect(self._on_settings_changed)
-            dlg.exec()
+            dialog = surface_class(SETTINGS_DIALOG)(
+                self._settings, self._status_log, self, wing=wing
+            )
+            dialog.settings_changed.connect(self._on_settings_changed)
+            if tab:
+                dialog.show_tab(tab)
+            if venue:
+                dialog.bind_venue(venue)
+            dialog.exec()
+            dialog.deleteLater()
+            self._sync_exchange_tabs()
 
         def _on_settings_changed(self) -> None:
             if not self._settings:
@@ -4418,13 +4422,8 @@ if _HAS_QT:
                 f"Opening settings to add exchange " f"({_wing} class)..."
             )
             from .main_tabs.settings_dialog_surface import EXCHANGE_TAB
-            from .variant_surface import SETTINGS_DIALOG, surface_class
 
-            _cls = surface_class(SETTINGS_DIALOG)
-            dlg = _cls(self._settings, self._status_log, self, wing=_wing)
-            dlg.show_tab(EXCHANGE_TAB)
-            dlg.exec()
-            self._sync_exchange_tabs()
+            self._run_settings_window(_wing, EXCHANGE_TAB)
 
         def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
             """Take off every exchange tab whose id is not in ``listed``.
@@ -4434,6 +4433,7 @@ if _HAS_QT:
             """
             kept = set(listed)
             dropped = 0
+            gone: set[str] = set()
             for held in (getattr(self, "_class_layers", None) or {}).values():
                 store, bar = held["exchange_tabs"], held["tabs"]
                 for eid in [one for one in store if one not in kept]:
@@ -4448,6 +4448,7 @@ if _HAS_QT:
                     tab.setParent(None)
                     tab.deleteLater()
                     dropped += 1
+                    gone.add(eid)
                     self._status_log.log(f"Exchange tab removed: {eid}", "warning")
                 ph = held.get("placeholder")
                 if ph is not None and not store and bar.indexOf(ph) < 0:
@@ -4458,17 +4459,26 @@ if _HAS_QT:
                     )
             if dropped:
                 self._push_live_tab({})
+            for eid in gone:
+                self._forget_venue(eid)
             return dropped
 
-        def _sync_exchange_tabs(self) -> None:
-            """Add a tab for each configured exchange missing one, in its own layer.
+        def _forget_venue(self, eid: str) -> None:
+            """Take *eid* out of ``TradingTabReact._venues``, `_broker_exchanges` and `_exchange_connectors`."""
+            drop_venue = getattr(
+                getattr(self, "_trading_tab", None), "drop_venue", None
+            )
+            if callable(drop_venue):
+                drop_venue(eid)
+            self._broker_exchanges.pop(eid, None)
+            self._release_connector(eid)
 
-            A tab the store no longer lists is dropped, so the bar carries what
-            ``list_exchanges`` carries.
-            """
+        def _sync_exchange_tabs(self) -> None:
+            """Seat and drop tabs until each bar matches ``list_exchanges``, then feed a changed bar through ``_refresh_dashboard``."""
             if not self._settings:
                 return
             layers = getattr(self, "_class_layers", None) or {}
+            _added = 0
             _wanted: list[str] = []
             for exch in self._settings.list_exchanges():
                 eid = exch.get("exchange_id", "")
@@ -4484,6 +4494,7 @@ if _HAS_QT:
                 ]
                 if unseated:
                     self.add_exchange_tab(eid, name)
+                    _added += 1
                     seated_on = ", ".join(unseated)
                     self._status_log.log(
                         f"Exchange tab added: {name} ({seated_on} layer)",
@@ -4491,6 +4502,8 @@ if _HAS_QT:
                     )
 
             _gone = self._drop_unlisted_exchange_tabs(_wanted)
+            if _added or _gone:
+                self._refresh_dashboard()
 
             # `_missing` asks the layer tab bar, not the store the loop above wrote.
             _missing = 0

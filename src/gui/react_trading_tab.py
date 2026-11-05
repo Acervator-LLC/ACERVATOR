@@ -1029,17 +1029,30 @@ if _HAS_WEBENGINE:
             return self.show_votes(self._votes_handler({}))
 
         def hold_venue(self, venue: Any) -> bool:
-            """Draw ``venue`` in this tab and follow every payload it publishes.
-
-            ``MainWindow.add_exchange_tab`` offers each venue page it builds;
-            a page carrying no ``published`` signal is refused and not held.
-            """
+            """Draw ``venue`` in place of the page held for its exchange, refusing one with no ``published``."""
             exchange_id = str(getattr(venue, "exchange_id", "") or "")
             published = getattr(venue, "published", None)
             if not exchange_id or published is None:
                 return False
+            held = self._venues.get(exchange_id)
+            if held is venue:
+                return True
+            if held is not None:
+                held.published.disconnect(self._venue_published)
             self._venues[exchange_id] = venue
             published.connect(self._venue_published)
+            venue.publish()
+            return True
+
+        def drop_venue(self, exchange_id: Any) -> bool:
+            """Let go of the page held for ``exchange_id`` and publish ``_venues`` without it."""
+            named = str(exchange_id or "")
+            held = self._venues.pop(named, None)
+            if held is None:
+                return False
+            held.published.disconnect(self._venue_published)
+            if self._tab_request.get(trading_tab_surface.EXCHANGE_PARAM) == named:
+                del self._tab_request[trading_tab_surface.EXCHANGE_PARAM]
             self._venue_published()
             return True
 

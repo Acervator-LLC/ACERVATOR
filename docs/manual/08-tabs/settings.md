@@ -2,14 +2,14 @@
 
 This window sets who you are, which venues the app can reach, and how new bots start. It holds nine pages above one Cancel button and one Save button.
 
-This page is for lookup. Each row names a control or a group of them, says what it does and what reads it, and cites the code behind it. A row that holds a value gives its range and start value.
+This page is for lookup. Each row of a control table names a control or a group of them, says what it does, and cites the code behind it. A row with a stored key names it after Reads. The page lists and the route and vote tables are summaries. A row that holds a value gives its range and start value.
 
 ## The pages
 
 | Page | What it sets |
 | --- | --- |
 | User | Your name and the Fleet Lock password. |
-| Exchanges | Each venue's keys, for the asset class active when the window opened. |
+| Exchanges | Each venue's keys, for the asset class active when the window opened, or the bot's own class when Start opened it. |
 | Trading | Where a new bot's wizard opens: target, order visibility and aggressive mode. |
 | TA Indicators | How far each of the twelve indicator votes counts. |
 | Phantom Bots | Where a new bot's phantom choices open. |
@@ -18,15 +18,21 @@ This page is for lookup. Each row names a control or a group of them, says what 
 | SMS | Text message alerts: how they go, which events send them, and how often. |
 | AI Monitor | The API key, the handshake phrases and the monitor's behaviour. |
 
-Only the Exchanges page changes with the asset class. The title reads Settings — Crypto Wing on the Crypto class and Settings on every other class (`src/gui/settings_dialog.py, in SettingsDialog.__init__`).
+Only the Exchanges page changes with the asset class. The title bar reads Settings — Crypto Wing on the Crypto class and Settings on every other class (`src/gui/settings_dialog.py, in SettingsDialog.__init__`).
+
+The React page draws a second title line. It reads Settings — Crypto Wing on Crypto, Settings — Stock Wing on Stock, and Settings — Crypto Wing on every other class (`src/gui/main_tabs/settings_dialog_surface.py, in wing_or_default`, `src/gui/main_tabs/settings_dialog_surface.py, in title_for`).
 
 ### How the window opens
 
 | Route | What opens and what follows |
 | --- | --- |
-| File > Settings | Opens on the User page. A Save reaches the running window at once. An exchange you add or remove here changes its tab at the next launch, or when an Exchange > Add Exchange window next closes. `src/gui/main_window.py, in MainWindow._open_settings` |
-| Exchange > Add Exchange, or an Add button on the Trading tab | Opens on the Exchanges page, and the exchange tabs follow when the window closes. A Save here writes the file, and the running window takes the theme, weights, SMS and AI Monitor at the next launch or the next Save from File > Settings. `src/gui/main_window.py, in MainWindow._add_exchange` |
-| Start on a broker, or on Robinhood on the Crypto class, with no stored key | Opens on the User page, for the bot's asset class. Start tries again when the window closes. `src/gui/main_window.py, in MainWindow._ask_for_venue_connection` |
+| File > Settings | Opens on the User page. `src/gui/main_window.py, in MainWindow._open_settings` |
+| Exchange > Add Exchange, or an Add button on the Trading tab | Opens on the Exchanges page. `src/gui/main_window.py, in MainWindow._add_exchange` |
+| Start on a broker, or on Robinhood on the Crypto class, with no stored key | Opens on the Exchanges page with that venue pressed, for the bot's asset class. A class that does not list the venue gives way to the first class that does. A venue no class lists stays unpressed, and the feedback line says why. Start tries again when the window closes. `src/gui/main_window.py, in MainWindow._ask_for_venue_connection`, `src/gui/main_tabs/settings_dialog_surface.py, in wing_showing_venue` |
+
+One method builds the window on all three routes (`src/gui/main_window.py, in MainWindow._run_settings_window`). On each one, a Save reaches the running window at once.
+
+An exchange you add or remove changes the tabs when the window closes, on both builds. A new tab draws its bot table at that moment (`src/gui/main_window.py, in MainWindow._sync_exchange_tabs`). A removed venue leaves the tab bars, the React Live page and the list of connectors (`src/gui/main_window.py, in MainWindow._forget_venue`).
 
 ### Two builds of this window
 
@@ -34,13 +40,21 @@ A frozen build draws the variant stamped into it. A source run reads `ACERVATOR_
 
 The React window inherits Save, Test, Add, Remove and Fleet Lock from the Qt window, and replaces only the methods that draw (`src/gui/react_settings_dialog.py, in SettingsDialogReact`).
 
-Five things differ on screen. The React build hides what you type in API Key and API Secret. A form row the page hides loses its box in React and keeps its words (`src/gui/web/settings_dialog.js, in ControlRow`). React draws no dash for a stored value a control cannot hold. After Remove Selected, React clears the pressed venue and Qt keeps it (`src/gui/react_settings_dialog.py, in PageList.takeItem`). A typed accent paints the Qt window alone.
+Seven things differ on screen:
+
+- The React build hides what you type in API Key and API Secret.
+- A form row the page hides loses its box in React and keeps its words (`src/gui/web/settings_dialog.js, in ControlRow`).
+- React draws no dash for a stored value a control cannot hold.
+- A typed accent paints the Qt window alone.
+- React draws a title line inside the page (`src/gui/web/settings_dialog.js, in Dialog`).
+- The React SFX Volume figure reads 70% until the slider moves, whatever is stored (`src/gui/react_settings_dialog.py, in SettingsDialogReact.apply_edit`).
+- React number boxes print no fixed decimals (`src/gui/web/settings_dialog.js, in Control`).
 
 ## What each page persists
 
 Save writes the settings file in your home folder. The Exchanges page writes at each press instead. The store refuses a key it does not declare and a value of the wrong type (`src/core/settings.py, in SettingsManager.set`).
 
-A hidden row hides only the screen. The Twilio token, the SMTP password and the Anthropic key go into the file as plain text, and venue keys from the Exchanges page go in encrypted (`src/gui/settings_dialog.py, in SettingsDialog._stored_groups`).
+The Twilio Auth Token, SMTP Password and Anthropic API Key rows hide only the screen. Those three go into the file as plain text. Passphrase and venue keys go in encrypted, and the two Fleet Lock rows and Verification Code are never stored (`src/gui/settings_dialog.py, in SettingsDialog._stored_groups`).
 
 | Page | Stored as | Takes effect |
 | --- | --- | --- |
@@ -59,11 +73,11 @@ A hidden row hides only the screen. The Twilio token, the SMTP password and the 
 | Page tabs | Move between pages. Edits stay held until Save, Cancel or a passing Add, which closes the window and drops every unsaved edit. Each tab's mouse-over says what the page holds. `src/gui/main_tabs/settings_dialog_surface.py, in TAB_TOOLTIPS` |
 | Save | Asks the Username and Fleet Lock questions first, then writes every page but Exchanges and closes the window. A key typed with no Add press is dropped. A group the store refuses opens a box that names it, and the rest still save. `src/gui/settings_dialog.py, in SettingsDialog._save` |
 | Cancel | Closes the window and writes nothing. A Sound box you ticked has already reached the engine. `src/gui/settings_dialog.py, in SettingsDialog._setup_ui` |
-| A stored value a control cannot hold | A Qt number box shows a dash. A Qt slider and every React control keep a figure, and a mouse-over says the stored value is unusable. Save keeps the stored value until you set another. `src/gui/settings_dialog.py, in SettingsDialog._mark_refused` |
+| A stored value a control cannot hold | A Qt number box shows a dash. A Qt slider and every React control keep a figure, and a mouse-over says the stored value is unusable. Save keeps the stored value until you set another. A top-level value of the wrong type falls back to the default at load, shows no mark, and Save writes the default over it. A stored Carrier the list lacks shows AT&T with no mark, and Save writes AT&T. A Save replaces a stored theme name no theme holds. `src/gui/settings_dialog.py, in SettingsDialog._mark_refused`, `src/core/settings.py, in SettingsManager._apply_dict`, `src/gui/settings_dialog.py, in SettingsDialog._sms_rows`, `src/gui/main_window.py, in MainWindow._remember_theme` |
 
 ## How to use each page
 
-A row that holds a value gives its range and start value in the first column. Nine of the ten figures show an earlier capture, so their tab row lists Profit Folding or Logging pages the window does not draw. The Phantom Bots figure matches the drawn page.
+A row that holds a value gives its range and start value in the first column. The twelve TA sliders give their start value there and share the range in the line above their table. Nine of the ten figures show an earlier capture, so their tab row lists Profit Folding or Logging pages the window does not draw. The Phantom Bots figure matches the drawn page.
 
 ### Settings > User Tab
 
@@ -105,10 +119,10 @@ The figure shows a drop-down and a list of stored exchanges. The drawn page puts
 | Passphrase (hidden, empty) | The passphrase set on the API key. Test refuses a venue that needs one when this row is empty. `src/exchange/api_validator.py, in validate_credentials` |
 | Verification Code (hidden, empty) | Shows for a venue that grants access only on a pasted code. The first Add press returns an address. Open it, approve, paste the code and press Add again. The code is used once and never stored. `src/gui/main_tabs/settings_dialog_surface.py, in connect_verification_code_venue` |
 | Test Connection | Checks the typed key and secret and shows the balances. It stores no key, and it colours the button by the venue's answer. A hand-written connector checks the key's shape alone and asks no venue. It greys for a venue with no check path, and it refuses with no venue pressed or a blank row. `src/gui/settings_dialog.py, in SettingsDialog._test_api_connection` |
-| Test and Add Exchange | A typed key and secret on a venue Test can check must pass first, or nothing is stored. A venue with no check path stores them unchecked. With either row blank, Add runs no check and stores no typed key, and a stored venue keeps its key. A verification-code venue refuses a blank row and stores nothing. Keys are stored encrypted. A passing Add shows Exchange Added and closes the window. The box says the tab is already in the main window, even for a new venue. `src/gui/settings_dialog.py, in SettingsDialog._add_exchange` |
-| Connect with a Browser | Replaces Test and Add for a venue that signs in at a browser, on the classes that sign in that way. The key rows hide and Test greys. Approve at the venue's page, and the feedback line names its trade-approval setting. The window and every bot wait until the venue answers, up to 180 seconds, and then this window stays open. For Robinhood on the Crypto class the feedback line still asks for a browser, and the key rows are the way in. `src/gui/settings_dialog.py, in SettingsDialog._connect_browser_venue`, `src/trading/ata_spm_signin.py, in LoopbackReceiver.wait` |
+| Test and Add Exchange | A typed key and secret on a venue Test can check must pass first, or nothing is stored. A venue with no check path stores them unchecked, except E*TRADE, which stores them only after the venue accepts the pasted code. With either row blank, Add runs no check and stores no typed key, and a stored venue keeps its key. A verification-code venue refuses a blank row and stores nothing. Keys are stored encrypted. A passing Add shows Exchange Added and closes the window. The box says the tab will appear for a venue the store did not hold, and says it is already in the main window for a stored one. `src/gui/settings_dialog.py, in SettingsDialog._add_exchange`, `src/gui/settings_dialog.py, in SettingsDialog._connect_verification_code_venue` |
+| Connect with a Browser | Replaces Test and Add for a venue that signs in at a browser, on the classes that sign in that way. The key rows hide and Test greys. Approve at the venue's page, and the feedback line names its trade-approval setting. The window and every bot wait until the venue answers, up to 180 seconds, and then this window stays open. On Robinhood's Crypto class the key rows show, and the feedback line asks for the API key and secret. `src/gui/settings_dialog.py, in SettingsDialog._connect_browser_venue`, `src/trading/ata_spm_signin.py, in LoopbackReceiver.wait`, `src/gui/main_tabs/settings_dialog_surface.py, in venue_form_bound` |
 | Feedback line | Shows the last answer: blue for a note, green for success, amber for a warning and red for an error. `src/gui/settings_dialog.py, in SettingsDialog._set_feedback` |
-| Remove Selected | Removes the pressed venue's stored entry and its colour at once, with no Save. With no venue pressed it asks you to press one. It refuses while a bot on that venue is neither idle nor stopped, and names each bot. `src/gui/settings_dialog.py, in SettingsDialog._remove_exchange` |
+| Remove Selected | Removes the pressed venue's stored entry and its colour at once, with no Save. The press then lets go of the venue, on both builds, and the form returns to its opening shape. With no venue pressed it asks you to press one. It refuses while a bot on that venue is neither idle nor stopped, and names each bot. `src/gui/settings_dialog.py, in SettingsDialog._remove_exchange` |
 
 ### Settings > Trading
 
@@ -120,7 +134,7 @@ Each row sets where a bot wizard opens. A running bot keeps its own value.
 
 | Row | What it does and what it reads |
 | --- | --- |
-| Default Target Balance ($1 to $1,000,000, $200) | Opens the wizard's Target Balance. Reads `default_target_balance`. `src/gui/bot_wizard.py, in _show_stored_target`, `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel._apply_stored_target_balance` |
+| Default Target Balance ($1 to $1,000,000, $200) | Opens the wizard's Target Balance. A wizard opened by a Market Inspector topology Adopt press opens on the proposal's suggested target instead. Reads `default_target_balance`. `src/gui/bot_wizard.py, in _show_stored_target`, `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel._apply_stored_target_balance`, `src/gui/main_window.py, in MainWindow._adopt_topology_proposal` |
 | Bot Visibility (orderbook or internal, orderbook) | Opens the wizard's Order Visibility. Reads `bot_visibility`. `src/gui/bot_wizard.py, in TradingParamsPage`, `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel._apply_stored_visibility` |
 | Enable aggressive trading mode (off) | Opens the wizard's Aggressive Trading. The engine changes only Stack tranches in Order Book mode, which go out as immediate-or-cancel limits. A tranche above the market cancels unfilled, and Robinhood on the Crypto class refuses each one. The mouse-over says it changes every buy and sell. Reads `aggressive_trading`. `src/trading/scrumming_bot.py, in ScrummingBot._open_stack_from_scrum` |
 
@@ -178,7 +192,7 @@ The figure shows a Font Settings group the page does not draw, and #00ffcc in Ac
 
 | Row | What it does and what it reads |
 | --- | --- |
-| Visual Theme (five themes, Cyberpunk Dark) | Picks Cyberpunk Dark, Neon Light, Classic Terminal, Minimal Modern or Glass & Metal. Save repaints the Qt window and the chrome colours of each open React page. The Theme menu writes the same setting. A stored name no theme holds opens on Cyberpunk Dark, and a Save from File > Settings writes that name over it. Reads `theme`. `src/gui/main_window.py, in MainWindow._switch_theme`, `src/gui/main_window.py, in MainWindow._remember_theme` |
+| Visual Theme (five themes, Cyberpunk Dark) | Picks Cyberpunk Dark, Neon Light, Classic Terminal, Minimal Modern or Glass & Metal. Save repaints the Qt window and the chrome colours of each open React page. The Theme menu writes the same setting. A stored name no theme holds opens on Cyberpunk Dark, and a Save writes that name over it. Reads `theme`. `src/gui/main_window.py, in MainWindow._switch_theme`, `src/gui/main_window.py, in MainWindow._remember_theme` |
 | Accent Color (text, empty) | A hex colour of three or six digits replaces the accent on Qt parts and the chart, and empty keeps the theme's own. React pages keep the theme's own either way. Other text is refused, and so is a colour under 4.5 to 1 against the theme's ground. The log names a refusal. Reads `accent_color`. `src/gui/theme_engine.py, in accented`, `src/gui/react_history_panel.py, in _palette` |
 
 #### The Simulator's tone, nigredo
@@ -207,10 +221,10 @@ These clips play on Windows alone, and each clip cuts off the one before, so a F
 | Buy order fills (on) | Plays a rising tone on a buy fill. Reads `buy_sound`. `src/gui/main_tabs/main_window_surface.py, in trade_filled_sounds` |
 | Sell order fills (on) | Plays a bell tone on a sell fill. Reads `sell_sound`. `src/gui/main_tabs/main_window_surface.py, in trade_filled_sounds` |
 | Errors (on) | Plays an alert tone when Start or Restart fails, and on a critical risk alert. Reads `error_sound`. `src/gui/main_window.py, in MainWindow._on_bot_command` |
-| Bot state changes (on) | Plays a click when Start, Pause, Stop, Restart or Delete works on one bot, when a bot is built, when Apply changes a running bot, and when a venue connection drops. Pause All and Stop All play nothing. Reads `bot_state_sound`. `src/gui/main_window.py, in MainWindow._on_bot_command`, `src/gui/main_window.py, in MainWindow._global_bot_cmd` |
+| Bot state changes (on) | Plays a click when Start, Pause, Stop, Restart or Delete works on one bot, when a bot is built, when Apply changes a running bot, and when a venue connection drops. Pause All and Stop All on the Live tab play nothing. On the Paper tab each plays this click. Reads `bot_state_sound`. `src/gui/main_window.py, in MainWindow._on_bot_command`, `src/gui/main_window.py, in MainWindow._global_bot_cmd`, `src/gui/paper/paper_trading_tab.py, in PaperTradingTab._global_bot_cmd`, `src/gui/paper/paper_react_trading_tab.py, in PaperTradingTabReact._global_bot_cmd` |
 | Scrum/Fold Fire (on) | Plays a rifle shot on a SCRUM, FOLD or DIST fill, and on a Manual Fire press. Reads `fire_sound`. `src/gui/main_window.py, in MainWindow._on_bot_fire` |
 | Tracking beeps (on) | Beeps once per two-second refresh for the hottest Scrumming bot of the active asset class, running or paused, in TRACK or FIRE. SEARCH stays silent, and the rate does not rise in FIRE. Reads `track_sound`. `src/gui/main_window.py, in MainWindow._dispatch_tracking_beep` |
-| P/L increase (on) | Plays coins when a fill reports a profit above zero. The growth a cartridge, Manual Fire or manual tranche fire reports reads each tranche's sale price less its wire share. Reads `profit_sound`. `src/gui/main_tabs/main_window_surface.py, in trade_filled_sounds`, `src/trading/scrumming/sizing.py, in discharge_gain_usd` |
+| P/L increase (on) | Plays coins when a fill reports a profit above zero. The growth a cartridge, Manual Fire or manual tranche fire reports reads each tranche's sale price less its wire share. Reads `profit_sound`. `src/gui/main_tabs/main_window_surface.py, in trade_filled_sounds`, `src/trading/scrumming/sizing.py, in discharge_gain_usd`, `src/trading/scrumming_bot.py, in ScrummingBot._book_manual_tranche_fill` |
 | Accumulation (on) | Plays a water drip on a FOLD fill. Reads `drip_sound`. `src/gui/main_tabs/main_window_surface.py, in trade_filled_sounds` |
 | SFX Volume (0 to 100%, 70%) | Sets the loudness of every clip. A move reaches the engine at once, and the engine remakes each clip at that level. Reads `volume`. `src/core/sound_engine.py, in SoundEngine.update_config` |
 | Test Buy, Test Sell, Test Fire, Test Track, Test Profit, Test Drip | Each hands the engine the page's boxes, then plays its clip. The master box and that clip's own box still apply. `src/gui/settings_dialog.py, in SettingsDialog._test_sound` |
