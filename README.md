@@ -1647,9 +1647,9 @@ Now: the table names 24 pages, the book runs to 1,262 printed pages, and the pag
 
 - [The pages](docs/manual/08-tabs/settings.md#the-pages)
 - [What each page persists](docs/manual/08-tabs/settings.md#what-each-page-persists)
-- [Settings, User page](docs/manual/08-tabs/settings.md#settings-user-page)
-- [Settings, Exchanges page](docs/manual/08-tabs/settings.md#settings-exchanges-page)
-- [Bridge](docs/manual/08-tabs/settings.md#bridge)
+- [How to use each page](docs/manual/08-tabs/settings.md#how-to-use-each-page)
+- [Settings > User Tab](docs/manual/08-tabs/settings.md#settings--user-tab)
+- [Settings > Exchanges](docs/manual/08-tabs/settings.md#settings--exchanges)
 
 **[The Promotion Pipeline](docs/manual/08-tabs/promotion-pipeline.md)**
 
