@@ -270,10 +270,10 @@ When the read clears, the rebalance fires as it does at any other time: a market
 order sized at the Target Delta and clipped to the wallet. A press of Fire does
 not wait for the read.
 
-A Max Cartridge Size of 0 or above 100 fires no rebalance. Under 1% of target,
-the first entry takes the same read and buys the whole target. Its wallet must
-hold that target after what the other bots claim, and in Order Book mode its
-order is a limit.
+A Max Cartridge Size of 0 or above 100 fires no rebalance. Under 1% of target, a
+bot takes the first entry, with the same read, and buys the whole target. Its
+wallet must hold that target after what the other bots claim, and in Order Book
+mode its order is a limit.
 
 Both routes refuse a buy while the venue holds more of the coin than the book
 shows, past other bots and by more than 1% of target. The next tick's audit books
