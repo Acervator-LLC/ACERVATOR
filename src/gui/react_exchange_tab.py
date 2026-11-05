@@ -308,7 +308,10 @@ def bind_news_transport() -> bool:
     except ImportError as exc:
         logger.debug("news feed reader not imported: %s", exc)
         return False
+    from .crypto_news_ticker import open_story
+
     ticker_surface.use_fetch(SafeRequest, safe_urlopen, time.monotonic)
+    ticker_surface.use_browser(open_story)
     return True
 
 
@@ -495,6 +498,66 @@ if _HAS_WEBENGINE:
             bot to the window's Voting Panel.
             """
             scrum_surface.drive(self._scrum, {scrum_surface.SELECT_BOT_PARAM: bot_id})
+            chosen = self._scrum.get_selected_bot_id()
+            if chosen:
+                self._extractor.clear_selection()
+                self._screen.hold_scrum_bot(chosen)
+                self._screen.on_scrum_selection_changed()
+            self._publish()
+
+        def select_extractor(self, bot_id: Any) -> None:
+            """Answer a press on one Extractor row, then publish the fleet again.
+
+            ``ExchangeTabModel.select_extractor_row`` points the command bar at
+            this bot, and the Scrumming row lets go the way Qt's does.
+            """
+            extractor_surface.drive(
+                self._extractor,
+                {
+                    extractor_surface.ACTION_PARAM: extractor_surface.SELECT_ACTION,
+                    extractor_surface.BOT_ID_PARAM: bot_id,
+                },
+            )
+            self._scrum.clear_selection()
+            self._scrum.current_row = surface.NO_SELECTION_ROW
+            self._screen.select_extractor_row(
+                self._row_of(self._screen.extractor_table, str(bot_id or ""))
+            )
+            self._publish()
+
+        def fire_bot(self, bot_id: Any) -> None:
+            """Run Fire on one row through ``BotStatusTableModel.on_fire``."""
+            scrum_surface.drive(self._scrum, {scrum_surface.FIRE_PARAM: bot_id})
+            self._publish()
+
+        def open_detail(self, bot_id: Any) -> None:
+            """Run Detail on one row through ``BotStatusTableModel.on_detail``."""
+            scrum_surface.drive(self._scrum, {scrum_surface.DETAIL_PARAM: bot_id})
+            self._publish()
+
+        def open_extractor_detail(self, bot_id: Any) -> None:
+            """Run Detail on one Extractor row through ``ExtractorBotTableModel``."""
+            extractor_surface.drive(
+                self._extractor,
+                {
+                    extractor_surface.ACTION_PARAM: extractor_surface.DETAIL_ACTION,
+                    extractor_surface.BOT_ID_PARAM: bot_id,
+                },
+            )
+            self._publish()
+
+        def new_bot(self, _pressed: Any = True) -> None:
+            """Run + New Bot through ``ExchangeTabModel.on_new_bot_clicked``."""
+            surface.drive(self._screen, {surface.NEW_BOT_PARAM: True})
+            self._publish()
+
+        def flip_privacy(self, _pressed: Any = True) -> None:
+            """Run Privacy Mode through ``ExchangeTabModel.on_global_privacy_clicked``."""
+            surface.drive(self._screen, {surface.PRIVACY_PARAM: True})
+            self._refresh_privacy_mode_btn_style()
+
+        def publish(self) -> None:
+            """Rebuild this venue's payloads and hand them to whatever draws it."""
             self._publish()
 
         def scroll_view(self, band: Any) -> None:

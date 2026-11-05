@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
+from ...core.notifications import AlertEvent, get_notification_manager
 from ...exchange.data_pool import TF_SECONDS
 from ..bot_container import BotState
 from ..container.config import BotConfig
@@ -53,6 +54,10 @@ DEFAULT_TIMEFRAME = "1h"
 #: The rows ``ScrummingBot.tick`` asks ``_get_ohlcv`` for.
 CANDLE_ROWS = 100
 MS_PER_SECOND = 1000.0
+
+#: The blocker ``_tick_breaker_holds`` writes on both sides while a hold stands.
+HOLD_BLOCKER = "cb-hard-tripped"
+HOLD_ALERT_TITLE_FORMAT = "Bot held: {symbol}"
 
 #: What ``CircuitBreakerMixin.order_hold_reason`` answers while the hard breaker holds.
 HARD_HOLD_FORMAT = (
@@ -274,7 +279,13 @@ class CircuitBreakerMixin(_Host):
                 bot_id=self.bot_id,
                 message=f"MANUAL FIRE WAITS: {self.order_hold_reason()}.",
             )
-        self._emit_gate_decision_at_quiet_tick("cb-hard-tripped")
+        self._last_gate_state.update(
+            scrum_armed=False,
+            fold_armed=False,
+            scrum_blockers=[HOLD_BLOCKER],
+            fold_blockers=[HOLD_BLOCKER],
+        )
+        self._emit_gate_decision_at_quiet_tick(HOLD_BLOCKER)
         return True
 
     def _check_circuit_breakers(self, candles, price=None) -> bool:
@@ -411,6 +422,20 @@ class CircuitBreakerMixin(_Host):
                 "_check_circuit_breakers",
                 type(_sup).__name__,
                 _sup,
+            )
+        self._send_hold_alert()
+
+    def _send_hold_alert(self) -> None:
+        """Send ``AlertEvent.BOT_PAUSED_BY_RISK`` naming ``order_hold_reason``."""
+        try:
+            get_notification_manager().send(
+                AlertEvent.BOT_PAUSED_BY_RISK,
+                HOLD_ALERT_TITLE_FORMAT.format(symbol=self.config.symbol),
+                self.order_hold_reason(),
+            )
+        except Exception as _alert_exc:
+            logger.warning(
+                "Bot %s hold alert not sent: %s", self.bot_id, _alert_exc
             )
 
     def _trip_soft_breaker(

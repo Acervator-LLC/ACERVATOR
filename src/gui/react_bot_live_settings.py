@@ -14,13 +14,18 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import partial
 from typing import Any
 
 from .main_tabs import bot_live_settings_surface as surface
+from .main_tabs import fold_chrome_surface
+from .main_tabs import fold_tranches_tab_surface as fold_surface
 from .main_tabs import live_settings_tab_surface as settings_surface
+from .main_tabs import phantom_bots_tab_surface as phantom_surface
 from .react_history_panel import page_html
 
 try:
+    from PySide6.QtCore import QEventLoop, QTimer
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout
@@ -141,6 +146,10 @@ PAGE_COUNT_JS = "document.querySelectorAll('[data-part$=\"-page\"]').length"
 CHANGE_LABEL_KEY = "change_label"
 CHANGE_STYLE_KEY = "change_style"
 
+#: The payload key holding the box a press raised, and the part that answers it.
+PRESS_BOX_KEY = "press_box"
+BOX_BUTTON = "press-box-button"
+
 #: The key a payload carries when its tab could not be built from the bot.
 FAULT_KEY = "tab_fault"
 
@@ -160,6 +169,48 @@ HOST_SCRIPT = """(function (global) {
 
   var ROOT = "%(root)s";
   var PLAN = %(plan)s;
+  var PRESS_INPUT = '[data-part="press-box-input"]';
+  var PAGE_NODE = '[data-part$="-page"]';
+  var typedFilter = "";
+
+  function act(fields) {
+    console.log("%(act)s" + JSON.stringify(fields));
+  }
+
+  // The page calls that carry a press no button click reports.
+  var HANDLERS = {
+    "fold-tranches-page": {
+      onPick: function (order) {
+        act({ key: "fold-order", value: order });
+      },
+      onType: function (needle) {
+        typedFilter = needle;
+        act({ key: "fold-filter", value: needle });
+        global.acervatorFoldTranchesTab.renderTab(
+          spaceFor("fold-tranches-page"), null, handlersFor("fold-tranches-page")
+        );
+      }
+    },
+    "phantom-bots-page": {
+      onEnable: function (checked) {
+        act({ key: "phantom", name: "enable_phantoms", value: checked });
+      },
+      onTimeframe: function (timeframe) {
+        act({ key: "phantom", name: "phantom_timeframes", value: timeframe });
+      },
+      onLock: function (count) {
+        act({ key: "phantom", name: "lock_candle_count", value: count });
+      }
+    }
+  };
+
+  function handlersFor(part) {
+    var found = HANDLERS[part] || {};
+    if (part === "fold-tranches-page") {
+      found.typed = typedFilter;
+    }
+    return found;
+  }
 
   function root() {
     return document.getElementById(ROOT);
@@ -173,8 +224,9 @@ HOST_SCRIPT = """(function (global) {
     return host.querySelector('[data-part="' + part + '"]');
   }
 
-  global.acervatorBotLiveSettingsDraw = function (window_model, tab_models) {
-    global.acervatorBotLiveSettings.renderWindow(root(), window_model);
+  global.acervatorBotLiveSettingsDraw = function (window_model, tab_models, chrome) {
+    global.acervatorBotLiveSettings.drawWindow(root(), window_model);
+    global.acervatorSetFoldChrome(chrome);
     var drawn = 0;
     PLAN.forEach(function (row) {
       var api = global[row[1]];
@@ -195,7 +247,7 @@ HOST_SCRIPT = """(function (global) {
       if (!api) {
         return;
       }
-      api.renderTab(space, model);
+      api.renderTab(space, model, handlersFor(row[0]));
       drawn += 1;
     });
     return drawn;
@@ -250,30 +302,49 @@ HOST_SCRIPT = """(function (global) {
     console.log("%(edit)s" + JSON.stringify({ name: name, value: value }));
   });
 
+  function pressOf(node, event) {
+    var page = node.closest(PAGE_NODE);
+    var typed = document.querySelector(PRESS_INPUT);
+    return {
+      key: node.getAttribute("data-part"),
+      name: node.getAttribute("data-name"),
+      index: node.getAttribute("data-index"),
+      number: node.getAttribute("data-number"),
+      tranche: node.getAttribute("data-tranche-id"),
+      child: node.getAttribute("data-child-bot-id"),
+      value: node.getAttribute("data-value"),
+      page: page === null ? null : page.getAttribute("data-part"),
+      typed: typed === null ? null : typed.value,
+      shift: event.shiftKey === true
+    };
+  }
+
   document.addEventListener("click", function (event) {
     var at = event.target;
     while (at) {
       if (typeof at.getAttribute === "function") {
         var part = at.getAttribute("data-part");
         if (part === "tab-button") {
-          console.log(
-            "%(act)s" + JSON.stringify({ tab: at.getAttribute("data-key") })
-          );
+          act({ tab: at.getAttribute("data-key") });
           return;
         }
         if (part !== null && part.indexOf("button") >= 0) {
-          console.log(
-            "%(act)s" +
-              JSON.stringify({
-                key: part,
-                name: at.getAttribute("data-name"),
-                index: at.getAttribute("data-index")
-              })
-          );
+          act(pressOf(at, event));
           return;
         }
       }
       at = at.parentElement;
+    }
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.ctrlKey !== true) {
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      act({ key: "prev-button" });
+    } else if (event.key === "ArrowRight") {
+      act({ key: "next-button" });
     }
   });
 })(window);"""
@@ -302,8 +373,8 @@ def window_html(theme: object = None) -> str:
     )
 
 
-def push_script(window_model: dict, tab_models: dict) -> str:
-    """The one JS statement that hands both payloads to the page.
+def push_script(window_model: dict, tab_models: dict, chrome: Any = None) -> str:
+    """The one JS statement that hands the three payloads to the page.
 
     ``ensure_ascii=True`` escapes U+2028 and U+2029, which are legal inside a
     JSON string and are JavaScript line terminators.
@@ -313,6 +384,8 @@ def push_script(window_model: dict, tab_models: dict) -> str:
         + json.dumps(window_model, ensure_ascii=True)
         + ", "
         + json.dumps(tab_models, ensure_ascii=True)
+        + ", "
+        + json.dumps(chrome, ensure_ascii=True)
         + ");"
     )
 
@@ -325,14 +398,13 @@ def field_for(name: str) -> str:
         return ""
 
 
-def tab_payload(module_name: str, bot: Any, now_ts: float, tab: str = "") -> dict:
+def tab_payload(
+    module_name: str, bot: Any, now_ts: float, tab: str = "", shape: Any = None
+) -> dict:
     """One tab's payload, built from ``bot`` by that tab's own surface.
 
-    A surface that raises answers a payload carrying ``FAULT_KEY`` and
-    ``FAULT_TEXT``. The import and the model lookup are inside the guard too,
-    because ``redraw`` fills every tab in one loop: a surface that cannot be
-    imported, or that names no model, would otherwise leave the page with no
-    tab drawn at all.
+    A surface that raises answers ``FAULT_KEY`` over ``FAULT_TEXT``, and ``shape``
+    takes the built model before the payload is read from it.
     """
     import importlib
     import inspect
@@ -342,8 +414,14 @@ def tab_payload(module_name: str, bot: Any, now_ts: float, tab: str = "") -> dic
         model_class = getattr(module, MODEL_BY_SURFACE[module_name])
         builder = module.build_view_model
         model = model_class(bot)
+        if hasattr(model, "now"):
+            model.now = now_ts
         if "build_now" in inspect.signature(builder).parameters:
-            return builder(model, build_now=True)
+            if shape is None:
+                return builder(model, build_now=True)
+            model.build()
+            shape(model)
+            return builder(model)
         if "now_ts" in inspect.signature(model.build).parameters:
             model.build(now_ts)
         else:
@@ -448,6 +526,169 @@ class PageTabs:
         return self._names.index(name) if name in self._names else -1
 
 
+class PageLabel:
+    """A cell or a button a handler relabels, redrawn by the next ``redraw``."""
+
+    def setText(self, words: Any) -> None:
+        """Take ``words``; the next ``tab_payload`` reads them off the bot."""
+
+    def setToolTip(self, words: Any) -> None:
+        """Take ``words``; the next ``tab_payload`` reads them off the bot."""
+
+
+class PageFoldTable:
+    """The Fold Tranches rows ``on_fold_filter_changed`` hides, as ``QTableWidget``."""
+
+    def __init__(self, rows: int) -> None:
+        self.hidden = [False] * rows
+
+    def rowCount(self) -> int:
+        """How many rows the tab drew."""
+        return len(self.hidden)
+
+    def setRowHidden(self, row: int, hide: bool) -> None:
+        """Hide or show the row at ``row``."""
+        self.hidden[row] = bool(hide)
+
+
+def plain_box_text(words: Any) -> str:
+    """``words`` with the two Qt rich-text marks ``_on_fire_position`` uses taken out."""
+    return (
+        str(words).replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
+    )
+
+
+class PageBoxes:
+    """``QMessageBox`` on the page: the same calls, answered by ``page_box``."""
+
+    Yes = 1
+    No = 2
+    Cancel = 4
+    Ok = 8
+    Warning = "warning"
+    Information = "information"
+    Critical = "critical"
+    Question = "question"
+
+    def __init__(self, parent: Any) -> None:
+        self._parent = parent
+        self._icon = PageBoxes.Information
+        self._title = ""
+        self._words = ""
+        self._buttons = PageBoxes.Ok
+        self._default = PageBoxes.Ok
+
+    def setIcon(self, icon: Any) -> None:
+        """Hold ``icon`` for ``exec``."""
+        self._icon = icon
+
+    def setWindowTitle(self, title: Any) -> None:
+        """Hold ``title`` for ``exec``."""
+        self._title = title
+
+    def setText(self, words: Any) -> None:
+        """Hold ``words`` for ``exec``."""
+        self._words = words
+
+    def setStandardButtons(self, buttons: int) -> None:
+        """Hold ``buttons`` for ``exec``."""
+        self._buttons = buttons
+
+    def setDefaultButton(self, button: int) -> None:
+        """Hold ``button`` for ``exec``."""
+        self._default = button
+
+    def exec(self) -> int:
+        """Draw the box and answer the button the page pressed."""
+        return self._parent.page_box(
+            self._icon, self._title, self._words, self._buttons, self._default
+        )[0]
+
+    @staticmethod
+    def information(parent: Any, title: Any, words: Any) -> int:
+        """``QMessageBox.information`` on the page."""
+        return parent.page_box(
+            PageBoxes.Information, title, words, PageBoxes.Ok, PageBoxes.Ok
+        )[0]
+
+    @staticmethod
+    def warning(parent: Any, title: Any, words: Any) -> int:
+        """``QMessageBox.warning`` on the page."""
+        return parent.page_box(
+            PageBoxes.Warning, title, words, PageBoxes.Ok, PageBoxes.Ok
+        )[0]
+
+    @staticmethod
+    def critical(parent: Any, title: Any, words: Any) -> int:
+        """``QMessageBox.critical`` on the page."""
+        return parent.page_box(
+            PageBoxes.Critical, title, words, PageBoxes.Ok, PageBoxes.Ok
+        )[0]
+
+    @staticmethod
+    def question(
+        parent: Any, title: Any, words: Any, buttons: int, default: int
+    ) -> int:
+        """``QMessageBox.question`` on the page."""
+        return parent.page_box(PageBoxes.Question, title, words, buttons, default)[0]
+
+
+class PagePrompt:
+    """``QInputDialog`` on the page: one typed answer through ``page_box``."""
+
+    @staticmethod
+    def getText(
+        parent: Any, title: Any, words: Any, _echo: Any, _text: Any
+    ) -> tuple:
+        """Answer what the operator typed and whether OK took it."""
+        pressed, typed = parent.page_box(
+            PageBoxes.Question,
+            title,
+            words,
+            PageBoxes.Ok | PageBoxes.Cancel,
+            PageBoxes.Ok,
+            True,
+        )
+        return typed, pressed == PageBoxes.Ok
+
+
+#: The name a page button sends and the word it shows, for each box answer.
+BOX_ANSWERS: tuple = (
+    (PageBoxes.Yes, "yes", "Yes"),
+    (PageBoxes.No, "no", "No"),
+    (PageBoxes.Cancel, "cancel", "Cancel"),
+    (PageBoxes.Ok, "ok", "OK"),
+)
+
+
+def box_payload(icon: Any, title: Any, words: Any, buttons: int, default: int) -> dict:
+    """The ``press_box`` field of the window payload for one open box."""
+    offered = [row for row in BOX_ANSWERS if buttons & row[0]]
+    named = {row[0]: row[1] for row in BOX_ANSWERS}
+    return {
+        "icon": icon,
+        "title": str(title),
+        "text": plain_box_text(words),
+        "buttons": [row[1] for row in offered],
+        "words": {row[1]: row[2] for row in offered},
+        "fallback": named.get(default),
+        "input": False,
+    }
+
+
+#: The inherited handler each page button runs, by the page and the button's place.
+CLEAR_HANDLERS: dict = {
+    "fold-tranches-page": (
+        "_on_clear_fold_tranches",
+        "_on_clear_wire_credits",
+        "_on_clear_lifetime_counters",
+    ),
+    "stack-tranches-page": (
+        "_on_clear_stack_tranches",
+        "_on_clear_stack_lifetime_counters",
+    ),
+}
+
 #: The two classes ``_build`` makes, kept so one import builds them once.
 _BUILT: dict = {}
 
@@ -459,6 +700,10 @@ def _build() -> dict:
     ``src.gui`` never reaches the window that reads the operator's bot.
     """
     from .bot_live_settings import BotLiveSettingsDialog
+    from .live_settings.fold_chrome import (
+        on_fold_filter_changed,
+        on_fold_sort_changed,
+    )
 
     class BotLiveSettingsPage(QWebEnginePage):
         """Routes the page's ``acervator-`` console lines to its owner."""
@@ -500,8 +745,16 @@ def _build() -> dict:
             self._tabs = PageTabs(self, list(self._model.tabs))
             self._apply_btn = PagePress(self, "apply_btn", surface.APPLY_LABEL)
             self._change_lbl = PageText(self)
-            self._cb_reset_all_btn = PagePress(self, "cb_reset_all_btn")
+            self._cb_reset_all_btn = PagePress(
+                self, "cb_reset_all_btn", settings_surface.RESET_BUTTON_TEXT
+            )
             self._apply_btn.setEnabled(False)
+            self._open_boxes: list = []
+            self._box_waiters: list = []
+            self._fold_filter = ""
+            self._fold_drawn: list = []
+            self._phantom_steps: list = []
+            self._read_phantom_timeframes()
             self._built = True
 
             self.setAccessibleName(ACCESSIBLE_NAME)
@@ -553,16 +806,191 @@ def _build() -> dict:
             if sheet:
                 window[CHANGE_STYLE_KEY] = sheet
             window["apply_enabled"] = self._apply_btn.isEnabled()
+            window[PRESS_BOX_KEY] = self._open_boxes[-1] if self._open_boxes else None
             now_ts = time.time()
+            shapes = {
+                "fold_tranches_tab_surface": self._shape_fold_tab,
+                "phantom_bots_tab_surface": self._shape_phantom_tab,
+            }
             tabs: dict = {}
             for name, part, _api, module_name in TAB_PLAN:
                 if self._tabs.indexOf(name) < 0:
                     continue
-                tabs[part] = tab_payload(module_name, self._bot, now_ts, name)
+                tabs[part] = tab_payload(
+                    module_name, self._bot, now_ts, name, shapes.get(module_name)
+                )
+            reset = tabs.get(SETTINGS_SPACE, {}).get("reset_button")
+            if reset is not None:
+                reset["current_text"] = self._cb_reset_all_btn.text()
             self._last_window = window
             self._last_tabs = tabs
             if self._page_ready:
-                self._run(push_script(window, tabs))
+                self._run(push_script(window, tabs, self._chrome_payload()))
+
+        def _chrome_payload(self) -> dict:
+            """The Order and Filter payload ``fold_chrome.js`` draws above the table."""
+            return fold_chrome_surface.view_model(
+                {
+                    "reset": True,
+                    "controls": True,
+                    "dialog": {
+                        "bot_id": self._bot.bot_id,
+                        "sort_key": self._fold_sort_key,
+                    },
+                }
+            )
+
+        def _shape_fold_tab(self, model: Any) -> None:
+            """Keep the row order and filter ``on_fold_filter_changed`` reads on ``model``."""
+            model.choose_order(self._fold_sort_key)
+            self._fold_drawn = model.tranches()
+            self._fold_row_texts = model.rows
+            self._fold_tranche_table = PageFoldTable(len(model.rows))
+            on_fold_filter_changed(self, self._fold_filter)
+            model.row_filter = self._fold_filter
+            model.hidden_rows = list(self._fold_tranche_table.hidden)
+
+        def _shape_phantom_tab(self, model: Any) -> None:
+            """Move the tab's controls to the steps waiting for Apply Changes."""
+            model.run_steps(self._phantom_steps)
+
+        def _read_phantom_timeframes(self) -> None:
+            """Fill the four names ``_take_phantom_timeframe`` reads off the bot."""
+            config = self._bot.config
+            exchange_id = getattr(config, "exchange_id", None)
+            self._phantom_tf_allowed = phantom_surface.allowed_timeframes(exchange_id)
+            self._phantom_tf_exchange = exchange_id
+            self._phantom_tf_parent = str(
+                getattr(config, "ta_timeframe", None)
+                or phantom_surface.PARENT_TIMEFRAME_DEFAULT
+            )
+            self._phantom_tf_current = phantom_surface.chosen_timeframe(
+                phantom_surface.configured_timeframes(self._bot)
+            )
+
+        def take_phantom_step(self, field: str, value: Any) -> None:
+            """Record one Phantom Bots control the way its Qt widget's signal does."""
+            if field == phantom_surface.TIMEFRAMES_FIELD:
+                step = [phantom_surface.STEP_TIMEFRAME, value]
+                self._take_phantom_timeframe(value)
+            elif field == phantom_surface.LOCK_FIELD:
+                step = [phantom_surface.STEP_LOCK, int(value)]
+                self._mark_changed(field, int(value))
+            else:
+                step = [phantom_surface.STEP_ENABLE, bool(value)]
+                self._mark_changed(field, bool(value))
+            self._phantom_steps = [
+                held for held in self._phantom_steps if held[0] != step[0]
+            ] + [step]
+
+        def _message_boxes(self) -> type:
+            """``PageBoxes``, so each inherited press asks on the page."""
+            return PageBoxes
+
+        def _text_prompts(self) -> type:
+            """``PagePrompt``, so Self-Destruct's typed phrase is asked on the page."""
+            return PagePrompt
+
+        def page_box(
+            self,
+            icon: Any,
+            title: Any,
+            words: Any,
+            buttons: int,
+            default: int,
+            typed: bool = False,
+        ) -> tuple:
+            """Draw one box, wait for the page's answer, and answer it and the text.
+
+            ``QEventLoop`` waits here the way ``QMessageBox.exec`` waits.
+            """
+            box = box_payload(icon, title, words, buttons, default)
+            box["input"] = typed
+            box["answer"] = default if not typed else PageBoxes.Cancel
+            box["typed"] = ""
+            waiter = QEventLoop(self)
+            self._open_boxes.append(box)
+            self._box_waiters.append(waiter)
+            self.redraw()
+            waiter.exec()
+            self._box_waiters.remove(waiter)
+            self._open_boxes.remove(box)
+            self.redraw()
+            return box["answer"], box["typed"]
+
+        def _answer_box(self, asked: dict) -> None:
+            """Take the page's answer to the box on top and end its wait."""
+            if not self._open_boxes:
+                return
+            named = {row[1]: row[0] for row in BOX_ANSWERS}
+            box = self._open_boxes[-1]
+            box["answer"] = named.get(str(asked.get("value")), box["answer"])
+            box["typed"] = str(asked.get("typed") or "")
+            self._box_waiters[-1].quit()
+
+        def done(self, result: int) -> None:
+            """End every wait ``page_box`` holds, then close the window."""
+            for waiter in list(self._box_waiters):
+                waiter.quit()
+            super().done(result)
+
+        def _show_hold(self) -> None:
+            """Redraw the page, whose ``build_view_model`` reads ``hold_text`` itself."""
+            self.redraw()
+
+        def _refresh_fold_tranches_tab(self) -> str:
+            """Redraw the page and answer what the Qt rebuild answers."""
+            self.redraw()
+            return "refreshed"
+
+        def _refresh_stack_tranches_tab(self) -> str:
+            """Redraw the page and answer what the Qt rebuild answers."""
+            self.redraw()
+            return "refreshed"
+
+        def _fold_panel_shows(self) -> dict:
+            """Report the Fold Tranches tab off the model the page was drawn from."""
+            model = fold_surface.FoldTranchesTabModel(self._bot)
+            model.build()
+            return model.panel_shows()
+
+        def _press_for(self, key: str, asked: dict) -> Any:
+            """The inherited handler one page button runs, or None for no such button."""
+            name = asked.get("name")
+            page = str(asked.get("page") or "")
+            if key == "row-button" and name == "cb_reset_all_btn":
+                return partial(self._on_cb_reset_all, asked.get("shift") is True)
+            if key == "row-button" and name == "self_destruct_btn":
+                return self._on_self_destruct_clicked
+            if key == "clear-button" and page in CLEAR_HANDLERS:
+                return getattr(self, CLEAR_HANDLERS[page][int(asked["index"])])
+            if key == "fire-button" and page == "positions-held-page":
+                return partial(self._on_fire_position, str(name))
+            if key == "fire-button":
+                number = int(asked["number"])
+                return partial(
+                    self._on_fire_tranche_clicked, self._fold_drawn[number - 1], number
+                )
+            if key == "arbiter-button":
+                return partial(
+                    self._on_arbiter_toggle_clicked,
+                    str(asked.get("tranche") or ""),
+                    str(asked.get("child") or ""),
+                    PageLabel(),
+                    PageLabel(),
+                )
+            if key == "fold-order":
+                return partial(on_fold_sort_changed, self, asked.get("value"))
+            if key == "fold-filter":
+                return partial(setattr, self, "_fold_filter", str(asked.get("value")))
+            if key == "phantom":
+                return partial(self.take_phantom_step, name, asked.get("value"))
+            return None
+
+        def _run_press(self, press: Any) -> None:
+            """Run one page press and draw what it left."""
+            press()
+            self.redraw()
 
         def apply_edit(self, payload: str) -> None:
             """Take one operator edit and record it the way the widget did."""
@@ -593,11 +1021,17 @@ def _build() -> dict:
             except ValueError:
                 logger.warning("Live settings page sent an action that is not JSON")
                 return
+            key = str(asked.get("key") or "")
+            if key == BOX_BUTTON:
+                self._answer_box(asked)
+                return
+            if self._open_boxes:
+                return
             if "tab" in asked:
                 self._tabs.setCurrentIndex(self._tabs.indexOf(str(asked["tab"])))
                 return
-            key = str(asked.get("key") or "")
             if key == "apply-button":
+                self._phantom_steps = []
                 self._apply_changes()
             elif key == "close-button":
                 self.accept()
@@ -605,6 +1039,9 @@ def _build() -> dict:
                 self._navigate_to_sibling(surface.PREV_STEP)
             elif key == "next-button":
                 self._navigate_to_sibling(surface.NEXT_STEP)
+            press = self._press_for(key, asked)
+            if press is not None:
+                QTimer.singleShot(0, partial(self._run_press, press))
 
         def _run(self, script: str) -> None:
             self._web.page().runJavaScript(script)

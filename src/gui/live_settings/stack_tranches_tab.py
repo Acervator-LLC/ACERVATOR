@@ -47,6 +47,7 @@ class StackTranchesTabMixin:
     _bot: Any
     _configure_form: Callable[..., Any]
     _format_age: Callable[..., Any]
+    _message_boxes: Callable[..., Any]
     _save_fleet_state_now: Callable[..., Any]
     _wrap_scrollable: Callable[..., Any]
 
@@ -169,7 +170,7 @@ class StackTranchesTabMixin:
         A pending tranche carrying an ``order_id`` is kept, and the
         confirm box states that count.
         """
-        from PySide6.QtWidgets import QMessageBox
+        QMessageBox = self._message_boxes()
 
         bot = self._bot
         tranches = list(getattr(bot, "_stack_tranches", []) or [])
@@ -266,7 +267,7 @@ class StackTranchesTabMixin:
         ``_stack_created`` and ``_stack_discarded`` are the only two
         counters the Stack ledger keeps.
         """
-        from PySide6.QtWidgets import QMessageBox
+        QMessageBox = self._message_boxes()
 
         bot = self._bot
         _counts = {

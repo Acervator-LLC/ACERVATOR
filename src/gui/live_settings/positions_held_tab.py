@@ -23,6 +23,63 @@ class PositionsHeldTabMixin:
     _bm: Any
     _bot: Any
     _configure_form: Callable[..., Any]
+    _message_boxes: Callable[..., Any]
+
+    def _on_fire_position(self, pair_to_fire: str) -> None:
+        """Close ``pair_to_fire`` at market after a Yes, on the bot manager's loop.
+
+        Both builds' Fire presses run this through ``_message_boxes``. The outcome
+        line arrives later on the main window's ``bot.log`` subscription.
+        """
+        import asyncio as _asyncio
+
+        QMessageBox = self._message_boxes()
+        confirm = QMessageBox.question(
+            self,
+            "Manual Fire — confirm position close",
+            f"Close position on <b>{pair_to_fire}</b> "
+            f"at current market price?<br><br>"
+            f"This will fire a 100% market SELL on the "
+            f"alt units, returning base currency to the "
+            f"pool. Bypasses the auto path's "
+            f"base-unit-profitability gate per "
+            f"operator-sovereignty invariant.<br>"
+            f"<br>Fail-closed buy safety still applies.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        loop = getattr(self._bm, "_async_loop", None) if self._bm else None
+        if loop is None:
+            QMessageBox.warning(
+                self,
+                "Async loop unavailable",
+                "Bot manager async loop not running. "
+                "Try again after platform launch completes.",
+            )
+            return
+
+        coro = self._bot.manual_fire_position(pair_to_fire)
+        try:
+            _asyncio.run_coroutine_threadsafe(coro, loop)
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                "Schedule failed",
+                f"Could not schedule the close:\n\n{type(exc).__name__}: {exc}",
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            "Manual Fire dispatched",
+            f"Close dispatched for <b>{pair_to_fire}</b>. "
+            f"Watch the Activity Log for the completion "
+            f"line. Re-open this dialog after the order "
+            f"settles to see updated state.",
+        )
 
     def _create_positions_held_tab(self) -> QWidget:
         """Positions Held tab for Extractor bots.
@@ -51,11 +108,9 @@ class PositionsHeldTabMixin:
             QTableWidget,
             QTableWidgetItem,
             QHeaderView,
-            QMessageBox,
         )
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QColor
-        import asyncio as _asyncio
 
         w = QWidget()
         layout = QVBoxLayout(w)
@@ -140,7 +195,6 @@ class PositionsHeldTabMixin:
 
         for row, p in enumerate(positions):
             pair = str(p.get(positions_held_surface.PAIR_KEY, ""))
-            opened_at = str(p.get(positions_held_surface.OPENED_AT_KEY, ""))
             cells = positions_held_surface.row_cells(p)
             colors = positions_held_surface.row_colors(p)
 
@@ -162,65 +216,9 @@ class PositionsHeldTabMixin:
                 f"QPushButton:hover {{ background: {ds.SETTINGS_WARNING_HOVER}; }}"
             )
 
-            def _make_fire_handler(identity: list):
-                def _on_fire():
-                    pair_to_fire = identity[0]
-                    # Confirmation dialog — operator-initiated
-                    # release is irreversible at the exchange.
-                    confirm = QMessageBox.question(
-                        self,
-                        "Manual Fire — confirm position close",
-                        f"Close position on <b>{pair_to_fire}</b> "
-                        f"at current market price?<br><br>"
-                        f"This will fire a 100% market SELL on the "
-                        f"alt units, returning base currency to the "
-                        f"pool. Bypasses the auto path's "
-                        f"base-unit-profitability gate per "
-                        f"operator-sovereignty invariant.<br>"
-                        f"<br>Fail-closed buy safety still applies.",
-                        QMessageBox.Yes | QMessageBox.No,
-                        QMessageBox.No,
-                    )
-                    if confirm != QMessageBox.Yes:
-                        return
-
-                    # Schedule the close on the bot manager's loop
-                    loop = getattr(self._bm, "_async_loop", None) if self._bm else None
-                    if loop is None:
-                        QMessageBox.warning(
-                            self,
-                            "Async loop unavailable",
-                            "Bot manager async loop not running. "
-                            "Try again after platform launch completes.",
-                        )
-                        return
-
-                    coro = self._bot.manual_fire_position(pair_to_fire)
-                    try:
-                        _asyncio.run_coroutine_threadsafe(coro, loop)
-                    except Exception as exc:
-                        QMessageBox.warning(
-                            self,
-                            "Schedule failed",
-                            f"Could not schedule the close:\n\n"
-                            f"{type(exc).__name__}: {exc}",
-                        )
-                        return
-
-                    # Non-blocking: the completion or refusal line arrives
-                    # later on the main window's bot.log subscription.
-                    QMessageBox.information(
-                        self,
-                        "Manual Fire dispatched",
-                        f"Close dispatched for <b>{pair_to_fire}</b>. "
-                        f"Watch the Activity Log for the completion "
-                        f"line. Re-open this dialog after the order "
-                        f"settles to see updated state.",
-                    )
-
-                return _on_fire
-
-            fire_btn.clicked.connect(_make_fire_handler([pair, opened_at]))
+            fire_btn.clicked.connect(
+                lambda _checked=False, held=pair: self._on_fire_position(held)
+            )
             table.setCellWidget(row, positions_held_surface.FIRE_COLUMN, fire_btn)
 
         layout.addWidget(table, stretch=1)

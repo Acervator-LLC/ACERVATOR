@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from functools import partial
 from typing import Any, Callable
 
 from PySide6.QtWidgets import (
@@ -44,13 +46,26 @@ EXPIRY_LEAD_LABELS: dict = {
 }
 
 
+def _log_destruct_outcome(bot_tag: str, outcome: Any) -> None:
+    """Log what ``outcome``, the ``self_destruct`` future of ``bot_tag``, ended with."""
+    try:
+        logger.info("Bot %s self_destruct result: %s", bot_tag, outcome.result())
+    except Exception as exc:
+        logger.warning("Bot %s self_destruct dispatch raised: %s", bot_tag, exc)
+
+
 class SettingsTabMixin:
     """Editable bot configuration, written on Apply."""
 
     # Annotations only; BotLiveSettingsDialog supplies these at runtime.
+    _bm: Any
     _bot: Any
+    _cb_reset_all_btn: Any
     _configure_form: Callable[..., Any]
     _mark_changed: Callable[..., Any]
+    _message_boxes: Callable[..., Any]
+    _show_hold: Callable[..., Any]
+    _text_prompts: Callable[..., Any]
 
     def _ta_timeframe_picked(self, timeframe: str) -> None:
         """Mark ``ta_timeframe`` changed and clear ``ta_timeframe_unserved``.
@@ -190,28 +205,24 @@ class SettingsTabMixin:
             logger.debug("target denom row refresh raised: %s", _denom_exc)
 
     def _on_self_destruct_clicked(self) -> None:
-        """Operator-initiated SELF-DESTRUCT. Two-step confirmation:
-        (1) modal dialog explains the consequences and requires
-            the operator to type "SELF-DESTRUCT" literally.
-        (2) call bot.self_destruct(confirmation_token=...) which
-            only proceeds if the token matches.
+        """Refuse on ``order_hold_reason``, ask for the typed word, then run ``bot.self_destruct``.
 
-        All paths are non-raising — the dialog is non-modal blocking
-        and any exceptions surface in the bot's log.
+        The sale runs on ``_bm._async_loop``, as Fold Fire and Position Fire do.
         """
-        try:
-            from PySide6.QtWidgets import (
-                QInputDialog,
-                QMessageBox,
-            )
-        except Exception:
-            return
+        from ..main_tabs.live_settings_tab_surface import REFUSED_FORMAT, REFUSED_TITLE
+
+        QInputDialog = self._text_prompts()
+        QMessageBox = self._message_boxes()
         if not hasattr(self._bot, "self_destruct"):
             QMessageBox.warning(
                 self,
                 "Self-Destruct Unavailable",
                 "This bot type does not support self-destruct.",
             )
+            return
+        hold = self._bot.order_hold_reason()
+        if hold:
+            QMessageBox.warning(self, REFUSED_TITLE, REFUSED_FORMAT.format(reason=hold))
             return
         sym = getattr(self._bot.config, "symbol", "?")
         bid = self._bot.bot_id[:8] if getattr(self._bot, "bot_id", None) else "?"
@@ -230,26 +241,36 @@ class SettingsTabMixin:
         )
         if not ok:
             return
-        if (text or "").strip() != "SELF-DESTRUCT":
+        typed = (text or "").strip()
+        if typed != "SELF-DESTRUCT":
             QMessageBox.information(
                 self,
                 "Self-Destruct Cancelled",
                 "Confirmation token did not match. No action taken.",
             )
             return
-        import threading, asyncio as _aio
-
-        def _run():
-            _sd_phrase = "SELF-DESTRUCT"
-            try:
-                result = _aio.run(
-                    self._bot.self_destruct(confirmation_token=_sd_phrase)
-                )
-                logger.info("Bot %s self_destruct result: %s", bid, result)
-            except Exception as exc:
-                logger.warning("Bot %s self_destruct dispatch raised: %s", bid, exc)
-
-        threading.Thread(target=_run, daemon=True, name=f"self-destruct-{bid}").start()
+        loop = getattr(self._bm, "_async_loop", None) if self._bm else None
+        if loop is None:
+            QMessageBox.warning(
+                self,
+                "Async loop unavailable",
+                "Bot manager async loop not running. Nothing was sold. "
+                "Try again after platform launch completes.",
+            )
+            return
+        coro = self._bot.self_destruct(confirmation_token=typed)
+        try:
+            outcome = asyncio.run_coroutine_threadsafe(coro, loop)
+        except RuntimeError as exc:
+            coro.close()
+            QMessageBox.warning(
+                self,
+                "Schedule failed",
+                f"Nothing was sold. Could not schedule the sale:\n\n"
+                f"{type(exc).__name__}: {exc}",
+            )
+            return
+        outcome.add_done_callback(partial(_log_destruct_outcome, bid))
         QMessageBox.information(
             self,
             "Self-Destruct Dispatched",
@@ -257,6 +278,57 @@ class SettingsTabMixin:
             f"check the Activity Log for SELF-DESTRUCT FIRING "
             f"or SELF-DESTRUCT FAILED to confirm outcome.\n"
             f"Bot will be PAUSED on completion.",
+        )
+
+    def _cb_reset_pressed(self) -> None:
+        """Run the Qt Reset All Breakers button, whose all-bots form is SHIFT."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication
+
+        modifiers = QApplication.keyboardModifiers()
+        self._on_cb_reset_all(bool(modifiers & Qt.KeyboardModifier.ShiftModifier))
+
+    def _on_cb_reset_all(self, whole_fleet: bool = False) -> None:
+        """Clear both breakers on ``_bot``, or on every bot ``_bm`` holds.
+
+        ``whole_fleet`` asks first through ``_message_boxes``. Both builds' presses
+        run this, and the button shows the outcome for ``RESET_RESTORE_DELAY_MS``.
+        """
+        from ..main_tabs.live_settings_tab_surface import (
+            FLEET_RESET_TITLE,
+            RESET_RESTORE_DELAY_MS,
+            fleet_reset_question,
+        )
+
+        orig = self._cb_reset_all_btn.text()
+        status = "Reset failed"
+        fleet = self._bm if whole_fleet else None
+        if callable(getattr(fleet, "reset_all_breakers", None)):
+            QMessageBox = self._message_boxes()
+            answer = QMessageBox.question(
+                self,
+                FLEET_RESET_TITLE,
+                fleet_reset_question(len(fleet._bots), len(fleet.held_bot_ids())),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+            cleared = fleet.reset_all_breakers()
+            status = "Reset applied" if any(cleared.values()) else "Nothing to reset"
+        elif hasattr(self._bot, "reset_circuit_breaker"):
+            try:
+                result = self._bot.reset_circuit_breaker("all")
+                applied = result.get("applied", []) if isinstance(result, dict) else []
+                status = "Reset applied" if applied else "Nothing to reset"
+            except Exception as _reset_exc:
+                logger.debug("reset_circuit_breaker raised: %s", _reset_exc)
+        self._cb_reset_all_btn.setText(status)
+        self._show_hold()
+        from PySide6.QtCore import QTimer as _QTimer
+
+        _QTimer.singleShot(
+            RESET_RESTORE_DELAY_MS, lambda: self._cb_reset_all_btn.setText(orig)
         )
 
     def _add_expiry_rows(self, rf: Any, cfg: Any) -> None:
@@ -397,6 +469,8 @@ class SettingsTabMixin:
 
     # Tab 2: Settings (editable)
     def _create_settings_tab(self) -> QWidget:
+        from ..main_tabs.live_settings_tab_surface import TOOLTIPS
+
         w = QWidget()
         layout = QVBoxLayout(w)
         layout.setSpacing(6)
@@ -945,28 +1019,8 @@ class SettingsTabMixin:
 
         reset_row = QHBoxLayout()
         self._cb_reset_all_btn = QPushButton("Reset All Breakers")
-        set_description(
-            self._cb_reset_all_btn, SETTINGS_TAB_DESCRIPTIONS["cb_reset_all_btn"]
-        )
-
-        def _on_cb_reset_all():
-            orig = self._cb_reset_all_btn.text()
-            status = "Reset failed"
-            if hasattr(self._bot, "reset_circuit_breaker"):
-                try:
-                    result = self._bot.reset_circuit_breaker("all")
-                    applied = (
-                        result.get("applied", []) if isinstance(result, dict) else []
-                    )
-                    status = "Reset applied" if applied else "Nothing to reset"
-                except Exception as _reset_exc:
-                    logger.debug("reset_circuit_breaker raised: %s", _reset_exc)
-            self._cb_reset_all_btn.setText(status)
-            from PySide6.QtCore import QTimer as _QTimer
-
-            _QTimer.singleShot(2000, lambda: self._cb_reset_all_btn.setText(orig))
-
-        self._cb_reset_all_btn.clicked.connect(_on_cb_reset_all)
+        set_description(self._cb_reset_all_btn, TOOLTIPS["cb_reset_all_btn"])
+        self._cb_reset_all_btn.clicked.connect(self._cb_reset_pressed)
         reset_row.addWidget(self._cb_reset_all_btn)
         cf.addRow(reset_row)
 

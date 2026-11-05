@@ -33,6 +33,7 @@ import math
 from typing import Any, Callable, Optional
 
 from ...core.fmt import fmt_pnl, fmt_price
+from .bot_status_table_surface import STATE_HELD, shown_state
 from ..visualizer.growth_stage import (
     BODY_SCALE_RATIO,
     CROWN_SPINE_COUNT,
@@ -134,6 +135,7 @@ STATE_NAMES = (
     STATE_ERROR,
     STATE_STOPPED,
     STATE_COOLDOWN,
+    STATE_HELD,
 )
 
 STATE_COLORS = {
@@ -144,6 +146,7 @@ STATE_COLORS = {
         STATE_ERROR: colors["error"],
         STATE_STOPPED: STOPPED_GREY,
         STATE_COOLDOWN: colors["warning"],
+        STATE_HELD: colors["error"],
     }
     for key, colors in THEME_COLORS.items()
 }
@@ -1113,7 +1116,7 @@ class BotNodeModel:
 
         data = self.bot_data
         stats = data.get(STATS_KEY, {})
-        state = data.get(STATE_KEY, DEFAULT_STATE)
+        state = shown_state(data) or DEFAULT_STATE
         symbol = data.get(SYMBOL_KEY, DEFAULT_SYMBOL)
         mode = data.get(MODE_KEY, DEFAULT_MODE)
         pnl = stats.get(PNL_KEY, ZERO_STAT)

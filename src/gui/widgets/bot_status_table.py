@@ -64,6 +64,7 @@ from ..main_tabs.bot_status_table_surface import (
     SortLookups,
     blockers_text,
     fold_taper_of,
+    held_tooltip,
     icon_asset_of,
     kept_logo_path,
     lot_units_of,
@@ -77,6 +78,7 @@ from ..main_tabs.bot_status_table_surface import (
     order_statuses,
     risk_lines,
     selection_after_press,
+    shown_state,
     selection_after_view_moved,
     sort_direction,
     sort_mark,
@@ -393,6 +395,7 @@ if _HAS_QT:
             "cooldown": QColor(ds.WARNING_STRONG),
             "stopped": QColor(ds.TEXT_MUTED),
             "starting": QColor(ds.STATE_STARTING),
+            "held": QColor(ds.ERROR),
         }
 
         PRIVACY_FIELD_BY_COL = {
@@ -798,9 +801,12 @@ if _HAS_QT:
                 item = QTableWidgetItem(text)
                 item.setTextAlignment(Qt.AlignCenter)
                 if col == 1 and text:
-                    color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
+                    shown = shown_state(status)
+                    color = self.STATE_COLORS.get(shown, QColor(ds.TEXT_HIGH))
                     item.setForeground(color)
-                    set_description(item, mode_tooltip(mode, state))
+                    set_description(
+                        item, held_tooltip(mode_tooltip(mode, shown), status)
+                    )
                     # UserRole carries (exchange_id, raw_symbol) for _on_cell_clicked.
                     try:
                         from ...exchange.exchange_chart_urls import (
@@ -1046,6 +1052,7 @@ if _HAS_QT:
                     set_description(
                         fire_btn, FIRE_TIP_INACTIVE_FORMAT.format(state=state)
                     )
+            set_description(fire_btn, held_tooltip(fire_btn.toolTip(), status))
             # The path the row chose, readable off the button itself.
             fire_btn.setProperty(FIRE_PATH_PROPERTY, fire_path)
             fire_btn.clicked.connect(lambda _checked, b=bid: self._on_fire(b))
