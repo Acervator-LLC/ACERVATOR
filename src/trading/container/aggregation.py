@@ -10,6 +10,7 @@ import logging
 import math
 from typing import Any, Optional
 
+from ...exchange.market_rules_store import quote_currency
 from ..smart_wire import is_mature, mature_profit_usd
 from ..target_bands import ammo_units, fleet_ammo
 from .config import (
@@ -486,7 +487,7 @@ class FleetAggregationMixin:
         exchange_id: str,
         currency: str,
     ) -> Optional[float]:
-        """Sum of what OTHER bots on ``exchange_id`` and ``currency`` hold in queued
+        """Sum of what OTHER bots on ``exchange_id`` quoting ``currency`` hold in queued
         fold tranches and parked wire credits, in that currency's units.
 
         ``sum_sibling_base_currency_claims`` reads a bot's allocation, and this reads
@@ -503,8 +504,8 @@ class FleetAggregationMixin:
             try:
                 other_cfg = other_bot.config
                 same_exchange = other_cfg.exchange_id == exchange_id
-                other_base = (getattr(other_cfg, "base_currency", "") or "").upper()
-                if not same_exchange or other_base != currency_norm:
+                other_quote = quote_currency(other_cfg.symbol).upper()
+                if not same_exchange or other_quote != currency_norm:
                     continue
                 held = self._one_sibling_hold(other_bot)
             except Exception as _read_exc:

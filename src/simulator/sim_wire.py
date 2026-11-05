@@ -181,10 +181,13 @@ class SimWireManager:
         self._transactions: list[SimWireTransaction] = []
         self._wires: dict[str, dict[str, float]] = {}
         self._bot_refs: dict[str, Any] = {}
+        self._wallets: dict[str, str] = {}
 
-    def attach_bot(self, bot_id: str, bot_ref: Any) -> None:
-        """Hold the ``SimPosition`` of ``bot_id``'s walk that a share can reach."""
+    def attach_bot(self, bot_id: str, bot_ref: Any, wallet: str = "") -> None:
+        """Hold the ``SimPosition`` of ``bot_id``'s walk that a share can reach, and the
+        ``wallet_key`` that bot trades."""
         self._bot_refs[str(bot_id)] = bot_ref
+        self._wallets[str(bot_id)] = str(wallet)
 
     def release_bot(self, bot_id: str) -> bool:
         """Drop the held position of ``bot_id`` and keep its ledger and wires;
@@ -557,7 +560,7 @@ class SimWireManager:
 
     def land_parked_credits(self, bot_id: str, position: Any) -> float:
         """Spread ``bot_id``'s parked pool over ``position``'s standing fold
-        tranches and answer what landed.
+        tranches, add it to ``cash_usd``, and answer what landed.
 
         Answers 0.0 while ``parked_usd`` is empty or the position holds no
         tranche.
@@ -570,6 +573,7 @@ class SimWireManager:
             return 0.0
         landed = float(ledger.parked_usd)
         share = spread_over_fold_queue(position, landed, list(ledger.parked_credits))
+        position.cash_usd = float(position.cash_usd) + landed
         ledger.parked_usd = 0.0
         ledger.parked_credits = []
         logger.info(
@@ -612,6 +616,12 @@ class SimWireManager:
             "placement": "parked",
             "parked_total": ledger.parked_usd,
         }
+
+    def _same_wallet(self, source_id: str, target_id: str) -> bool:
+        """False where both bots attached a ``wallet_key`` and the two differ."""
+        source = self._wallets.get(str(source_id), "")
+        target = self._wallets.get(str(target_id), "")
+        return not source or not target or source == target
 
     def _safe_outflow_pct(self, source_id: str, profit_usd: float) -> float:
         """``compute_safe_outflow_pct`` over the attached source's
@@ -681,6 +691,17 @@ class SimWireManager:
                 continue
             pct = min(admitted_pct * scaling, per_wire_safe_pct)
             share = surplus * pct / 100.0
+            if not self._same_wallet(source_id, target_id):
+                results.append(
+                    {
+                        "target_id": target_id,
+                        "pct": pct,
+                        "share": share,
+                        "applied": False,
+                        "reason": "target trades another wallet",
+                    }
+                )
+                continue
             if share < self._min_wire:
                 results.append(
                     {

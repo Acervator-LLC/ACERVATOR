@@ -62,11 +62,12 @@ from ..simulator.back_test import (
     trend_reading,
 )
 from ..exchange.base import MarketRules
-from ..exchange.market_rules_store import recorded_rules
+from ..exchange.market_rules_store import quote_currency, recorded_rules
 from ..simulator.validation import BB_MIDLINE, bb_reading, latch
 from ..trading.container.config import BotState, fold_ratio_pct
 from ..trading.gate_chain import GateContext, effective_gate_flags
 from ..trading.otd_math import BAND_TRAVEL_OFF_PCT, DistanceSettings
+from ..trading.wallet_reservations import wallet_key
 from ..trading.scrumming.sizing import (
     BELOW_POSITION_MINIMUM,
     CLASS_CRYPTO,
@@ -386,14 +387,12 @@ def route_sale_surplus(
     proceeds_usd: float,
     units: float,
     price: float,
-) -> tuple[float, float]:
+) -> float:
     """Hand one sale's ``restored_sale_surplus_usd`` to
     ``wires.distribute_sale_surplus``, as ``_route_scrum_proceeds_via_wires`` routes
-    a live sale, and answer the USD that left the sale and the USD of it that
-    reached a target's cash. A parked share stays in ``balance.cash_usd`` and
-    lands as a credit alone.
+    a live sale, and answer the USD that left the sale.
 
-    A refused read answers nothing moved, leaving every dollar with the sale.
+    A refused read answers 0.0, leaving every dollar with the sale.
     """
     surplus = restored_sale_surplus_usd(
         proceeds_usd,
@@ -417,12 +416,8 @@ def route_sale_surplus(
             bot.bot_id,
             exc,
         )
-        return 0.0, 0.0
-    moved = [row for row in rows if row.get("applied")]
-    return (
-        sum(float(row["share"]) for row in moved),
-        sum(float(row["share"]) for row in moved if row["placement"] != "parked"),
-    )
+        return 0.0
+    return sum(float(row["share"]) for row in rows if row.get("applied"))
 
 
 def land_wire_credits(wires: Any, bot_id: str, balance: FakeBalance) -> float:
@@ -519,14 +514,12 @@ def apply_scrum(
     notional = priced_usd(units, float(price))
     fee = estimated_fee_usd(notional, taker_fee_pct(bot))
     proceeds = sale_proceeds_usd(notional, fee)
-    routed_usd, moved_usd = (
-        route_sale_surplus(wires, bot, balance, proceeds, units, float(price))
-        if wires is not None
-        else (0.0, 0.0)
-    )
+    if wires is not None:
+        proceeds -= route_sale_surplus(
+            wires, bot, balance, proceeds, units, float(price)
+        )
     balance.units -= units
-    balance.cash_usd += proceeds - moved_usd
-    proceeds -= routed_usd
+    balance.cash_usd += proceeds
     balance.last_trade_price = float(price)
     balance.last_trade_side = SCRUM_SIDE_WORD
     balance.main_lots.sort(
@@ -1211,7 +1204,11 @@ class PaperRunner:
             self._run.balances[bot.bot_id] = balance
             opened = True
             if self._wires is not None:
-                self._wires.attach_bot(bot.bot_id, balance)
+                self._wires.attach_bot(
+                    bot.bot_id,
+                    balance,
+                    wallet_key(str(bot.exchange_id), quote_currency(bot.symbol)),
+                )
                 land_wire_credits(self._wires, bot.bot_id, balance)
         held = balance or FakeBalance()
         seen = tick(

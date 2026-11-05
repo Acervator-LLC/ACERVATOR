@@ -15,8 +15,15 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, SettledFill
 from ...exchange.base import OrderSide, Trade
+from ...exchange.idempotency import get_idempotency_layer
 from ..bot_container import FILL_DUST_UNITS
-from .sizing import priced_usd
+from .sizing import (
+    SIDE_BUY,
+    SIDE_SELL,
+    booked_at_audit,
+    fold_spends_credit,
+    priced_usd,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -59,8 +66,11 @@ class ReconciliationEngineMixin:
 
     # Supplied by ScrummingBot at runtime; annotations only, no attribute
     # is created.
+    _book_manual_purchase: Callable[..., Any]
+    _book_manual_sale: Callable[..., Any]
     _bus: Any
     _current_holdings: float
+    _fee_pct_read: Callable[..., Optional[float]]
     _fill_history: Any
     _get_balance: Callable[..., Any]
     _get_ticker: Callable[..., Any]
@@ -1297,6 +1307,64 @@ class ReconciliationEngineMixin:
         _total = sum(_lot_each)
         return _total if math.isfinite(_total) else None
 
+    async def _settle_lost_order(
+        self, side: str, units: float, exchange_units: float, tolerance_pct: float
+    ) -> bool:
+        """Book ``units`` the audit read past the book as the fill of the unanswered
+        decision on ``side`` they match to within ``tolerance_pct``, and end it.
+
+        ``booked_at_audit`` names the decisions. ``_book_manual_purchase`` pays the queue
+        or ``_book_manual_sale`` queues a tranche at ``stats.current_price``, because the
+        venue's answer was lost. True where one booked.
+        """
+        price = float(
+            getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
+        )
+        if not math.isfinite(price) or price <= 0.0:
+            return False
+        layer = get_idempotency_layer()
+        for intent in layer.unanswered_intents(self.bot_id, self.config.symbol, side):
+            if not booked_at_audit(intent.decision) or not math.isclose(
+                intent.amount, units, rel_tol=tolerance_pct / 100.0
+            ):
+                continue
+            layer.end_retry(intent)
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"LOST ORDER BOOKED: the audit read {units:.8f} "
+                    f"{self.config.target_asset} past the book, the size of a "
+                    f"{side} whose answer was lost, so it books at ${price:.8f}."
+                ),
+            )
+            if side == SIDE_BUY:
+                await self._book_manual_purchase(
+                    units,
+                    price,
+                    units,
+                    True,
+                    label="FOLD",
+                    operator_initiated=False,
+                    price=price,
+                    venue_units=exchange_units - units,
+                    fee_pct=self._fee_pct_read(),
+                    credit_spent=fold_spends_credit(intent.decision),
+                )
+            else:
+                await self._book_manual_sale(
+                    units,
+                    price,
+                    units,
+                    True,
+                    label="SCRUM",
+                    operator_initiated=False,
+                    price=price,
+                    venue_units=exchange_units + units,
+                )
+            return True
+        return False
+
     def _adopt_drift_down(
         self,
         exchange_units: float,
@@ -1500,6 +1568,13 @@ class ReconciliationEngineMixin:
         )
 
         if _drift_down:
+            if await self._settle_lost_order(
+                SIDE_SELL,
+                internal_units - exchange_units,
+                exchange_units,
+                _TOLERANCE_PCT,
+            ):
+                return True
             self._adopt_drift_down(exchange_units, _lot_each, _scalar_units, reason)
         else:
 
@@ -1513,6 +1588,10 @@ class ReconciliationEngineMixin:
                 _basis = float(
                     getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
                 )
+                if _gain > 1e-9 and await self._settle_lost_order(
+                    SIDE_BUY, _gain, exchange_units, _TOLERANCE_PCT
+                ):
+                    return True
 
                 # _book_reconciliation_lot returns the units it wrote;
                 # both branches below read that, not _basis.

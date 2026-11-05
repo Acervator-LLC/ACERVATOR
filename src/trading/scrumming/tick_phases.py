@@ -62,6 +62,7 @@ from .sizing import (
     opposing_event_id,
     priced_usd,
     retry_fold_plan,
+    tranche_short_at_fill,
     routed_share_pct,
     scrum_units,
     target_delta_usd,
@@ -1859,8 +1860,13 @@ class TickPhaseMixin:
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
         self._drop_malformed_fold_tranches()
+        _ask = float(getattr(ticker, "ask", 0.0) or ticker.last)
         _eligible, _repeated = retry_fold_plan(
-            self._fold_eligible_tranches(ticker.last, distance, band),
+            [
+                one
+                for one in self._fold_eligible_tranches(ticker.last, distance, band)
+                if not tranche_short_at_fill(one, distance, _ask)
+            ],
             self._unanswered_decisions(SIDE_BUY),
         )
         try:
@@ -1902,7 +1908,8 @@ class TickPhaseMixin:
                 key=lambda _t: -float(_t.get("initial_buy_price", _t.get("ref", 0))),
             )
             _fold_plan, _elig_capped, _partial_count = self._plan_fold_consumption(
-                _elig_sorted, _cap_remaining_for_queue
+                _elig_sorted,
+                _cap_remaining_for_queue / float(self._quote_to_usd or 1.0),
             )
             _running_usd = sum(_take for _, _take, _ in _fold_plan)
             _excluded = len(_eligible) - len(_elig_capped)

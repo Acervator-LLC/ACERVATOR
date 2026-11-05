@@ -12,6 +12,7 @@ import math
 from typing import Any, Optional, TYPE_CHECKING
 
 from ...core.event_bus import LINE_KIND_WIRE_FLOW
+from ...exchange.market_rules_store import quote_currency
 from ..container.config import fold_ratio_pct
 from ..otd_math import DistanceSettingUnreadable
 from ..wallet_reservations import wallet_key
@@ -107,13 +108,15 @@ class WireRoutingMixin(_Host):
         self._smart_wire_mgr = manager
 
     def _shares_wallet(self, other: Any) -> bool:
-        """True where ``other`` holds this bot's ``config.exchange_id`` and
-        ``config.base_currency``, the one wallet a wire moves dollars inside."""
+        """True where ``other`` trades this bot's ``config.exchange_id`` and quote
+        currency, the one wallet a wire moves dollars inside."""
         other_config = getattr(other, "config", None)
         return wallet_key(
             getattr(other_config, "exchange_id", ""),
-            str(getattr(other_config, "base_currency", "")).upper(),
-        ) == wallet_key(self.config.exchange_id, str(self.config.base_currency).upper())
+            quote_currency(getattr(other_config, "symbol", "")).upper(),
+        ) == wallet_key(
+            self.config.exchange_id, quote_currency(self.config.symbol).upper()
+        )
 
     def _sale_surplus_usd(
         self, proceeds_usd: float, sold_units: float, sale_price: float

@@ -140,18 +140,26 @@ class IdempotencyLayer:
         with self._lock:
             self._unanswered.pop(intent.fingerprint(self.session_nonce), None)
 
-    def unanswered_decisions(self, bot_id: str, symbol: str, side: str) -> list[str]:
-        """The decisions holding a ``coid`` for ``bot_id`` on ``symbol`` and ``side``,
-        oldest first."""
+    def unanswered_intents(
+        self, bot_id: str, symbol: str, side: str
+    ) -> list[TradeIntent]:
+        """The intents naming a decision that hold a ``coid`` for ``bot_id`` on
+        ``symbol`` and ``side``, oldest first."""
         with self._lock:
             return [
-                held.intent.decision
+                held.intent
                 for held in self._unanswered.values()
                 if held.intent.decision
                 and held.intent.bot_id == bot_id
                 and held.intent.symbol == symbol
                 and held.intent.side == side
             ]
+
+    def unanswered_decisions(self, bot_id: str, symbol: str, side: str) -> list[str]:
+        """The decisions of ``unanswered_intents``."""
+        return [
+            intent.decision for intent in self.unanswered_intents(bot_id, symbol, side)
+        ]
 
     def _enforce_size_limit(self) -> None:
         if len(self._unanswered) <= self.max_entries:

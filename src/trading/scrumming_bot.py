@@ -2428,6 +2428,8 @@ class ScrummingBot(
                     type(_sup).__name__,
                     _sup,
                 )
+            for _cleared in self._fold_tranches:
+                self._return_wire_credits_to_pool(_cleared)
             self._fold_tranches = []
             self._fold_queue_usd = 0.0
             self._current_holdings = 0.0

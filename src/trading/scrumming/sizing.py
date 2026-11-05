@@ -3326,12 +3326,42 @@ def retry_fold_plan(eligible: list, decisions: list) -> tuple[list, str]:
     return eligible, ""
 
 
-def answer_fits_spend(
-    asked_units: float, price: float, spend: float, tolerance_pct: float
+def narrower_shadow_exit(decision: str, rows: list, standing: list) -> bool:
+    """True where ``standing`` holds a row the shadow exit ``decision`` names that
+    ``rows`` leaves out, so sending ``rows`` could settle fewer rows than it sold."""
+    named = _decision_events(decision, SHADOW_EXIT_PREFIX)
+    sent = {name for row in rows for name in tranche_event_names(row)}
+    return any((tranche_event_names(row) & named) - sent for row in standing)
+
+
+def answer_fits_plan(
+    asked_units: float,
+    filled_units: float,
+    price: float,
+    spend: float,
+    restored_units: float,
+    tolerance_pct: float,
 ) -> bool:
-    """True where ``asked_units`` at ``price`` costs ``spend`` to within
-    ``tolerance_pct``, so a repeated decision's answer is the order ``spend`` sized."""
-    return abs(asked_units * price - spend) <= spend * tolerance_pct / 100.0
+    """True where ``filled_units`` restore ``restored_units`` and ``asked_units`` at
+    ``price`` costs ``spend`` to within ``tolerance_pct``, so a repeated decision's
+    answer is the order the plan sized."""
+    return (
+        filled_units >= restored_units
+        and abs(asked_units * price - spend) <= spend * tolerance_pct / 100.0
+    )
+
+
+def booked_at_audit(decision: str) -> bool:
+    """True where ``_settle_lost_order`` may book ``decision`` through the cartridge's
+    bookers: the excess sale, the shortfall buy and a fold, each read by units."""
+    return decision in (EXCESS_SALE, SHORTFALL_BUY) or decision.startswith(
+        FOLD_DECISION_PREFIX
+    )
+
+
+def fold_spends_credit(decision: str) -> bool:
+    """True where ``decision`` is a fold, whose order spent its tranches' credits."""
+    return decision.startswith(FOLD_DECISION_PREFIX)
 
 
 def combined_event_reference(survivor: dict, absorbed: dict) -> dict:
