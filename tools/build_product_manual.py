@@ -1758,10 +1758,7 @@ DECK_TITLE = "Ekthelius's Prototyping Trading Evidence"
 DEFAULT_DECK = (
     REPO_ROOT / "docs" / "prototyping-evidence" / "Prototyping-Trading-Evidence.pptx"
 )
-DECK_TOP_BASES = 8
-DECK_GROUP_BASES = 6
-DECK_MARKET_BASES = 3
-DECK_CARD_BASES = 10
+DECK_ASSET_BOX = Box(SLIDE_MARGIN, Inches(1.76), BODY_W, Inches(4.9))
 RATIO_MIN_SIDE_FILLS = 4
 BAND_BAR_LENGTHS = (
     ("5 minutes", 300_000),
@@ -3141,6 +3138,14 @@ def _deck_ratio(prs: Presentation, source: DeckSource) -> None:
     source_note(slide, "tools/build_product_manual.py, in sell_over_buy")
 
 
+def _deck_asset_figure(
+    slide: Slide, source: DeckSource, name: str, ledger: Ledger
+) -> None:
+    """Place figure ``name`` in ``DECK_ASSET_BOX`` and cite it in the source note."""
+    _deck_picture(slide, source, name, DECK_ASSET_BOX, ledger)
+    source_note(slide, f"figures/{name}")
+
+
 def _deck_base(
     prs: Presentation, source: DeckSource, label: str, ledger: Ledger
 ) -> None:
@@ -3156,46 +3161,7 @@ def _deck_base(
         f" {buy_index(row):.3f}; sell over buy {ratio_text};"
         f" {day_label(row.opened)} to {day_label(row.closed)}.",
     )
-    name = asset_figure_name("vwap", label)
-    box = Box(SLIDE_MARGIN, Inches(1.76), BODY_W, Inches(4.9))
-    _deck_picture(slide, source, name, box, ledger)
-    source_note(slide, f"figures/{name}")
-
-
-def _deck_group(
-    prs: Presentation,
-    source: DeckSource,
-    labels: Sequence[str],
-    ledger: Ledger,
-) -> None:
-    """Add one slide carrying up to ``DECK_GROUP_BASES`` VWAP charts, each labelled."""
-    slide = blank(prs)
-    heading(
-        slide,
-        f"The remaining bases, {labels[0]} to {labels[-1]}",
-        f"{count_word(DECK_GROUP_BASES).capitalize()} charts to a slide. Each one"
-        " carries the same two lines and the same net-units panel as the"
-        f" {count_word(DECK_TOP_BASES)} above.",
-    )
-    columns = DECK_GROUP_BASES // 2
-    cell_w = emu(BODY_W / columns)
-    cell_h = Inches(2.3)
-    for index, label in enumerate(labels):
-        left = emu(SLIDE_MARGIN + (index % columns) * cell_w)
-        top = emu(Inches(1.72) + (index // columns) * (cell_h + Inches(0.42)))
-        inner = emu(cell_w - Inches(0.14))
-        name = asset_figure_name("vwap", label)
-        _deck_picture(slide, source, name, Box(left, top, inner, cell_h), ledger)
-        row = source.rows[label]
-        text_box(
-            slide,
-            Box(left, emu(top + cell_h), inner, Inches(0.34)),
-            f"{label}   {row.fills} fills   index {buy_index(row):.3f}",
-            size=11,
-            color=MUTE,
-            align=PP_ALIGN.CENTER,
-        )
-    source_note(slide, "figures/vwap_a<NN>.png")
+    _deck_asset_figure(slide, source, asset_figure_name("vwap", label), ledger)
 
 
 def _share(tally: BandTally) -> str:
@@ -3337,48 +3303,24 @@ def _deck_market(
             color=MUTE,
             align=PP_ALIGN.CENTER,
         )
-    source_note(slide, "figures/weekly_a<NN>.png and trace_a<NN>.png")
+    source_note(
+        slide,
+        " and ".join(f"figures/{asset_figure_name(kind, label)}" for kind in captions),
+    )
 
 
-def _deck_cards(
-    prs: Presentation,
-    source: DeckSource,
-    labels: Sequence[str],
-    ledger: Ledger,
+def _deck_card(
+    prs: Presentation, source: DeckSource, label: str, ledger: Ledger
 ) -> None:
-    """Add one slide carrying up to ``DECK_CARD_BASES`` labelled position cards."""
+    """Add one slide carrying ``label``'s position card, or the line stating it absent."""
     slide = blank(prs)
     heading(
         slide,
-        f"The venue's own position cards, {labels[0]} to {labels[-1]}",
+        f"The venue's own position card, {label}",
         "Each card carries the entry price the venue holds for the open position,"
         " the current price, and the gain or loss. The figures are the venue's own.",
     )
-    columns = DECK_CARD_BASES // 2
-    cell_w = emu(BODY_W / columns)
-    cell_h = Inches(2.1)
-    for index, label in enumerate(labels):
-        left = emu(SLIDE_MARGIN + (index % columns) * cell_w)
-        top = emu(Inches(1.78) + (index // columns) * (cell_h + Inches(0.46)))
-        inner = emu(cell_w - Inches(0.12))
-        name = asset_figure_name("card", label)
-        caption = label
-        if (source.figures_dir / name).is_file():
-            picture(
-                slide, source.figures_dir / name, Box(left, top, inner, cell_h), ledger
-            )
-        else:
-            ledger.stated_absent.append(name)
-            caption = f"{label}, no card"
-        text_box(
-            slide,
-            Box(left, emu(top + cell_h), inner, Inches(0.34)),
-            caption,
-            size=11,
-            color=MUTE,
-            align=PP_ALIGN.CENTER,
-        )
-    source_note(slide, "figures/card_a<NN>.png")
+    _deck_asset_figure(slide, source, asset_figure_name("card", label), ledger)
 
 
 def _deck_grader(prs: Presentation) -> None:
@@ -3483,7 +3425,7 @@ def _deck_provenance(prs: Presentation, source: DeckSource, ledger: Ledger) -> N
             ["The builder", "tools/build_product_manual.py"],
             ["The figures", figures],
             ["Figures on these slides", str(ledger.embedded())],
-            ["Absences stated rather than drawn", ", ".join(ledger.stated_absent)],
+            ["Absences stated rather than drawn", ledger.absences()],
             ["The export these slides read", _deck_window(source.evidence.reading)],
             ["Exports in the input folder", str(source.evidence.exports)],
             [
@@ -3525,26 +3467,22 @@ def write_evidence_deck(
     _deck_line_ends(prs, source)
     _deck_two_readings(prs)
     _deck_ratio(prs, source)
-    labels = sorted(groups)
-    for label in labels[:DECK_TOP_BASES]:
+    for label in sorted(groups):
         _deck_base(prs, source, label, ledger)
-    rest = labels[DECK_TOP_BASES:]
-    for start in range(0, len(rest), DECK_GROUP_BASES):
-        _deck_group(prs, source, rest[start : start + DECK_GROUP_BASES], ledger)
     _deck_band_bars(prs, source)
     _deck_band_edges(prs, source)
-    for label in labels[:DECK_MARKET_BASES]:
-        _deck_market(prs, source, label, ledger)
     every = sorted(evidence.labels.values())
-    for start in range(0, len(every), DECK_CARD_BASES):
-        _deck_cards(prs, source, every[start : start + DECK_CARD_BASES], ledger)
+    for label in every:
+        _deck_market(prs, source, label, ledger)
+    for label in every:
+        _deck_card(prs, source, label, ledger)
     _deck_grader(prs)
     _deck_limits(prs, source)
     _deck_provenance(prs, source, ledger)
     prs.core_properties.title = title
     deck.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(deck))
-    absent = ", ".join(ledger.stated_absent) or "none"
+    absent = ledger.absences()
     return f"{len(prs.slides)} slides, {ledger.embedded()} figures, absent {absent}"
 
 
