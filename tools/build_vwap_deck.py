@@ -70,6 +70,10 @@ class Ledger:
         """Return how many distinct figure files this build placed."""
         return len({path.name for path in self.placed})
 
+    def absences(self) -> str:
+        """Return the ``stated_absent`` names as one line, or ``none``."""
+        return ", ".join(self.stated_absent) or "none"
+
 
 def tables(text: str) -> list[list[list[str]]]:
     """Return every pipe table in the page, each one a list of cell rows."""
@@ -201,9 +205,9 @@ def table(slide: Slide, header: list[str], rows: list[list[str]], box: Box) -> N
             cell.fill.solid()
             cell.fill.fore_color.rgb = BG
             cell.text = value
-            run = cell.text_frame.paragraphs[0].runs[0]
-            run.font.size = Pt(11)
-            run.font.color.rgb = INK
+            for run in cell.text_frame.paragraphs[0].runs:
+                run.font.size = Pt(11)
+                run.font.color.rgb = INK
 
 
 PROCEDURE_DIR = REPO_ROOT / "docs" / "new-user-procedure"
