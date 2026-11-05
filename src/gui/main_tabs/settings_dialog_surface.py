@@ -3935,6 +3935,8 @@ class SettingsDialogModel:
         if selected in self.listed_exchanges:
             self.listed_exchanges.remove(selected)
         self.values["exchange_list"] = list(self.listed_exchanges)
+        self.venue_row = NO_VENUE_ROW
+        self.on_exchange_changed()
         self.set_feedback(removed_feedback_text(eid.capitalize()), INFO_LEVEL)
         if self.status_log:
             self.status_log.log(REMOVED_LOG_FORMAT.format(eid=eid), WARNING_LEVEL)
