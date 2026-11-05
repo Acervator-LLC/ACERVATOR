@@ -80,6 +80,8 @@
   var CLOSE_TOOLTIP = "close_tooltip";
   var TAB_TOOLTIPS = "tab_tooltips";
   var PRESS_BOX = "press_box";
+  var PRESS_ANSWERED = "press_box.answered";
+  var PRESS_TYPED = "press_box.typed";
 
   var DECLARED_FIELDS = [
     "accepted", ACTIONS, "age_days_format", "age_hours_format",
@@ -1030,7 +1032,13 @@
 
   // The question or the notice a press raised, with the words `PageBoxes` sent.
   function PressBoxButton(props) {
-    var buttonProps = { className: WINDOW_CLASS, type: BUTTON_TYPE };
+    var buttonProps = {
+      className: WINDOW_CLASS,
+      type: BUTTON_TYPE,
+      onClick: function () {
+        dispatch(PRESS_ANSWERED, { value: props.value });
+      }
+    };
     buttonProps[PART_ATTR] = PRESS_BUTTON_PART;
     buttonProps[VALUE_ATTR] = text(props.value);
     buttonProps[DEFAULT_ATTR] = text(props.value === props.box.fallback);
@@ -1046,7 +1054,15 @@
     titleProps[PART_ATTR] = PRESS_TITLE_PART;
     var textProps = { className: WINDOW_CLASS };
     textProps[PART_ATTR] = PRESS_TEXT_PART;
-    var inputProps = { className: WINDOW_CLASS, type: "text", autoFocus: true };
+    var inputProps = {
+      className: WINDOW_CLASS,
+      type: "text",
+      autoFocus: true,
+      "aria-label": label(box.title),
+      onInput: function (event) {
+        dispatch(PRESS_TYPED, { typed: event.target.value });
+      }
+    };
     inputProps[PART_ATTR] = PRESS_INPUT_PART;
     var rowProps = { className: WINDOW_CLASS };
     rowProps[PART_ATTR] = PRESS_BUTTONS_PART;

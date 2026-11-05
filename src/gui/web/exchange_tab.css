@@ -116,13 +116,6 @@ button.acervator-exchange-tab:focus-visible {
   border-collapse: collapse;
 }
 
-/* QTableWidget fills the selected row with the selection colour. A cell's own
- * text colour stays, so a state colour reads the same on both builds. */
-[data-part="scrum-table"] [data-part="row"][data-selected="true"] td,
-[data-part="extractor-table"] [data-part="row"][data-selected="true"] td {
-  background: var(--SURFACE_3, var(--grid));
-}
-
 /* QHeaderView::section paints text_accent, bold, over a 2px accent_primary
  * underline, and centres each label. */
 [data-part="scrum-table"] th,
@@ -151,6 +144,13 @@ button.acervator-exchange-tab:focus-visible {
 [data-part="scrum-table"] td:last-child,
 [data-part="extractor-table"] td:last-child {
   border-right: none;
+}
+
+/* QTableWidget fills the selected row with the selection colour. A cell's own
+ * text colour stays, so a state colour reads the same on both builds. */
+[data-part="scrum-table"] [data-part="row"][data-selected="true"] td,
+[data-part="extractor-table"] [data-part="row"][data-selected="true"] td {
+  background: var(--SURFACE_3, var(--grid));
 }
 
 /* The coin badge _get_coin_icon paints in the Symbol cell. The payload fills
