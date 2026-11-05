@@ -192,7 +192,7 @@ thread. A Simulator run routes its worker thread to the Simulator's own sink
 under the sim bucket, so the walk's pins, the TA engine's thirteen
 postcondition pins per evaluation among them, no longer reach this pane; the
 Simulator's own presses on the GUI thread and the one `sim.sink.routed` row
-each run leaves at its end do. See [simulator.md](simulator.md).
+each run leaves at its end do. See [simulator.md](simulator.md#what-a-run-writes).
 
 `src/core/signal_contract.py` — the sink the drain reads
 

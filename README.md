@@ -1553,7 +1553,7 @@ Now: the table names 24 pages, the book runs to 1,262 printed pages, and the pag
 **[Subsystem Tabs](docs/manual/08-tabs.md)**
 
 - [Main Window](docs/manual/08-tabs.md#main-window)
-- [Simulator Tab (Hot Mess; Complete Rebuild In Progress)](docs/manual/08-tabs/simulator.md#simulator-tab)
+- [Simulator Tab (Hot Mess; Complete Rebuild In Progress)](docs/manual/08-tabs/simulator.md#simulator-tab-hot-mess-complete-rebuild-in-progress)
 - [Paper Trader Tab (To Be Built)](docs/manual/08-tabs/paper-trader.md#paper-trader-tab)
 - [Proof of Accumulation (Anonymized Trading Tournaments Via Blockchain)](docs/manual/08-tabs/proof-of-accumulation.md#proof-of-accumulation)
 - [Market Inspector Tab](docs/manual/08-tabs.md#market-inspector-tab)
