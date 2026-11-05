@@ -78,7 +78,7 @@ replace asset names.
 [07-indicators.md](07-indicators.md) holds them in the PDF's order.
 [08-tabs.md](08-tabs.md) orders its sections by the tab list in
 [04-manual-parts.md](04-manual-parts.md), and Main Window opens the part. Each
-tab has one section and the subsystem files below are its home, so the eleven
+tab has one section and the subsystem files below are its home, so the nine
 Settings pages sit under one Settings heading there. A tab's later updates are
 dated subsections under that one heading, in the shape
 [08-tabs/README.md](08-tabs/README.md) sets. None of those files transcribe the
@@ -103,7 +103,7 @@ the screen's state.
 | [08-tabs/history.md](08-tabs/history.md) | Venue trade history, grading, gate analysis |
 | [08-tabs/console.md](08-tabs/console.md) | Python log tail and the emitter signal stream |
 | [08-tabs/system-status.md](08-tabs/system-status.md) | Emitter Network and Watchdog, the two halves that run today |
-| [08-tabs/settings.md](08-tabs/settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists |
+| [08-tabs/settings.md](08-tabs/settings.md) | Every control on the nine Settings pages, and what each page stores |
 | [08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md) | How a strategy earns its way to real money |
 | [08-tabs/alerts.md](08-tabs/alerts.md) | Notifications and Alerts: the Event Routing table, which events reach the message channels, and the engine that runs without the screen |
 

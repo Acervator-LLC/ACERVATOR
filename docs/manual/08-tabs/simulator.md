@@ -5031,8 +5031,8 @@ bot was constructed and no socket left loopback.
 
 The Sim tab paints every ground darker than Live's, under the same theme. The
 tone is the theme's own ground tokens moved a quarter of the way to black;
-the accent, the text and the borders are the theme's. The derivation, its one
-fraction and the contrast arithmetic per theme are on the Settings page under
+the accent, the text and the borders are the theme's. The Settings page names
+the tone under
 [the Simulator's tone, nigredo](settings.md#the-simulators-tone-nigredo).
 
 Nothing on the tab names a colour for this. The Qt build marks the tab with one
