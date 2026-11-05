@@ -22,9 +22,11 @@ from ..otd_math import (
     DistanceSettingUnreadable,
     distance_settings,
 )
+from ..stack_math import is_shadow
 from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
 from ..wallet_reservations import get_wallet_reservations, wallet_key
+from .shadow import SHADOW_BOOKER
 from .sizing import (
     FRACTIONAL_UNITS,
     discharge_gain_usd,
@@ -193,6 +195,7 @@ class ExecutionEngineMixin:
     _last_trade_side: Optional[str]
     _main_lots: list[dict]
     _manual_fire_pending: bool
+    _mark_shadow_rows: Callable[..., int]
     _open_stack_from_scrum: Callable[..., Any]
     _order_asked_units: Callable[..., float]
     _preview_fold_growth: Callable[..., Any]
@@ -207,6 +210,9 @@ class ExecutionEngineMixin:
     _return_wire_credits_to_pool: Callable[..., float]
     _route_scrum_proceeds_via_wires: Callable[..., Any]
     _run_booker: Callable[..., Any]
+    _shadow_exit_plan: Callable[..., tuple]
+    _shadow_held_units: Callable[..., float]
+    _shadow_take: Callable[..., float]
     _spawn_stack_from_fold: Callable[..., Any]
     _standing_surplus_usd: float
     _target_balance: Any
@@ -479,12 +485,14 @@ class ExecutionEngineMixin:
         path: str,
         venue_before: Optional[float],
         summary: Any,
+        shadow_units: float = 0.0,
     ) -> float:
         """Add one settled piece of a buy to ``_current_holdings``, and return its fill
         price.
 
         ``venue_before`` is the venue reading taken before the order, None for a later
-        piece, which moves ``_audited_venue_units`` by ``units``.
+        piece, which moves ``_audited_venue_units`` by ``units``. A stack ladder offers
+        ``units`` less ``shadow_units``, the piece a Shadow Tranche takes.
         """
         if not fill_price or fill_price <= 0:
             fill_price = intended
@@ -519,7 +527,7 @@ class ExecutionEngineMixin:
 
         await self._spawn_stack_from_fold(
             fold_price=fill_price,
-            fold_size=units,
+            fold_size=units - shadow_units,
             summary=summary,
             path=path,
         )
@@ -552,6 +560,7 @@ class ExecutionEngineMixin:
             path,
             None,
             VotingSummary(net_score=net_score, consensus_confidence=confidence),
+            self._shadow_take(units, asked, path_context),
         )
         await self._run_booker(
             path_booker, units, fill_price, asked, first, path_context, sources
@@ -1483,6 +1492,8 @@ class ExecutionEngineMixin:
         new_tranches_count -= self._bound_new_fold_tranches(
             _manual_tranche_count_before
         )
+        if not operator_initiated:
+            self._mark_shadow_rows(_manual_tranche_count_before)
 
         # Must precede the _fold_queue_usd sum below.
         self._apply_scrum_fold_pct(_manual_tranche_count_before, fill_usd, fill_amount)
@@ -1747,8 +1758,11 @@ class ExecutionEngineMixin:
             fee=self._fill_fee_fields(fill_price),
         )
 
-    async def _execute_detonation(self, ticker) -> bool:
-        """Sell everything above ``_anchor_target_balance`` and reset to it.
+    async def _execute_detonation(
+        self, ticker, shadow_rows: Optional[list] = None
+    ) -> bool:
+        """Sell everything above ``_anchor_target_balance`` and reset to it, or with
+        ``shadow_rows`` what those rows stand above their own cost.
 
         Sizes the sale from ``_venue_claimable_units``, so the amount comes
         from the exchange balance rather than from the attributed
@@ -1757,6 +1771,8 @@ class ExecutionEngineMixin:
         and announces an ``AUTO_DETONATION`` fill through ``_announce_fill``.
         Returns True once the venue figure decided the harvest, and False on
         every refusal, which ``_tick_detonation`` reads as no fire.
+        ``shadow_rows`` sizes from ``_shadow_exit_plan`` and leaves the parent's
+        queue, lots and target to ``_book_shadow_detonation``.
         """
         price = getattr(ticker, "last", None)
         if not price or price <= 0:
@@ -1766,6 +1782,24 @@ class ExecutionEngineMixin:
                 message="DETONATION: no valid price; aborting.",
             )
             return False
+
+        if shadow_rows is not None:
+            sell_amount, _booking = self._shadow_exit_plan(shadow_rows, price)
+            if sell_amount <= 0:
+                return False
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"SHADOW DETONATION: {len(shadow_rows)} row(s) hold "
+                    f"{self._shadow_held_units():.8f} units, selling "
+                    f"{sell_amount:.8f} @ MARKET (~${price:.8f}), what they stand "
+                    f"above their cost."
+                ),
+            )
+            return await self._sell_detonation(
+                sell_amount, price, SHADOW_BOOKER, _booking
+            )
 
         venue_units, refusal = await self._venue_claimable_units()
         if venue_units is None:
@@ -1817,6 +1851,28 @@ class ExecutionEngineMixin:
             ),
         )
 
+        return await self._sell_detonation(
+            sell_amount,
+            price,
+            "_book_detonation",
+            {"excess_usd": float(excess_usd)},
+            {"venue_units": venue_units},
+        )
+
+    async def _sell_detonation(
+        self,
+        sell_amount: float,
+        price: float,
+        booker: str,
+        booking: dict,
+        first_piece: Optional[dict] = None,
+    ) -> bool:
+        """Send one market sale of ``sell_amount`` and book its fill through ``booker``
+        with ``booking``, plus ``first_piece`` for the piece settled here.
+
+        False is a venue that returned no order; True is a sent order, a filled or
+        unreported one alike.
+        """
         order = await self.guarded_place_order(
             symbol=self.config.symbol,
             side=OrderSide.SELL,
@@ -1836,9 +1892,8 @@ class ExecutionEngineMixin:
         fill_amount, fill_price, _ = await self._settled_fill(
             order, self.config.symbol, sell_amount, price, label="DETONATION"
         )
-        _detonation = {"excess_usd": float(excess_usd)}
         self._hold_resting_order(
-            order, "_book_detonation", "sell", fill_amount, fill_price, _detonation
+            order, booker, "sell", fill_amount, fill_price, booking
         )
         if fill_amount <= 0:
             self._bus.emit(
@@ -1852,13 +1907,13 @@ class ExecutionEngineMixin:
                 ),
             )
             return True
-        await self._book_detonation(
+        await self._run_booker(
+            booker,
             fill_amount,
             fill_price or price,
             self._order_asked_units(self._last_settled_order or order, sell_amount),
             True,
-            venue_units=venue_units,
-            **_detonation,
+            {**booking, **(first_piece or {})},
         )
         return True
 
@@ -1912,16 +1967,19 @@ class ExecutionEngineMixin:
 
         prior_target = self._target_balance
         self._target_balance = self._anchor_target_balance
-        _detonated_tranches = len(self._fold_tranches)
+        _discarded = [t for t in self._fold_tranches if not is_shadow(t)]
+        _detonated_tranches = len(_discarded)
         if _detonated_tranches:
             self._tranches_discarded_lifetime = (
                 int(getattr(self, "_tranches_discarded_lifetime", 0) or 0)
                 + _detonated_tranches
             )
-        for _cleared in list(self._fold_tranches):
+        for _cleared in _discarded:
             self._return_wire_credits_to_pool(_cleared)
-        self._fold_tranches.clear()
-        self._fold_queue_usd = 0.0
+        self._fold_tranches[:] = [t for t in self._fold_tranches if is_shadow(t)]
+        self._fold_queue_usd = math.fsum(
+            float(t.get("usd", 0) or 0) for t in self._fold_tranches
+        )
         _discharged_surplus = float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
         self._standing_surplus_usd = 0.0
         try:
@@ -2422,12 +2480,15 @@ class ExecutionEngineMixin:
         expected_units = sum(
             float(lot.get("units", 0.0)) for lot in getattr(self, "_main_lots", [])
         )
-        return await verify_buy_safe_or_refuse(
+        verified, refusal = await verify_buy_safe_or_refuse(
             self.exchange,
             self.config.target_asset,
             expected_units,
             path=path,
         )
+        if verified is None:
+            return verified, refusal
+        return max(0.0, verified - self._shadow_held_units()), refusal
 
     async def _execute_buy(
         self,
@@ -2800,6 +2861,7 @@ class ExecutionEngineMixin:
                 _path,
                 _fresh_units,
                 summary,
+                self._shadow_take(filled_units, asked, booking),
             )
         except Exception as exc:
             self._bus.emit("bot.log", bot_id=self.bot_id, message=f"BUY FAILED: {exc}")

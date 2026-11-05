@@ -162,7 +162,8 @@ TAB_TOOLTIPS = {
     TAB_SETTINGS: "Every setting this bot trades by. Change any, then press Apply Changes.",
     TAB_FOLD_TRANCHES: "The buy-backs this bot queued after its sells, with their counters.",
     TAB_STACK_TRANCHES: (
-        "The rising sell levels a Stack Mode scrum opened, with their counters."
+        "The rising sell levels a Stack Mode scrum opened, any Shadow Tranches, and "
+        "their counters."
     ),
     TAB_BOT_SWARM: "The wires that route profit between this bot and others.",
     TAB_MARKET_INSPECTOR: "This bot's market as the Market Inspector's last scan read it.",

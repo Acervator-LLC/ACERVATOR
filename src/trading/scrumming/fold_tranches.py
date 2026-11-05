@@ -20,6 +20,7 @@ from ..stack_math import (
     STACK_SIZE_KEY,
     STACK_STATUS_KEY,
     STACK_STATUS_PENDING,
+    is_shadow,
     rung_is_pending,
     unproduced_stack_amount,
 )
@@ -266,8 +267,12 @@ class FoldTrancheAccountingMixin:
             return 0, 0.0
         if first_new_index <= 0:
             return 0, 0.0
-        _candidates = self._fold_tranches[:first_new_index]
-        _fresh = self._fold_tranches[first_new_index:]
+        _candidates = [
+            _t for _t in self._fold_tranches[:first_new_index] if not is_shadow(_t)
+        ]
+        _fresh = [
+            _t for _t in self._fold_tranches[first_new_index:] if not is_shadow(_t)
+        ]
         _merged_away: set[int] = set()
         _merged_n = 0
         _merged_usd = 0.0
@@ -577,16 +582,18 @@ class FoldTrancheAccountingMixin:
         return _readable
 
     def clear_fold_tranches(self, reason: str = "operator") -> dict:
-        """Discard every queued fold tranche. Trades nothing.
+        """Discard every queued fold tranche but an ``is_shadow`` one. Trades nothing.
 
         Leaves holdings, `_main_lots`, `_target_balance`,
         `_anchor_target_balance` and `_pending_wire_credits` alone.
         Parked wire credits are routed income rather than tranches, so
         the emitted message warns when any remain.
 
-        Returns a report of what was discarded. Never raises.
+        Returns a report of what was discarded, with ``shadow_kept`` where a row
+        stayed. Never raises.
         """
-        tranches = list(self._fold_tranches or [])
+        tranches = [t for t in (self._fold_tranches or []) if not is_shadow(t)]
+        kept = [t for t in (self._fold_tranches or []) if is_shadow(t)]
         report = {
             "bot_id": self.bot_id,
             "symbol": getattr(self.config, "symbol", ""),
@@ -598,11 +605,13 @@ class FoldTrancheAccountingMixin:
             ),
             "reason": str(reason),
         }
+        if kept:
+            report["shadow_kept"] = len(kept)
         if not tranches:
             return report
 
-        self._fold_tranches = []
-        self._fold_queue_usd = 0.0
+        self._fold_tranches = kept
+        self._fold_queue_usd = math.fsum(float(t.get("usd", 0) or 0) for t in kept)
         self._tranches_discarded_lifetime = (
             int(getattr(self, "_tranches_discarded_lifetime", 0) or 0) + report["count"]
         )
@@ -632,6 +641,11 @@ class FoldTrancheAccountingMixin:
                     f"{report['units']:.8f} units. No trade was "
                     f"placed; holdings and target balance are "
                     f"unchanged.{_warn}"
+                    + (
+                        f" {len(kept)} tranche(s) marked for a shadow stay queued."
+                        if kept
+                        else ""
+                    )
                 ),
             )
         except Exception as exc:  # noqa: BLE001
@@ -831,8 +845,9 @@ class FoldTrancheAccountingMixin:
         Returns:
           A report of what the sweep did, keyed ``fold_removed``,
           ``stack_removed``, ``stack_kept_live_order``, ``ageless_kept``
-          and ``usd_removed``. Despawn removes rather than delists, so the
-          count keys match ``despawn_preview`` in ``bot_container``.
+          and ``usd_removed``, with ``shadow_kept`` where an ``is_shadow`` row
+          stayed at any age. Despawn removes rather than delists, so the count
+          keys match ``despawn_preview`` in ``bot_container``.
         """
         _days = self._despawn_threshold_days()
         report = {
@@ -859,6 +874,10 @@ class FoldTrancheAccountingMixin:
 
         _fold_keep = []
         for _t in self._fold_tranches or []:
+            if is_shadow(_t):
+                report["shadow_kept"] = report.get("shadow_kept", 0) + 1
+                _fold_keep.append(_t)
+                continue
             _age = self._tranche_age_seconds(_t, FOLD_AGE_KEY, _now)
             if _age is None:
                 report["ageless_kept"] += 1
