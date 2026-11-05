@@ -243,8 +243,8 @@ class FleetAggregationMixin:
         return False
 
     def sum_sibling_tracked_units(self, bot_id: str, target_asset: str) -> float:
-        """Sum the ``_main_lots`` units tracked by every other bot with the
-        same target_asset, excluding the caller.
+        """Sum the ``_main_lots`` and ``_shadow_tranches`` units tracked by every
+        other bot with the same target_asset, excluding the caller.
 
         Reconciliation in multi-base mode holds that this bot's
         ``_current_holdings`` never exceeds
@@ -272,7 +272,8 @@ class FleetAggregationMixin:
                 continue
             try:
                 lots = getattr(other_bot, "_main_lots", []) or []
-                for lot in lots:
+                held = getattr(other_bot, "_shadow_tranches", []) or []
+                for lot in (*lots, *held):
                     total += float(lot.get("units", 0) or 0)
             except Exception as _lot_exc:
                 # Units added before the raise stay in the running total.

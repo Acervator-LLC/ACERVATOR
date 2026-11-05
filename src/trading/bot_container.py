@@ -1347,7 +1347,7 @@ class BotContainer:
             )
         amount = _contracts
 
-        # The venue's answer ends the coid; a send with no answer keeps it for the retry.
+        # An order in hand ends the coid; a send with no answer keeps it for a resend.
         from ..exchange.idempotency import get_idempotency_layer, TradeIntent
 
         _idem = get_idempotency_layer()
@@ -1368,7 +1368,10 @@ class BotContainer:
         finally:
             # Every live order passes here, answered or not, so its balance window ends here.
             self._invalidate_symbol_balances(symbol)
-        _idem.end_retries(_intent.bot_id, symbol)
+        _idem.end_retry(_intent)
+        # A create reply can name no amount, and _hold_resting_order reads this one.
+        if finite_reading(order.amount) <= 0.0:
+            order.amount = float(amount)
         return order
 
     async def start(self) -> None:

@@ -98,12 +98,14 @@ from .scrumming import (
     ExecutionEngineMixin,
     FoldTrancheAccountingMixin,
     ReconciliationEngineMixin,
+    ShadowTrancheMixin,
     SnapshotEmitterMixin,
     StateSerializerMixin,
     TickPhaseMixin,
     WireRoutingMixin,
 )
 from .scrumming.execution import SettledFillFee, venue_fee_record
+from .scrumming.shadow import REGIME_NONE, regime_of
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
 from .scrumming.fold_tranches import (
@@ -362,6 +364,7 @@ class ScrummingBot(
     ExecutionEngineMixin,
     FoldTrancheAccountingMixin,
     ReconciliationEngineMixin,
+    ShadowTrancheMixin,
     SnapshotEmitterMixin,
     StateSerializerMixin,
     TickPhaseMixin,
@@ -492,6 +495,9 @@ class ScrummingBot(
 
         self._fold_accumulator: float = 0.0
         self._dist_sets: list[dict] = []
+        self._shadow_tranches: list[dict] = []
+        self._shadow_regime: str = REGIME_NONE
+        self._shadow_regime_ts: float = 0.0
         self._fold_piece_laddered: bool = False
         self._fold_queue_usd: float = 0.0
         self._fold_queue_ref_price: float = 0.0
@@ -2205,15 +2211,17 @@ class ScrummingBot(
         return True
 
     async def _get_balance(self, currency: str):
-        """Fetch a balance through ``_data_pool``, else a direct exchange call."""
+        """Fetch a balance through ``_data_pool``, else a direct exchange call, less the
+        units ``_net_of_shadows`` holds apart from this bot's position."""
         if self._data_pool is not None:
             try:
-                return await self._data_pool.get_or_fetch_balance(
+                balance = await self._data_pool.get_or_fetch_balance(
                     self.exchange, self.config.exchange_id, currency
                 )
             except Exception:
                 raise
-        return await self.exchange.get_balance(currency)
+            return self._net_of_shadows(currency, balance)
+        return self._net_of_shadows(currency, await self.exchange.get_balance(currency))
 
     async def _refresh_quote_to_usd(self) -> Optional[float]:
         """Refresh the cached quote→USD rate, at most once per 30s and 1.0 for
@@ -2366,6 +2374,7 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
+        units += self._return_shadows_to_lots("self-destruct")
         if units <= 0:
             self._main_lots = []
             try:
@@ -3184,6 +3193,9 @@ class ScrummingBot(
         # Ahead of every early return below: a position at target leaves the tick
         # at the dust band, and a dated contract must still close.
         if await self._tick_expiry_close(ticker):
+            return
+
+        if await self._tick_shadow(ticker):
             return
 
         # Within the dust band of target the tick returns; manual fire bypasses it.
@@ -4856,6 +4868,53 @@ class ScrummingBot(
             )
 
         return fired
+
+    async def _read_shadow_regime(self) -> str:
+        """The ``regime_of`` a vote on 100 candles of ``detonation_timeframe``, read at
+        most once in ``_DETONATION_CHECK_INTERVAL_S`` and ``REGIME_NONE`` on a failed
+        read.
+
+        The detonation trigger's own clock and timeframe, so one vote names both ends
+        of a regime. Each change of reading writes one line to ``bot.log``.
+        """
+        now = time.time()
+        if now - self._shadow_regime_ts < _DETONATION_CHECK_INTERVAL_S:
+            return self._shadow_regime
+        self._shadow_regime_ts = now
+        tf = getattr(self.config, "detonation_timeframe", "1d") or "1d"
+        regime = REGIME_NONE
+        try:
+            candles = await self._get_ohlcv(self.config.symbol, tf, limit=100)
+            if candles and len(candles) >= MIN_CANDLES_FOR_TA:
+                engine = VotingEngine(weights=self._ta_weights)
+                regime = regime_of(engine.compute_all(candles_from_raw(candles), tf))
+            else:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SHADOW REGIME: the venue served {len(candles or [])} {tf} "
+                        f"candles and a vote needs {MIN_CANDLES_FOR_TA}, so no "
+                        f"regime reads. Will retry in 1h."
+                    ),
+                )
+        except Exception as exc:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"SHADOW REGIME: {tf} vote failed: {exc}. Will retry in 1h.",
+            )
+        if regime != self._shadow_regime:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"SHADOW REGIME: {tf} vote reads {regime or 'no regime'}, "
+                    f"was {self._shadow_regime or 'no regime'}."
+                ),
+            )
+        self._shadow_regime = regime
+        return regime
 
     def clear_stack_tranches(self, reason: str = "operator") -> dict:
         """Discard this bot's standing Stack tranches, trading nothing.

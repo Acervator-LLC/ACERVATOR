@@ -1725,6 +1725,8 @@ seven summary rows and two Clear buttons. Phantom Bots draws four summary rows,
 twelve timeframe boxes and the candles-to-lock number. Take the bot out of the
 window's answer and every one of those rows goes.
 
+Now: a bot holding a Shadow Tranche draws one more Stack Tranches summary row, and one more detail row for each Shadow Tranche (`src/gui/main_tabs/stack_tranches_tab_surface.py, in compose_shadow_rows`).
+
 ```
 page                  rows  order choices  elements   with the bot removed
 fold-tranches-page      11              5        69    0,  5, 33

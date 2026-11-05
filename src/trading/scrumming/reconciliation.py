@@ -15,7 +15,6 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, SettledFill
 from ...exchange.base import OrderSide, Trade
-from ...exchange.idempotency import get_idempotency_layer
 from ..bot_container import FILL_DUST_UNITS
 from .sizing import priced_usd
 
@@ -1355,7 +1354,6 @@ class ReconciliationEngineMixin:
                 f"{_short_why}. Retrying next cycle."
             )
         self._bus.emit("bot.log", bot_id=self.bot_id, message=_message)
-        get_idempotency_layer().end_retries(self.bot_id, self.config.symbol)
         logger.info(
             "Bot %s drift DOWN (%s): lots %.8f -> %.8f, holdings %.8f -> %.8f%s",
             self.bot_id,
@@ -1526,7 +1524,6 @@ class ReconciliationEngineMixin:
                 if _written is not None:
                     # Booked at this pass's price and flagged
                     # reconciled_to_exchange; no fill is invented.
-                    get_idempotency_layer().end_retries(self.bot_id, self.config.symbol)
                     _gain = _written
                     _adopt = self._current_holdings
                     _foreign = max(0.0, exchange_units - _adopt)

@@ -51,6 +51,7 @@ from ...trading.container.config import (
     as_whole_count,
     hunger_pace,
     hunger_switched_on,
+    shadow_switched_on,
 )
 from .. import design_system as ds
 from ..descriptions import SETTINGS_TAB_DESCRIPTIONS
@@ -265,6 +266,8 @@ DESPAWN_OFF = 0
 #: The Hunger rows' words, which the Qt tab and the React page both draw.
 HUNGER_SWITCH_TEXT = "Hunger (idle candles ease the TA floor)"
 HUNGER_PACE_LABEL = "Hunger Pace:"
+#: The Accumulation Shadow row's words, which the Qt tab and the React page both draw.
+SHADOW_SWITCH_TEXT = "Accumulation Shadow (holds a bearish fold's extra units)"
 HUNGER_PACE_SUFFIX = " candles"
 #: What the Hunger Pace box draws while ``hunger_pace`` reads ``HUNGER_PACE_NONE``.
 HUNGER_PACE_NONE_TEXT: str = ABSENT_CELL_TEXT
@@ -457,6 +460,7 @@ DESPAWN_READING = "despawn_days"
 ADMITTED_READING = "admitted"
 HUNGER_SWITCH_READING = "hunger_switch"
 HUNGER_PACE_READING = "hunger_pace"
+SHADOW_SWITCH_READING = "shadow_switch"
 
 #: What a dollar box draws in place of a stored figure `as_box_figure`
 #: refuses. The dash the indicator panel's absent cells draw, so one
@@ -1152,6 +1156,18 @@ CONTROL_SPECS = (
         "hunger_only": True,
     },
     {
+        "name": "shadow_enabled",
+        "kind": CHECK,
+        "group": GATES_GROUP,
+        "row_label": NO_ROW_LABEL,
+        "text": SHADOW_SWITCH_TEXT,
+        "field": "shadow_enabled",
+        "reading": SHADOW_SWITCH_READING,
+        "default": False,
+        "scrumming_only": True,
+        "shadow_only": True,
+    },
+    {
         "name": "ext_chunk_size",
         "kind": DOUBLE_SPIN,
         "group": EXTRACTOR_GROUP,
@@ -1560,6 +1576,9 @@ class LiveSettingsTabModel:
     #: False where the bot's engine runs no hunger; ``_shows`` then drops each
     #: ``hunger_only`` row.
     runs_hunger: bool = True
+    #: False where the bot's engine opens no Shadow Tranche; ``_shows`` then drops
+    #: each ``shadow_only`` row.
+    runs_shadow: bool = True
 
     def __init__(
         self,
@@ -1619,6 +1638,8 @@ class LiveSettingsTabModel:
             return False
         if spec.get("hunger_only") and not self.runs_hunger:
             return False
+        if spec.get("shadow_only") and not self.runs_shadow:
+            return False
         if spec["group"] == EXTRACTOR_GROUP and not is_extractor:
             return False
         if spec["name"] in EXPIRY_CONTROL_NAMES and not expires:
@@ -1651,6 +1672,8 @@ class LiveSettingsTabModel:
             return self._read_admitted(config, spec)
         if reading == HUNGER_SWITCH_READING:
             return hunger_switched_on(config)
+        if reading == SHADOW_SWITCH_READING:
+            return shadow_switched_on(config)
         if kind in (DOUBLE_SPIN, SPIN):
             return read_number(config, field, default, reading, no_default)
         raw = read_config_field(config, field, default, no_default)

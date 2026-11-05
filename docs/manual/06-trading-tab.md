@@ -40,7 +40,7 @@ Scrum - To sell an amount from an investment position that allows it to return t
 
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
-Now: a fold spends queued scrum dollars whose rebuy price the market has reached, capped per cycle, so the Target Delta does not size it (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`).
+Now: each fold spends queued tranche dollars whose rebuy price the market has reached, up to the growth room left this cycle, so the Target Delta does not size it (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`).
 
 ![The wizard's first page: Trading Mode, with Scrumming selected.](p16-i0.png)
 
@@ -70,7 +70,7 @@ Next we come to the combined Scrumming Bot configuration page which has several 
 
 Order Visibility - Trades are listed on the order books or tracked internally to the platform.
 
-Now: each order takes its own id, so the venue cannot hand back a fill the books already hold. A send with no answer gives its id to the bot's next send on that market and side, until an order comes back on that market or the holdings audit adopts the venue's count (`src/exchange/idempotency.py, in IdempotencyLayer.derive_coid`).
+Now: each order takes its own id, so the venue cannot hand back an order it has already answered. A send with no answer keeps its id for a resend of the same size and price, until an order comes back for it (`src/exchange/idempotency.py, in IdempotencyLayer.derive_coid`).
 
 Aggressive Trading - Trades are priced so that they fill immediately. Trading like this is a bit like guerilla warfare. In and out before anyone notices.
 
@@ -104,11 +104,11 @@ Scrolling down we next find the first block of Scrumming Settings. These are the
 
 Opposing Trade Interval - Establishes the minimum travel distance required by price action from the point a given trade in order the next trade of the opposite type to occur.
 
-Now: every scrum needs a Target Delta of at least this share of target, and an opposite trade needs this interval plus the fee plus the Band Travel extension, at least two fees (`src/trading/otd_math.py, in minimum_opposing_trade_distance_pct`).
+Now: a scrum needs this share of target as Target Delta, and after a fold this interval plus the fee; a fold rebuy adds Band Travel, and the distance is at least two fees (`src/trading/scrumming/sizing.py, in eligible_fold_tranches`).
 
 BB Tolerance - Determines the minimum distance of the Bollinger Band extent price action must be in order for a trade action to occur.
 
-Now: BB Tolerance sets how close to a band, as a percent of band width, price must sit to count for the Landing Strip, and no trade gate reads it (`src/trading/indicators/bb_proximity.py, in detect_bb_proximity`).
+Now: BB Tolerance sets how close to a band, as a percent of band width, price must sit to count for the Landing Strip, which can pass the TA gate (`src/trading/ta_engine.py, in vote_sides`).
 
 Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
 
@@ -130,15 +130,15 @@ Now: every fold, hedge and entry buy refuses below this price; no sell reads it,
 
 Trading Fee % - This allows the trading fee for the target exchange to be set. This is added to Minimum Opposing Trade Distance to further ensure buys / sells are properly distant and that a given bot is not losing an excessive amount to fee chop in volatile but overly tight market regimes.
 
-Now: the distance adds the larger of this box and the highest fee the venue has charged this bot, and it never falls under two fees (`src/trading/otd_math.py, in trading_fee_pct_from_config`).
+Now: the distance adds the larger of this box and the highest fee the venue has charged this bot, a box of 0 reads as 0.6, and it never falls under two fees (`src/trading/otd_math.py, in trading_fee_pct_from_config`).
 
 Max Target Growth % - This determines the maximum amount of growth the Target Balance can increase in a given Market Cycle with a cycle being a Fold / Scrum / Fold sequence. Essentially any Fold preceded by a Scrum will be allowed to Fold an amount of profit back in and, if Surplus remains after the Target Delta is re-zero’d, it can be used to increase Target Balance up to this hard limit for that cycle. This is the organic compounding mechanic.
 
-Now: a cycle ends at a scrum fill or when price reaches the opposite band extreme, this figure caps both target growth and fold spend in it, and only a fold spends wire credits (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
+Now: a cycle ends at a plain scrum fill or at the opposite band extreme; this figure caps target growth and each fold order, and only a fold spends wire credits (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._book_scrum_fill`).
 
 Scrum Fold Ratio - This precedes Surplus calculation as described under Max Target Growth %. It determines how much of a given trade’s profits will be redistributed to directly contribute to its own organic compounding. Note that this does not interfere with normal Target Delta re-zeroing and is intended to only serve as a “cushion” to slow runaway compounding when Wire Credits are being received from multiple sources.
 
-Now: this share of a sale's proceeds, after wire routing, queues for buy-back and the rest stays cash, so below 100% the fold rebuys fewer units (`src/trading/scrumming/fold_tranches.py, in FoldTrancheAccountingMixin._apply_scrum_fold_pct`).
+Now: on a plain scrum or cartridge sale this share of proceeds, after wire routing, queues for buy-back and the rest stays cash; a Stack tranche fill queues nothing (`src/trading/scrumming/fold_tranches.py, in FoldTrancheAccountingMixin._apply_scrum_fold_pct`).
 
 ![The Advanced Scrumming and Hedge Rebalance groups.](p20-i0.png)
 
@@ -158,7 +158,7 @@ Band Travel - Previously described. To be re-evaluated.
 
 BB Bullseye Check - If current price and Bollinger Band thresholds are equal, the user can opt to perform a double-sized trade.
 
-Now: a band touch within 0.5%, or a wick within 0.2%, arms the BB priority skew, which lowers the vote's confidence floor, and no trade doubles (`src/trading/scrumming_bot.py, in _favour_skew`).
+Now: past Detect, or on a 0.5% band touch or 0.2% wick, a cleared interval and distance arm the BB priority skew, which lowers the vote floor, and no trade doubles (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
 
 Wire Inflow Stack - To be re-evaluated.
 
@@ -166,7 +166,7 @@ Now: no Wire Inflow Stack row or config field exists; incoming wire dollars spre
 
 Hedge Rebalance Active - Determines if Current Price drifting below Initial Entry Price will have a limited amount of funds that can be used to keep re-zeroing the Target Delta at key bearish thresholds or areas of possible reversal.
 
-Now: while ticked, the reserve buys when position value sits 1% or more under target, band position is under 0.40 and the vote is not bullish, and entry price goes unread (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
+Now: while ticked, the reserve reads no entry price and buys from 1% under target, past the interval or with a tranche queued, with band position under 0.40 and no bullish vote (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
 
 Hedge Balance - Sets a limit on the amount of additional liquidity a given bot is allowed to absorb when Current Price drifts below Initial Entry Price.
 
@@ -180,7 +180,7 @@ Now: an up candle stops scrums and a down candle stops folds for the cooldown, a
 
 Soft CB Threshold - The amount of instantaneous, single-candle price action required for the bot to pause trading for a number of candles denoted by Soft CB Cooldown.
 
-Now: the move is the candle's high-to-low range as a share of its open, and the soft breaker shuts only the side that candle moved (`src/trading/scrumming/circuit_breakers.py, in breaker_move`).
+Now: the breaker reads each candle once, at first sight, taking its high-to-low range so far against its open, and the soft breaker shuts only that candle's side (`src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers`).
 
 Hard CB Threshold - The amount of instantaneous, single-candle price action required for the bot to be hard stopped at which point the user must re-authorize trading.
 
@@ -190,7 +190,7 @@ Soft CB Cooldown - This is the number of candles that must close before the Soft
 
 Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
 
-Now: at this share of Target Balance the bot fires a market rebalance at once, past the band and vote gates, and a cartridge buy pays back only the tranches whose own sale price, less the distance, sits at or above the fill (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_cartridge_fire`).
+Now: at this share of Target Balance the bot fires a market rebalance past the band and vote gates, unless the opposing distance holds it or no queued tranche qualifies (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
 
 Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
 
@@ -220,7 +220,7 @@ Now: a detonation also needs three agreeing indicators, so a vote that only two 
 
 Next we use the Strategy Gate Flags which allows top-level trade restrictions to be enabled or disabled thus relaxing or restricting the conditions under which a trade action can occur. The settings, in this case, are self-descriptive.
 
-Now: on a running Scrumming bot this group also holds a Hunger tick box and a Hunger Pace box, which ease the scrum and fold vote floor over idle candles (`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_hunger_rows`).
+Now: on a running Scrumming bot this group also holds a Hunger tick box and a Hunger Pace box, which ease the scrum and fold vote floor over idle candles (`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_hunger_rows`), and an Accumulation Shadow tick box, which sends a bearish fold's extra units to a Shadow Tranche (`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_shadow_row`).
 
 ![The Profit Routing group.](p22-i1.png)
 
@@ -266,7 +266,7 @@ Now: this row sets how many candles pass before the bot ranks its list again, an
 
 Pool Reserve - To be re-evaluated.
 
-Now: no Pool Reserve row exists, and Chunk size alone limits what the Extractor spends (`src/trading/extractor_bot.py, in ExtractorBot._has_chunk_capacity`).
+Now: no Pool Reserve row exists; a round fires while the free chunk, which exits refill with their gains, still holds its size (`src/trading/extractor_bot.py, in ExtractorBot._has_chunk_capacity`).
 
 Exit % - To be re-evaluated.
 
@@ -280,7 +280,7 @@ Now: no Max cost-basis multiple row exists; the bot holds one position per pair 
 
 Direction - To be re-evaluated.
 
-Now: no Direction row exists; the Extractor always buys an alternate pair on a bearish signal and sells it back on a bullish one (`src/trading/extractor_bot.py, in ExtractorBot._entry_order_side`).
+Now: no Direction row exists; the Extractor buys an alternate pair on a bearish signal and sells on a bullish one only when the sale nets more base after fees (`src/trading/extractor_bot.py, in ExtractorBot._evaluate_open_position`).
 
 ![The Extractor group, remaining five rows.](p26-i0.png)
 
@@ -322,7 +322,7 @@ Now: the button reads + Add, the active class name, then Exchange or Broker, and
 
 While the initial set up of Acervator requires at least one valid exchange API, additional exchanges can be added and have their own bot swarms. The current upper operational limit of Acervator is unknown. Multi-exchange testing has yet to be attempted as of 8/25/26 with API compatibility work pending. This button also currently opens the Settings Panel but on the incorrect ‘User’ Tab when it should be ‘Exchanges’.
 
-Now: the button opens Settings on the Exchanges tab, and a first launch runs no setup wizard, so the window opens with no exchange (`src/gui/main_window.py, in MainWindow._add_exchange`).
+Now: in the Qt build the button opens Settings on the Exchanges tab, the Exchange menu does so in both builds, and a first launch opens with no exchange (`src/gui/main_window.py, in MainWindow._add_exchange`).
 
 ![The Add Crypto Exchange button.](p27-i0.png)
 
@@ -334,7 +334,7 @@ This part is for lookup. Each row names one control, says what it does and what 
 
 A frozen build draws the variant stamped into it. A source run reads `ACERVATOR_VARIANT` and draws React when nothing names a variant (`src/_variant.py, in resolve_variant`).
 
-On the React page eight presses reach nothing: Fire, Detail, + New Bot, Privacy Mode, Add Exchange, Pause Console, Pause API Log and a press on a headline (`src/gui/react_trading_tab.py, in TradingTabReact.run_action`). The rows below mark each of these "Qt build only". The Add Exchange item on the Exchange menu works in both builds.
+On the React page ten presses reach nothing: Fire, Detail, + New Bot, Privacy Mode, Add Exchange, Pause Console, Pause API Log, and a press on a headline, an exchange sub-tab or an Extractor row (`src/gui/react_trading_tab.py, in _HOST_SOURCE`). The rows below mark each of these "Qt build only". The Add Exchange item on the Exchange menu works in both builds.
 
 ### The menu row and the status bar
 
@@ -343,29 +343,30 @@ On the React page eight presses reach nothing: Fire, Detail, + New Bot, Privacy 
 | File > Settings | Opens Settings on its User tab. `src/gui/main_window.py, in MainWindow._open_settings` |
 | File > Reset All Settings | Asks Yes or No, then clears every setting, exchange and stored key. `src/gui/main_window.py, in MainWindow._reset_settings` |
 | File > Exit | Closes the window. `src/gui/main_window.py, in MainWindow._setup_menu` |
-| Exchange > Add Exchange | Opens Settings on the Exchanges tab, in both builds. `src/gui/main_window.py, in MainWindow._add_exchange` |
+| Exchange > Add Exchange | Opens Settings on the Exchanges tab, in both builds. A class with no venue logs a note instead. `src/gui/main_window.py, in MainWindow._add_exchange` |
 | Theme | Repaints the window in one of five themes and remembers it. Reads the `theme` and `accent_color` settings. `src/gui/main_window.py, in MainWindow._switch_theme` |
 | Help > About | Shows the version and a feature list. `src/gui/main_tabs/main_window_surface.py, in about_text` |
-| API load pill | Names the busiest exchange, its calls per minute and its busy share. Amber above 50%, red above 75%. Reads the API log for the last 60 seconds. `src/gui/main_window.py, in MainWindow._refresh_api_load_pill` |
-| AI state label | Shows AI: OFF, READY, NO PACKAGE, AUTH or UNAUTH. Reads the `ai_monitor` settings and `ai.feedback` events. `src/gui/main_window.py, in MainWindow._draw_ai_monitor_pill` |
+| API load pill | Names the busiest exchange, its calls per minute, its busy share and any refused calls. Amber above 50% and red above 75% of the worse of busy share and 600 calls a minute. Reads the API log for the last 60 seconds. `src/exchange/api_load_monitor.py, in APILoadMonitor.sample` |
+| AI state label | Shows AI: OFF, READY or NO PACKAGE, then AUTH or UNAUTH once feedback arrives. Reads the `ai_monitor` settings and `ai.feedback` events. `src/gui/main_window.py, in MainWindow._on_ai_feedback` |
 
 ### The header strip
 
-Every figure repaints each 2 seconds (`src/gui/main_window.py, in MainWindow._refresh_header_strip`). Figures cover the whole fleet, except AMMO, which reads the active class, and EXCH, which reads the active layer.
+Every figure repaints each 2 seconds (`src/gui/main_window.py, in MainWindow._refresh_header_strip`). With Sim or Paper in front, the strip reads that tab's own fleet. Otherwise figures cover the whole fleet, except AMMO, which reads the active class, and EXCH, which reads the active layer.
 
 | Cell | What it shows and what it reads |
 | --- | --- |
 | SPENDABLE | Exchange wallet cash, the highest reading among the bots. A dash until cash or positions read above zero. `src/trading/container/aggregation.py, in FleetAggregationMixin._add_bot_stats` |
 | P/L | Unrealised profit and loss, signed, as the exchange reports it. `src/gui/main_tabs/header_strip_surface.py, in unrealised_amount` |
-| LOCKED | Dollar value of all positions: holdings times price, summed. `src/gui/main_tabs/header_strip_surface.py, in profits_payload` |
+| LOCKED | Dollar value of all positions: holdings times price times the quote's dollar rate, summed. A dash until cash or positions read above zero. `src/trading/container/aggregation.py, in FleetAggregationMixin._bot_position_usd` |
 | MATURE | Position value above three times cost, summed, once an exchange answers. `src/trading/container/aggregation.py, in FleetAggregationMixin._add_bot_stats` |
 | EXCH | Exchange sub-tabs on the active layer. `src/gui/main_window.py, in MainWindow._refresh_header_strip` |
 | AMMO | Whole-dollar distance from target. Green when more bots sit above target, red when more sit below. `src/gui/main_tabs/header_strip_surface.py, in sector_ammo` |
-| SCRUMMED, FOLDED | Dollars sold and bought this year, read from the exchange's trade history. `src/trading/container/aggregation.py, in FleetAggregationMixin.get_aggregate_stats` |
+| SCRUMMED, FOLDED | Dollars sold and bought this year, read from the exchange's trade history. A zero year shows the app's own running total. `src/trading/container/aggregation.py, in FleetAggregationMixin.get_aggregate_stats` |
 | ACCUMULATED | Each bot's live target less its anchor, summed. `src/trading/container/aggregation.py, in FleetAggregationMixin.get_aggregate_stats` |
-| TRADES | Filled orders, summed. `src/trading/container/aggregation.py, in FleetAggregationMixin._add_bot_stats` |
+| TRADES | Orders filled this year, one per order, summed. `src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.sync_ytd_trade_count` |
 | BOTS | Running bots. `src/trading/container/aggregation.py, in FleetAggregationMixin._read_one_bot` |
 | ERRORS | Bot errors since the last reset. A press opens the Error Log, with Recent events, Per-bot snapshot and Reset all errors. `src/gui/main_window.py, in MainWindow._build_error_log_dialog` |
+| Round cell dots | Hide that cell behind asterisks. Filled shows and hollow hides. `src/gui/main_tabs/header_strip.py, in HeaderStripMixin._build_header_strip` |
 
 ### The asset class group
 
@@ -391,18 +392,18 @@ The class-following tabs are declared in `src/gui/main_tabs/class_filter_tab.py,
 
 | Control | What it does and what it reads |
 | --- | --- |
-| Get Started tab | Shows until the class has an exchange, with a heading, an Add Exchange button and a hint. `src/gui/main_tabs/trading_tab.py, in TradingTabMixin._build_trading_tab` |
+| Get Started tab | Shows until the class has an exchange, with a heading, an Add Exchange button and a hint. The button is Qt build only. `src/gui/main_tabs/trading_tab.py, in TradingTabMixin._build_trading_tab` |
 | Add Exchange corner button | Qt build only. Opens Settings on the Exchanges tab, and greys when the class has no venue. `src/gui/main_window.py, in MainWindow._add_exchange` |
-| Exchange sub-tabs | One page per stored exchange, seated on every class it serves. Reads the stored exchange list. `src/gui/main_window.py, in MainWindow.add_exchange_tab` |
+| Exchange sub-tabs | One page per stored exchange, seated on every class it serves. Reads the stored exchange list. A press changes the page, Qt build only, and the React page shows the first exchange. `src/gui/main_window.py, in MainWindow.add_exchange_tab` |
 | Privacy Mode | Qt build only. Masks all registered fields, or shows them again when all are masked. It reads ON only when all are masked. `src/gui/main_tabs/exchange_tab_surface.py, in ExchangeTabModel.on_global_privacy_clicked` |
 | + New Bot | Qt build only. Opens the Create Auto Trader wizard on this class. It refuses while the fleet is sealed or no stored venue serves the class. `src/gui/main_window.py, in MainWindow._create_bot` |
 | Data pool line | Shows cache slots, freshest and oldest ages, stale count and cache-hit share, each second. `src/gui/main_tabs/exchange_tab_surface.py, in pull_rate_text` |
 | DATA POOL STOPPED banner | A red line. It shows when this venue made no calls and the newest reading is over 60 seconds old. `src/exchange/fetch_stall.py, in stall_seconds` |
-| News line | One headline each 15 seconds from ten RSS feeds, fetched hourly. Hover pauses it. A press opens the story, Qt build only. `src/gui/crypto_news_ticker.py, in CryptoNewsTicker` |
+| News line | Qt build only: one headline each 15 seconds from ten RSS feeds, fetched hourly. Hover pauses it, and a press opens the story. The React page fetches at start and holds one headline. `src/gui/crypto_news_ticker.py, in CryptoNewsTicker` |
 
 ### The bot tables
 
-A press on a row draws that bot on the Indicator Voting Panel, and a second press on the same row clears the panel (`src/gui/main_tabs/bot_status_table_surface.py, in selection_after_press`). A press on a column label sorts that column, and blanks sink (`src/gui/main_tabs/bot_status_table_surface.py, in order_statuses`).
+On the Scrumming table, a press on a row draws that bot on the Indicator Voting Panel, and a second press on the same row clears the panel (`src/gui/main_tabs/bot_status_table_surface.py, in selection_after_press`). A press on a column label sorts that column, and blanks sink (`src/gui/main_tabs/bot_status_table_surface.py, in order_statuses`). A press on an Extractor row only selects it for the command bar, Qt build only (`src/gui/widgets/extractor_bot_table.py, in ExtractorBotTable`).
 
 | Scrumming Bots column | What it shows and what it reads |
 | --- | --- |
@@ -411,9 +412,9 @@ A press on a row draws that bot on the Indicator Voting Panel, and a second pres
 | Current Position Value | Held units at a fresh exchange price. Blank when the price is missing or over 20 seconds old. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.position_value_cell` |
 | Trades | The bot's trade count. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._write_row` |
 | Target | The balance the bot returns to: the grown target, else the Target Balance. `src/gui/main_tabs/bot_status_table_surface.py, in target_value` |
-| Target A15, Target A14 | The target restated in that asset, with its 24-hour drift. Blank when the asset is that market or the pair is unlisted. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.target_denom_cell` |
+| Target A15, Target A14 | The target restated in that asset, with its 24-hour drift. Blank when the asset is that market, a dash when the pair is unlisted, and pending until the rate arrives. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.target_denom_cell` |
 | Ammo | Distance from target, unsigned. Green above target, red below, grey when stale. It reads the exchange's units where it has them, else the bot's. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.ammo_cell` |
-| Fire | One press on one bot. The next section covers it. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance` |
+| Fire | Qt build only. One press on one bot. The next section covers it. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance` |
 | Detail button | Qt build only. Opens the bot settings window and selects the row. `src/gui/main_window.py, in MainWindow._on_bot_clicked` |
 | Round header dots | Hides that column behind asterisks. Filled shows and hollow hides. Target's three columns share one field, as do Position Value and Ammo. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel.on_privacy_toggled` |
 
@@ -430,7 +431,7 @@ A press on a row draws that bot on the Indicator Voting Panel, and a second pres
 
 ### The Fire button
 
-Qt build only. A press queues a market order to target on the next tick, past the gates, and it refuses inside 1% of target (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance`). It also sends nothing while the venue lists an open buy on the market (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._refuses_stacked_buy`).
+Qt build only. A press queues a market order to target on the next tick, past the gates, and it refuses inside 1% of target (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance`). A press that buys also sends nothing while the venue lists an open buy on the market, or while that list cannot be read (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._refuses_stacked_buy`).
 
 Fire and Ammo use their colours differently. Ammo is green above target, and Fire is red to sell above target.
 
@@ -487,6 +488,7 @@ Each command acts on the selected row. With no row selected it logs "Select a bo
 | Comp | Net blended with the higher-timeframe phantoms, and a dash on phantom rows. `src/gui/main_tabs/indicator_panel_surface.py, in comp_cell` |
 | Conf | A block bar and an agreement percentage. `src/gui/main_tabs/indicator_panel_surface.py, in conf_cell` |
 | Bars | One bar per voter and one pillar each for Net, Comp and Conf, for the first-listed timeframe. `src/gui/main_tabs/indicator_panel_surface.py, in collated_pillars` |
+| Locks line | Reads No active timeframe locks. Nothing creates a lock, so it stays. `src/gui/indicator_panel.py, in IndicatorVotingPanel._setup_ui` |
 
 ![The Trading tab in the Electron shell](../audits/2026-09-07_units/trading_tab_electron.png)
 
@@ -503,7 +505,7 @@ The wizard's title reads Create Auto Trader. The Qt build draws `BotCreationWiza
 | Back, Next, Cancel | Back returns one page and keeps your entries. Cancel closes the wizard and makes no bot. `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel.go_back` |
 | Finish | Closes the wizard and builds the bot, which waits IDLE until Start. `src/gui/main_window.py, in MainWindow._create_bot` |
 | A market no bot can trade | Finish keeps the wizard open and names why no built variant trades that market. `src/gui/bot_wizard.py, in BotCreationWizard.accept` |
-| Pre-flight check | Scrumming only, after Finish. A missing venue, a missing symbol or a failed read stops creation. An inactive market, or a target under 3x the minimum cost, asks Yes or No. `src/gui/preflight_check.py, in check_symbol` |
+| Pre-flight check | Scrumming only, after Finish. A missing venue, a missing symbol or a failed market read stops creation, and a failed price read does not. An inactive market, or a target under 3x the minimum cost, asks Yes or No. `src/gui/preflight_check.py, in check_symbol` |
 | Parent check | Extractor only, after Finish. It stops creation unless exactly one Scrumming Bot holds the base currency. `src/gui/main_window.py, in MainWindow._refuse_extractor_without_parent` |
 
 ### Trading Mode page
@@ -525,7 +527,7 @@ The wizard's title reads Create Auto Trader. The Qt build draws `BotCreationWiza
 
 ### Trading Parameters rows
 
-The first column gives each row's range and opening value. On a running bot the same rows wait for Apply Changes and reach the next tick.
+The first column gives each row's range and factory opening value. Order Visibility, Aggressive Trading, Target Balance, Enable Phantom Bots and Candles to lock open on your stored default (`src/gui/bot_wizard.py, in TradingParamsPage`). On a running bot the same rows wait for Apply Changes and reach the next tick.
 
 | Row | What it does and what it reads |
 | --- | --- |
@@ -543,13 +545,14 @@ The first column gives each row's range and opening value. On a running bot the 
 | Opposing Trade Interval (0.1 to 20%, 1%) | Sets the Target Delta a scrum needs, and the base of the opposing trade distance. Reads `scrumming_interval_pct`. `src/trading/otd_math.py, in minimum_opposing_trade_distance_pct` |
 | BB Tolerance (0.25 to 5%, 1%) | Sets how close to a band, in percent of band width, price counts for the Landing Strip. Reads `bb_tolerance_pct`. `src/trading/indicators/bb_proximity.py, in detect_bb_proximity` |
 | Landing Strip Candles (2 to 10, 3) | Sets the tight Heikin Ashi candles the band check needs. Reads `bb_landing_strip_candles`. `src/trading/indicators/bb_proximity.py, in detect_bb_proximity` |
-| TA Timeframe (the venue's list) | Sets the candle length for votes, bands and breakers. Reads `ta_timeframe`. `src/trading/scrumming_bot.py, in ScrummingBot.tick` |
+| TA Timeframe (the venue's list, 1h) | Sets the candle length for votes, bands and breakers. Reads `ta_timeframe`. `src/trading/scrumming_bot.py, in ScrummingBot.tick` |
 | Target Balance ($1 to $1,000,000, $200) | Sets the value the bot trades toward. On Apply, a figure above the anchor keeps accrued growth, and one at or below moves both. Reads `target_balance`. `src/trading/scrumming_bot.py, in ScrummingBot.set_target_balance_live` |
-| Max Entry Price (0, off) | Refuses fold, hedge, entry and tranche Fire buys above this price. Reads `max_entry_price`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy` |
-| Min Entry Price (0, off) | Refuses the same buys below this price. Reads `min_entry_price`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy` |
+| Max Entry Price (0 to 10,000,000, 0 off) | Refuses fold, hedge, entry and tranche Fire buys above this price. Reads `max_entry_price`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy` |
+| Min Entry Price (0 to 10,000,000, 0 off) | Refuses the same buys below this price. Reads `min_entry_price`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy` |
 | Trading Fee % (0 to 5%, 0.6%) | Sets the fee inside the opposing distance. A higher fee the venue charged replaces it. Reads `trading_fee_pct`. `src/trading/otd_math.py, in trading_fee_pct_from_config` |
-| Max Target Growth % (0 to 100%, 1%) | Caps target growth and fold spend per cycle. 0% freezes the target and stops folds. Reads `max_target_growth_pct`. `src/trading/scrumming_bot.py, in ScrummingBot.cycle_growth_cap_usd` |
-| Scrum Fold Ratio (1 to 100%, 100%) | Queues this share of a sale's proceeds for buy-back, and the rest stays cash. Reads `scrum_fold_pct`. `src/trading/scrumming/fold_tranches.py, in FoldTrancheAccountingMixin._apply_scrum_fold_pct` |
+| Max Target Growth % (0 to 100%, 1%) | Caps target growth per cycle and the size of each fold order. 0% freezes the target and stops folds. Reads `max_target_growth_pct`. `src/trading/scrumming_bot.py, in ScrummingBot.cycle_growth_cap_usd` |
+| Scrum Fold Ratio (1 to 100%, 100%) | On a plain scrum or cartridge sale, queues this share of proceeds for buy-back, and the rest stays cash. A Stack tranche fill queues nothing. Reads `scrum_fold_pct`. `src/trading/scrumming/fold_tranches.py, in FoldTrancheAccountingMixin._apply_scrum_fold_pct` |
+| Unit lines under this group | Name the market's unit rule. A whole-unit market adds its minimum, interval and position notes. `src/gui/main_tabs/bot_wizard_surface.py, in unit_notes` |
 
 ### Advanced Scrumming rows
 
@@ -561,6 +564,11 @@ The first column gives each row's range and opening value. On a running bot the 
 | Read Rate (1 to 60 min, 5) | Sets the minutes between full reads in SEARCH. TRACK and FIRE read ten times faster. Reads `scrum_read_rate_min`. `src/trading/scrumming_bot.py, in ScrummingBot.tick` |
 | Band Travel (0 to 100%, 70%) | Widens the fold distance by this share of band width, and lifts trend hold after that much travel. 0 is off. Reads `band_travel_pct`. `src/trading/otd_math.py, in band_extension_pct` |
 | BB Bullseye Check (on) | Counts a band touch within 0.5%, or a wick within 0.2%, toward the BB priority skew. Reads `bb_bullseye_check`. `src/trading/scrumming_bot.py, in ScrummingBot.tick` |
+
+### Hedge Rebalance rows
+
+| Row | What it does and what it reads |
+| --- | --- |
 | Hedge Rebalance Active (on) | Lets the reserve buy into a gap under target. Apply fills the reserve on tick and freezes it on untick. Reads `hedge_rebalance_active`. `src/trading/scrumming_bot.py, in ScrummingBot.set_hedge_rebalance_active_live` |
 | Hedge Balance ($0 to $999,999,999, $200) | Sets the reserve ceiling. Apply leaves the current reserve alone. Reads `hedge_balance`. `src/trading/scrumming_bot.py, in ScrummingBot.set_hedge_balance_live` |
 
@@ -645,7 +653,8 @@ The Detail button opens the bot settings window. A Scrumming bot's window carrie
 | --- | --- |
 | Apply Changes | Writes every pending edit at once, with no restart. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._apply_changes` |
 | Close | Closes the window and drops unapplied edits. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._setup_ui` |
-| Prev, Next | Closes this window and opens the next bot on the same tab, dropping unapplied edits. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._navigate_to_sibling` |
+| Prev, Next | Closes this window and opens the neighbouring bot at the same tab position, dropping unapplied edits. The walk covers every bot the manager holds and wraps at both ends. Both buttons hide below two bots. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._navigate_to_sibling` |
+| Pending line | Names the fields waiting for Apply, then counts what Apply changed. `src/gui/bot_live_settings.py, in BotLiveSettingsDialog._mark_changed` |
 
 ### Rows only a running bot shows
 
@@ -660,25 +669,31 @@ These sit on the Settings tab beside the wizard's rows.
 | Target A15, Target A14 | The target in that asset and its 24-hour gap against the dollar pair, each 5 seconds. `src/gui/live_settings/settings_tab.py, in SettingsTabMixin._refresh_target_denom_rows` |
 | Profit Folding Active (on) | Lets fold surplus grow the target. Reads `profit_folding_active`. `src/trading/scrumming_bot.py, in ScrummingBot._apply_fold_target_growth` |
 | Tranche Despawn Timer (0 to 365 days, Off) | Removes fold and stack tranches this old on each tick. It places no order, and a tranche with a resting order stays. Reads `tranche_despawn_days`. `src/trading/scrumming/fold_tranches.py, in FoldTrancheAccountingMixin._despawn_aged_tranches` |
-| Reset All Breakers | Qt build only. Clears both breakers at once and sets a paused bot running. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin.reset_circuit_breaker` |
-| Self-Destruct | Qt build only. After you type SELF-DESTRUCT, it sells the asset's whole venue balance at market and clears the fold queue. `src/trading/scrumming_bot.py, in ScrummingBot.self_destruct` |
+| Reset All Breakers | Qt build only. Clears both breakers at once. A bot the hard breaker paused runs again, and a bot paused by hand stays paused. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin.reset_circuit_breaker` |
+| Self-Destruct | Qt build only. After you type SELF-DESTRUCT, it sells the asset's whole venue balance at market, clears the fold queue and pauses the bot. `src/trading/scrumming_bot.py, in ScrummingBot.self_destruct` |
 | Hunger (off) | Eases the vote floor after idle candles past the opposing distance. It never lets two indicators trade. Reads `hunger_enabled`. `src/trading/scrumming_bot.py, in ScrummingBot._count_hunger_candle` |
 | Hunger Pace (a dash means none) | Sets the idle candles to full hunger. A dash does nothing. Reads `hunger_pace_candles`. `src/trading/container/config.py, in BotConfig.hunger_gain_per_candle` |
+| Accumulation Shadow (off) | In a bearish regime, each fold's extra units go to a Shadow Tranche, held until a bullish regime. Reads `shadow_enabled`. `src/trading/scrumming/shadow.py, in ShadowTrancheMixin._mark_shadow_rows` |
 
 ### The window's other tabs
 
 | Tab | What it holds |
 | --- | --- |
 | Status | Read-only at open: realised profit and loss, trades, open orders, price, uptime and last error. `src/gui/live_settings/status_tab.py, in StatusTabMixin._create_status_tab` |
-| Fold Tranches | The queued buy-backs and their counters. Fire buys one tranche with its own sale dollars, skipping the vote and Target Delta gates. Each Clear button asks first and places no order. `src/trading/scrumming_bot.py, in ScrummingBot.manual_fire_tranche` |
-| Stack Tranches | The rising sell levels and their counters. Clear keeps a tranche that holds a resting order. `src/trading/scrumming_bot.py, in ScrummingBot.clear_stack_tranches` |
+| Fold Tranches | The queued buy-backs and their counters. Fire buys one tranche with its own sale dollars, skipping the vote and Target Delta gates. Each Clear button asks first and places no order. Fire and Clear are Qt build only. `src/trading/scrumming_bot.py, in ScrummingBot.manual_fire_tranche` |
+| Fold Tranches: Order, Filter | Qt build only. Order sets the row order, and Filter hides rows that do not match. `src/gui/live_settings/fold_chrome.py, in build_fold_row_controls` |
+| Fold Tranches: Arbiter button | Qt build only. Flips one label on an Extractor tranche and moves no money. `src/gui/live_settings/fold_tranches_tab.py, in FoldTranchesTabMixin._on_arbiter_toggle_clicked` |
+| Stack Tranches | The rising sell levels and their counters. Clear keeps a tranche that holds a resting order, and Clear Lifetime Counters asks first. Both are Qt build only. `src/trading/scrumming_bot.py, in ScrummingBot.clear_stack_tranches` |
+| Stack Tranches: Shadow Tranches | A summary row and one detail row for each Shadow Tranche the bot holds. `src/gui/main_tabs/stack_tranches_tab_surface.py, in compose_shadow_rows` |
 | Bot Swarm | Read-only: wires, lifetime totals, pending credits and recent transfers. Wires change on the main Swarm tab. `src/gui/live_settings/bot_swarm_tab.py, in BotSwarmTabMixin._create_bot_swarm_tab` |
 | Market Inspector | Read-only: this bot's card from the Inspector's last scan. `src/gui/main_tabs/market_inspector_tab_surface.py, in per_bot_view` |
-| Phantom Bots | Three controls that wait for Apply, and the phantoms' state. A running phantom keeps its timeframe until restart. `src/trading/scrumming_bot.py, in ScrummingBot.update_phantom_config` |
+| Phantom Bots | Three controls that wait for Apply, Qt build only, and the phantoms' state. A running phantom keeps its timeframe until restart. `src/trading/scrumming_bot.py, in ScrummingBot.update_phantom_config` |
 
 ### A running Extractor
 
-The Extractor's Settings tab also draws the Scrumming rows, and Apply accepts them. The engine reads only the five Extractor rows and Trading Fee % (`src/trading/extractor_bot.py, in ExtractorBot.tick`).
+The Extractor's Settings tab draws the Scrumming rows except Opposing Trade Interval, BB Tolerance, Landing Strip Candles, TA Timeframe, Target Balance, Hunger and Hunger Pace, and Apply accepts them (`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._create_settings_tab`). The engine reads only the five Extractor rows and Trading Fee % (`src/trading/extractor_bot.py, in ExtractorBot.tick`).
+
+A started Extractor ranks its watch list and places no order, because its signal reader keeps the stand-in exchange the bot was built with (`src/trading/extractor_bot.py, in ExtractorBot.__init__`).
 
 | Control | What it does and what it reads |
 | --- | --- |
