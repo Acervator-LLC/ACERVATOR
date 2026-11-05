@@ -157,8 +157,8 @@ def _money_text(value) -> str:
 
 REALISED and MATURE are the two. Both are handed a literal absence at the one
 call site that fills the strip, so both draw the marker on every tick. The
-Trading tab section carries the proposal for the first of them:
-[06-trading-tab.md](../06-trading-tab.md).
+Trading tab section lists what each cell reads:
+[06-trading-tab.md](../06-trading-tab.md#the-header-strip).
 
 Both now carry a figure, and the figure comes from the exchange. Realised is the
 venue's own matched profit and loss across the fleet. Mature is the profit held
