@@ -65,6 +65,7 @@ from .otd_math import (
 )
 from .stack_math import rung_floor_ref
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
+from .indicators.types import Candle
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
     TIMEFRAME_SECONDS,
@@ -602,11 +603,15 @@ class ScrummingBot(
         self._cb_hard_tripped: bool = False
         self._cb_hard_tripped_at: float = 0.0
         self._cb_hard_trip_pct: float = 0.0
+        self._cb_hard_candle_ts: float = 0.0
         self._cb_soft_active_side: Optional[str] = None
         self._cb_soft_cooldown_remaining: int = 0
         self._cb_soft_tripped_at: float = 0.0
         self._cb_soft_trip_pct: float = 0.0
+        self._cb_soft_candle_ts: float = 0.0
         self._cb_last_candle_ts: float = 0.0
+        self._cb_row_ts: float = 0.0
+        self._cb_forming: Optional[Candle] = None
         self._cb_unreadable_named: tuple = ()
 
         self._hunger_candles: int = 0
@@ -1739,6 +1744,14 @@ class ScrummingBot(
           {"applied": True|False, "reason"?: str, ...}
 
         """
+        _hold = self.order_hold_reason()
+        if _hold:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"MANUAL TRANCHE FIRE WAITS: {_hold}. Tranche unchanged.",
+            )
+            return {"applied": False, "reason": _hold}
         if not isinstance(tranche_index, int):
             try:
                 tranche_index = int(tranche_index)
@@ -2320,6 +2333,21 @@ class ScrummingBot(
                     "self_destruct refused: confirmation_token "
                     "must equal 'SELF-DESTRUCT' (case-sensitive)"
                 ),
+                "sold_qty": 0.0,
+                "sold_usd": 0.0,
+                "fill_price": 0.0,
+            }
+
+        _hold = self.order_hold_reason()
+        if _hold:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"SELF-DESTRUCT FAILED: {_hold}. State NOT cleared.",
+            )
+            return {
+                "ok": False,
+                "reason": _hold,
                 "sold_qty": 0.0,
                 "sold_usd": 0.0,
                 "fill_price": 0.0,
@@ -3072,6 +3100,8 @@ class ScrummingBot(
 
     async def tick(self) -> None:
         symbol = self.config.symbol
+        if self._cb_hard_tripped:
+            self.state = BotState.PAUSED
 
         try:
             await self._ensure_capital_reservation(
@@ -3189,6 +3219,9 @@ class ScrummingBot(
 
         _delta_early = target_delta_usd(current_value, self._target_balance)
         self._update_opposing_hysteresis_state(_delta_early, ticker.last)
+
+        if await self._tick_breaker_holds(ticker, current_value):
+            return
 
         # Ahead of every early return below: a position at target leaves the tick
         # at the dust band, and a dated contract must still close.
@@ -3375,19 +3408,6 @@ class ScrummingBot(
             candles = candles_from_raw(raw_candles)
         except Exception:
             candles = []
-
-        try:
-            self._check_circuit_breakers(candles)
-        except Exception as _cb_exc:
-            logger.warning(
-                "Bot %s circuit breaker check raised %s: %s",
-                self.bot_id,
-                type(_cb_exc).__name__,
-                _cb_exc,
-            )
-        if self._cb_hard_tripped:
-            self._emit_gate_decision_at_quiet_tick("cb-hard-tripped")
-            return
 
         summary = None
         bb_result = None
@@ -5095,6 +5115,11 @@ class ScrummingBot(
             ``self._stack_tranches`` and records ``origin`` on every tranche.
 
         """
+        _hold = self.order_hold_reason()
+        if _hold and not self._invisible:
+            self._report_held_order("SELL", self.config.symbol, _hold)
+            return 0
+
         from .scrumming.sizing import (
             EVENT_ID_KEY,
             EVENT_UNITS_KEY,
