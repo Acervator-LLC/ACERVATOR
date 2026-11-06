@@ -20,7 +20,7 @@ Now: no license check exists, and beyond the exchanges the app calls news feeds,
 
 1 - Add Exchange - User provides valid API key and secret for target exchange - Platforms validates with an API handshake - Exchange Initializes
 
-Now: most crypto exchanges must pass a live balance check before the key is saved, most broker keys save unchecked, and blank key rows add the exchange with no key (`src/gui/settings_dialog.py, in SettingsDialog._add_exchange`).
+Now: most crypto exchanges must pass a live balance check before the key is saved, most broker keys save unchecked, and blank key rows add the exchange with no key. Its tab appears when the Settings window closes (`src/gui/settings_dialog.py, in SettingsDialog._add_exchange`, `src/gui/main_window.py, in MainWindow._sync_exchange_tabs`).
 
 After an exchange is connected to the platform, bots can be added to target entire or portions of existing positions as well as using standing liquidity to enter positions for the first time. The two primary bots used by Acervator are known as Scrumming and Extractor with the conceptual Modulus Bot to be added later. The first two are the active traders that continuously interact with the market whereas the Modulus Bot will be a macro-strategic interface designed to trigger portfolio-scale shifts in response to custom market signals and it can best be visualized as a modular synthesizer with investment and market-specific functions.
 
@@ -322,7 +322,7 @@ Now: the button reads + Add, the active class name, then Exchange or Broker, and
 
 While the initial set up of Acervator requires at least one valid exchange API, additional exchanges can be added and have their own bot swarms. The current upper operational limit of Acervator is unknown. Multi-exchange testing has yet to be attempted as of 8/25/26 with API compatibility work pending. This button also currently opens the Settings Panel but on the incorrect ‘User’ Tab when it should be ‘Exchanges’.
 
-Now: the button and the Exchange menu both open Settings on the Exchanges tab, and a first launch opens with no exchange (`src/gui/main_window.py, in MainWindow._add_exchange`).
+Now: the button, the Exchange menu and Start on a broker, or on Robinhood on the Crypto class, with no stored key all open Settings on the Exchanges tab, and a first launch opens with no exchange (`src/gui/main_window.py, in MainWindow._run_settings_window`).
 
 ![The Add Crypto Exchange button.](p27-i0.png)
 
@@ -394,7 +394,7 @@ The class-following tabs are declared in `src/gui/main_tabs/class_filter_tab.py,
 | --- | --- |
 | Get Started tab | Shows until the class has an exchange, with a heading, an Add Exchange button and a hint. `src/gui/main_tabs/trading_tab.py, in TradingTabMixin._build_trading_tab` |
 | Add Exchange corner button | Opens Settings on the Exchanges tab, and greys when the class has no venue. `src/gui/main_window.py, in MainWindow._add_exchange` |
-| Exchange sub-tabs | One page per stored exchange, seated on every class it serves. Reads the stored exchange list. A press changes the page. `src/gui/main_tabs/trading_tab.py, in TradingTabMixin._show_exchange_tab` |
+| Exchange sub-tabs | One page per stored exchange, seated on every class it serves. Reads the stored exchange list, and the tabs change when a Settings window closes. A press changes the page. `src/gui/main_tabs/trading_tab.py, in TradingTabMixin._show_exchange_tab`, `src/gui/main_window.py, in MainWindow._sync_exchange_tabs` |
 | Privacy Mode | Masks all registered fields, or shows them again when all are masked. It reads ON only when all are masked. `src/gui/main_tabs/exchange_tab_surface.py, in flip_privacy_masks` |
 | + New Bot | Opens the Create Auto Trader wizard on this class. It refuses while the fleet is sealed or no stored venue serves the class. `src/gui/main_window.py, in MainWindow._create_bot` |
 | Data pool line | Shows cache slots, freshest and oldest ages, stale count and cache-hit share, each second. `src/gui/main_tabs/exchange_tab_surface.py, in pull_rate_text` |

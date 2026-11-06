@@ -548,6 +548,15 @@ FLEET_SEALED_CREATE_ACTION = "BOT_CREATE_REFUSED"
 FLEET_SEALED_CREATE_RESULT = "REFUSED: the saved fleet is sealed"
 FLEET_SEALED_CREATE_USAGE = "No bot was created and no state was written."
 
+
+def fleet_is_sealed(fleet: object) -> bool:
+    """True while ``launch_classification`` on *fleet*'s ``_state_manager`` reads ``LAUNCH_LOCKED``."""
+    from ...core.state_manager import LAUNCH_LOCKED
+
+    state_mgr = getattr(fleet, "_state_manager", None)
+    return state_mgr is not None and state_mgr.launch_classification() == LAUNCH_LOCKED
+
+
 DEFAULT_THEME = "cyberpunk_dark"
 AI_RECONFIGURED_LOG_FORMAT = "AI Monitor reconfigured (phrase: '{phrase}...')"
 AI_PHRASE_CHARACTERS = 20
