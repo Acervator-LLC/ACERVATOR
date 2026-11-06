@@ -809,9 +809,9 @@ whether a tokenised equity's 24/7 or 24/5 window reaches the session rule
 
 ## Related pages
 
-- [`docs/manual/15-venue-compatibility.md`](../../manual/15-venue-compatibility.md)
+- [`docs/reference/15-venue-compatibility.md`](../../reference/15-venue-compatibility.md)
   the venue table and the variant definitions this page reads against
-- [`docs/manual/16-sector-exchange-product-tree.md`](../../manual/16-sector-exchange-product-tree.md)
+- [`docs/reference/16-sector-exchange-product-tree.md`](../../reference/16-sector-exchange-product-tree.md)
   the sector, venue and product levels
 - [`docs/audits/2026-10-09_gateio_sector_order_formats/REPORT.md`](../2026-10-09_gateio_sector_order_formats/REPORT.md)
   the earlier order-format pass this page re-measures and corrects

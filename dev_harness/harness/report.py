@@ -308,6 +308,27 @@ def refuse_silent_failure(
         )
 
 
+def duplication_scope(target: Path, pattern: str) -> list[Path]:
+    """Return the paths a duplication reporter reads for `target`.
+
+    A duplication reporter compares files against each other, so a run
+    over one file reports nothing whatever that file holds. The scope is
+    the first-level directory under `REPO_ROOT` that holds `target`, and
+    the files matching `pattern` beside `target` when it sits at the
+    repository root or outside the repository. Both archetypes that carry
+    a duplication reporter call this, so neither can scope its run
+    differently from the other.
+    """
+    try:
+        first = target.resolve().relative_to(REPO_ROOT).parts[0]
+    except ValueError:
+        first = ""
+    tree = REPO_ROOT / first
+    if first and tree.is_dir():
+        return [tree]
+    return sorted(target.parent.glob(pattern))
+
+
 def rule_source_files(target: Path, suffixes: tuple[str, ...]) -> list[Path]:
     """Return the files the rule modules must scan for `target`.
 

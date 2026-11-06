@@ -64,6 +64,9 @@ METHOD = "settings_dialog.state"
 
 ACCESSIBLE_NAME = ""
 
+#: The name a screen reader announces for the Qt dialog.
+DIALOG_ACCESSIBLE_NAME = "Settings Dialog"
+
 WINDOW_TITLE_FORMAT = "Settings — {wing} Wing"
 PLAIN_WINDOW_TITLE = "Settings"
 MINIMUM_SIZE = (700, 600)
@@ -99,6 +102,24 @@ TAB_TITLES = (
     AI_TAB,
 )
 
+TAB_TOOLTIPS = {
+    USER_TAB: "Your user name and the Fleet Lock password.",
+    EXCHANGE_TAB: "Add, test and remove exchange keys, and see each venue's state.",
+    TRADING_TAB: (
+        "Starting choices for each new bot: target, order visibility and "
+        "aggressive mode."
+    ),
+    TA_TAB: "How much each indicator's vote counts in the voting engine.",
+    PHANTOM_TAB: "Phantom bot choices each new bot starts with.",
+    THEME_TAB: "The colour theme and accent colour.",
+    SOUND_TAB: "Which events play a sound, and how loud.",
+    SMS_TAB: (
+        "Text message alerts: how they are sent, which events send them, and how "
+        "often."
+    ),
+    AI_TAB: "The AI Monitor's API key, handshake phrases and behaviour.",
+}
+
 SCROLLING_TABS = (SMS_TAB, AI_TAB)
 
 CANCEL_BUTTON_TEXT = "Cancel"
@@ -115,17 +136,18 @@ STRONG_CLOSE = "</b>"
 STRONG_WEIGHT = "bold"
 
 STOCK_BANNER_LEAD = "Stock Wing:"
-STOCK_BANNER_TAIL = (
-    " eight brokers hold a connector this program builds: "
-    "alpaca, etrade, fidelity, ibkr, robinhood, schwab, tastytrade and webull. "
+#: The banner's first sentence, which ``stock_banner_tail`` fills from ``offered_brokers``.
+STOCK_BANNER_BROKERS = (
+    " {count} brokers are offered here, each with a connector this program "
+    "builds: {names}. "
+)
+STOCK_BANNER_REST = (
     "The form below takes each one's key and secret. "
     "A broker the program signs in at a browser keeps its own "
     "Connect with a Browser press. "
     "Test Connection answers where a credential can be checked without a "
     "session; elsewhere the Start press checks it."
 )
-STOCK_BANNER_PIECES = (STOCK_BANNER_LEAD, STOCK_BANNER_TAIL)
-STOCK_BANNER_TEXT = STRONG_OPEN + STOCK_BANNER_LEAD + STRONG_CLOSE + STOCK_BANNER_TAIL
 STOCK_BANNER_WORD_WRAP = True
 
 ALPHA_SCALE = ALPHA_HIGHEST
@@ -171,9 +193,8 @@ STOCK_BANNER_STYLE = STOCK_BANNER_STYLE_FORMAT.format(
 #: reading, and ``api_validator.validate_credentials`` is the route it asks
 #: after.
 NO_CREDENTIAL_TEST_TIP = (
-    "Nothing here checks this venue's credential without opening a session. "
-    "The Add press stores the key and secret, and the Start press opens the "
-    "session and reports what the venue answered."
+    "Nothing here checks this venue's key without a session. Add stores it; "
+    "Start opens one and reports the answer."
 )
 
 #: What the feedback row carries for a venue id no registry holds a connector
@@ -190,9 +211,8 @@ NO_CONNECTOR_PROMPT = (
 VERIFICATION_CODE_LABEL = "Verification Code:"
 VERIFICATION_CODE_PLACEHOLDER = "Code the venue showed you after you approved"
 VERIFICATION_CODE_TOOLTIP = (
-    "Open the venue's authorization page, sign in, and approve this "
-    "application. The venue then shows you a short code. Paste that code "
-    "here. The code is used once and is never saved."
+    "Approve this application on the venue's page, then paste the code it "
+    "shows. It is used once and never saved."
 )
 
 CRYPTO_LIST_LABEL = "Configured Crypto Exchanges:"
@@ -207,6 +227,8 @@ VENUE_STATE_VALIDATED = "validated"
 VENUE_STATE_LOST = "lost"
 VENUE_STATE_FORMAT_CHECKED = "format_checked"
 VENUE_STATE_UNSET = "unset"
+#: A stored entry whose venue ``venue_classes`` lists under no sector.
+VENUE_STATE_NOT_OFFERED = "not_offered"
 
 #: The ``design_system`` token each venue state paints with. Only a venue's own
 #: answer reaches ``SUCCESS``; a format check draws the resting colour.
@@ -215,18 +237,21 @@ VENUE_STATE_TOKENS = {
     VENUE_STATE_LOST: "ERROR",
     VENUE_STATE_FORMAT_CHECKED: "STATUS_NEUTRAL",
     VENUE_STATE_UNSET: "STATUS_NEUTRAL",
+    VENUE_STATE_NOT_OFFERED: "WARNING",
 }
 VENUE_STATE_COLOURS = {
     VENUE_STATE_VALIDATED: ds.SUCCESS,
     VENUE_STATE_LOST: ds.ERROR,
     VENUE_STATE_FORMAT_CHECKED: ds.STATUS_NEUTRAL,
     VENUE_STATE_UNSET: ds.STATUS_NEUTRAL,
+    VENUE_STATE_NOT_OFFERED: ds.WARNING,
 }
 VENUE_STATE_WORDS = {
     VENUE_STATE_VALIDATED: "credentials validated",
     VENUE_STATE_LOST: "API connection lost",
     VENUE_STATE_FORMAT_CHECKED: "credential format checked, no venue asked",
     VENUE_STATE_UNSET: "no valid credentials: never asked, or the venue refused one",
+    VENUE_STATE_NOT_OFFERED: "stored, and listed under no sector",
 }
 VENUE_ROW_FORMAT = "{name} ({venue})"
 VENUE_ROW_STYLE = (
@@ -234,6 +259,14 @@ VENUE_ROW_STYLE = (
     "background: " + ds.SURFACE_CONTROL + "; padding: 4px 8px; text-align: left;"
 )
 VENUE_ROW_TOOLTIP = "{name} — {words}. Press to enter credentials."
+NOT_OFFERED_ROW_TOOLTIP = (
+    "{name} — {words}. Press it, then Remove Selected, to delete the stored entry."
+)
+#: What the feedback row carries once a ``VENUE_STATE_NOT_OFFERED`` row is pressed.
+NOT_OFFERED_PROMPT = (
+    "{name} is listed under no sector, so Add stores nothing for it. "
+    "Remove Selected deletes its stored entry."
+)
 VENUE_FORM_BOUND = "Enter credentials for {name}."
 
 #: The Add form's Exchange row while no venue button is pressed.
@@ -317,6 +350,16 @@ def ta_slider_value(weight: float) -> int:
 def ta_value_text(weight: float) -> str:
     """One indicator weight as the figure printed beside its slider."""
     return TA_VALUE_FORMAT.format(weight=weight)
+
+
+TA_TOOLTIP_FORMAT = (
+    "How much the {name} vote counts in the voting engine, from zero to two."
+)
+
+
+def ta_tooltip(name: str) -> str:
+    """The description the indicator ``name`` weight slider carries."""
+    return TA_TOOLTIP_FORMAT.format(name=name.replace("_", " ").title())
 
 
 PHANTOM_TIMEFRAMES = ALL_TIMEFRAMES
@@ -446,10 +489,236 @@ TYPED_CREDENTIAL_CONTROLS = (
 )
 EMPTY_TEXT = ""
 
+#: The Fleet Lock rows of the User tab. One optional password seals the saved
+#: fleet and the venue vault together. ``fleet_lock_intent`` is the whole
+#: decision, and ``SettingsDialog._settle_fleet_lock`` and the drawn build read
+#: that one answer, so neither can take a password the other would refuse.
+FLEET_LOCK_GROUP_TITLE = "Fleet Lock"
+FLEET_LOCK_PHRASE_LABEL = "Password:"
+FLEET_LOCK_CONFIRM_LABEL = "Confirm Password:"
+FLEET_LOCK_PHRASE_PLACEHOLDER_ABSENT = "Leave both rows empty for no lock"
+FLEET_LOCK_PHRASE_PLACEHOLDER_HELD = "Type a new password to change the lock"
+FLEET_LOCK_CONFIRM_PLACEHOLDER = "Type the same password again"
+FLEET_LOCK_PHRASE_DESCRIPTION = (
+    "Seals the saved fleet and the venue vault. Lose it and the lot book is gone."
+)
+FLEET_LOCK_CONFIRM_DESCRIPTION = (
+    "Type the same password again. Neither row is taken unless both match."
+)
+FLEET_LOCK_CLEAR_BUTTON_TEXT = "Clear the lock"
+FLEET_LOCK_CLEAR_DESCRIPTION = (
+    "Destroys the sealed key and the venue vault. Every API key is entered again."
+)
+FLEET_LOCK_UNLOCK_BUTTON_TEXT = "Unlock the fleet now"
+FLEET_LOCK_UNLOCK_DESCRIPTION = (
+    "Opens the sealed fleet with the password and loads every saved bot now."
+)
+
+FLEET_LOCK_STATE_NAME = "lock_state"
+FLEET_LOCK_PHRASE_NAME = "lock_phrase"
+FLEET_LOCK_CONFIRM_NAME = "lock_confirm"
+FLEET_LOCK_UNLOCK_NAME = "lock_unlock"
+FLEET_LOCK_CLEAR_NAME = "lock_clear"
+
+#: The five names ``SettingsDialog._show_fleet_lock_state`` and
+#: ``SettingsDialog._settle_fleet_lock`` read, each prefixed with ``_``.
+FLEET_LOCK_HELD_NAMES = (
+    FLEET_LOCK_STATE_NAME,
+    FLEET_LOCK_PHRASE_NAME,
+    FLEET_LOCK_CONFIRM_NAME,
+    FLEET_LOCK_UNLOCK_NAME,
+    FLEET_LOCK_CLEAR_NAME,
+)
+
+HIDDEN_ECHO = "password"
+FLEET_LOCK_MISSING_FAULT = "missing"
+FLEET_LOCK_PLAIN_FAULT = "plain-echo"
+FLEET_LOCK_FAULT_LOG_FORMAT = "Fleet Lock declaration fault: {where} {field} {fault}"
+
+#: The Qt sheet a danger press is drawn with, ``{tint}`` the theme's danger colour.
+FLEET_LOCK_DANGER_STYLE_FORMAT = "border-color: {tint}; color: {tint};"
+
+FLEET_LOCK_ABSENT_WORDS = (
+    "No password is set. The saved fleet is plain text on this computer and a "
+    "launch starts the bots by itself."
+)
+FLEET_LOCK_HELD_WORDS = (
+    "A password is set. The saved fleet is sealed, and a launch starts no bot "
+    "until the password is given."
+)
+
+FLEET_LOCK_NOTHING = "nothing"
+FLEET_LOCK_SET = "set"
+FLEET_LOCK_CHANGE = "change"
+FLEET_LOCK_CLEAR = "clear"
+FLEET_LOCK_HALF_FILLED = "half_filled"
+FLEET_LOCK_MISMATCH = "mismatch"
+FLEET_LOCK_CLEAR_NEEDS_PHRASE = "clear_needs_password"
+FLEET_LOCK_CHANGE_NEEDS_UNLOCK = "change_needs_unlock"
+
+FLEET_LOCK_SET_BOX_TITLE = "This password becomes the only way into your lot book"
+FLEET_LOCK_SET_QUESTION = (
+    "Save will seal the saved fleet and every stored venue key under this "
+    "password.\n\n"
+    "The password itself is never written down. Nothing on this computer can "
+    "recover it and nobody can reset it.\n\n"
+    "Lose the password and you lose the lot book: every bot, every tranche and "
+    "every lot the saved fleet holds.\n\n"
+    "Seal the fleet under this password?"
+)
+FLEET_LOCK_CHANGE_BOX_TITLE = "The new password becomes the only way in"
+FLEET_LOCK_CHANGE_QUESTION = (
+    "Save will seal the master key under the new password. The old password "
+    "stops working the moment it is written.\n\n"
+    "Lose the new password and you lose the lot book: every bot, every tranche "
+    "and every lot the saved fleet holds.\n\n"
+    "Change the password?"
+)
+FLEET_LOCK_CLEAR_BOX_TITLE = "Clearing the lock destroys the key and the vault"
+FLEET_LOCK_CLEAR_QUESTION = (
+    "Clearing the lock throws two things away for good:\n\n"
+    "  the sealed key file, which is the only thing the password opens\n"
+    "  the venue vault, which holds the API keys you typed in\n\n"
+    "The saved fleet is written back in plain text, and every venue has to be "
+    "entered again by hand on the Exchanges page.\n\n"
+    "This cannot be undone. Clear the lock?"
+)
+
+FLEET_LOCK_HALF_FILLED_LOG = (
+    "Fleet Lock left as it was: one of the two password rows was empty, so "
+    "neither was taken"
+)
+FLEET_LOCK_MISMATCH_LOG = (
+    "Fleet Lock left as it was: the two password rows did not match, so "
+    "neither was taken"
+)
+FLEET_LOCK_CLEAR_NEEDS_PHRASE_LOG = (
+    "Fleet Lock left as it was: clearing the lock needs the current password "
+    "in the Password row"
+)
+FLEET_LOCK_CHANGE_NEEDS_UNLOCK_LOG = (
+    "Fleet Lock left as it was: give the current password through Unlock the "
+    "fleet now, then change it"
+)
+FLEET_LOCK_KEPT_LOG = "Fleet Lock left as it was; nothing was sealed or destroyed"
+FLEET_LOCK_SET_LOG_FORMAT = (
+    "Fleet Lock set. The saved fleet is sealed and {count} venue(s) moved "
+    "under the new key: {names}"
+)
+FLEET_LOCK_CHANGED_LOG = (
+    "Fleet Lock password changed. The old password no longer opens it"
+)
+FLEET_LOCK_CLEARED_LOG_FORMAT = (
+    "Fleet Lock cleared. The sealed key is gone and {count} venue(s) were "
+    "written back: {names}"
+)
+FLEET_LOCK_REFUSED_LOG_FORMAT = (
+    "Fleet Lock left as it was; the reseal could not finish: {error}"
+)
+FLEET_LOCK_WRONG_PHRASE_LOG = (
+    "Fleet Lock left as it was: that password did not open the sealed key"
+)
+FLEET_LOCK_STATE_REFUSED_LOG = (
+    "Fleet Lock changed, but the saved fleet file could not be written back. "
+    "Save the fleet again before the next shutdown"
+)
+FLEET_LOCK_CLEAR_INCOMPLETE_LOG = (
+    "Fleet Lock NOT cleared: the saved fleet would not open, so the sealed key "
+    "was kept. Press Clear the lock again"
+)
+
+
+def fleet_lock_words(held: Any) -> str:
+    """The sentence the Fleet Lock group shows for the lock this install holds.
+
+    ``src/core/encryption.py, in has_master_key`` is what *held* answers, so
+    these words name the key file on disk and never a typed row.
+    """
+    return FLEET_LOCK_HELD_WORDS if held else FLEET_LOCK_ABSENT_WORDS
+
+
+def _fleet_lock_answer(
+    action: str,
+    *,
+    asks: bool = False,
+    title: str = EMPTY_TEXT,
+    words: str = EMPTY_TEXT,
+    refusal: str = EMPTY_TEXT,
+) -> dict:
+    """One ``fleet_lock_intent`` answer, with every field present on all of them."""
+    return {
+        "action": action,
+        "asks": asks,
+        "title": title,
+        "words": words,
+        "refusal": refusal,
+    }
+
+
+def fleet_lock_intent(
+    held: Any, typed: Any, confirm: Any, clearing: Any, opened: Any = True
+) -> dict:
+    """What a Save does to the lock, from the two rows and the Clear press.
+
+    ``action`` is one of ``FLEET_LOCK_NOTHING``, ``FLEET_LOCK_SET``,
+    ``FLEET_LOCK_CHANGE``, ``FLEET_LOCK_CLEAR``, ``FLEET_LOCK_HALF_FILLED``,
+    ``FLEET_LOCK_MISMATCH``, ``FLEET_LOCK_CLEAR_NEEDS_PHRASE`` or
+    ``FLEET_LOCK_CHANGE_NEEDS_UNLOCK``; ``asks`` is True only for the three
+    that change a file, ``words`` is the question those three put on screen,
+    and no password is ever in the answer.
+    """
+    first = str(typed or "")
+    second = str(confirm or "")
+    if clearing:
+        if not first:
+            return _fleet_lock_answer(
+                FLEET_LOCK_CLEAR_NEEDS_PHRASE,
+                refusal=FLEET_LOCK_CLEAR_NEEDS_PHRASE_LOG,
+            )
+        return _fleet_lock_answer(
+            FLEET_LOCK_CLEAR,
+            asks=True,
+            title=FLEET_LOCK_CLEAR_BOX_TITLE,
+            words=FLEET_LOCK_CLEAR_QUESTION,
+        )
+    if not first and not second:
+        return _fleet_lock_answer(FLEET_LOCK_NOTHING)
+    if not first or not second:
+        return _fleet_lock_answer(
+            FLEET_LOCK_HALF_FILLED, refusal=FLEET_LOCK_HALF_FILLED_LOG
+        )
+    if first != second:
+        return _fleet_lock_answer(FLEET_LOCK_MISMATCH, refusal=FLEET_LOCK_MISMATCH_LOG)
+    if held:
+        if not opened:
+            return _fleet_lock_answer(
+                FLEET_LOCK_CHANGE_NEEDS_UNLOCK,
+                refusal=FLEET_LOCK_CHANGE_NEEDS_UNLOCK_LOG,
+            )
+        return _fleet_lock_answer(
+            FLEET_LOCK_CHANGE,
+            asks=True,
+            title=FLEET_LOCK_CHANGE_BOX_TITLE,
+            words=FLEET_LOCK_CHANGE_QUESTION,
+        )
+    return _fleet_lock_answer(
+        FLEET_LOCK_SET,
+        asks=True,
+        title=FLEET_LOCK_SET_BOX_TITLE,
+        words=FLEET_LOCK_SET_QUESTION,
+    )
+
+
 NO_SELECTION_FEEDBACK = "Select an exchange to remove."
 REMOVED_TAB_TEXT = "Its exchange tab comes off the main window."
 REMOVED_FEEDBACK_FORMAT = "{name} removed. " + REMOVED_TAB_TEXT
 REMOVED_LOG_FORMAT = "Exchange removed: {eid}"
+REMOVE_REFUSED_FORMAT = (
+    "{name} cannot be removed while a bot trades on it. Stop each bot first: {bots}."
+)
+REMOVE_UNREAD_FORMAT = "{name} cannot be removed: its bots could not be read ({error})."
+REMOVE_BLOCKER_FORMAT = "{symbol} (bot {bot_id}, {state})"
+REMOVE_BLOCKER_JOIN = ", "
 
 PROCESS_EVENTS_REASON = "legacy processEvents site"
 
@@ -458,8 +727,8 @@ VOLUME_SCALE = 100.0
 VOLUME_RANGE = (0, 100)
 SOUND_NAMES = ("buy", "sell", "fire", "track", "profit", "drip")
 SOUND_TEST_BUTTONS = (
-    ("Test Buy", "buy", None),
-    ("Test Sell", "sell", None),
+    ("Test Buy", "buy", "Play the buy-fill tone."),
+    ("Test Sell", "sell", "Play the sell-fill tone."),
     ("Test Fire", "fire", "Play the sniper rifle SFX."),
     ("Test Track", "track", "Play one tracking beep."),
     ("Test Profit", "profit", "Play the coins-in-bucket SFX."),
@@ -602,19 +871,149 @@ TIMERS_STARTED: tuple = ()
 THREADS_BUILT: tuple = ()
 THREADS_STARTED: tuple = ()
 
+#: A Fleet Lock press; ``checkable`` marks the one that stays pressed in.
+PRESS = "press"
+
+#: The Fleet Lock group's four controls in painted order, the one declaration
+#: ``SettingsDialog._create_fleet_lock_group`` and ``settings_dialog.js`` draw.
+FLEET_LOCK_CONTROLS: tuple[dict, ...] = (
+    {
+        "name": FLEET_LOCK_PHRASE_NAME,
+        "kind": LINE,
+        "label": FLEET_LOCK_PHRASE_LABEL,
+        "echo": HIDDEN_ECHO,
+        "placeholder": FLEET_LOCK_PHRASE_PLACEHOLDER_ABSENT,
+        "description": FLEET_LOCK_PHRASE_DESCRIPTION,
+    },
+    {
+        "name": FLEET_LOCK_CONFIRM_NAME,
+        "kind": LINE,
+        "label": FLEET_LOCK_CONFIRM_LABEL,
+        "echo": HIDDEN_ECHO,
+        "placeholder": FLEET_LOCK_CONFIRM_PLACEHOLDER,
+        "description": FLEET_LOCK_CONFIRM_DESCRIPTION,
+    },
+    {
+        "name": FLEET_LOCK_UNLOCK_NAME,
+        "kind": PRESS,
+        "text": FLEET_LOCK_UNLOCK_BUTTON_TEXT,
+        "checkable": False,
+        "danger": False,
+        "description": FLEET_LOCK_UNLOCK_DESCRIPTION,
+    },
+    {
+        "name": FLEET_LOCK_CLEAR_NAME,
+        "kind": PRESS,
+        "text": FLEET_LOCK_CLEAR_BUTTON_TEXT,
+        "checkable": True,
+        "danger": True,
+        "description": FLEET_LOCK_CLEAR_DESCRIPTION,
+    },
+)
+
+#: Every field one Fleet Lock control of each kind carries.
+FLEET_LOCK_FIELDS = {
+    LINE: ("name", "kind", "label", "echo", "placeholder", "description"),
+    PRESS: ("name", "kind", "text", "checkable", "danger", "description"),
+}
+
+FLEET_LOCK_ROWS = tuple(one for one in FLEET_LOCK_CONTROLS if one.get("kind") == LINE)
+FLEET_LOCK_PRESSES = tuple(
+    one for one in FLEET_LOCK_CONTROLS if one.get("kind") == PRESS
+)
+
+
+def fleet_lock_specs() -> tuple:
+    """One ``CONTROL_SPECS`` entry per named ``FLEET_LOCK_ROWS`` row, carrying its declared fields."""
+    found = []
+    for one in FLEET_LOCK_ROWS:
+        if not one.get("name"):
+            continue
+        spec = {
+            "tab": USER_TAB,
+            "group": FLEET_LOCK_GROUP_TITLE,
+            "label": one.get("label"),
+            "name": one.get("name"),
+            "kind": LINE,
+        }
+        for field in ("echo", "placeholder"):
+            if field in one:
+                spec[field] = one[field]
+        found.append(spec)
+    return tuple(found)
+
+
+def fleet_lock_faults(controls: Any = None) -> list:
+    """Every field ``FLEET_LOCK_FIELDS`` names that a control lacks, and every row not hidden.
+
+    ``controls`` of None reads ``FLEET_LOCK_CONTROLS``; a name of ``FLEET_LOCK_HELD_NAMES`` no control carries is a fault too.
+    """
+    held = FLEET_LOCK_CONTROLS if controls is None else controls
+    found: list = []
+    named: set = set()
+    for at, one in enumerate(held):
+        entry = one if isinstance(one, dict) else {}
+        where = str(entry.get("name") or f"at:{at}")
+        named.add(where)
+        kind = entry.get("kind")
+        for field in FLEET_LOCK_FIELDS.get(kind, ("name", "kind")):
+            if field not in entry:
+                found.append(
+                    {"where": where, "field": field, "fault": FLEET_LOCK_MISSING_FAULT}
+                )
+        if kind == LINE and entry.get("echo", HIDDEN_ECHO) != HIDDEN_ECHO:
+            found.append(
+                {"where": where, "field": "echo", "fault": FLEET_LOCK_PLAIN_FAULT}
+            )
+    for name in FLEET_LOCK_HELD_NAMES:
+        if name != FLEET_LOCK_STATE_NAME and name not in named:
+            found.append(
+                {"where": name, "field": "name", "fault": FLEET_LOCK_MISSING_FAULT}
+            )
+    return found
+
+
+def fleet_lock_payload(tint: Any = None) -> dict:
+    """The Fleet Lock declaration as plain data, with the danger press sheet in ``tint``.
+
+    ``settings_dialog.js`` checks ``controls`` against ``fields`` and ``names`` itself.
+    """
+    return {
+        "group": FLEET_LOCK_GROUP_TITLE,
+        "names": [
+            name for name in FLEET_LOCK_HELD_NAMES if name != FLEET_LOCK_STATE_NAME
+        ],
+        "fields": {kind: list(fields) for kind, fields in FLEET_LOCK_FIELDS.items()},
+        "controls": [dict(one) for one in FLEET_LOCK_CONTROLS],
+        "hidden_echo": HIDDEN_ECHO,
+        "danger_style": FLEET_LOCK_DANGER_STYLE_FORMAT.format(
+            tint=ds.DANGER if tint is None else tint
+        ),
+    }
+
+
 CONTROL_SPECS: tuple[dict, ...] = (
     {
         "tab": USER_TAB,
         "group": None,
         "label": "Username:",
         "name": "username",
+        "tooltip": (
+            "Your user name. Stored exchange secrets are encrypted under it, so a "
+            "change re-encrypts them."
+        ),
         "kind": LINE,
     },
+    *fleet_lock_specs(),
     {
         "tab": EXCHANGE_TAB,
         "group": None,
         "label": None,
         "name": "exchange_list",
+        "tooltip": (
+            "The exchanges set up on this wing. Select one, then press Remove Selected "
+            "to remove it."
+        ),
         "kind": LIST,
     },
     {
@@ -640,9 +1039,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "max_height": 60,
         "placeholder": "API Secret or EC Private Key (PEM format with \\n is OK)",
         "tooltip": (
-            "For Coinbase CDP keys, paste the full PEM key including\n"
-            "-----BEGIN EC PRIVATE KEY----- and -----END EC PRIVATE KEY-----\n"
-            "Literal \\n characters will be auto-converted to newlines."
+            "For Coinbase CDP keys, paste the whole PEM key with its BEGIN and END "
+            "lines. Literal newline escapes are converted."
         ),
     },
     {
@@ -650,6 +1048,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": CRYPTO_ADD_GROUP,
         "label": None,
         "name": "pp_check",
+        "tooltip": (
+            "Tick when this exchange's API key has a passphrase, to show the "
+            "passphrase row."
+        ),
         "kind": CHECK,
         "text": "This exchange uses an API passphrase",
         "checked": False,
@@ -659,6 +1061,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": CRYPTO_ADD_GROUP,
         "label": "",
         "name": "new_passphrase",
+        "tooltip": "The passphrase set on this exchange's API key.",
         "kind": LINE,
         "echo": "password",
         "visible": False,
@@ -680,6 +1083,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": "Default Target Balance:",
         "name": "default_balance",
+        "tooltip": "The dollar target a new bot starts with in the New Bot wizard.",
         "kind": DOUBLE_SPIN,
         "range": (1.0, 1000000.0),
         "prefix": "$",
@@ -690,6 +1094,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": "Bot Visibility:",
         "name": "visibility",
+        "tooltip": (
+            "The order visibility a new bot starts with. Orderbook rests orders on the "
+            "book; Internal keeps them off."
+        ),
         "kind": COMBO_TEXT,
         "items": ("orderbook", "internal"),
     },
@@ -698,6 +1106,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "aggressive",
+        "tooltip": (
+            "A new bot's starting choice. ON places buys and sells as "
+            "immediate-or-cancel taker orders; OFF uses maker orders."
+        ),
         "kind": CHECK,
         "text": "Enable aggressive trading mode",
         "checked": False,
@@ -707,6 +1119,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "phantoms_enabled",
+        "tooltip": "Whether a new Scrumming bot starts with its phantom bots running.",
         "kind": CHECK,
         "text": "Enable Phantom Bots for Scrumming",
         "checked": PHANTOM_ENABLE_DEFAULT,
@@ -726,6 +1139,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": LOCK_GROUP_TITLE,
         "label": "Lock duration (candles):",
         "name": "lock_candles",
+        "tooltip": (
+            "Candles a higher-timeframe lock lasts, for new bots. Nothing creates a "
+            "lock today."
+        ),
         "kind": SPIN,
         "range": (1, 10),
         "value": LOCK_CANDLE_DEFAULT,
@@ -735,6 +1152,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "theme_combo",
+        "tooltip": "The colour theme the whole application draws in.",
         "kind": COMBO_DATA,
         "items": THEME_ITEMS,
     },
@@ -743,6 +1161,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "accent_color",
+        "tooltip": (
+            "A hex colour, such as #00ffcc, that replaces the theme's accent. Empty "
+            "keeps the theme's own."
+        ),
         "kind": LINE,
         "placeholder": "#00ffcc",
     },
@@ -781,6 +1203,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "sound_error",
+        "tooltip": "Plays an alert tone on errors.",
         "kind": CHECK,
         "text": "Errors (alert tone)",
         "checked": True,
@@ -790,6 +1213,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "sound_state",
+        "tooltip": "Plays a soft click when a bot's state changes.",
         "kind": CHECK,
         "text": "Bot state changes (subtle click)",
         "checked": True,
@@ -831,9 +1255,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "text": "P/L increase (coins dropping into bucket)",
         "checked": True,
         "tooltip": (
-            "Synthesized 3-coin bucket drop plays on any trade\n"
-            "event with realized profit > 0. Fires on scrumming\n"
-            "and extractor bots alike."
+            "A three-coin bucket drop plays on any trade with realized profit. "
+            "Fires on scrumming and Extractor bots alike."
         ),
     },
     {
@@ -845,9 +1268,8 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "text": "Accumulation (water drip)",
         "checked": True,
         "tooltip": (
-            "Water drip plays on FOLD events — the canonical\n"
-            "Acervator accumulation moment (buying back more asset\n"
-            "than was sold). Does not fire on SCRUM or DIST."
+            "A water drip plays on FOLD, when the bot buys back more than it sold. "
+            "Silent on SCRUM and DIST."
         ),
     },
     {
@@ -855,6 +1277,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": None,
         "label": None,
         "name": "sound_volume",
+        "tooltip": "Loudness of every sound effect.",
         "kind": SLIDER,
         "range": VOLUME_RANGE,
         "value": 70,
@@ -874,6 +1297,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Provider:",
         "name": "sms_provider",
+        "tooltip": (
+            "How messages are sent: through your carrier's email gateway, or through "
+            "Twilio."
+        ),
         "kind": COMBO_DATA,
         "items": SMS_PROVIDERS,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
@@ -883,6 +1310,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Phone Number:",
         "name": "sms_phone",
+        "tooltip": "The phone number that receives the messages.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "+15551234567",
@@ -892,6 +1320,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Twilio Account SID:",
         "name": "sms_twilio_sid",
+        "tooltip": "Your Twilio account SID, from the Twilio console.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "AC...",
@@ -901,6 +1330,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Twilio Auth Token:",
         "name": "sms_twilio_token",
+        "tooltip": "Your Twilio auth token, from the Twilio console.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "echo": "password",
@@ -911,6 +1341,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Twilio From Number:",
         "name": "sms_twilio_from",
+        "tooltip": "The Twilio number the messages come from.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "+15559876543",
@@ -920,6 +1351,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Carrier:",
         "name": "sms_carrier",
+        "tooltip": (
+            "Your phone carrier. Choosing one fills in the gateway email from the "
+            "phone number."
+        ),
         "kind": COMBO_TEXT,
         "items": CARRIER_NAMES,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
@@ -939,6 +1374,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "SMTP Username:",
         "name": "sms_smtp_user",
+        "tooltip": "The email account that sends the gateway messages.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "your.email@gmail.com",
@@ -948,6 +1384,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "SMTP Password:",
         "name": "sms_smtp_pass",
+        "tooltip": "That email account's app password, not its regular password.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "echo": "password",
@@ -958,6 +1395,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Mail Server:",
         "name": "sms_smtp_server",
+        "tooltip": "The outgoing mail server for that email account.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": SMS_BUILT.smtp_server,
@@ -967,6 +1405,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_PROVIDER_GROUP_TITLE,
         "label": "Mail Port:",
         "name": "sms_smtp_port",
+        "tooltip": "The outgoing mail server's port.",
         "kind": SPIN,
         "range": FIELD_BOUNDS["smtp_port"],
         "value": SMS_BUILT.smtp_port,
@@ -977,6 +1416,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_buy",
+        "tooltip": "Send a message when a buy order fills.",
         "kind": CHECK,
         "text": "Buy fills",
         "checked": SMS_BUILT.notify_buy_fills,
@@ -986,6 +1426,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_sell",
+        "tooltip": "Send a message when a sell order fills.",
         "kind": CHECK,
         "text": "Sell fills",
         "checked": SMS_BUILT.notify_sell_fills,
@@ -995,6 +1436,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_state",
+        "tooltip": "Send a message when a bot starts, stops or errors.",
         "kind": CHECK,
         "text": "Bot state changes (start/stop/error)",
         "checked": SMS_BUILT.notify_bot_state_changes,
@@ -1004,6 +1446,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_errors",
+        "tooltip": "Send a message on exchange API errors and failures.",
         "kind": CHECK,
         "text": "API errors and failures",
         "checked": SMS_BUILT.notify_errors,
@@ -1013,6 +1456,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_pl",
+        "tooltip": "Send a message when profit or loss passes the threshold below.",
         "kind": CHECK,
         "text": "P/L threshold alerts",
         "checked": SMS_BUILT.notify_pl_threshold,
@@ -1022,6 +1466,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": "P/L threshold:",
         "name": "sms_pl_amount",
+        "tooltip": "The dollar profit or loss that sends an alert.",
         "kind": DOUBLE_SPIN,
         "range": FIELD_BOUNDS["pl_threshold_amount"],
         "value": SMS_BUILT.pl_threshold_amount,
@@ -1033,6 +1478,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_balance",
+        "tooltip": "Send a message when a balance runs low.",
         "kind": CHECK,
         "text": "Low balance warnings",
         "checked": SMS_BUILT.notify_balance_warning,
@@ -1042,6 +1488,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_EVENTS_GROUP_TITLE,
         "label": None,
         "name": "sms_connection",
+        "tooltip": "Send a message when an exchange connection changes.",
         "kind": CHECK,
         "text": "Exchange connection status",
         "checked": SMS_BUILT.notify_connection_status,
@@ -1051,6 +1498,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_RATE_GROUP_TITLE,
         "label": "Max messages per hour:",
         "name": "sms_max_hour",
+        "tooltip": "The most messages sent in one hour.",
         "kind": SPIN,
         "range": FIELD_BOUNDS["max_messages_per_hour"],
         "value": SMS_BUILT.max_messages_per_hour,
@@ -1061,6 +1509,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": SMS_RATE_GROUP_TITLE,
         "label": "Min time between messages:",
         "name": "sms_cooldown",
+        "tooltip": "The shortest wait between two messages, in seconds.",
         "kind": SPIN,
         "range": FIELD_BOUNDS["cooldown_seconds"],
         "value": SMS_BUILT.cooldown_seconds,
@@ -1072,6 +1521,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_API_GROUP_TITLE,
         "label": "Anthropic API Key:",
         "name": "ai_api_key",
+        "tooltip": "Your Anthropic API key, which the AI Monitor uses to reach Claude.",
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "echo": "password",
@@ -1082,6 +1532,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_API_GROUP_TITLE,
         "label": "Check interval:",
         "name": "ai_interval",
+        "tooltip": "Hours between the AI Monitor's checks.",
         "kind": DOUBLE_SPIN,
         "range": (0.5, 24.0),
         "value": AI_BUILT.interval_hours,
@@ -1094,6 +1545,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_HANDSHAKE_GROUP_TITLE,
         "label": "Connect phrase:",
         "name": "ai_connect_phrase",
+        "tooltip": (
+            "The phrase the AI Monitor sends to open its handshake. Empty uses the "
+            "built-in phrase."
+        ),
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "acervator-heapbuilder-live",
@@ -1103,6 +1558,10 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_HANDSHAKE_GROUP_TITLE,
         "label": "Confirm phrase:",
         "name": "ai_confirm_phrase",
+        "tooltip": (
+            "The phrase the reply must carry to complete the handshake. Empty uses the "
+            "built-in phrase."
+        ),
         "kind": LINE,
         "min_height": SMS_CONTROL_MIN_HEIGHT,
         "placeholder": "the-heap-grows-by-accumulation",
@@ -1112,6 +1571,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_BEHAVIOUR_GROUP_TITLE,
         "label": None,
         "name": "ai_enabled",
+        "tooltip": "Turns the AI Monitor's feedback loop on or off.",
         "kind": CHECK,
         "text": "Enable AI Monitor feedback loop",
         "checked": False,
@@ -1121,6 +1581,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_BEHAVIOUR_GROUP_TITLE,
         "label": None,
         "name": "ai_auto_handshake",
+        "tooltip": "Runs the handshake by itself before the first analysis.",
         "kind": CHECK,
         "text": "Auto-handshake on first analysis",
         "checked": True,
@@ -1130,6 +1591,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "group": AI_BEHAVIOUR_GROUP_TITLE,
         "label": None,
         "name": "ai_log_feedback",
+        "tooltip": "Writes the AI Monitor's feedback into the trade journal.",
         "kind": CHECK,
         "text": "Log AI feedback to trade journal",
         "checked": True,
@@ -1142,6 +1604,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
             "group": None,
             "label": None,
             "name": ta_slider_name(name),
+            "tooltip": ta_tooltip(name),
             "kind": SLIDER,
             "range": TA_SLIDER_RANGE,
             "value": ta_slider_value(weight),
@@ -1151,6 +1614,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
 )
 
 GROUPS = (
+    (USER_TAB, FLEET_LOCK_GROUP_TITLE),
     (EXCHANGE_TAB, CRYPTO_ADD_GROUP),
     (PHANTOM_TAB, LOCK_GROUP_TITLE),
     (SMS_TAB, SMS_PROVIDER_GROUP_TITLE),
@@ -1165,6 +1629,14 @@ GROUPS = (
 NO_STYLE = ""
 
 TEXT_ROWS = (
+    (
+        USER_TAB,
+        FLEET_LOCK_GROUP_TITLE,
+        None,
+        FLEET_LOCK_STATE_NAME,
+        FLEET_LOCK_ABSENT_WORDS,
+        NO_STYLE,
+    ),
     (
         EXCHANGE_TAB,
         CRYPTO_ADD_GROUP,
@@ -1298,6 +1770,11 @@ ADD_GROUP_BY_WING = "add_group"
 TEST_BUTTON_TEXT = "Test Connection"
 ADD_BUTTON_TEXT = "Test and Add Exchange"
 
+#: The Fleet Lock presses the declaration names and words.
+FLEET_LOCK_NAMED_PRESSES = tuple(
+    one for one in FLEET_LOCK_PRESSES if one.get("name") and one.get("text")
+)
+
 BUTTON_NAMES_BY_TEXT = {
     TEST_BUTTON_TEXT: "test_btn",
     ADD_BUTTON_TEXT: "add_btn",
@@ -1305,10 +1782,43 @@ BUTTON_NAMES_BY_TEXT = {
     AI_TEST_BUTTON_TEXT: "ai_test_btn",
     CANCEL_BUTTON_TEXT: "cancel_btn",
     SAVE_BUTTON_TEXT: "save_btn",
+    **{one["text"]: one["name"] for one in FLEET_LOCK_NAMED_PRESSES},
 }
 
+#: Each press's description; ``credential_form`` holds the Test Connection and Add ones.
+BUTTON_TOOLTIPS = {
+    "remove_btn": (
+        "Removes the selected exchange and its tab. Refused while a bot on it "
+        "still trades."
+    ),
+    "ai_test_btn": (
+        "Checks the API key and both phrases are filled in. Contacts nothing; the "
+        "handshake runs on the next bot cycle."
+    ),
+    "cancel_btn": "Closes the window without saving.",
+    "save_btn": "Saves every tab's settings and closes the window.",
+}
+
+#: The press names a Fleet Lock press keeps pressed in, as ``checkable`` declares.
+CHECKABLE_PRESS_NAMES = frozenset(
+    one["name"] for one in FLEET_LOCK_NAMED_PRESSES if one.get("checkable") is True
+)
+
+FLEET_LOCK_LAYOUT = (
+    GROUP,
+    FLEET_LOCK_GROUP_TITLE,
+    (
+        FORM,
+        (
+            (TEXT, FLEET_LOCK_STATE_NAME),
+            *((CONTROL, one["name"]) for one in FLEET_LOCK_ROWS if one.get("name")),
+            (ROW, tuple((BUTTON, one["text"]) for one in FLEET_LOCK_NAMED_PRESSES)),
+        ),
+    ),
+)
+
 LAYOUT = {
-    USER_TAB: (FORM, ((CONTROL, "username"),)),
+    USER_TAB: (FORM, ((CONTROL, "username"), FLEET_LOCK_LAYOUT)),
     EXCHANGE_TAB: (
         COLUMN,
         (
@@ -1591,27 +2101,49 @@ def venue_row_style(state: Any) -> str:
     return VENUE_ROW_STYLE.format(colour=venue_state_colour(state))
 
 
+def dialog_venue_states(recorded: Any, stored: Any) -> dict:
+    """``recorded`` with ``VENUE_STATE_NOT_OFFERED`` on every ``stored`` entry
+    whose venue ``acs.venue_classes`` lists under no sector."""
+    held = dict(recorded) if isinstance(recorded, dict) else {}
+    for entry in stored or ():
+        named = entry.get(EXCHANGE_ID_KEY, "") if isinstance(entry, dict) else ""
+        venue = str(named or "").strip().lower()
+        if venue and not acs.venue_classes(venue):
+            held[venue] = VENUE_STATE_NOT_OFFERED
+    return held
+
+
+def venue_row(venue: str, state: str) -> tuple:
+    """The drawn Exchange Status row for ``venue`` in ``state``."""
+    name = venue.capitalize()
+    tip = VENUE_ROW_TOOLTIP
+    if state == VENUE_STATE_NOT_OFFERED:
+        tip = NOT_OFFERED_ROW_TOOLTIP
+    return (
+        VENUE_ROW_FORMAT.format(name=name, venue=venue),
+        venue,
+        state,
+        venue_state_colour(state),
+        venue_row_style(state),
+        tip.format(name=name, words=VENUE_STATE_WORDS[state]),
+    )
+
+
 def exchange_status_rows(wing: Any, states: Any = None) -> tuple:
-    """Every venue ``venues_for_class`` answers for one sector, as drawn rows.
+    """Every venue ``venues_for_class`` answers for one sector, then every
+    ``VENUE_STATE_NOT_OFFERED`` venue ``states`` holds, as drawn rows.
 
     A row is ``(text, venue_id, state, colour, style, tooltip)``, and a sector
     with no venue draws ``class_state``'s note under an empty venue id.
     """
     held = states if isinstance(states, dict) else {}
-    found = []
-    for venue in sorted(acs.venues_for_class(wing)):
-        state = venue_state(venue, held)
-        name = venue.capitalize()
-        found.append(
-            (
-                VENUE_ROW_FORMAT.format(name=name, venue=venue),
-                venue,
-                state,
-                venue_state_colour(state),
-                venue_row_style(state),
-                VENUE_ROW_TOOLTIP.format(name=name, words=VENUE_STATE_WORDS[state]),
-            )
-        )
+    listed = sorted(acs.venues_for_class(wing))
+    stored = sorted(
+        venue
+        for venue in held
+        if venue_state(venue, held) == VENUE_STATE_NOT_OFFERED and venue not in listed
+    )
+    found = [venue_row(venue, venue_state(venue, held)) for venue in listed + stored]
     if not found:
         note = acs.class_state(wing)["note"]
         state = VENUE_STATE_UNSET
@@ -1848,6 +2380,41 @@ def removed_feedback_text(name: Any) -> str:
     return REMOVED_FEEDBACK_FORMAT.format(name=name)
 
 
+def remove_refusal(exchange_id: str, fleet: object) -> str:
+    """Answer why Remove keeps *exchange_id*, or no text where it may go.
+
+    ``list_bots_by_exchange`` on *fleet* names its bots, and one not idle or
+    stopped, or a read that raises, keeps the venue for
+    ``SettingsDialog._remove_exchange`` and ``SettingsDialogModel.remove_exchange``.
+    """
+    from .main_window_surface import NOT_RUNNING_STATES
+
+    reader = getattr(fleet, "list_bots_by_exchange", None)
+    if reader is None:
+        return ""
+    name = str(exchange_id).capitalize()
+    try:
+        statuses = [dict(one) for one in reader(exchange_id) or ()]
+    except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+        return REMOVE_UNREAD_FORMAT.format(
+            name=name, error=f"{type(exc).__name__}: {exc}"
+        )
+    blocking = [
+        REMOVE_BLOCKER_FORMAT.format(
+            symbol=one.get("symbol", ""),
+            bot_id=one.get("bot_id", ""),
+            state=one.get("state", ""),
+        )
+        for one in statuses
+        if str(one.get("state", "")) not in NOT_RUNNING_STATES
+    ]
+    if not blocking:
+        return ""
+    return REMOVE_REFUSED_FORMAT.format(
+        name=name, bots=REMOVE_BLOCKER_JOIN.join(blocking)
+    )
+
+
 def stored_credential_phrase(entry: Any) -> str:
     """The phrase an add reports, read off ``entry`` and not off the typed rows.
 
@@ -1913,8 +2480,20 @@ BROWSER_ADD_BUTTON_TEXT = "Connect with a Browser"
 
 #: Why Test Connection is disabled for a venue holding no key to test.
 NO_KEY_TO_TEST = (
-    "This venue takes a browser authorization and no API key, so there is "
-    "nothing to test. Press Connect with a Browser."
+    "This venue signs in at a browser and holds no API key to test. Press "
+    "Connect with a Browser."
+)
+TEST_CONNECTION_TOOLTIP = (
+    "Checks the typed key and secret with the venue and shows its balances. "
+    "Saves nothing."
+)
+ADD_EXCHANGE_TOOLTIP = (
+    "Adds this venue and stores any typed key, encrypted. A key the venue can "
+    "check is tested first."
+)
+BROWSER_ADD_TOOLTIP = (
+    "Signs in at the venue's own page and stores what it issues. No key or "
+    "secret row is read."
 )
 
 #: The Add form's own prompt per credential kind, which ``venue_form_bound``
@@ -2111,9 +2690,9 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
     ``key_rows`` false hides the API Key, API Secret and passphrase rows,
     ``code_row`` true adds the verification-code row for a venue
     ``takes_verification_code`` names, ``test_enabled`` follows
-    ``credential_route_held``, ``add_enabled`` follows ``connector_held``, and
-    an empty ``venue_id`` keeps the shape the form opens with, both presses
-    included.
+    ``credential_route_held``, ``add_enabled`` follows ``connector_held`` and
+    ``acs.venue_classes``, and an empty ``venue_id`` keeps the shape the form
+    opens with, both presses included.
     """
     kind = credential_kind(venue_id, wing)
     browser = kind == CREDENTIAL_BROWSER_AUTHORIZATION
@@ -2122,13 +2701,16 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
     bound = bool(str(venue_id or "").strip())
     route = credential_route_held(venue_id) if bound else True
     built = connector_held(venue_id) if bound else True
-    tip = ""
+    listed = bool(acs.venue_classes(venue_id)) if bound else True
+    tip = TEST_CONNECTION_TOOLTIP
     if browser:
         tip = NO_KEY_TO_TEST
     elif not route:
         tip = NO_CREDENTIAL_TEST_TIP
     if browser:
         prompt = BROWSER_FORM_PROMPT
+    elif not listed:
+        prompt = NOT_OFFERED_PROMPT
     elif not built:
         prompt = NO_CONNECTOR_PROMPT
     elif coded:
@@ -2137,11 +2719,12 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
         prompt = KEY_FORM_PROMPT
     return {
         "kind": kind,
-        "key_rows": not browser,
-        "code_row": coded,
+        "key_rows": not browser and listed,
+        "code_row": coded and listed,
         "add_text": BROWSER_ADD_BUTTON_TEXT if browser else ADD_BUTTON_TEXT,
-        "add_enabled": built,
-        "test_enabled": not browser and route,
+        "add_enabled": built and listed,
+        "add_tip": BROWSER_ADD_TOOLTIP if browser else ADD_EXCHANGE_TOOLTIP,
+        "test_enabled": not browser and route and listed,
         "test_tip": tip,
         "prompt": prompt.format(name=name),
     }
@@ -2255,14 +2838,44 @@ def browser_connected_words(venue_id: Any, approval: Any) -> str:
     )
 
 
+def offered_brokers() -> tuple:
+    """Every venue id ``acs.venues_for_class`` lists under stocks that
+    ``broker_connector_class`` builds a broker for, in id order."""
+    from ...stocks.alpaca_connector import broker_connector_class
+
+    listed = acs.venues_for_class(class_of_wing(STOCK_WING))
+    return tuple(sorted(one for one in listed if broker_connector_class(one)))
+
+
+def names_joined(names: Any) -> str:
+    """``names`` as one phrase, a comma between each and "and" before the last."""
+    held = [str(one) for one in (names or ())]
+    if len(held) < 2:
+        return "".join(held)
+    return ", ".join(held[:-1]) + " and " + held[-1]
+
+
+def stock_banner_tail() -> str:
+    """``STOCK_BANNER_BROKERS`` over ``offered_brokers``, then ``STOCK_BANNER_REST``."""
+    brokers = offered_brokers()
+    named = STOCK_BANNER_BROKERS.format(count=len(brokers), names=names_joined(brokers))
+    return named + STOCK_BANNER_REST
+
+
+def stock_banner_text() -> str:
+    """``STOCK_BANNER_LEAD`` in bold, then ``stock_banner_tail``, as one label."""
+    return STRONG_OPEN + STOCK_BANNER_LEAD + STRONG_CLOSE + stock_banner_tail()
+
+
 def banner_of(wing: str) -> dict:
     """The stock-wing banner, its words, its pieces and its colours."""
+    tail = stock_banner_tail()
     return {
         "shown": wing == STOCK_WING,
-        "text": STOCK_BANNER_TEXT,
+        "text": STRONG_OPEN + STOCK_BANNER_LEAD + STRONG_CLOSE + tail,
         "lead": STOCK_BANNER_LEAD,
-        "tail": STOCK_BANNER_TAIL,
-        "pieces": list(STOCK_BANNER_PIECES),
+        "tail": tail,
+        "pieces": [STOCK_BANNER_LEAD, tail],
         "word_wrap": STOCK_BANNER_WORD_WRAP,
         "style_sheet": STOCK_BANNER_STYLE,
         "marks": {
@@ -2386,30 +2999,27 @@ REFUSED_FIGURE_TEXT: str = ABSENT_CELL_TEXT
 REFUSED_FIGURE_COLOR: str = ds.TEXT_MUTED
 
 REFUSED_TOOLTIP = (
-    "\n\nThe stored {key} is not a figure this control can hold, so the "
-    "control shows {dash} rather than a number. Set a figure to store one; "
-    "Save leaves {key} as it was until you do."
+    "The stored value is not a usable figure, so {dash} shows. Set one; Save keeps "
+    "the old value until then."
 )
 
 
-def refused_tooltip(key: str, carried: str = "") -> str:
-    """`carried` with the sentence a refused control adds under it."""
-    return str(carried) + REFUSED_TOOLTIP.format(key=str(key), dash=REFUSED_FIGURE_TEXT)
+def refused_tooltip() -> str:
+    """The sentence a refused control shows in place of its own description."""
+    return REFUSED_TOOLTIP.format(dash=REFUSED_FIGURE_TEXT)
 
 
-#: What a drop-down adds to its tooltip when its list holds no row for the
-#: stored value. `REFUSED_TOOLTIP` names a figure and a number, which a list of
-#: words is neither.
+#: What a drop-down shows when its list holds no row for the stored value.
+#: `REFUSED_TOOLTIP` names a figure, which a list of words is not.
 REFUSED_ITEM_TOOLTIP = (
-    "\n\nThe stored {key} is not one of the choices this list offers, so the "
-    "list stays on the choice it opened with. Pick a choice to store one; Save "
-    "leaves {key} as it was until you do."
+    "The stored choice is not in this list. Pick one; until then Save keeps the "
+    "old value."
 )
 
 
-def refused_item_tooltip(key: str, carried: str = "") -> str:
-    """`carried` with the sentence a refused drop-down choice adds under it."""
-    return str(carried) + REFUSED_ITEM_TOOLTIP.format(key=str(key))
+def refused_item_tooltip() -> str:
+    """The sentence a refused drop-down shows in place of its own description."""
+    return REFUSED_ITEM_TOOLTIP
 
 
 def _named(value: Any) -> str:
@@ -2719,6 +3329,7 @@ class SettingsDialogModel:
         validator: Any = None,
         sound: Any = None,
         encryptor: Any = None,
+        fleet: object = None,
     ) -> None:
         self.settings = settings
         self.status_log = status_log
@@ -2737,6 +3348,8 @@ class SettingsDialogModel:
         self.validator = validator
         self.sound = sound
         self.encryptor = encryptor
+        #: The ``BotManager`` ``remove_refusal`` reads before ``remove_exchange``.
+        self.fleet = fleet
         self.window_title = title_for(self.wing)
         self.minimum_size = MINIMUM_SIZE
         self.last_validation: Any = None
@@ -2751,6 +3364,10 @@ class SettingsDialogModel:
         self.enabled: dict = {}
         self.visible: dict = {}
         self.tooltips: dict = {}
+        #: Whether each ``CHECKABLE_PRESS_NAMES`` press is pressed in.
+        self.checked: dict = {}
+        #: The placeholder a row shows in place of its spec's own.
+        self.placeholders: dict = {}
         self.rows: list = []
         self.listed_exchanges: list = []
         self.calls: list = []
@@ -2767,6 +3384,8 @@ class SettingsDialogModel:
     def build(self) -> None:
         """Lay out every tab, then seed every control from the store."""
         self._record("build", self.wing)
+        stored = self.settings.list_exchanges() if self.settings else []
+        self.venue_states = dialog_venue_states(self.venue_states, stored)
         self._setup()
         self._load_current()
 
@@ -2780,8 +3399,11 @@ class SettingsDialogModel:
             self.values[name] = self._seed(spec)
             if spec["label"]:
                 self.rows.append([spec["tab"], spec["group"], spec["label"], name])
+        self.tooltips.update(BUTTON_TOOLTIPS)
         for button in BUTTON_NAMES_BY_TEXT.values():
             self.enabled[button] = True
+        for button in CHECKABLE_PRESS_NAMES:
+            self.checked[button] = False
         self.values[TA_ROWS] = [list(one) for one in ta_rows(self.values)]
         self.texts["vol_label"] = volume_label_text(spec_for("sound_volume")["value"])
         self.texts["api_feedback"] = ""
@@ -2795,7 +3417,7 @@ class SettingsDialogModel:
             exchange_status_lines(self.asset_class, self.venue_states)
         )
         self.texts["add_group"] = add_group_title(self.asset_class)
-        self.texts["banner"] = STOCK_BANNER_TEXT if self.wing == STOCK_WING else ""
+        self.texts["banner"] = stock_banner_text() if self.wing == STOCK_WING else ""
         self.styles["banner"] = STOCK_BANNER_STYLE if self.wing == STOCK_WING else ""
         self.on_exchange_changed()
 
@@ -2905,7 +3527,7 @@ class SettingsDialogModel:
             if spec["kind"] in (COMBO_TEXT, COMBO_DATA)
             else refused_tooltip
         )
-        self.tooltips[name] = said(key, self.tooltips.get(name, EMPTY_TEXT))
+        self.tooltips[name] = said()
 
     def _untouched_since_refusal(self, key: str, read: Any) -> bool:
         """Whether `key`'s control still holds what the refusal left in it.
@@ -3094,6 +3716,7 @@ class SettingsDialogModel:
         self.enabled["add_btn"] = bool(form["add_enabled"])
         self.enabled["test_btn"] = bool(form["test_enabled"])
         self.tooltips["test_btn"] = str(form["test_tip"])
+        self.tooltips["add_btn"] = str(form["add_tip"])
 
     def show_key_rows(self, on: Any) -> None:
         """Show or hide the API Key, API Secret and passphrase-box rows.
@@ -3270,13 +3893,21 @@ class SettingsDialogModel:
             self.enabled["test_btn"] = True
 
     def remove_exchange(self, selected: Any = None) -> None:
-        """Drop the selected exchange from the store and the list."""
+        """Remove the selected exchange unless ``remove_refusal`` refuses it."""
         self._record("remove_exchange", selected)
         if selected is None:
             self.set_feedback(NO_SELECTION_FEEDBACK, WARNING_LEVEL)
             return
         eid = selected.split("(")[-1].rstrip(")")
+        refusal = remove_refusal(eid, self.fleet)
+        if refusal:
+            self.set_feedback(refusal, WARNING_LEVEL)
+            if self.status_log:
+                self.status_log.log(refusal, WARNING_LEVEL)
+            return
         self.settings.remove_exchange(eid)
+        if self.venue_states.get(eid) == VENUE_STATE_NOT_OFFERED:
+            self.venue_states.pop(eid)
         if selected in self.listed_exchanges:
             self.listed_exchanges.remove(selected)
         self.values["exchange_list"] = list(self.listed_exchanges)
@@ -3574,7 +4205,7 @@ class _Walker:
             return
         if role == BANNER:
             if self.model.wing == STOCK_WING:
-                self.emit(LABEL, STOCK_BANNER_TEXT)
+                self.emit(LABEL, stock_banner_text())
             return
         if role == LABEL:
             self.emit(LABEL, item[1])
@@ -3587,7 +4218,7 @@ class _Walker:
             return
         if role == TEXT:
             named = item[1]
-            if named in TEXT_ROW_LABELS:
+            if TEXT_ROW_LABELS.get(named):
                 self.emit(LABEL, TEXT_ROW_LABELS[named])
             self.emit(LABEL, self.model.texts[named])
             return
@@ -3647,6 +4278,10 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "enabled": dict(model.enabled),
         "visible": dict(model.visible),
         "tooltips": dict(model.tooltips),
+        "tab_tooltips": dict(TAB_TOOLTIPS),
+        "checked": dict(model.checked),
+        "placeholders": dict(model.placeholders),
+        "fleet_lock": fleet_lock_payload(),
         "refused": {str(key): True for key in model.refused},
         "refused_text": REFUSED_FIGURE_TEXT,
         "refused_color": REFUSED_FIGURE_COLOR,
@@ -3708,11 +4343,17 @@ def build_view_model(model: SettingsDialogModel) -> dict:
         "calls": [list(one) for one in model.calls],
         "call_names": sorted(
             {
+                "bind_venue_row",
                 "build",
+                "edit",
+                "fill_gateway_email",
                 "load_current",
+                "load_refused",
                 "load_skipped",
                 "on_exchange_changed",
+                "show_key_rows",
                 "show_passphrase",
+                "update_weight_label",
                 "show_verification_code",
                 "set_feedback",
                 "test_api_connection",

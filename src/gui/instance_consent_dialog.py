@@ -41,6 +41,8 @@ from typing import TYPE_CHECKING, Optional
 from PySide6 import QtCore, QtWidgets
 
 from src.gui import design_system as ds
+from src.gui.main_tabs import instance_consent_surface as surface
+from src.gui.tooltips import set_description
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, no runtime import
     from src.core.instance_guard import GuardDecision
@@ -114,6 +116,7 @@ class InstanceConsentDialog(QtWidgets.QDialog):
         self._refuse_button.setMinimumHeight(ds.TARGET_LARGE)
         self._refuse_button.setDefault(True)
         self._refuse_button.setAutoDefault(True)
+        set_description(self._refuse_button, surface.REFUSE_TOOLTIP)
         self._refuse_button.clicked.connect(self._on_refuse)
         buttons.addWidget(self._refuse_button)
 
@@ -126,12 +129,10 @@ class InstanceConsentDialog(QtWidgets.QDialog):
         self._consent_button.setDefault(False)
         self._consent_button.setAutoDefault(False)
         self._consent_button.clicked.connect(self._on_consent)
+        set_description(self._consent_button, surface.CONSENT_TOOLTIP)
         if not bool(decision.consent_is_possible):
             self._consent_button.setEnabled(False)
-            self._consent_button.setToolTip(
-                "Another Acervator holds the exclusive handle on this "
-                "directory. Close it first."
-            )
+            set_description(self._consent_button, surface.CONSENT_HELD_TOOLTIP)
         buttons.addWidget(self._consent_button)
 
         layout.addLayout(buttons)

@@ -102,8 +102,6 @@ class CircuitBreaker:
         self.stats = BreakerStats()
         self._lock = threading.Lock()
 
-    # -- State queries --------------------------------------------------
-
     def state(self) -> BreakerState:
         with self._lock:
             self._maybe_transition_to_half_open()
@@ -125,8 +123,6 @@ class CircuitBreaker:
                 return 0.0
             elapsed = time.time() - self.stats.open_since
             return max(0.0, self.cooldown_seconds - elapsed)
-
-    # -- State transitions ----------------------------------------------
 
     def record_success(self) -> None:
         with self._lock:

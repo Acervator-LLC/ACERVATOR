@@ -47,6 +47,8 @@ from __future__ import annotations
 import logging
 import math
 import time
+from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from typing import Optional
 
 from ..core.signal_contract import DIGEST_MIN_INTERVAL, TA_RAW_PREFIX
@@ -134,6 +136,7 @@ __all__ = [
     "KaufmanERIndicator",
     "MACD",
     "MIN_CANDLES_FOR_TA",
+    "NEW_BOT_WEIGHT",
     "NO_SHRINK_RATIO",
     "PERCENT_PER_RATIO_UNIT",
     "RSIIndicator",
@@ -163,6 +166,11 @@ __all__ = [
     "detect_macd_taper",
     "detect_volume_confirmed_spring",
     "detect_w_bottom",
+    "new_bot_weights",
+    "three_agree",
+    "three_indicator_floor",
+    "two_indicator_ceiling",
+    "vote_sides",
     "weights_away_from_default",
     "weights_from_settings",
     "weights_in_force",
@@ -191,6 +199,15 @@ DEFAULT_WEIGHTS = {
     # Both are built on Wilder's RSI, so this vote overlaps stochastic_rsi.
     "rsi": 0.8,
 }
+
+#: The weight each of the twelve ``DEFAULT_WEIGHTS`` indicators holds on a new bot.
+NEW_BOT_WEIGHT = 0.0
+
+
+def new_bot_weights() -> dict[str, float]:
+    """The twelve weights a new bot votes at, ``NEW_BOT_WEIGHT`` under each name."""
+    return dict.fromkeys(DEFAULT_WEIGHTS, NEW_BOT_WEIGHT)
+
 
 # Keyed by the DEFAULT_WEIGHTS name, so _create_indicators needs no second list
 # of figures and KeyErrors on a weight name that has no indicator.
@@ -334,6 +351,11 @@ class VotingEngine:
         self.weights = dict(weights) if weights else DEFAULT_WEIGHTS.copy()
         self._indicators = self._create_indicators()
 
+    @property
+    def indicator_weights(self) -> list[float]:
+        """The weight each indicator ``_create_indicators`` built votes at."""
+        return [indicator.weight for indicator in self._indicators]
+
     def compute_all(
         self,
         candles: list[Candle],
@@ -463,7 +485,8 @@ class VotingEngine:
 
         return self._aggregate(all_signals, "multi")
 
-    def _aggregate(self, signals: list[Signal], timeframe: str) -> VotingSummary:
+    @staticmethod
+    def _aggregate(signals: list[Signal], timeframe: str) -> VotingSummary:
         """Compute voting totals from a list of signals."""
         bullish = 0
         bearish = 0
@@ -499,6 +522,66 @@ class VotingEngine:
             signals=signals,
             timeframe=timeframe,
         )
+
+
+def two_indicator_ceiling(signals: Sequence[Signal]) -> float:
+    """``VotingEngine._aggregate`` confidence when the two heaviest unabstained
+    ``signals`` agree fully and the rest read nothing."""
+    heaviest = sorted(
+        (sig for sig in signals if not sig.abstained),
+        key=lambda sig: sig.weight,
+        reverse=True,
+    )[:2]
+    tally = [
+        (
+            replace(sig, direction=SignalDirection.BULLISH, confidence=1.0)
+            if any(sig is one for one in heaviest)
+            else replace(sig, direction=SignalDirection.NEUTRAL, confidence=0.0)
+        )
+        for sig in signals
+    ]
+    return VotingEngine._aggregate(tally, "").consensus_confidence
+
+
+def three_agree(
+    confidence: float,
+    signals: Sequence[Signal],
+    weights: Optional[Iterable[float]] = None,
+) -> bool:
+    """True when ``confidence`` tops ``two_indicator_ceiling(signals)``, or ``weights``,
+    the ``signals`` weights by default, holds none above zero."""
+    held = [sig.weight for sig in signals] if weights is None else list(weights)
+    if not any(weight > 0.0 for weight in held):
+        return True
+    return confidence > two_indicator_ceiling(signals)
+
+
+def three_indicator_floor(floor: float, signals: Sequence[Signal]) -> float:
+    """``floor``, or the next number above ``two_indicator_ceiling(signals)`` where
+    that is higher."""
+    return max(floor, math.nextafter(two_indicator_ceiling(signals), math.inf))
+
+
+def vote_sides(
+    direction: Optional[SignalDirection],
+    confidence: float,
+    floor: float,
+    band: Optional[BBProximityResult],
+    signals: Sequence[Signal],
+) -> tuple[bool, bool]:
+    """``(is_bullish, is_bearish)`` for ``direction`` at ``confidence`` against
+    ``floor``; a ``band`` landing strip sets its side where ``three_agree`` holds."""
+    strip = band.landing_strip_side if band is not None and band.landing_strip else ""
+    if strip and not three_agree(confidence, signals):
+        strip = ""
+    clears = confidence >= floor
+    is_bullish = strip == "upper" or (
+        direction in (SignalDirection.BULLISH, SignalDirection.NEUTRAL) and clears
+    )
+    is_bearish = strip == "lower" or (
+        direction in (SignalDirection.BEARISH, SignalDirection.NEUTRAL) and clears
+    )
+    return is_bullish, is_bearish
 
 
 def analyze(

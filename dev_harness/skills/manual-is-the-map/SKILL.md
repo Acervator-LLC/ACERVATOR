@@ -82,13 +82,42 @@ in the same unit.** Not at the end of a session, not when somebody notices.
 ```
 python -m tools.build_product_manual      five verifiers green, 77 figures
 read the COMMITTED copy back              page count and image count
-python .../pdf_fresh.py                   exits 1 while the PDF is behind
+pypdf for your passage in the tracked PDF exits 1 while the PDF is behind
 ```
 
 Reading the committed copy back matters. A build that succeeded and a commit
 that carries the built bytes are two different claims, and a 200-page binary
 fails silently.
 
-The freshness check is part of `sync_check.py` as well, so a tree can be on the
+The freshness check is part of `git status --porcelain` as well, so a tree can be on the
 right commit with nothing unpushed and still be out of step. Both must be clean
 before an item counts as delivered.
+
+### The three commands, in this order
+
+The build writes into `artifacts/manual/`, which the ignore file excludes. The
+copy the operator opens is tracked one directory up. A build on its own
+therefore changes nothing he can read.
+
+```
+python -m tools.build_product_manual
+copy the built file over docs/Acervator-Product-Manual.pdf and commit it
+python -c "<the read below>" "<a sentence from the passage you wrote>"
+```
+
+The read takes the sentence as its argument. It exits 0 when the tracked PDF
+holds that sentence and 1 when it does not, so it reports a copy that is behind.
+
+```python
+import sys
+
+from pypdf import PdfReader
+
+pdf = PdfReader("docs/Acervator-Product-Manual.pdf")
+pages = (" ".join((page.extract_text() or "").split()) for page in pdf.pages)
+sys.exit(0 if sys.argv[1] in " ".join(pages) else 1)
+```
+
+Run it twice before trusting it. A sentence the manual carries exits 0, and a
+sentence it does not carry exits 1. A read that answers 0 to both is reading
+nothing.

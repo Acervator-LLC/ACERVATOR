@@ -22,8 +22,11 @@ from dataclasses import dataclass
 from typing import Any, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from ..exchange.base import ExchangeInterface
 
+from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
 from ..exchange.base import OrderSide, OrderType
 from .target_bands import at_target_dust_band
 from .bot_container import (
@@ -35,6 +38,7 @@ from .bot_container import (
 )
 from .ta_engine import (
     MIN_CANDLES_FOR_TA,
+    Signal,
     VotingEngine,
     VotingSummary,
     SignalDirection,
@@ -42,12 +46,24 @@ from .ta_engine import (
     detect_bb_proximity,
     BBProximityResult,
     detect_landing_strip_v2,
+    three_agree,
+    three_indicator_floor,
+    two_indicator_ceiling,
+    vote_sides,
+    weights_from_settings,
 )
-from .container.config import ceiling_multiple, target_growth_pct
+from .container.config import (
+    DETONATION_CONFIDENCE_MIN_DEFAULT,
+    ceiling_multiple,
+    target_growth_pct,
+)
 from .otd_math import (
-    minimum_opposing_trade_distance_pct,
-    minimum_opposing_trade_distance_pct_from_config,
+    WIRE_ABSENT_PCT,
+    DistanceSettings,
+    DistanceSettingUnreadable,
+    opposing_sale_price,
 )
+from .stack_math import rung_floor_ref
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
@@ -82,12 +98,14 @@ from .scrumming import (
     ExecutionEngineMixin,
     FoldTrancheAccountingMixin,
     ReconciliationEngineMixin,
+    ShadowTrancheMixin,
     SnapshotEmitterMixin,
     StateSerializerMixin,
     TickPhaseMixin,
     WireRoutingMixin,
 )
-from .scrumming.execution import SettledFillFee
+from .scrumming.execution import SettledFillFee, venue_fee_record
+from .scrumming.shadow import REGIME_NONE, regime_of
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
 from .scrumming.fold_tranches import (
@@ -95,16 +113,22 @@ from .scrumming.fold_tranches import (
     _STRONG_TREND_MIN_BULL_CANDLES,
 )
 from .scrumming.sizing import (
+    EVENT_ID_KEY,
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
+    discharge_gain_usd,
     fold_size_taper,
     position_ceiling,
     priced_usd,
+    rate_after_wire,
     ratio_to_ceiling,
     scrumming_interval_usd,
     target_delta_pct,
     target_delta_usd,
+    tranche_rebuy_price,
+    tranche_sale_usd,
+    tranche_wire_share_pct,
 )
 
 logger = logging.getLogger("acervator.scrumming")
@@ -195,9 +219,9 @@ actively-contradicting TA still refuses. The non-priority arm keeps
 THIS CONSTANT IS NO LONGER THE WHOLE FLOOR ON THE ARM. Two further
 favours were found in the same shape and repaired the same way, so the
 arm's skew is now one term of a sum that
-``_skewed_confidence_floor`` divides by. With the other two at zero the
-answer is still exactly this number, which is why it is kept and still
-quoted in the log line.
+``_skewed_confidence_floor`` divides by. With the other favours at zero the
+arm's floor is this number while ``two_indicator_ceiling`` reads under it,
+and otherwise the next number above that ceiling.
 """
 
 _STRONG_TREND_MIN_BULL_SHARE = _STRONG_TREND_MIN_BULL_CANDLES / _STRONG_TREND_CANDLES
@@ -229,63 +253,59 @@ exception is about, so that is the reading the exception uses.
 """
 
 
-def _skewed_confidence_floor(skew: float, floor: float = _TA_CONFIDENCE_FLOOR) -> float:
-    """``floor`` relaxed by ``skew`` proportionally; a skew <= -1 returns infinity."""
+def _skewed_confidence_floor(
+    skew: float, signals: Sequence[Signal], floor: float = _TA_CONFIDENCE_FLOOR
+) -> float:
+    """``three_indicator_floor`` of ``floor`` over one plus ``skew``, or of ``floor``
+    for a NaN skew; skew <= -1 gives infinity."""
     denominator = 1.0 + skew
     if denominator <= 0.0:
         return math.inf
-    return floor / denominator
+    eased = floor if math.isnan(denominator) else floor / denominator
+    return three_indicator_floor(eased, signals)
 
 
-_WIRE_CREDIT_CAP = 20
-"""Per-tranche cap on wire-credit DETAIL entries.
+def _favour_skew(
+    position_boost: float, band_boost: float, hunger_skew: float, *, priority_arm: bool
+) -> float:
+    """``position_boost`` plus ``band_boost`` and ``hunger_skew``, and
+    ``_BB_PRIORITY_SKEW`` on ``priority_arm``."""
+    skew = position_boost + band_boost
+    if hunger_skew:
+        skew += hunger_skew
+    if priority_arm:
+        skew += _BB_PRIORITY_SKEW
+    return skew
 
-Everything older is folded into ``wire_credits_rolled``, which keeps the
-totals exactly. See ``ScrummingBot._add_wire_credits`` for the measurement
-that motivated this.
-"""
+
+def _in_hunger_zone(
+    delta: float,
+    price: float,
+    band: BBProximityResult | None,
+    *,
+    distance_clear: bool,
+) -> bool:
+    """Report whether ``distance_clear`` holds and ``price`` sits inside ``band`` on
+    the side ``delta`` needs: under ``upper``, over ``lower``."""
+    if not distance_clear or band is None:
+        return False
+    if delta > 0:
+        return price < band.upper
+    if delta < 0:
+        return price > band.lower
+    return False
 
 
-def _roll_wire_credit_overflow(tranche: dict) -> int:
-    """Trim ``wire_credits`` to the cap, folding excess into ``wire_credits_rolled``.
+def _hunger_skew(idle_candles: int, gain_per_candle: object, skew_max: object) -> float:
+    """Return ``idle_candles`` times ``gain_per_candle``, capped at ``skew_max``.
 
-    Returns:
-      How many detail entries were rolled up.
-
+    ``gain_per_candle`` and ``skew_max`` must be finite and above zero, else it is 0.0.
     """
-    wc = tranche.get("wire_credits")
-    if not isinstance(wc, list) or len(wc) <= _WIRE_CREDIT_CAP:
-        return 0
-    overflow = wc[:-_WIRE_CREDIT_CAP]
-    del wc[:-_WIRE_CREDIT_CAP]
-    rolled = tranche.setdefault(
-        "wire_credits_rolled",
-        {
-            "count": 0,
-            "total_usd": 0.0,
-            "by_source": {},
-            "first_ts": None,
-            "last_ts": None,
-        },
-    )
-    by_source = rolled.setdefault("by_source", {})
-    for e in overflow:
-        if not isinstance(e, dict):
-            continue
-        try:
-            usd = float(e.get("usd", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            usd = 0.0
-        src = str(e.get("source", "") or "unknown")
-        rolled["count"] = int(rolled.get("count", 0)) + 1
-        rolled["total_usd"] = round(float(rolled.get("total_usd", 0.0) or 0.0) + usd, 8)
-        by_source[src] = round(float(by_source.get(src, 0.0) or 0.0) + usd, 8)
-        ts = e.get("ts")
-        if ts is not None:
-            if rolled.get("first_ts") is None:
-                rolled["first_ts"] = ts
-            rolled["last_ts"] = ts
-    return len(overflow)
+    gain = as_finite_float(gain_per_candle)
+    ceiling = as_finite_float(skew_max)
+    if gain is None or ceiling is None or gain <= 0.0 or ceiling <= 0.0:
+        return 0.0
+    return min(ceiling, idle_candles * gain)
 
 
 _USD_STABLE_QUOTES = frozenset(
@@ -344,6 +364,7 @@ class ScrummingBot(
     ExecutionEngineMixin,
     FoldTrancheAccountingMixin,
     ReconciliationEngineMixin,
+    ShadowTrancheMixin,
     SnapshotEmitterMixin,
     StateSerializerMixin,
     TickPhaseMixin,
@@ -396,6 +417,14 @@ class ScrummingBot(
                     f"process-wide EventBus."
                 ) from _bus_exc
 
+        own_weights = config.own_ta_weights
+        if isinstance(own_weights, dict) and own_weights:
+            ta_weights = weights_from_settings(own_weights)
+        elif own_weights:
+            logger.warning(
+                "Bot own_ta_weights %r is not a mapping; the stored weights stand",
+                own_weights,
+            )
         self._ta_weights = ta_weights
         self._voting_engine = VotingEngine(weights=ta_weights)
         self._last_summary: Optional[VotingSummary] = None
@@ -465,7 +494,11 @@ class ScrummingBot(
         self._phantoms_started = False
 
         self._fold_accumulator: float = 0.0
-        self._dist_accumulator: float = 0.0
+        self._dist_sets: list[dict] = []
+        self._shadow_tranches: list[dict] = []
+        self._shadow_regime: str = REGIME_NONE
+        self._shadow_regime_ts: float = 0.0
+        self._fold_piece_laddered: bool = False
         self._fold_queue_usd: float = 0.0
         self._fold_queue_ref_price: float = 0.0
 
@@ -482,6 +515,7 @@ class ScrummingBot(
 
         self._last_sell_venue_fee: Optional[SettledFillFee] = None
         self._last_fill_venue_fee: Optional[SettledFillFee] = None
+        self.highest_venue_fee_pct: float = 0.0
 
         self._stack_tranches: list[dict] = []
         self._stack_created: int = 0
@@ -554,8 +588,6 @@ class ScrummingBot(
         self._pending_wire_credits: float = 0.0
         self._pending_wire_ledger: list[dict] = []
 
-        self._pending_stack_buy_usd: float = 0.0
-
         self._target_grow_last_side: Optional[str] = None
 
         self._fold_cycle_cap_consumed: float = 0.0
@@ -576,6 +608,9 @@ class ScrummingBot(
         self._cb_soft_trip_pct: float = 0.0
         self._cb_last_candle_ts: float = 0.0
         self._cb_unreadable_named: tuple = ()
+
+        self._hunger_candles: int = 0
+        self._hunger_candle_ts: float = 0.0
 
     def get_swos_inputs(self) -> Optional[dict]:
         """Return the input dict for ``smart_wire.compute_safe_outflow_pct``.
@@ -1019,7 +1054,13 @@ class ScrummingBot(
             )
         return _growth_applied
 
-    def _preview_fold_growth(self, units: float, price: float) -> float:
+    def _preview_fold_growth(
+        self,
+        units: float,
+        price: float,
+        distance: Optional[DistanceSettings] = None,
+        fee_pct: Optional[float] = None,
+    ) -> float:
         """What ``_apply_fold_target_growth`` would add for ``units`` at ``price``,
         moving no money.
 
@@ -1031,6 +1072,9 @@ class ScrummingBot(
         Args:
           units: base units the prospective buy would acquire.
           price: quote price used in place of the unknown fill price.
+          distance: where given, a tranche whose ``tranche_rebuy_price`` sits
+            under ``price`` takes none of ``units``.
+          fee_pct: the fee ``discharge_gain_usd`` reads each wire share at.
 
         """
         if not self.config.profit_folding_active:
@@ -1061,11 +1105,12 @@ class ScrummingBot(
             if not math.isfinite(_t_units):
                 _unreadable_units += 1
                 continue
+            if distance is not None and price > tranche_rebuy_price(t, distance):
+                continue
             take = min(_t_units, _remaining)
             if take <= 1e-12:
                 continue
-            if _ref > price:
-                _accum += take * (_ref - price)
+            _accum += discharge_gain_usd(t, take, price, fee_pct)
             _remaining -= take
         self._fold_preview_unreadable_units = _unreadable_units
         _quote = float(self._quote_to_usd or 1.0)
@@ -1508,6 +1553,7 @@ class ScrummingBot(
 
         # The child traded on this same venue account, and one pool is shared.
         self._invalidate_symbol_balances(self.config.symbol)
+        self._record_venue_units_after_fill(b)
 
         try:
             self.config.target_balance = self._target_balance
@@ -1711,13 +1757,19 @@ class ScrummingBot(
             }
 
         tranche = self._fold_tranches[tranche_index]
-        cost = float(tranche.get("usd", 0) or 0)
+        cost = tranche_sale_usd(tranche)
         ibp = float(tranche.get("initial_buy_price", tranche.get("ref", 0)) or 0)
         if cost <= 0:
             return {
                 "applied": False,
-                "reason": f"tranche #{tranche_index+1} has zero USD",
+                "reason": f"tranche #{tranche_index+1} has zero USD of its own sale",
             }
+        try:
+            _wire_share = tranche_wire_share_pct(
+                tranche, self.opposing_distance_settings().fee_pct
+            )
+        except DistanceSettingUnreadable:
+            _wire_share = WIRE_ABSENT_PCT
 
         try:
             ticker = await self._get_ticker(self.config.symbol)
@@ -1762,6 +1814,17 @@ class ScrummingBot(
                 "tranche_ref": str(tranche.get("ref", "")),
                 "tranche_ibp": str(ibp),
             },
+            booker="_book_manual_tranche_fill",
+            booking={
+                "tranche_index": int(tranche_index),
+                "cost": float(cost),
+                "ibp": float(ibp),
+                "ref": float(tranche.get("ref", 0.0) or 0.0),
+                "tranche_units": float(tranche.get("units", 0.0) or 0.0),
+                "wire_share_pct": float(_wire_share),
+                EVENT_ID_KEY: str(tranche.get(EVENT_ID_KEY, "") or ""),
+            },
+            sources=[tranche],
         )
         if fill_price is None or fill_price <= 0:
             return {
@@ -1772,12 +1835,45 @@ class ScrummingBot(
                     "exchange rejection); tranche unchanged"
                 ),
             }
+        return {
+            "applied": True,
+            "tranche_index": tranche_index,
+            "cost_usd": cost,
+            "fill_price": float(fill_price),
+            "units_returned": float(self._last_buy_filled_units or 0.0),
+            "remaining_tranches": len(self._fold_tranches),
+        }
 
-        rebought_units = cost / float(fill_price)
+    async def _book_manual_tranche_fill(
+        self,
+        units: float,
+        fill_price: float,
+        asked: float,
+        _first: bool,
+        *,
+        tranche_index: int,
+        cost: float,
+        ibp: float,
+        ref: float,
+        tranche_units: float,
+        sources: Optional[list] = None,
+        wire_share_pct: float = WIRE_ABSENT_PCT,
+        **fingerprint: Any,
+    ) -> None:
+        """Book one settled piece of a manual tranche fire: a lot at ``ibp``, the
+        tranche settled by the share of ``asked`` filled, and the growth at
+        ``rate_after_wire`` of ``ref`` and ``wire_share_pct``.
 
-        _mf_ref = float(tranche.get("ref", 0.0) or 0.0)
+        ``_planned_fold_sources`` finds the tranche again through ``sources`` or the
+        ``fingerprint`` it carried when the order went out. A tranche that ends
+        returns its wire credit through ``_return_wire_credits_to_pool``.
+        """
+        rebought_units = float(units)
+        _share_filled = min(1.0, rebought_units / asked) if asked > 0 else 1.0
+        _cost = float(cost) * _share_filled
+        _mf_rate = rate_after_wire(ref, wire_share_pct)
         _mf_profit = (
-            float(cost) * (1.0 - float(fill_price) / _mf_ref) if _mf_ref > 0 else 0.0
+            _cost * (1.0 - float(fill_price) / _mf_rate) if _mf_rate > 0 else 0.0
         )
         try:
             _mf_growth = self._apply_fold_target_growth(
@@ -1800,16 +1896,36 @@ class ScrummingBot(
             }
         )
         _removed_ok = False
-        try:
-            self._fold_tranches.remove(tranche)
-            _removed_ok = True
-        except ValueError:
+        tranche = self._planned_fold_sources(
+            [dict(fingerprint, ref=ref, initial_buy_price=ibp)], sources
+        )[0]
+        if tranche is None:
             logger.warning(
                 "Bot %s manual_fire_tranche: tranche disappeared "
                 "between dispatch and post-fill; lots updated, "
                 "tranche cleanup skipped; closed-counter NOT bumped.",
                 self.bot_id,
             )
+        elif _share_filled >= 1.0:
+            tranche["usd"] = max(0.0, float(tranche.get("usd", 0.0) or 0.0) - _cost)
+            self._return_wire_credits_to_pool(tranche)
+            self._fold_tranches = [t for t in self._fold_tranches if t is not tranche]
+            _removed_ok = True
+        else:
+            tranche["usd"] = max(0.0, float(tranche.get("usd", 0.0) or 0.0) - _cost)
+            tranche["units"] = max(
+                0.0,
+                float(tranche.get("units", 0.0) or 0.0)
+                - float(tranche_units) * _share_filled,
+            )
+            if tranche["usd"] <= 1e-9 or tranche["units"] <= 1e-12:
+                self._return_wire_credits_to_pool(tranche)
+                self._fold_tranches = [
+                    t for t in self._fold_tranches if t is not tranche
+                ]
+                _removed_ok = True
+            else:
+                tranche["fold_partial_spent"] = True
         self._fold_queue_usd = sum(
             float(t.get("usd", 0) or 0) for t in self._fold_tranches
         )
@@ -1832,7 +1948,7 @@ class ScrummingBot(
             message=(
                 f"MANUAL TRANCHE FIRE COMPLETE: tranche "
                 f"#{tranche_index+1} consumed. "
-                f"${cost:.4f} → {rebought_units:.6f} units @ "
+                f"${_cost:.4f} → {rebought_units:.6f} units @ "
                 f"${fill_price:.8f}, returned to main_lots with "
                 f"IBP ${ibp:.8f}. Fold queue now "
                 f"${self._fold_queue_usd:.4f} across "
@@ -1849,7 +1965,7 @@ class ScrummingBot(
                     "symbol": self.config.symbol,
                     "units_rebought": float(rebought_units),
                     "fill_price": float(fill_price),
-                    "usd_spent": float(cost) * float(self._quote_to_usd or 1.0),
+                    "usd_spent": float(_cost) * float(self._quote_to_usd or 1.0),
                     "operator_initiated": True,
                     "manual_kind": "MANUAL_TRANCHE_FOLD",
                     "tranche_ibp": float(ibp),
@@ -1864,33 +1980,20 @@ class ScrummingBot(
                 type(_sup).__name__,
                 _sup,
             )
-        self._bus.emit(
-            "trade.filled",
-            bot_id=self.bot_id,
-            data={
-                "type": "MANUAL_TRANCHE_FOLD",
-                "side": "BUY",
-                "amount": rebought_units,
-                "price": fill_price,
-                "usd": cost,
-                "operator_initiated": True,
-                "accum_profit": float(_mf_profit),
-                "growth_applied": float(_mf_growth),
-                **self._fill_fee_fields(fill_price),
-            },
-        )
         self._emit_voting_panel_snapshot_at_fire(
             side="BUY", trade_action="MANUAL_TRANCHE_FOLD"
         )
         self._emit_gate_decision_at_fire(side="BUY", trade_action="MANUAL_TRANCHE_FOLD")
-        return {
-            "applied": True,
-            "tranche_index": tranche_index,
-            "cost_usd": cost,
-            "fill_price": float(fill_price),
-            "units_returned": rebought_units,
-            "remaining_tranches": len(self._fold_tranches),
-        }
+        self._announce_fill(
+            kind="MANUAL_TRANCHE_FOLD",
+            side=FILL_BUY,
+            units=rebought_units,
+            price=fill_price,
+            usd=_cost,
+            profit=_mf_growth,
+            operator_initiated=True,
+            fee=self._fill_fee_fields(fill_price),
+        )
 
     def update_phantom_config(
         self,
@@ -2108,15 +2211,17 @@ class ScrummingBot(
         return True
 
     async def _get_balance(self, currency: str):
-        """Fetch a balance through ``_data_pool``, else a direct exchange call."""
+        """Fetch a balance through ``_data_pool``, else a direct exchange call, less the
+        units ``_net_of_shadows`` holds apart from this bot's position."""
         if self._data_pool is not None:
             try:
-                return await self._data_pool.get_or_fetch_balance(
+                balance = await self._data_pool.get_or_fetch_balance(
                     self.exchange, self.config.exchange_id, currency
                 )
             except Exception:
                 raise
-        return await self.exchange.get_balance(currency)
+            return self._net_of_shadows(currency, balance)
+        return self._net_of_shadows(currency, await self.exchange.get_balance(currency))
 
     async def _refresh_quote_to_usd(self) -> Optional[float]:
         """Refresh the cached quote→USD rate, at most once per 30s and 1.0 for
@@ -2269,6 +2374,7 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
+        units += self._return_shadows_to_lots("self-destruct")
         if units <= 0:
             self._main_lots = []
             try:
@@ -2411,25 +2517,67 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
-        # A reported filled of zero filled nothing; only an omitted field
-        # falls back to amount.
-        # OVERTAKEN, the sentence above: an omitted field books nothing too,
-        # because ``amount`` is the count the venue accepted and not one it
-        # filled, and ``units`` is the count this sale asked for.
-        _sd_filled = getattr(order, "filled", None)
-        fill_amount = float(_sd_filled or 0.0)
-        fill_price = float(
-            getattr(order, "average_price", None)
-            or getattr(order, "average", None)
-            or getattr(order, "price", None)
-            or ref_price
+        fill_amount, fill_price, _ = await self._settled_fill(
+            order, self.config.symbol, units, ref_price, label="SELF-DESTRUCT"
         )
+        _destruct = {"keep_running": bool(keep_running)}
+        self._hold_resting_order(
+            order, "_book_self_destruct", "sell", fill_amount, fill_price, _destruct
+        )
+        if fill_amount <= 0:
+            try:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SELF-DESTRUCT SENT, NO FILL REPORTED: market-sell "
+                        f"{units:.8f} {self.config.target_asset} was accepted and "
+                        f"the exchange reported no filled amount. Nothing was "
+                        f"cleared, counted or paused; the sale is booked when the "
+                        f"exchange reports its fill."
+                    ),
+                )
+            except Exception as _sup:
+                logger.debug(
+                    "suppressed in %s: %s: %s",
+                    "self_destruct",
+                    type(_sup).__name__,
+                    _sup,
+                )
+            return {
+                "ok": False,
+                "reason": "the exchange reported no filled amount; nothing changed",
+                "sold_qty": 0.0,
+                "sold_usd": 0.0,
+                "fill_price": 0.0,
+            }
+        return await self._book_self_destruct(
+            fill_amount,
+            fill_price or ref_price,
+            self._order_asked_units(self._last_settled_order or order, units),
+            True,
+            venue_units=units,
+            **_destruct,
+        )
+
+    async def _book_self_destruct(
+        self,
+        units: float,
+        fill_price: float,
+        _asked: float,
+        _first: bool,
+        *,
+        keep_running: bool,
+        venue_units: Optional[float] = None,
+    ) -> dict:
+        """Book one settled piece of a self-destruct sale: lots off highest price first,
+        the fold queue cleared, the bot paused unless ``keep_running``.
+
+        ``venue_units`` is the venue reading taken before the order, None for a later
+        piece, which moves ``_audited_venue_units`` by ``units``.
+        """
+        fill_amount = float(units)
         fill_usd = fill_amount * fill_price * float(self._quote_to_usd or 1.0)
-        # The only point on the SELF_DESTRUCT path holding the settled order.
-        self._last_fill_venue_fee = self._venue_fee_record(
-            order, fill_amount, fill_price
-        )
-        await self._settle_venue_fee(order, fill_amount, fill_price)
 
         self._take_filled_units_off_lots(fill_amount)
         try:
@@ -2443,6 +2591,10 @@ class ScrummingBot(
         self._fold_tranches = []
         self._fold_queue_usd = 0.0
         self._current_holdings = max(0.0, self._current_holdings - fill_amount)
+        if venue_units is not None:
+            self._record_audited_venue_units(venue_units - fill_amount)
+        else:
+            self._record_venue_units_after_fill(-fill_amount)
         # The exchange holds units the surviving lots do not account for, so the
         # shortfall is added at the fill price.
         _sd_book_units = sum(
@@ -2464,7 +2616,7 @@ class ScrummingBot(
         try:
             self.stats.total_scrummed_usd += fill_usd
             self.note_scrum_retention_usd(fill_usd)
-            self.stats.total_trades += 1
+            self._count_trade_volume(fill_amount, fill_price)
         except Exception as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
@@ -2479,26 +2631,20 @@ class ScrummingBot(
             )
 
         try:
-            self._bus.emit(
-                "trade.filled",
-                bot_id=self.bot_id,
-                data={
-                    "type": "SELF_DESTRUCT",
-                    "side": "SELL",
-                    "amount": fill_amount,
-                    "price": fill_price,
-                    "usd": fill_usd,
-                    "profit": 0.0,
-                    "operator_initiated": True,
-                    "symbol": self.config.symbol,
-                    "exchange": self.config.exchange_id,
-                    **self._fill_fee_fields(fill_price),
-                },
-            )
             self._emit_voting_panel_snapshot_at_fire(
                 side="SELL", trade_action="SELF_DESTRUCT"
             )
             self._emit_gate_decision_at_fire(side="SELL", trade_action="SELF_DESTRUCT")
+            self._announce_fill(
+                kind="SELF_DESTRUCT",
+                side=FILL_SELL,
+                units=fill_amount,
+                price=fill_price,
+                usd=fill_usd,
+                profit=0.0,
+                operator_initiated=True,
+                fee=self._fill_fee_fields(fill_price),
+            )
         except Exception as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
@@ -2545,6 +2691,73 @@ class ScrummingBot(
             "fill_price": fill_price,
         }
 
+    def _hunger_floor_skew(self) -> float:
+        """Return ``_hunger_skew`` for ``_hunger_candles`` at this bot's two figures."""
+        return _hunger_skew(
+            self._hunger_candles,
+            self.config.hunger_gain_per_candle,
+            self.config.hunger_skew_max,
+        )
+
+    def _count_hunger_candle(
+        self, candles: list, signals: Sequence[Signal], *, in_zone: bool
+    ) -> None:
+        """Add one to ``_hunger_candles`` for each newer candle ``candles`` ends on
+        while ``in_zone``; ``_hunger_candle_ts`` holds the last one."""
+        if not in_zone:
+            return
+        try:
+            stamp = float(getattr(candles[-1], "timestamp", 0) or 0) if candles else 0.0
+        except (TypeError, ValueError):
+            return
+        if not math.isfinite(stamp) or stamp <= self._hunger_candle_ts:
+            return
+        anchored = self._hunger_candle_ts > 0.0
+        self._hunger_candle_ts = stamp
+        if not anchored:
+            return
+        before = self._hunger_floor_skew()
+        self._hunger_candles += 1
+        after = self._hunger_floor_skew()
+        if after != before:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"HUNGER: {self._hunger_candles} candle(s) past the "
+                    f"opposing trade distance and inside the band, with no "
+                    f"fill. Hunger adds {after:+.2f} to the floor skew, which "
+                    f"alone puts the confidence floor at "
+                    f"{_skewed_confidence_floor(after, signals):.4f}."
+                ),
+            )
+
+    def _sate_hunger(self, cause: str) -> None:
+        """Zero ``_hunger_candles`` and ``_hunger_candle_ts``.
+
+        A SATIETY line names ``cause`` when ``_hunger_floor_skew`` was above zero.
+        """
+        held = self._hunger_floor_skew()
+        if held > 0.0:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"SATIETY: {cause}. Hunger returns to zero after "
+                    f"{self._hunger_candles} idle candle(s), and its "
+                    f"{held:+.2f} floor skew ends."
+                ),
+            )
+        self._hunger_candles = 0
+        self._hunger_candle_ts = 0.0
+
+    def _write_clock_figures(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Run ``_sate_hunger`` for ``fill``, then write the mixin's clock figures."""
+        self._sate_hunger(f"a {fill.type} fill")
+        super()._write_clock_figures(fill, order_id, filled, rests)
+
     def _update_opposing_hysteresis_state(
         self, delta: float, current_price: float
     ) -> None:
@@ -2572,10 +2785,6 @@ class ScrummingBot(
                 if not self._hyst_armed_fold_side:
                     self._hyst_armed_fold_side = True
                     self._hyst_ref_fold_side = _px
-                    try:
-                        _interval = float(self.config.scrumming_interval_pct or 0)
-                    except (TypeError, ValueError):
-                        _interval = 0.0
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -2583,8 +2792,8 @@ class ScrummingBot(
                             f"FOLD-side hysteresis ARMED: target delta "
                             f"crossed negative after recent SCRUM. "
                             f"Pivot ref = ${_px:.8f}. FOLD now requires "
-                            f"price drop of {_interval:.2f}% + fee from "
-                            f"this pivot."
+                            f"a price drop of {self._pivot_distance_text()} "
+                            f"from this pivot."
                         ),
                     )
             else:
@@ -2608,10 +2817,6 @@ class ScrummingBot(
                 if not self._hyst_armed_scrum_side:
                     self._hyst_armed_scrum_side = True
                     self._hyst_ref_scrum_side = _px
-                    try:
-                        _interval = float(self.config.scrumming_interval_pct or 0)
-                    except (TypeError, ValueError):
-                        _interval = 0.0
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -2619,8 +2824,8 @@ class ScrummingBot(
                             f"SCRUM-side hysteresis ARMED: target delta "
                             f"crossed positive after recent FOLD. "
                             f"Pivot ref = ${_px:.8f}. SCRUM now requires "
-                            f"price rise of {_interval:.2f}% + fee from "
-                            f"this pivot."
+                            f"a price rise of {self._pivot_distance_text()} "
+                            f"from this pivot."
                         ),
                     )
             else:
@@ -2934,6 +3139,13 @@ class ScrummingBot(
             await self._tick_initialise(symbol)
             return
 
+        try:
+            await self._reconcile_resting_orders()
+        except Exception as _rest_exc:
+            logger.warning(
+                "Bot %s held-order reconcile raised: %s", self.bot_id, _rest_exc
+            )
+
         self._reconcile_tick_counter += 1
         if (
             self._reconcile_tick_counter >= self._reconcile_interval
@@ -2983,6 +3195,9 @@ class ScrummingBot(
         if await self._tick_expiry_close(ticker):
             return
 
+        if await self._tick_shadow(ticker):
+            return
+
         # Within the dust band of target the tick returns; manual fire bypasses it.
         _dust_band_usd = at_target_dust_band(self._target_balance)
         if (
@@ -3022,19 +3237,12 @@ class ScrummingBot(
             self._emit_gate_decision_at_quiet_tick(
                 f"at-target-dust-band(+/-${_dust_band_usd:.4f})"
             )
+            self._sate_hunger("the position is back at target")
             return
         self._at_target_counter = 0
 
         if self._manual_fire_pending:
             await self._tick_manual_fire(ticker)
-            return
-
-        try:
-            _stack_pending = float(getattr(self, "_pending_stack_buy_usd", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            _stack_pending = 0.0
-        if _stack_pending > 0:
-            await self._tick_wire_stack_fire(ticker, _stack_pending)
             return
 
         try:
@@ -3056,17 +3264,21 @@ class ScrummingBot(
 
                 _hyst_blocks = False
                 _hyst_reason = ""
+                _block_label = "hysteresis"
                 try:
-                    _eff_pct = minimum_opposing_trade_distance_pct_from_config(
-                        self.config
+                    _eff_pct = self.opposing_trade_distance_pct()
+                except DistanceSettingUnreadable as _unread:
+                    _eff_pct = 0.0
+                    _hyst_blocks = True
+                    _block_label = "opposing distance unreadable"
+                    _hyst_reason = (
+                        f"{_unread}, so the opposing trade distance cannot be read"
                     )
-                    _eff_frac = _eff_pct / 100.0
-                except (TypeError, ValueError):
-                    _eff_pct = 3.6
-                    _eff_frac = 0.036
+                _eff_frac = _eff_pct / 100.0
 
                 if (
-                    _direction == "SCRUM"
+                    not _hyst_blocks
+                    and _direction == "SCRUM"
                     and getattr(self, "_hyst_armed_scrum_side", False)
                     and float(getattr(self, "_hyst_ref_scrum_side", 0.0) or 0.0) > 0
                 ):
@@ -3080,7 +3292,8 @@ class ScrummingBot(
                             f"+ {_eff_pct:.2f}%)"
                         )
                 elif (
-                    _direction == "FOLD"
+                    not _hyst_blocks
+                    and _direction == "FOLD"
                     and getattr(self, "_hyst_armed_fold_side", False)
                     and float(getattr(self, "_hyst_ref_fold_side", 0.0) or 0.0) > 0
                 ):
@@ -3107,7 +3320,7 @@ class ScrummingBot(
                             "bot.log",
                             bot_id=self.bot_id,
                             message=(
-                                f"MAX CARTRIDGE BLOCKED (hysteresis): "
+                                f"MAX CARTRIDGE BLOCKED ({_block_label}): "
                                 f"would fire {_direction} on "
                                 f"|delta|=${abs(_cartridge_delta):.2f} "
                                 f"≥ ${_cartridge_threshold:.2f}, but "
@@ -3136,10 +3349,20 @@ class ScrummingBot(
 
         self.stats.position_value = current_value
 
+        try:
+            _distance = self.opposing_distance_settings()
+        except DistanceSettingUnreadable as _unread:
+            self._refuse_unreadable_distance(_unread, "SCRUM AND FOLD", ticker.last)
+            self._emit_gate_decision_at_quiet_tick(
+                f"distance-unreadable({_unread.setting})"
+            )
+            self._last_price = ticker.last
+            return
+
         delta = target_delta_usd(current_value, self._target_balance)
         delta_pct = target_delta_pct(delta, self._target_balance)
         _interval_usd = scrumming_interval_usd(
-            self._target_balance, self.config.scrumming_interval_pct
+            self._target_balance, _distance.interval_pct
         )
 
         ta_tf = self.config.ta_timeframe or "1h"
@@ -3400,7 +3623,7 @@ class ScrummingBot(
         band_travel_triggered = False
         band_travel_frac = 0.0
         if (
-            self.config.band_travel_pct > 0
+            _distance.band_travel_pct > 0
             and self._last_trade_price > 0
             and bb_result is not None
             and bb_result.upper > 0
@@ -3410,7 +3633,7 @@ class ScrummingBot(
             band_travel_frac = abs(ticker.last - self._last_trade_price) / _bb_width
             if (
                 abs(ticker.last - self._last_trade_price)
-                >= self.config.band_travel_pct / 100.0 * _bb_width
+                >= _distance.band_travel_pct / 100.0 * _bb_width
                 and delta > 0
             ):
                 band_travel_triggered = True
@@ -3446,14 +3669,42 @@ class ScrummingBot(
             elif bb_result.near_lower:
                 bb_near = ", near the lower band"
 
-        # Both favours skew the floor, so the confidence prints alone.
+        _eff_hyst_pct = _distance.distance_pct() / 100.0
+        _hyst_ok_scrum_side = True
+        if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side > 0:
+            _hyst_ok_scrum_side = ticker.last >= self._hyst_ref_scrum_side * (
+                1.0 + _eff_hyst_pct
+            )
+        _hyst_ok_fold_side = True
+        if self._hyst_armed_fold_side and self._hyst_ref_fold_side > 0:
+            _hyst_ok_fold_side = ticker.last <= self._hyst_ref_fold_side * (
+                1.0 - _eff_hyst_pct
+            )
+        _distance_clear = not below_interval and (
+            _hyst_ok_scrum_side if delta > 0 else _hyst_ok_fold_side
+        )
+        self._count_hunger_candle(
+            candles,
+            summary.signals,
+            in_zone=_in_hunger_zone(
+                delta, ticker.last, bb_result, distance_clear=_distance_clear
+            ),
+        )
+        hunger_skew = self._hunger_floor_skew()
+        # The favours and hunger skew the floor, so the confidence prints alone.
         if self._refusal_is_new(
             f"state_ta_vote_{summary.consensus_direction.name}", ticker.last
         ):
             _skew_note = ""
-            if position_boost or bb_confidence_boost:
-                _skew_note = f", floor skew {position_boost:+.2f} position" + (
-                    "" if not bb_confidence_boost else f" {bb_confidence_boost:+.2f} BB"
+            if position_boost or bb_confidence_boost or hunger_skew:
+                _skew_note = (
+                    f", floor skew {position_boost:+.2f} position"
+                    + (
+                        ""
+                        if not bb_confidence_boost
+                        else f" {bb_confidence_boost:+.2f} BB"
+                    )
+                    + ("" if not hunger_skew else f" {hunger_skew:+.2f} hunger")
                 )
             self._bus.emit(
                 "bot.log",
@@ -3492,26 +3743,6 @@ class ScrummingBot(
         if bb_override_direction and eff_direction == SignalDirection.NEUTRAL:
             eff_direction = bb_override_direction
 
-        try:
-            _eff_hyst_pct = (
-                minimum_opposing_trade_distance_pct(
-                    float(self.config.scrumming_interval_pct),
-                    float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
-                )
-                / 100.0
-            )
-        except Exception:
-            _eff_hyst_pct = 0.036
-        _hyst_ok_scrum_side = True
-        if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side > 0:
-            _hyst_ok_scrum_side = ticker.last >= self._hyst_ref_scrum_side * (
-                1.0 + _eff_hyst_pct
-            )
-        _hyst_ok_fold_side = True
-        if self._hyst_armed_fold_side and self._hyst_ref_fold_side > 0:
-            _hyst_ok_fold_side = ticker.last <= self._hyst_ref_fold_side * (
-                1.0 - _eff_hyst_pct
-            )
         _bb_lower_dt_pre, _bb_upper_dt_pre = self._bb_detect_thresholds()
         _be_upper = False
         _be_upper_wick = False
@@ -3567,15 +3798,28 @@ class ScrummingBot(
             and delta < 0
         )
         _bb_priority_arm = _bb_priority_scrum_skew or _bb_priority_fold_skew
-        # All three favours sum into one skew applied to the floor.
-        _ta_conf_skew = position_boost + bb_confidence_boost
-        if _bb_priority_arm:
-            _ta_conf_skew += _BB_PRIORITY_SKEW
-        _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
+        # _eff_conf_floor carries hunger for both chains; _floor_no_hunger serves
+        # the DIST sale and the hedge top-up.
+        _ta_conf_skew = _favour_skew(
+            position_boost,
+            bb_confidence_boost,
+            hunger_skew,
+            priority_arm=_bb_priority_arm,
+        )
+        _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew, summary.signals)
+        _floor_no_hunger = _skewed_confidence_floor(
+            _favour_skew(
+                position_boost, bb_confidence_boost, 0.0, priority_arm=_bb_priority_arm
+            ),
+            summary.signals,
+        )
         _bb_skew_side = "scrum" if _bb_priority_scrum_skew else "fold"
         if _bb_priority_arm and self._refusal_is_new(
             f"state_bb_skew_{_bb_skew_side}", ticker.last
         ):
+            _hunger_note = "" if not hunger_skew else f", hunger {hunger_skew:+.2f}"
+            _two_reach = two_indicator_ceiling(summary.signals)
+            _line_note = f"and the floor stays over that, at {_eff_conf_floor:.4f}"
             try:
                 self._bus.emit(
                     "bot.log",
@@ -3585,13 +3829,14 @@ class ScrummingBot(
                         f"[{'SCRUM' if _bb_priority_scrum_skew else 'FOLD'}] "
                         f"at BB position {bb_pos:.1%}, delta "
                         f"${abs(delta):.2f} at or over the interval. "
-                        f"Confidence stays {eff_confidence:.2f}. The floor "
-                        f"drops from {_TA_CONFIDENCE_FLOOR:.2f} to "
-                        f"{_eff_conf_floor:.4f}, divided by "
+                        f"Confidence stays {eff_confidence:.2f}. The skew "
+                        f"divides the {_TA_CONFIDENCE_FLOOR:.2f} floor by "
                         f"{1.0 + _ta_conf_skew:.2f}: BB priority "
                         f"{_BB_PRIORITY_SKEW:+.2f}, position "
                         f"{position_boost:+.2f}, BB confidence "
-                        f"{bb_confidence_boost:+.2f}. The direction is "
+                        f"{bb_confidence_boost:+.2f}{_hunger_note}. Two "
+                        f"indicators reach {_two_reach:.4f} at this vote's "
+                        f"weights, {_line_note}. The direction is "
                         f"untouched, so a contradicting TA still refuses "
                         f"the trade."
                     ),
@@ -3601,27 +3846,12 @@ class ScrummingBot(
                     "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
                 )
 
-        is_bullish = (
-            eff_direction in (SignalDirection.BULLISH, SignalDirection.NEUTRAL)
-            and eff_confidence >= _eff_conf_floor
+        is_bullish, is_bearish = vote_sides(
+            eff_direction, eff_confidence, _eff_conf_floor, bb_result, summary.signals
         )
-        is_bearish = (
-            eff_direction in (SignalDirection.BEARISH, SignalDirection.NEUTRAL)
-            and eff_confidence >= _eff_conf_floor
+        _bullish_no_hunger, _ = vote_sides(
+            eff_direction, eff_confidence, _floor_no_hunger, bb_result, summary.signals
         )
-
-        if (
-            bb_result
-            and bb_result.landing_strip
-            and bb_result.landing_strip_side == "upper"
-        ):
-            is_bullish = True
-        if (
-            bb_result
-            and bb_result.landing_strip
-            and bb_result.landing_strip_side == "lower"
-        ):
-            is_bearish = True
 
         self._refresh_phantom_lock()
         if self.config.bb_midline_gate:
@@ -3860,8 +4090,8 @@ class ScrummingBot(
             ),
             htf_blocks_scrum=bool(_htf_blocks_scrum),
             htf_blocks_fold=False,
-            scrumming_interval_pct=float(self.config.scrumming_interval_pct or 0),
-            trading_fee_pct=float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
+            scrumming_interval_pct=_distance.interval_pct,
+            trading_fee_pct=_distance.fee_pct,
             ripe_scrum=bool(_ripe_scrum),
             deep_fold=bool(_deep_fold),
             adx=_extract_signal_detail(summary, "adx", "adx", 0.0),
@@ -4191,8 +4421,8 @@ class ScrummingBot(
             ),
             htf_blocks_scrum=bool(_htf_blocks_scrum),
             htf_blocks_fold=bool(_htf_blocks_fold),
-            scrumming_interval_pct=float(self.config.scrumming_interval_pct or 0),
-            trading_fee_pct=float(getattr(self.config, "trading_fee_pct", 0.6) or 0.6),
+            scrumming_interval_pct=_distance.interval_pct,
+            trading_fee_pct=_distance.fee_pct,
             ripe_scrum=bool(_ripe_scrum),
             deep_fold=bool(_deep_fold),
             z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
@@ -4245,18 +4475,6 @@ class ScrummingBot(
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
 
-        from .otd_math import fold_rebuy_factor_from_pct
-
-        _otd_pct_for_gate = 0.0
-        try:
-            _otd_pct_for_gate = minimum_opposing_trade_distance_pct(
-                getattr(self.config, "scrumming_interval_pct", 0) or 0,
-                getattr(self.config, "trading_fee_pct", 0.6) or 0.6,
-            )
-        except (TypeError, ValueError):
-            _otd_pct_for_gate = 0.0
-        _otd_factor = fold_rebuy_factor_from_pct(_otd_pct_for_gate)
-
         self._tick_fold_diagnostics(
             ticker,
             bb_pos,
@@ -4264,8 +4482,8 @@ class ScrummingBot(
             fold_ok_midline,
             _bb_below_lower_dt,
             _fold_blockers,
-            _otd_pct_for_gate,
-            _otd_factor,
+            _distance,
+            bb_result,
         )
 
         # Both chains have been evaluated and both banks written, so one line
@@ -4277,7 +4495,7 @@ class ScrummingBot(
             self._emit_gate_decision_at_quiet_tick(GATE_CHAIN_EXIT)
         if _fold_chain_result.should_fire:
             if await self._tick_execute_fold(
-                ticker, summary, delta, _otd_factor, _fold_chain_result
+                ticker, summary, delta, _distance, bb_result, _fold_chain_result
             ):
                 return
 
@@ -4415,7 +4633,7 @@ class ScrummingBot(
             self.config.hedge_rebalance_active
             and self._hedge_bal > 0.01
             and _hedge_gap_usd > 0
-            and not is_bullish
+            and not _bullish_no_hunger
             and bb_pos < 0.40
         ):
             _gap = _hedge_gap_usd
@@ -4432,64 +4650,87 @@ class ScrummingBot(
                             "gap": f"${_gap:.4f}",
                             "use": f"${_use:.4f}",
                         },
+                        booker="_book_hedge_fill",
+                        booking={
+                            "use": float(_use),
+                            "gap": float(_gap),
+                            "bb_pos": float(bb_pos),
+                            "intended": float(ticker.last),
+                        },
                     )
-                    if hedge_fill is None or hedge_fill <= 0:
-                        if self._refusal_is_new("hedge_buy_refused", ticker.last):
-                            self._bus.emit(
-                                "bot.log",
-                                bot_id=self.bot_id,
-                                message=(
-                                    f"HEDGE ABORTED: buy failed at "
-                                    f"${ticker.last:.8f} (gap=${_gap:.4f}, "
-                                    f"reserve=${self._hedge_bal:.2f} "
-                                    f"unchanged). No state update. "
-                                    f"Retry next tick if gates still pass."
-                                ),
-                            )
-                    else:
-                        _hedge_asset = _use / hedge_fill
-                        self._main_lots.append(
-                            {
-                                "units": _hedge_asset,
-                                "initial_buy_price": hedge_fill,
-                            }
-                        )
-                        self._hedge_bal -= _use
-                        self._hedge_trades += 1
-                        self.stats.trade_volume += _use
+                    if (hedge_fill is None or hedge_fill <= 0) and self._refusal_is_new(
+                        "hedge_buy_refused", ticker.last
+                    ):
                         self._bus.emit(
                             "bot.log",
                             bot_id=self.bot_id,
-                            message=f"HEDGE REBALANCE: spent ${_use:.4f} "
-                            f"(reserve ${self._hedge_bal:.2f} remaining) "
-                            f"→ bought {_hedge_asset:.6f} @ ${hedge_fill:.8f} "
-                            f"(intended ${ticker.last:.8f}), "
-                            f"gap=${_gap:.4f} ({_gap/max(self._target_balance, 1e-9)*100:.1f}%), "
-                            f"bb={bb_pos:.0%}. Trade #{self._hedge_trades}",
+                            message=(
+                                f"HEDGE ABORTED: buy failed at "
+                                f"${ticker.last:.8f} (gap=${_gap:.4f}, "
+                                f"reserve=${self._hedge_bal:.2f} "
+                                f"unchanged). No state update. "
+                                f"Retry next tick if gates still pass."
+                            ),
                         )
-                        self._bus.emit(
-                            "trade.filled",
-                            bot_id=self.bot_id,
-                            side="buy",
-                            type="HEDGE",
-                            price=hedge_fill,
-                            amount=_hedge_asset,
-                            usd=_use,
-                            size=_use,
-                            profit=0,
-                            **self._fill_fee_fields(hedge_fill),
-                        )
-                        self._emit_voting_panel_snapshot_at_fire(
-                            side="BUY", trade_action="HEDGE"
-                        )
-                        self._emit_gate_decision_at_fire(
-                            side="BUY", trade_action="HEDGE"
-                        )
-                        self._last_trade_price = hedge_fill
 
-        await self._tick_distribute(ticker, summary, bb_result, is_bullish)
+        await self._tick_distribute(ticker, summary, bb_result, _bullish_no_hunger)
 
         self._last_price = ticker.last
+
+    async def _book_hedge_fill(
+        self,
+        units: float,
+        fill_price: float,
+        asked: float,
+        first: bool,
+        *,
+        use: float,
+        gap: float,
+        bb_pos: float,
+        intended: float,
+    ) -> None:
+        """Book one settled piece of a hedge buy as a lot, take what it cost off
+        ``_hedge_bal``, and announce it as a ``HEDGE`` fill.
+        """
+        hedge_fill = fill_price
+        _hedge_asset = float(units)
+        _use = float(use) * (min(1.0, _hedge_asset / asked) if asked > 0 else 1.0)
+        self._main_lots.append(
+            {
+                "units": _hedge_asset,
+                "initial_buy_price": hedge_fill,
+            }
+        )
+        # The reserve falls by what the fill cost, never by the
+        # ask, and never below zero.
+        _hedge_spent = min(_use, _hedge_asset * hedge_fill)
+        self._hedge_bal -= _hedge_spent
+        if first:
+            self._hedge_trades += 1
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=f"HEDGE REBALANCE: spent ${_hedge_spent:.4f} "
+            f"of ${_use:.4f} asked "
+            f"(reserve ${self._hedge_bal:.2f} remaining) "
+            f"→ bought {_hedge_asset:.6f} @ ${hedge_fill:.8f} "
+            f"(intended ${intended:.8f}), "
+            f"gap=${gap:.4f} ({gap/max(self._target_balance, 1e-9)*100:.1f}%), "
+            f"bb={bb_pos:.0%}. Trade #{self._hedge_trades}",
+        )
+        self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="HEDGE")
+        self._emit_gate_decision_at_fire(side="BUY", trade_action="HEDGE")
+        self._last_trade_price = hedge_fill
+        self._announce_fill(
+            kind="HEDGE",
+            side=FILL_BUY,
+            units=_hedge_asset,
+            price=hedge_fill,
+            usd=_hedge_spent,
+            profit=0.0,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(hedge_fill),
+        )
 
     async def _check_detonation_trigger(self, ticker) -> bool:
         """Check the higher-timeframe signal for a detonation trigger, edge-triggered
@@ -4497,7 +4738,8 @@ class ScrummingBot(
 
         Requires:
             ``detonation_enabled``, a current value above the anchor, and
-            BULLISH at or above ``detonation_confidence_min``. The latch and
+            BULLISH at or above ``detonation_confidence_min`` where
+            ``three_agree`` holds on that vote. The latch and
             the rate limit are persisted state that survives a restart.
 
             The value is taken from the larger of ``_current_holdings`` and
@@ -4560,7 +4802,7 @@ class ScrummingBot(
             return False
 
         try:
-            engine = VotingEngine()
+            engine = VotingEngine(weights=self._ta_weights)
             parsed = candles_from_raw(candles)
             summary = engine.compute_all(parsed, tf)
         except Exception as exc:
@@ -4573,10 +4815,19 @@ class ScrummingBot(
             )
             return False
 
-        conf_min = float(getattr(self.config, "detonation_confidence_min", 0.75))
-        is_bullish = (
+        conf_min = float(
+            getattr(
+                self.config,
+                "detonation_confidence_min",
+                DETONATION_CONFIDENCE_MIN_DEFAULT,
+            )
+        )
+        clears_bar = (
             summary.consensus_direction == SignalDirection.BULLISH
             and summary.consensus_confidence >= conf_min
+        )
+        is_bullish = clears_bar and three_agree(
+            summary.consensus_confidence, summary.signals
         )
 
         fired = is_bullish and not self._detonation_last_signal_bullish
@@ -4603,8 +4854,67 @@ class ScrummingBot(
                     f"edge transition, holding."
                 ),
             )
+        elif clears_bar:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"DETONATION HELD: {tf} BULLISH at confidence "
+                    f"{summary.consensus_confidence:.4f} clears the bar "
+                    f"{conf_min:.2f}, and two indicators reach "
+                    f"{two_indicator_ceiling(summary.signals):.4f} on this "
+                    f"vote, so the detonation waits for a third to agree."
+                ),
+            )
 
         return fired
+
+    async def _read_shadow_regime(self) -> str:
+        """The ``regime_of`` a vote on 100 candles of ``detonation_timeframe``, read at
+        most once in ``_DETONATION_CHECK_INTERVAL_S`` and ``REGIME_NONE`` on a failed
+        read.
+
+        The detonation trigger's own clock and timeframe, so one vote names both ends
+        of a regime. Each change of reading writes one line to ``bot.log``.
+        """
+        now = time.time()
+        if now - self._shadow_regime_ts < _DETONATION_CHECK_INTERVAL_S:
+            return self._shadow_regime
+        self._shadow_regime_ts = now
+        tf = getattr(self.config, "detonation_timeframe", "1d") or "1d"
+        regime = REGIME_NONE
+        try:
+            candles = await self._get_ohlcv(self.config.symbol, tf, limit=100)
+            if candles and len(candles) >= MIN_CANDLES_FOR_TA:
+                engine = VotingEngine(weights=self._ta_weights)
+                regime = regime_of(engine.compute_all(candles_from_raw(candles), tf))
+            else:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SHADOW REGIME: the venue served {len(candles or [])} {tf} "
+                        f"candles and a vote needs {MIN_CANDLES_FOR_TA}, so no "
+                        f"regime reads. Will retry in 1h."
+                    ),
+                )
+        except Exception as exc:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"SHADOW REGIME: {tf} vote failed: {exc}. Will retry in 1h.",
+            )
+        if regime != self._shadow_regime:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"SHADOW REGIME: {tf} vote reads {regime or 'no regime'}, "
+                    f"was {self._shadow_regime or 'no regime'}."
+                ),
+            )
+        self._shadow_regime = regime
+        return regime
 
     def clear_stack_tranches(self, reason: str = "operator") -> dict:
         """Discard this bot's standing Stack tranches, trading nothing.
@@ -4772,25 +5082,55 @@ class ScrummingBot(
         scrum_size: float,
         summary: Optional[VotingSummary] = None,
         origin: str = "scrum",
+        floor_ref_price: float = 0.0,
     ) -> int:
         """Split a SCRUM decision into Stack tranches instead of one immediate sell.
+
+        A ``floor_ref_price`` above zero is written on every rung as
+        ``STACK_FLOOR_REF_KEY``, and a new rung combines only with a standing rung
+        holding the same figure.
 
         Returns:
             The number of tranches created (>=1). Populates
             ``self._stack_tranches`` and records ``origin`` on every tranche.
 
         """
+        from .scrumming.sizing import (
+            EVENT_ID_KEY,
+            EVENT_UNITS_KEY,
+            EVENT_USD_KEY,
+            opposing_event_id,
+        )
         from .stack_math import (
+            STACK_FLOOR_REF_KEY,
+            STACK_PRICE_KEY,
+            merge_into_standing_rungs,
             split_scrum_into_tranches,
         )
 
-        min_opposing_pct = minimum_opposing_trade_distance_pct_from_config(self.config)
+        _floor_ref = max(0.0, float(floor_ref_price or 0.0))
+
+        try:
+            min_opposing_pct = self.opposing_trade_distance_pct()
+        except DistanceSettingUnreadable as _unread:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK OPEN FAILED: {_unread}, so the opposing trade "
+                    f"distance the ladder anchors on cannot be read. Stack not "
+                    f"opened."
+                ),
+            )
+            return 0
 
         n_target = int(getattr(self.config, "stack_tranche_count_target", 3) or 3)
         split_dist = float(getattr(self.config, "split_distance", 1.0) or 1.0)
         spacing = str(getattr(self.config, "stack_spacing_mode", "linear") or "linear")
         _rules = await self._get_market_rules(self.config.symbol)
-        min_order = float(_rules.smallest_amount or 0.0)
+        # Passed through unmasked: None is the venue publishing no size rule,
+        # and split_scrum_into_tranches refuses an unknown floor.
+        min_order = _rules.smallest_amount
 
         try:
             tranches = split_scrum_into_tranches(
@@ -4828,8 +5168,10 @@ class ScrummingBot(
             OrderType.IOC_LIMIT if _aggressive else OrderType.LIMIT
         )
 
-        for t in tranches:
-            entry = {
+        _event_id = opposing_event_id(f"STACK_{origin.upper()}", now)
+        _event_usd = float(scrum_size) * float(scrum_price)
+        _fresh_rungs = [
+            {
                 "index": t.index,
                 "price": t.price,
                 "size": t.size,
@@ -4843,15 +5185,42 @@ class ScrummingBot(
                 "open_direction": _open_dir,
                 "activated": False,
                 "activated_ts": 0.0,
+                EVENT_ID_KEY: _event_id,
+                EVENT_UNITS_KEY: float(scrum_size),
+                EVENT_USD_KEY: _event_usd,
+                **({STACK_FLOOR_REF_KEY: _floor_ref} if _floor_ref > 0.0 else {}),
             }
+            for t in tranches
+        ]
+        _fresh_rungs, _combined_n, _combined_size = merge_into_standing_rungs(
+            [r for r in self._stack_tranches if rung_floor_ref(r) == _floor_ref],
+            _fresh_rungs,
+            sum_keys=(EVENT_UNITS_KEY, EVENT_USD_KEY),
+            id_key=EVENT_ID_KEY,
+        )
+        if _combined_n:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK TRANCHE COMBINED: {_combined_n} new rung(s) "
+                    f"holding {_combined_size:.8f} units sat within 0.1% of "
+                    f"a standing rung with no venue order and were combined "
+                    f"into it. No order was placed for them."
+                ),
+            )
+        for entry in _fresh_rungs:
+            t_index = entry["index"]
+            t_size = entry["size"]
+            t_price = entry["price"]
             if _visible:
                 try:
                     order = await self.guarded_place_order(
                         symbol=self.config.symbol,
                         side=OrderSide.SELL,
                         order_type=_order_type_for_visible,
-                        amount=float(t.size),
-                        price=float(t.price),
+                        amount=float(t_size),
+                        price=float(t_price),
                     )
                     if order is not None:
                         entry["order_id"] = getattr(order, "id", None)
@@ -4863,7 +5232,7 @@ class ScrummingBot(
                     logger.warning(
                         "Bot %s stack tranche %d placement failed: %s",
                         self.bot_id,
-                        t.index,
+                        t_index,
                         _place_exc,
                     )
                     entry["status"] = "cancelled"
@@ -4874,7 +5243,7 @@ class ScrummingBot(
                         "bot.log",
                         bot_id=self.bot_id,
                         message=(
-                            f"STACK TRANCHE {t.index} PLACEMENT FAILED: "
+                            f"STACK TRANCHE {t_index} PLACEMENT FAILED: "
                             f"{entry['cancel_reason']}. "
                             f"Tranche cancelled."
                         ),
@@ -4889,13 +5258,16 @@ class ScrummingBot(
             bot_id=self.bot_id,
             message=(
                 f"STACK OPENED [{_mode_label}{_agg_label}] "
-                f"({len(tranches)} tranches) from {origin} @ "
+                f"({len(_fresh_rungs)} tranches) from {origin} @ "
                 f"${scrum_price:.8f}, size {scrum_size:.6f}. "
-                f"Prices: {[f'${t.price:.8f}' for t in tranches[:5]]}"
-                f"{'…' if len(tranches) > 5 else ''}"
+                f"Prices: "
+                f"{[f'${r[STACK_PRICE_KEY]:.8f}' for r in _fresh_rungs[:5]]}"
+                f"{'…' if len(_fresh_rungs) > 5 else ''}"
             ),
         )
-        return len(tranches)
+        # A rung combined into a standing one still took this sale's units, so
+        # the caller must not fall through to an undivided market sell.
+        return len(_fresh_rungs) + _combined_n
 
     async def _reconcile_stack_tranches_visible(self) -> int:
         """Visible-mode Stack reconciliation, once per tick.
@@ -4903,7 +5275,7 @@ class ScrummingBot(
         Cross-references:
             ``_stack_tranches`` order_ids against the exchange's open orders,
             fetching the terminal state of any that no longer appear, then
-            updating status and fill price.
+            updating status and fill price and announcing a ``STACK_RUNG`` fill.
 
         Returns:
             0 when not visible mode, when there are no pending tranches, when
@@ -4965,6 +5337,9 @@ class ScrummingBot(
                 t["fill_price"] = float(_avg or t["price"])
                 t["filled_amount"] = _filled
                 settled += 1
+                self._current_holdings = max(0.0, self._current_holdings - _filled)
+                self._record_venue_units_after_fill(-_filled)
+                self._count_trade_volume(_filled, t["fill_price"])
                 # A resting order filled with nobody watching, so the window
                 # that began before it is already wrong.
                 self._invalidate_symbol_balances(self.config.symbol)
@@ -4976,6 +5351,22 @@ class ScrummingBot(
                         f"@ ${float(_avg or t['price']):.8f} "
                         f"({_filled:.6f}/{t['size']:.6f})"
                     ),
+                )
+                self._last_fill_venue_fee = venue_fee_record(
+                    order, _filled, t["fill_price"]
+                )
+                self._last_settled_order = order
+                self._announce_fill(
+                    kind="STACK_RUNG",
+                    side=FILL_SELL,
+                    units=_filled,
+                    price=t["fill_price"],
+                    usd=priced_usd(
+                        _filled, t["fill_price"], float(self._quote_to_usd or 1.0)
+                    ),
+                    profit=0.0,
+                    operator_initiated=False,
+                    fee=self._fill_fee_fields(t["fill_price"]),
                 )
             else:
                 t["status"] = "cancelled"
@@ -5038,6 +5429,32 @@ class ScrummingBot(
             )
         return activated
 
+    def _rung_under_floor(self, rung: dict, price: float) -> bool:
+        """True while ``price`` sits under ``opposing_sale_price`` of ``rung``'s
+        ``rung_floor_ref``, or the distance cannot be read."""
+        floor_ref = rung_floor_ref(rung)
+        if floor_ref <= 0.0:
+            return False
+        try:
+            floor = opposing_sale_price(floor_ref, self.opposing_trade_distance_pct())
+        except DistanceSettingUnreadable as _unread:
+            self._refuse_unreadable_distance(_unread, "STACK", price)
+            return True
+        if price >= floor:
+            return False
+        if self._refusal_is_new("stack_rung_floor", price):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK TRANCHE {rung.get('index')} HELD (opposing distance): "
+                    f"price ${price:.8f} sits under ${floor:.8f}, the buy price "
+                    f"${floor_ref:.8f} its units came in at plus the opposing trade "
+                    f"distance. The tranche stays activated."
+                ),
+            )
+        return True
+
     async def _spend_activated_stack_tranches(
         self,
         current_price: float,
@@ -5072,6 +5489,8 @@ class ScrummingBot(
                 continue
             if not t.get("activated"):
                 continue
+            if self._rung_under_floor(t, float(current_price)):
+                continue
             _vote = summary
             if _vote is None:
                 _vote = StackTrancheSummary(
@@ -5087,6 +5506,11 @@ class ScrummingBot(
                     summary=_vote,
                     bypass_stack=True,
                     label="STACK",
+                    booker="_book_stack_spend",
+                    booking={
+                        "rung_index": t.get("index"),
+                        "rung_opened_ts": t.get("opened_ts"),
+                    },
                 )
             except Exception as exc:
                 logger.warning(
@@ -5118,21 +5542,57 @@ class ScrummingBot(
                     ),
                 )
                 continue
-            t["status"] = "filled"
-            t["fill_price"] = float(fill)
             spent += 1
+        return spent
+
+    async def _book_stack_spend(
+        self,
+        units: float,
+        fill_price: float,
+        _asked: float,
+        first: bool,
+        *,
+        rung_index: Any,
+        rung_opened_ts: Any,
+    ) -> None:
+        """Mark the stack rung named by ``rung_index`` and ``rung_opened_ts`` filled at
+        its order's first settled piece, and announce each piece as a ``STACK_SPEND``.
+        """
+        rung = None
+        if first:
+            rung = next(
+                (
+                    t
+                    for t in self._stack_tranches
+                    if t.get("index") == rung_index
+                    and t.get("opened_ts") == rung_opened_ts
+                ),
+                None,
+            )
+        if rung is not None:
+            rung["status"] = "filled"
+            rung["fill_price"] = float(fill_price)
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"STACK TRANCHE {t['index']} SPENT @ "
-                    f"${float(fill):.8f} (threshold "
-                    f"${float(t['price']):.8f}, size "
-                    f"{float(t['size']):.6f}) under an authorised "
+                    f"STACK TRANCHE {rung['index']} SPENT @ "
+                    f"${float(fill_price):.8f} (threshold "
+                    f"${float(rung['price']):.8f}, size "
+                    f"{float(rung['size']):.6f}) under an authorised "
                     f"SCRUM gate-chain decision."
                 ),
             )
-        return spent
+        self._announce_fill(
+            kind="STACK_SPEND",
+            side=FILL_SELL,
+            units=units,
+            price=fill_price,
+            usd=priced_usd(units, fill_price, float(self._quote_to_usd or 1.0)),
+            profit=0.0,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(fill_price),
+        )
 
     def _take_filled_units_off_lots(self, filled_units: float) -> int:
         """Take ``filled_units`` off ``_main_lots``, highest ``initial_buy_price``
@@ -5218,10 +5678,14 @@ class ScrummingBot(
     ) -> int:
         """A filled FOLD spawns the Stack ladder above it.
 
+        Every rung keeps ``fold_price`` as its floor reference, and
+        ``_fold_piece_laddered`` reads True only when this fill opened a ladder.
+
         Returns:
             How many Stack tranches were created, 0 when none were.
 
         """
+        self._fold_piece_laddered = False
         if path not in ("fold_rebuy", "manual_tranche_fire"):
             return 0
         if not getattr(self.config, "stack_mode", False):
@@ -5236,6 +5700,7 @@ class ScrummingBot(
                 scrum_size=float(fold_size),
                 summary=summary,
                 origin="fold",
+                floor_ref_price=float(fold_price),
             )
         except Exception as _spawn_exc:
             logger.error(
@@ -5256,6 +5721,7 @@ class ScrummingBot(
                 ),
             )
             return 0
+        self._fold_piece_laddered = opened > 0
         if opened > 0:
             self._bus.emit(
                 "bot.log",
@@ -5325,6 +5791,7 @@ class ScrummingBot(
         """
         self._ta_weights = dict(weights) if weights else None
         self._voting_engine.set_weights(self._ta_weights)
+        self.config.own_ta_weights = {}
         logger.info(
             "Bot %s: TA weights taken (%d names) — from the next tick",
             self.bot_id,

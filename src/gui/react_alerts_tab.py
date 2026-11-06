@@ -311,11 +311,18 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._run(resolve_script(request.get("id"), self._last_model))
 
         def _apply_request(self, params: dict) -> None:
-            """Take the page's typed values, then run whichever button it pressed."""
+            """Take the page's typed values, its routing click, then its button.
+
+            A ``route`` holding a ``row`` and a ``column`` reaches
+            ``AlertsTab._toggle_route``, the same method the Qt table's click calls.
+            """
             for name, value in (params.get("fields") or {}).items():
                 held = self._holders.get(name)
                 if held is not None:
                     held.setText(value)
+            route = params.get("route")
+            if isinstance(route, dict):
+                self._toggle_route(route.get("row"), route.get("column"))
             handler = ACTION_HANDLERS.get(str(params.get("action") or ""))
             if handler is not None:
                 getattr(self, handler)()

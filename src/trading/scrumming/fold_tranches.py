@@ -9,15 +9,36 @@ from __future__ import annotations
 import logging
 import math
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from ..bot_container import as_finite_float, despawn_threshold_days
 from ..container.config import fold_ratio_pct
+from ..otd_math import DistanceSettings
+from ..stack_math import (
+    STACK_ORDER_ID_KEY,
+    STACK_PRICE_KEY,
+    STACK_SIZE_KEY,
+    STACK_STATUS_KEY,
+    STACK_STATUS_PENDING,
+    is_shadow,
+    rung_is_pending,
+    unproduced_stack_amount,
+)
 from .sizing import (
+    FOLD_AGE_KEY,
+    STACK_AGE_KEY,
+    combined_event_reference,
+    combined_wire_share,
     eligible_fold_tranches,
+    held_wire_usd,
+    merge_fold_tranches_within_distance,
+    merge_wire_credit_records,
     plan_fold_consumption,
     settle_fold_plan,
     tranche_sale_rate,
+    tranche_sale_usd,
+    tranches_beyond_held_total,
+    unaligned_fold_tranches,
 )
 
 logger = logging.getLogger("acervator.scrumming")
@@ -43,6 +64,8 @@ class FoldTrancheAccountingMixin:
     _fold_queue_usd: float
     _fold_tranches: list[dict]
     _last_trend_bull_candles: int
+    _main_lots: list[dict]
+    _return_wire_credits_to_pool: Callable[..., float]
     _scrum_sells_lifetime: int
     _stack_discarded: int
     _stack_tranches: list[dict]
@@ -55,15 +78,17 @@ class FoldTrancheAccountingMixin:
     config: Any
     stats: Any
 
-    def _fold_eligible_tranches(self, ticker_last: float, otd_factor: float) -> list:
+    def _fold_eligible_tranches(
+        self, ticker_last: float, distance: DistanceSettings, band: Any = None
+    ) -> list:
         """Fold-queue tranches eligible for fold-back at ``ticker_last``.
 
-        A tranche is eligible when ``ticker_last <= ref * otd_factor``.
-        The FOLD_DIAG diagnostic and the fold-back executor in
-        ``tick_phases`` both call this, so the two cannot report
-        different sets.
+        ``eligible_fold_tranches`` reads each tranche at ``distance`` and
+        ``band``. The FOLD_DIAG diagnostic and the fold-back executor in
+        ``tick_phases`` both call this, so the two cannot report different
+        sets.
         """
-        return eligible_fold_tranches(self._fold_tranches, ticker_last, otd_factor)
+        return eligible_fold_tranches(self._fold_tranches, ticker_last, distance, band)
 
     def _apply_scrum_fold_pct(
         self, _tranche_count_before: int, scrum_usd: float, scrum_asset: float
@@ -224,7 +249,7 @@ class FoldTrancheAccountingMixin:
         a ``ref`` match too would make this dead code. The survivor keeps
         the ``ref`` its own scrum sold at, the one price its fold
         distance is measured from, and takes a ``blend_rate`` holding the
-        usd-weighted rate across both sales for ``units_at_scrum``; a
+        usd-weighted rate across both sales for ``tranche_sale_rate``; a
         top-up at the survivor's own rate sets no ``blend_rate``.
 
         Args:
@@ -242,8 +267,12 @@ class FoldTrancheAccountingMixin:
             return 0, 0.0
         if first_new_index <= 0:
             return 0, 0.0
-        _candidates = self._fold_tranches[:first_new_index]
-        _fresh = self._fold_tranches[first_new_index:]
+        _candidates = [
+            _t for _t in self._fold_tranches[:first_new_index] if not is_shadow(_t)
+        ]
+        _fresh = [
+            _t for _t in self._fold_tranches[first_new_index:] if not is_shadow(_t)
+        ]
         _merged_away: set[int] = set()
         _merged_n = 0
         _merged_usd = 0.0
@@ -274,6 +303,8 @@ class FoldTrancheAccountingMixin:
             _b_usd = float(_best.get("usd", 0) or 0)
             _b_rate = tranche_sale_rate(_best)
             _new_rate = tranche_sale_rate(_new_t)
+            _best.update(combined_wire_share(_best, _new_t))
+            merge_wire_credit_records(_best, _new_t)
             _best["usd"] = _b_usd + _new_usd
             _best["units"] = float(_best.get("units", 0) or 0) + _new_units
             if _new_rate != _b_rate:
@@ -281,6 +312,8 @@ class FoldTrancheAccountingMixin:
                 # the `ticker.last <= ref x factor` comparison at its bound.
                 _units_at_sale = (_b_usd / _b_rate) + (_new_usd / _new_rate)
                 _best["blend_rate"] = _best["usd"] / _units_at_sale
+            # The survivor now holds two sales' money and names both events.
+            _best.update(combined_event_reference(_best, _new_t))
             _merged_away.add(id(_new_t))
             _merged_n += 1
             _merged_usd += _new_usd
@@ -302,6 +335,36 @@ class FoldTrancheAccountingMixin:
                 f"initial_buy_price, lowest ref inside the BB "
                 f"range ${bb_lower:.8f}..${bb_upper:.8f}. "
                 f"{len(self._fold_tranches)} tranche(s) open."
+            ),
+        )
+        return _merged_n, _merged_usd
+
+    def _combine_fold_tranches_within_distance(self) -> tuple[int, float]:
+        """Combine every standing pair whose ``ref`` prices sit inside the
+        merge distance, and report how many combined away with the USD moved.
+
+        ``merge_fold_tranches_within_distance`` holds the arithmetic and the
+        0.1 per cent figure, and each combine lowers
+        ``_tranches_created_lifetime`` so ``created - closed - discarded ==
+        standing`` holds.
+        """
+        _kept, _merged_n, _merged_usd = merge_fold_tranches_within_distance(
+            self._fold_tranches
+        )
+        if not _merged_n:
+            return 0, 0.0
+        self._fold_tranches = _kept
+        self._tranches_created_lifetime = max(
+            0, int(self._tranches_created_lifetime) - _merged_n
+        )
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"FOLD TRANCHE COMBINED: {_merged_n} tranche(s) holding "
+                f"${_merged_usd:.4f} sat within 0.1% of another in price and "
+                f"were combined into it. {len(self._fold_tranches)} "
+                f"tranche(s) open."
             ),
         )
         return _merged_n, _merged_usd
@@ -519,16 +582,18 @@ class FoldTrancheAccountingMixin:
         return _readable
 
     def clear_fold_tranches(self, reason: str = "operator") -> dict:
-        """Discard every queued fold tranche. Trades nothing.
+        """Discard every queued fold tranche but an ``is_shadow`` one. Trades nothing.
 
         Leaves holdings, `_main_lots`, `_target_balance`,
         `_anchor_target_balance` and `_pending_wire_credits` alone.
         Parked wire credits are routed income rather than tranches, so
         the emitted message warns when any remain.
 
-        Returns a report of what was discarded. Never raises.
+        Returns a report of what was discarded, with ``shadow_kept`` where a row
+        stayed. Never raises.
         """
-        tranches = list(self._fold_tranches or [])
+        tranches = [t for t in (self._fold_tranches or []) if not is_shadow(t)]
+        kept = [t for t in (self._fold_tranches or []) if is_shadow(t)]
         report = {
             "bot_id": self.bot_id,
             "symbol": getattr(self.config, "symbol", ""),
@@ -540,11 +605,13 @@ class FoldTrancheAccountingMixin:
             ),
             "reason": str(reason),
         }
+        if kept:
+            report["shadow_kept"] = len(kept)
         if not tranches:
             return report
 
-        self._fold_tranches = []
-        self._fold_queue_usd = 0.0
+        self._fold_tranches = kept
+        self._fold_queue_usd = math.fsum(float(t.get("usd", 0) or 0) for t in kept)
         self._tranches_discarded_lifetime = (
             int(getattr(self, "_tranches_discarded_lifetime", 0) or 0) + report["count"]
         )
@@ -574,6 +641,11 @@ class FoldTrancheAccountingMixin:
                     f"{report['units']:.8f} units. No trade was "
                     f"placed; holdings and target balance are "
                     f"unchanged.{_warn}"
+                    + (
+                        f" {len(kept)} tranche(s) marked for a shadow stay queued."
+                        if kept
+                        else ""
+                    )
                 ),
             )
         except Exception as exc:  # noqa: BLE001
@@ -773,8 +845,9 @@ class FoldTrancheAccountingMixin:
         Returns:
           A report of what the sweep did, keyed ``fold_removed``,
           ``stack_removed``, ``stack_kept_live_order``, ``ageless_kept``
-          and ``usd_removed``. Despawn removes rather than delists, so the
-          count keys match ``despawn_preview`` in ``bot_container``.
+          and ``usd_removed``, with ``shadow_kept`` where an ``is_shadow`` row
+          stayed at any age. Despawn removes rather than delists, so the count
+          keys match ``despawn_preview`` in ``bot_container``.
         """
         _days = self._despawn_threshold_days()
         report = {
@@ -801,7 +874,11 @@ class FoldTrancheAccountingMixin:
 
         _fold_keep = []
         for _t in self._fold_tranches or []:
-            _age = self._tranche_age_seconds(_t, "created_ts", _now)
+            if is_shadow(_t):
+                report["shadow_kept"] = report.get("shadow_kept", 0) + 1
+                _fold_keep.append(_t)
+                continue
+            _age = self._tranche_age_seconds(_t, FOLD_AGE_KEY, _now)
             if _age is None:
                 report["ageless_kept"] += 1
                 _fold_keep.append(_t)
@@ -815,7 +892,7 @@ class FoldTrancheAccountingMixin:
 
         _stack_keep = []
         for _t in self._stack_tranches or []:
-            _age = self._tranche_age_seconds(_t, "opened_ts", _now)
+            _age = self._tranche_age_seconds(_t, STACK_AGE_KEY, _now)
             if _age is None:
                 report["ageless_kept"] += 1
                 _stack_keep.append(_t)
@@ -900,3 +977,409 @@ class FoldTrancheAccountingMixin:
             report["stack_kept_live_order"],
         )
         return report
+
+    def close_spent_tranches(self) -> float:
+        """Remove each standing tranche whose ``tranche_sale_usd`` is not above zero
+        while its ``held_wire_usd`` is, through ``_return_wire_credits_to_pool``.
+
+        Each counts as closed in ``_tranches_closed_lifetime``, and the dollars
+        moved to the pool are returned.
+        """
+        returned = 0.0
+        kept: list[dict] = []
+        closed = 0
+        for _t in self._fold_tranches or []:
+            if (
+                isinstance(_t, dict)
+                and held_wire_usd(_t) > 0.0
+                and tranche_sale_usd(_t) <= 0.0
+            ):
+                returned += self._return_wire_credits_to_pool(_t)
+                closed += 1
+                continue
+            kept.append(_t)
+        if closed:
+            self._fold_tranches = kept
+            self._tranches_closed_lifetime = (
+                int(getattr(self, "_tranches_closed_lifetime", 0) or 0) + closed
+            )
+        return returned
+
+    def retire_unaligned_tranches(self, reason: str = "load") -> dict:
+        """Drop the standing tranches whose amount no sale produced, keep the
+        aligned ones, and name every drop in ``bot.log`` with its price, its
+        units and why it went.
+
+        ``unaligned_fold_tranches`` reads a fold record's own figures against
+        the bot's Trading Fee % and spares the records a changed fee setting
+        explains, ``unproduced_stack_amount`` reads a rung's size and price, a
+        rung holding a venue order is kept so that order is never stranded, and
+        every drop counts in ``_tranches_discarded_lifetime`` or
+        ``_stack_discarded`` and never in ``_tranches_closed_lifetime``.
+
+        Args:
+          reason: what ran the sweep, carried into the log line.
+
+        Returns:
+          A report keyed ``fold_removed``, ``fold_kept``, ``stack_removed``,
+          ``stack_kept``, ``stack_kept_live_order``, ``usd_removed``,
+          ``fee_pct``, ``fee_spared`` and ``refused``. ``fee_spared`` counts the
+          records the fee window condemned and the shared-fee reading kept, and
+          ``refused`` is True where that count is above zero.
+        """
+        _fee = as_finite_float(getattr(self.config, "trading_fee_pct", None))
+        report = {
+            "fold_removed": 0,
+            "fold_kept": len(self._fold_tranches or []),
+            "stack_removed": 0,
+            "stack_kept": len(self._stack_tranches or []),
+            "stack_kept_live_order": 0,
+            "usd_removed": 0.0,
+            "fee_pct": _fee,
+            "fee_spared": 0,
+            "refused": False,
+        }
+        _condemned, _spared = unaligned_fold_tranches(self._fold_tranches, _fee)
+        report["fee_spared"] = _spared
+        report["refused"] = bool(_spared)
+
+        _stack_keep: list[dict] = []
+        _stack_dropped: list[tuple[dict, str]] = []
+        for _t in self._stack_tranches or []:
+            _why = unproduced_stack_amount(_t)
+            if not _why:
+                _stack_keep.append(_t)
+            elif _t.get(STACK_STATUS_KEY) == STACK_STATUS_PENDING and _t.get(
+                STACK_ORDER_ID_KEY
+            ):
+                report["stack_kept_live_order"] += 1
+                _stack_keep.append(_t)
+            else:
+                _stack_dropped.append((_t, _why))
+
+        if not _condemned and not _stack_dropped:
+            if report["refused"]:
+                self._announce_retirement(reason, report, [], [])
+            return report
+
+        _drop_ids = {id(_t) for _t, _why in _condemned}
+        self._fold_tranches = [
+            _t for _t in self._fold_tranches or [] if id(_t) not in _drop_ids
+        ]
+        report["fold_removed"] = len(_condemned)
+        report["fold_kept"] = len(self._fold_tranches)
+        report["usd_removed"] = sum(
+            (as_finite_float(_t.get("usd", 0.0)) or 0.0) for _t, _why in _condemned
+        )
+        self._fold_queue_usd = sum(
+            (as_finite_float(_t.get("usd", 0.0)) or 0.0) for _t in self._fold_tranches
+        )
+        self._stack_tranches = _stack_keep
+        report["stack_removed"] = len(_stack_dropped)
+        report["stack_kept"] = len(_stack_keep)
+        if report["fold_removed"]:
+            self._tranches_discarded_lifetime = (
+                int(as_finite_float(self._tranches_discarded_lifetime) or 0.0)
+                + report["fold_removed"]
+            )
+            try:
+                self.stats.tranches_discarded_lifetime = (
+                    self._tranches_discarded_lifetime
+                )
+            except AttributeError as exc:
+                logger.debug("retire_unaligned_tranches: stats mirror failed: %s", exc)
+        if report["stack_removed"]:
+            self._stack_discarded = (
+                int(as_finite_float(getattr(self, "_stack_discarded", 0)) or 0.0)
+                + report["stack_removed"]
+            )
+        self._announce_retirement(reason, report, _condemned, _stack_dropped)
+        return report
+
+    def _announce_retirement(
+        self, reason: str, report: dict, fold: list, stack: list
+    ) -> None:
+        """Write what ``retire_unaligned_tranches`` dropped to ``bot.log``, each
+        record with its price, its units and the reason it went.
+
+        A ``fee_spared`` count above zero names the Trading Fee % and how many
+        records it condemned, so the operator reads why those were kept.
+        """
+        _fold_detail = "; ".join(
+            f"ref ${as_finite_float(_t.get('ref', 0.0)) or 0.0:.8f}, "
+            f"{as_finite_float(_t.get('units', 0.0)) or 0.0:.8f} units, "
+            f"${as_finite_float(_t.get('usd', 0.0)) or 0.0:.4f} — {_why}"
+            for _t, _why in fold
+        )
+        _stack_detail = "; ".join(
+            f"${as_finite_float(_t.get(STACK_PRICE_KEY, 0.0)) or 0.0:.8f}, "
+            f"{as_finite_float(_t.get(STACK_SIZE_KEY, 0.0)) or 0.0:.8f} units "
+            f"— {_why}"
+            for _t, _why in stack
+        )
+        _refusal = ""
+        if report["refused"]:
+            _refusal = (
+                f" {report['fee_spared']} tranche(s) the fee window condemned "
+                f"were KEPT: each shares its implied fee with another standing "
+                f"tranche, or none passed the window at all, so the reading "
+                f"measures a Trading Fee % of {report['fee_pct']} and not the "
+                f"records. Lower that setting after a sale and every tranche "
+                f"it queued reads short at once."
+            )
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"TRANCHES RETIRED ({reason}): dropped "
+                f"{report['fold_removed']} fold tranche(s) holding "
+                f"${report['usd_removed']:.4f} and {report['stack_removed']} "
+                f"stack rung(s) whose amount no sale produced. "
+                f"Fold: [{_fold_detail}]. Stack: [{_stack_detail}]. "
+                f"{report['fold_kept']} fold tranche(s) and "
+                f"{report['stack_kept']} rung(s) kept, "
+                f"{report['stack_kept_live_order']} of them holding a venue "
+                f"order. These are counted as DISCARDED, never as closed. No "
+                f"order was placed or cancelled; holdings, cost basis and "
+                f"target balance are unchanged.{_refusal}"
+            ),
+        )
+        logger.info(
+            "Bot %s retired %d fold + %d stack record(s) as unaligned "
+            "(%s), refused=%s",
+            self.bot_id,
+            report["fold_removed"],
+            report["stack_removed"],
+            reason,
+            report["refused"],
+        )
+
+    def _held_units_now(self) -> tuple[float, int]:
+        """The units this bot's restored lots record, and how many lots held no
+        readable figure.
+
+        ``_main_lots`` is the held figure on load: ``import_scrumming_state``
+        does not restore ``_current_holdings``, which the exchange supplies on
+        the next tick, and an unreadable lot is counted beside the total rather
+        than added as zero.
+        """
+        total = 0.0
+        unreadable = 0
+        for _lot in self._main_lots or []:
+            _one = (
+                as_finite_float(_lot.get("units")) if isinstance(_lot, dict) else None
+            )
+            if _one is None or _one < 0.0:
+                unreadable += 1
+            else:
+                total += _one
+        return total, unreadable
+
+    def retire_tranches_above_held(self, reason: str = "load") -> dict:
+        """Drop the oldest standing tranches until the units they mark no longer
+        exceed the units this bot holds, and name every drop in ``bot.log``.
+
+        ``tranches_beyond_held_total`` makes the selection against
+        ``_held_units_now``, the fold queue on ``FOLD_AGE_KEY`` and the stack
+        rungs ``rung_is_pending`` admits on ``STACK_AGE_KEY``, each measured
+        against that one held total and never summed together; a filled or
+        cancelled rung marks no units and is never dropped here, a rung holding
+        a resting venue order is kept whatever the arithmetic says, and every
+        drop counts in ``_tranches_discarded_lifetime`` or ``_stack_discarded``.
+
+        Args:
+          reason: what ran the sweep, carried into the log line.
+
+        Returns:
+          A report keyed ``fold_removed``, ``fold_kept``, ``stack_removed``,
+          ``stack_kept``, ``stack_not_pending``, ``stack_kept_live_order``,
+          ``units_removed``, ``usd_removed``, ``held``, ``held_unreadable``,
+          ``fold_marked``, ``stack_marked``, ``ageless``, ``unreadable``,
+          ``refused`` and ``breached``. ``stack_not_pending`` counts the rungs
+          left out of ``stack_marked``, ``refused`` is True where no held total
+          above zero was readable, and ``breached`` is True where the rungs that
+          had to be kept still mark more than the held total.
+        """
+        _held, _held_unreadable = self._held_units_now()
+        _stack = list(self._stack_tranches or [])
+        _pending = [_t for _t in _stack if isinstance(_t, dict) and rung_is_pending(_t)]
+        _pinned = frozenset(id(_t) for _t in _pending if _t.get(STACK_ORDER_ID_KEY))
+        _fold_drop, _fold_read = tranches_beyond_held_total(
+            self._fold_tranches, "units", FOLD_AGE_KEY, _held
+        )
+        _stack_drop, _stack_read = tranches_beyond_held_total(
+            _pending, STACK_SIZE_KEY, STACK_AGE_KEY, _held, _pinned
+        )
+        report = {
+            "fold_removed": 0,
+            "fold_kept": len(self._fold_tranches or []),
+            "stack_removed": 0,
+            "stack_kept": len(_stack),
+            "stack_not_pending": len(_stack) - len(_pending),
+            "stack_kept_live_order": len(_pinned),
+            "units_removed": 0.0,
+            "usd_removed": 0.0,
+            "held": _held,
+            "held_unreadable": _held_unreadable,
+            "fold_marked": _fold_read["marked"],
+            "stack_marked": _stack_read["marked"],
+            "ageless": _fold_read["ageless"] + _stack_read["ageless"],
+            "unreadable": _fold_read["unreadable"] + _stack_read["unreadable"],
+            "refused": bool(_fold_read["refused"] or _stack_read["refused"]),
+            "breached": bool(_fold_read["breached"] or _stack_read["breached"]),
+        }
+        if not _fold_drop and not _stack_drop:
+            if report["refused"] and (self._fold_tranches or self._stack_tranches):
+                self._announce_held_ceiling(reason, report, [], [])
+            return report
+
+        _fold_ids = {id(_t) for _t, _why in _fold_drop}
+        self._fold_tranches = [
+            _t for _t in self._fold_tranches or [] if id(_t) not in _fold_ids
+        ]
+        _stack_ids = {id(_t) for _t, _why in _stack_drop}
+        self._stack_tranches = [
+            _t for _t in self._stack_tranches or [] if id(_t) not in _stack_ids
+        ]
+        report["fold_removed"] = len(_fold_drop)
+        report["fold_kept"] = len(self._fold_tranches)
+        report["stack_removed"] = len(_stack_drop)
+        report["stack_kept"] = len(self._stack_tranches)
+        report["units_removed"] = sum(
+            (as_finite_float(_t.get("units")) or 0.0) for _t, _why in _fold_drop
+        ) + sum(
+            (as_finite_float(_t.get(STACK_SIZE_KEY)) or 0.0) for _t, _why in _stack_drop
+        )
+        report["usd_removed"] = sum(
+            (as_finite_float(_t.get("usd")) or 0.0) for _t, _why in _fold_drop
+        )
+        self._fold_queue_usd = sum(
+            (as_finite_float(_t.get("usd")) or 0.0) for _t in self._fold_tranches
+        )
+        if report["fold_removed"]:
+            self._tranches_discarded_lifetime = (
+                int(as_finite_float(self._tranches_discarded_lifetime) or 0.0)
+                + report["fold_removed"]
+            )
+            try:
+                self.stats.tranches_discarded_lifetime = (
+                    self._tranches_discarded_lifetime
+                )
+            except AttributeError as exc:
+                logger.debug("retire_tranches_above_held: stats mirror failed: %s", exc)
+        if report["stack_removed"]:
+            self._stack_discarded = (
+                int(as_finite_float(getattr(self, "_stack_discarded", 0)) or 0.0)
+                + report["stack_removed"]
+            )
+        self._announce_held_ceiling(reason, report, _fold_drop, _stack_drop)
+        return report
+
+    def _announce_held_ceiling(
+        self, reason: str, report: dict, fold: list, stack: list
+    ) -> None:
+        """Write what ``retire_tranches_above_held`` dropped to ``bot.log``, each
+        record with its price, its units, its dollars, its age and why it went.
+
+        An ``ageless`` count above zero names how many records carried no
+        readable stamp, so the operator reads that the oldest-first ordering was
+        undetermined for that many, a ``stack_not_pending`` count above zero
+        names the rungs left out of the stack total, and a ``refused`` or
+        ``breached`` reading states that the held total gave the sweep no
+        ceiling or that the kept rungs still exceed it.
+        """
+        _now = time.time()
+
+        def _age_text(record: dict, field: str) -> str:
+            _age = self._tranche_age_seconds(record, field, _now)
+            if _age is None:
+                return "no age"
+            return f"{_age / 86400.0:.2f} days old"
+
+        _fold_detail = "; ".join(
+            f"ref ${as_finite_float(_t.get('ref')) or 0.0:.8f}, "
+            f"{as_finite_float(_t.get('units')) or 0.0:.8f} units, "
+            f"${as_finite_float(_t.get('usd')) or 0.0:.4f}, "
+            f"{_age_text(_t, FOLD_AGE_KEY)} — {_why}"
+            for _t, _why in fold
+        )
+        _stack_detail = "; ".join(
+            f"${as_finite_float(_t.get(STACK_PRICE_KEY)) or 0.0:.8f}, "
+            f"{as_finite_float(_t.get(STACK_SIZE_KEY)) or 0.0:.8f} units, "
+            f"{_age_text(_t, STACK_AGE_KEY)} — {_why}"
+            for _t, _why in stack
+        )
+        _held_text = f"{report['held']:.8f} units held"
+        _notes = ""
+        if report["held_unreadable"]:
+            _notes += (
+                f" {report['held_unreadable']} lot(s) held no readable units "
+                f"figure and are not in the held total."
+            )
+        if report["ageless"]:
+            _notes += (
+                f" {report['ageless']} record(s) carried no readable date "
+                f"stamp. The oldest-first ordering could not place them and "
+                f"they were treated as the oldest."
+            )
+        if report["unreadable"]:
+            _notes += (
+                f" {report['unreadable']} record(s) held no readable units "
+                f"figure and are not in the marked total."
+            )
+        if report["stack_not_pending"]:
+            _notes += (
+                f" {report['stack_not_pending']} rung(s) whose status is not "
+                f"pending mark no units, are not in the stack total and were "
+                f"kept."
+            )
+        if report["breached"]:
+            _notes += (
+                " The rungs holding a resting venue order still mark more "
+                "units than the bot holds. Those orders were left on the book."
+            )
+        if report["refused"]:
+            _message = (
+                f"TRANCHES OVER HELD TOTAL ({reason}): REFUSED, and every "
+                f"tranche kept. The bot's restored lots gave {_held_text}, so "
+                f"the sweep has no ceiling to measure against. The queue marks "
+                f"{report['fold_marked']:.8f} fold units and "
+                f"{report['stack_marked']:.8f} stack units across "
+                f"{report['fold_kept']} fold tranche(s) and "
+                f"{report['stack_kept']} rung(s), every one of them left "
+                f"standing. The exchange supplies this bot's holdings on the "
+                f"next tick.{_notes}"
+            )
+        else:
+            _message = (
+                f"TRANCHES OVER HELD TOTAL ({reason}): dropped "
+                f"{report['fold_removed']} fold tranche(s) and "
+                f"{report['stack_removed']} stack rung(s) marking "
+                f"{report['units_removed']:.8f} units and holding "
+                f"${report['usd_removed']:.4f}, the oldest beyond "
+                f"{_held_text}. The queue marked "
+                f"{report['fold_marked']:.8f} fold units and "
+                f"{report['stack_marked']:.8f} stack units before. "
+                f"Fold: [{_fold_detail}]. Stack: [{_stack_detail}]. "
+                f"{report['fold_kept']} fold tranche(s) and "
+                f"{report['stack_kept']} rung(s) kept, "
+                f"{report['stack_kept_live_order']} of them holding a venue "
+                f"order. Each dropped fold tranche is units this bot sold and "
+                f"will not buy back at that price, and each dropped rung is "
+                f"units it holds and will not sell at that price. These are "
+                f"counted as DISCARDED, never as closed. No order was placed or "
+                f"cancelled; holdings, cost basis and target balance are "
+                f"unchanged.{_notes}"
+            )
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=_message)
+        logger.info(
+            "Bot %s retired %d fold + %d stack record(s) above the held "
+            "total (%s), held=%s, refused=%s, breached=%s",
+            self.bot_id,
+            report["fold_removed"],
+            report["stack_removed"],
+            reason,
+            report["held"],
+            report["refused"],
+            report["breached"],
+        )

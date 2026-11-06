@@ -18,6 +18,8 @@ from ..container.config import (
     as_whole_count,
     ceiling_multiple,
 )
+from .distribution import dist_sets_from_saved, dist_units
+from .shadow import shadow_rows_from_saved
 from .target_ramp import RAMP_MODES, RAMP_SEARCH
 
 if TYPE_CHECKING:
@@ -59,24 +61,31 @@ class StateSerializerMixin:
     # is created.
     _anchor_target_balance: float
     _bus: Any
+    close_spent_tranches: Callable[..., float]
     _compact_wire_credits: Callable[..., int]
     _current_holdings: float
-    _dist_accumulator: float
+    _dist_sets: list[dict]
+    _export_resting_orders: Callable[..., list]
     _fold_queue_usd: float
     _fold_tranches: list[dict]
+    _shadow_tranches: list[dict]
     _hedge_bal: float
     _hedge_trades: int
+    _import_resting_orders: Callable[..., None]
     _initialised: bool
     _land_pending_wire_credits: Callable[..., float]
     _last_trade_price: float
     _last_trade_side: str | None
     _main_lots: list[dict]
+    _park_wire_credits: Callable[..., float]
     _quote_to_usd: float
     _scrum_target_mode: str
     _scrum_target_side: str | None
     _target_balance: float
     bot_id: Any
     config: Any
+    retire_tranches_above_held: Callable[..., dict]
+    retire_unaligned_tranches: Callable[..., dict]
     state: Any
 
     def export_scrumming_state(self) -> dict:
@@ -100,8 +109,8 @@ class StateSerializerMixin:
             "last_trade_price": float(self._last_trade_price),
             "last_trade_side": self._last_trade_side,
             "quote_to_usd": float(self._quote_to_usd or 1.0),
-            "pending_stack_buy_usd": float(
-                getattr(self, "_pending_stack_buy_usd", 0.0) or 0.0
+            "highest_venue_fee_pct": float(
+                as_finite_float(getattr(self, "highest_venue_fee_pct", 0.0)) or 0.0
             ),
             # Written verbatim; _check_detonation_trigger retires the latch.
             "detonation_last_signal_bullish": bool(
@@ -123,7 +132,8 @@ class StateSerializerMixin:
             ),
             "cb_soft_trip_pct": float(getattr(self, "_cb_soft_trip_pct", 0.0) or 0.0),
             "fold_queue_usd": float(self._fold_queue_usd),
-            "dist_accumulator": float(self._dist_accumulator),
+            "dist_accumulator": dist_units(self._dist_sets),
+            "dist_sets": [dict(one) for one in self._dist_sets],
             "hedge_bal": float(self._hedge_bal),
             "hedge_trades": admitted_counter(
                 self._hedge_trades, "_hedge_trades", self.bot_id
@@ -132,6 +142,7 @@ class StateSerializerMixin:
             "scrum_target_side": self._scrum_target_side,
             "main_lots": [dict(lot) for lot in self._main_lots],
             "fold_tranches": [dict(t) for t in self._fold_tranches],
+            **self._shadow_state(),
             "hyst_armed_fold_side": bool(getattr(self, "_hyst_armed_fold_side", False)),
             "hyst_armed_scrum_side": bool(
                 getattr(self, "_hyst_armed_scrum_side", False)
@@ -197,6 +208,7 @@ class StateSerializerMixin:
             "stack_counters_reset_ts": float(
                 as_finite_float(getattr(self, "_stack_counters_reset_ts", 0.0)) or 0.0
             ),
+            "resting_orders": self._export_resting_orders(),
             "target_grow_last_side": (
                 str(getattr(self, "_target_grow_last_side", None))
                 if getattr(self, "_target_grow_last_side", None) in ("lower", "upper")
@@ -204,6 +216,29 @@ class StateSerializerMixin:
             ),
             "_format_version": 8,
         }
+
+    def _shadow_state(self) -> dict:
+        """``shadow_tranches`` while a row stands, nothing for a bot with none."""
+        if not self._shadow_tranches:
+            return {}
+        return {"shadow_tranches": [dict(row) for row in self._shadow_tranches]}
+
+    def _release_unpriced_dist(self, data: dict) -> None:
+        """Log the ``dist_accumulator`` units a save holds with no ``dist_sets``
+        beside it, which no distribution sells."""
+        if "dist_sets" in data:
+            return
+        unpriced = as_finite_float(data.get("dist_accumulator"))
+        if unpriced is None or unpriced <= 0.0:
+            return
+        message = (
+            f"DIST RELEASED: the saved state holds {unpriced:.8f} extra units and "
+            f"names no fold price, so no distribution can keep the opposing trade "
+            f"distance from one. They stay in the position, and no distribution "
+            f"sells them."
+        )
+        logger.warning("Bot %s %s", self.bot_id, message)
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=message)
 
     def import_scrumming_state(self, data: dict) -> None:
         """Restore compounding state from an ``export_scrumming_state`` dict.
@@ -213,6 +248,8 @@ class StateSerializerMixin:
         """
         if not isinstance(data, dict):
             return
+
+        self._shadow_tranches = shadow_rows_from_saved(data.get("shadow_tranches"))
 
         # _anchor_target_balance is restored first; the ceiling check below
         # reads it.
@@ -303,12 +340,12 @@ class StateSerializerMixin:
             _qrate_saved = 0.0
         if _qrate_saved > 0:
             self._quote_to_usd = _qrate_saved
-        try:
-            self._pending_stack_buy_usd = float(
-                data.get("pending_stack_buy_usd", 0.0) or 0.0
-            )
-        except (TypeError, ValueError):
-            self._pending_stack_buy_usd = 0.0
+        _venue_fee_saved = as_finite_float(data.get("highest_venue_fee_pct"))
+        self.highest_venue_fee_pct = (
+            _venue_fee_saved
+            if _venue_fee_saved is not None and 0.0 < _venue_fee_saved < 100.0
+            else 0.0
+        )
         self._hyst_armed_fold_side = bool(data.get("hyst_armed_fold_side", False))
         self._hyst_armed_scrum_side = bool(data.get("hyst_armed_scrum_side", False))
         try:
@@ -374,9 +411,8 @@ class StateSerializerMixin:
                     type(_sup).__name__,
                     _sup,
                 )
-        self._dist_accumulator = float(
-            data.get("dist_accumulator", self._dist_accumulator)
-        )
+        self._dist_sets = dist_sets_from_saved(data.get("dist_sets"))
+        self._release_unpriced_dist(data)
         self._hedge_bal = float(data.get("hedge_bal", self._hedge_bal))
         self._hedge_trades = admitted_counter(
             data.get("hedge_trades", self._hedge_trades), "hedge_trades", self.bot_id
@@ -475,6 +511,7 @@ class StateSerializerMixin:
         self._stack_counters_reset_ts = float(
             as_finite_float(data.get("stack_counters_reset_ts", 0.0)) or 0.0
         )
+        self._import_resting_orders(data.get("resting_orders"))
         # closed > created is structurally impossible; clamp and surface it.
         if _closed > _created:
             try:
@@ -515,9 +552,39 @@ class StateSerializerMixin:
         except Exception:
             self._target_grow_last_side = None
 
+        # A saved pending_stack_buy_usd joins _pending_wire_credits.
+        _stack_usd = as_finite_float(data.get("pending_stack_buy_usd"))
+        if _stack_usd is not None and _stack_usd > 0.0:
+            self._park_wire_credits(
+                _stack_usd,
+                [
+                    {
+                        "ts": None,
+                        "source": "pending_stack_buy_usd",
+                        "usd": _stack_usd,
+                        "ref": "restore",
+                    }
+                ],
+            )
+        # Ordered before the landing, so a closed tranche's credit lands on the
+        # tranches that stay.
+        self.close_spent_tranches()
+
         # _land_pending_wire_credits moves _pending_wire_credits into the
         # fold tranches restored above.
         self._land_pending_wire_credits()
+
+        # Ordered after the wire landing so a record's wired-in dollars are on
+        # it before retire_unaligned_tranches measures its amount. Runs once
+        # per bot: every record queued after it is handed out of one sale's own
+        # figures by fold_tranche_records.
+        self.retire_unaligned_tranches("load")
+
+        # Ordered after the alignment sweep so the held ceiling judges only what
+        # that sweep left standing, and before the re-derive below so the sum
+        # reads the queue this one leaves. _main_lots above is the held total;
+        # _current_holdings is still zero here.
+        self.retire_tranches_above_held("load")
 
         # _fold_queue_usd is re-derived from the tranche sums, not read out
         # of data.

@@ -9,14 +9,14 @@ Five part files hold that transcription alone.
 and [08-tabs.md](08-tabs.md) transcribe the PDF and add sections of their own.
 The PDF carries no body text for the parts the files below belong to, so they
 transcribe nothing:
-[09-updates-and-versioning.md](09-updates-and-versioning.md),
+[09-updates-and-versioning.md](../reference/09-updates-and-versioning.md),
 [10-live-trade-history.md](10-live-trade-history.md) and
-[13-live-evidence.md](13-live-evidence.md), written from the source
+[13-live-evidence.md](../reference/13-live-evidence.md), written from the source
 and from measurements over the operator's own venue export; and
-[11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md)
+[11-hop-protocol-and-rules-registry.md](../reference/11-hop-protocol-and-rules-registry.md)
 and [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md), written from
 the source alone; and
-[14-development-chronicle.md](14-development-chronicle.md), written from the
+[14-development-chronicle.md](../reference/14-development-chronicle.md), written from the
 git history, the audits in [docs/audits](../audits), the operator's own
 pre-git record, and a memory record kept across sessions. The `NN-` prefix of a file is its own name and carries no
 meaning; the Part column below is what places a file in the manual.
@@ -33,13 +33,7 @@ meaning; the Part column below is what places a file in the manual.
 | [06-trading-tab.md](06-trading-tab.md) | 3 | 14 to 27 | System architecture, then the Trading Tab walkthrough |
 | [07-indicators.md](07-indicators.md) | 3 | 27 to 29 | Indicator Voting Panel and the twelve indicators |
 | [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Market Inspector and Asset Charts, and the pointers to every other screen's own section under [08-tabs/](08-tabs/README.md) |
-| [13-live-evidence.md](13-live-evidence.md) | 4 | — | The readers of the year-to-date venue record, the connectors, and what the exchange tests reach |
-| [15-venue-compatibility.md](15-venue-compatibility.md) | 4 | — | Every API-reachable venue against the classes it serves, how each one names an order's size, and whether a scrum's excess survives that size rule |
-| [16-sector-exchange-product-tree.md](16-sector-exchange-product-tree.md) | 4 | — | The three nested levels — the six sectors, the venues each one reaches, and the products a venue serves under it with the size rule each product publishes |
-| [11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md) | 5 | — | The handoff file and its drift check, the rules registry, and the two versions of the development protocol |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
-| [09-updates-and-versioning.md](09-updates-and-versioning.md) | 7 | — | Version derivation, the six readers, the baked bundle value, the release gate, how dependency updates reach the branch |
-| [14-development-chronicle.md](14-development-chronicle.md) | 8 | — | The three records of the work, the corrections that became the instruments, the audits they produced, and what they cost and missed |
 | [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
 | [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
 
@@ -49,6 +43,12 @@ and is not rendered. An em dash in the Manual pages column means a different
 thing, that the PDF is not that file's source. The rows run in the order the PDF
 prints them, the first row is the title page, and a new row here folds a further
 file into its part.
+
+The reference pages for Parts 4, 5, 7 and 8 live in
+[../reference/](../reference/README.md). They hold research, history, process
+and evidence. This table has no row for them, and
+`tools/build_product_manual.py, in read_manifest` gives the PDF only the pages
+that a row lists.
 
 `tools/build_product_manual.py` — `read_manifest` refuses a table and a
 directory that disagree
@@ -71,9 +71,10 @@ those nine figures under a heading of its own, and
 [07-indicators.md](07-indicators.md) adds the twelve published formulae, the
 departures the code takes from them, and the gate logic chain.
 [08-tabs.md](08-tabs.md) adds a description of the running code under each
-heading. [06-trading-tab.md](06-trading-tab.md) adds the two engine mechanisms
-the Trading Tab offers no control for. All three keep every transcribed
-sentence unaltered.
+heading. [06-trading-tab.md](06-trading-tab.md) adds one "Now:" line under each
+sentence the code has moved past, and a cited reference for every control. All
+three keep every transcribed sentence unaltered, apart from the labels that
+replace asset names.
 [07-indicators.md](07-indicators.md) holds them in the PDF's order.
 [08-tabs.md](08-tabs.md) orders its sections by the tab list in
 [04-manual-parts.md](04-manual-parts.md), and Main Window opens the part. Each
@@ -104,6 +105,7 @@ the screen's state.
 | [08-tabs/system-status.md](08-tabs/system-status.md) | Emitter Network and Watchdog, the two halves that run today |
 | [08-tabs/settings.md](08-tabs/settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists |
 | [08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md) | How a strategy earns its way to real money |
+| [08-tabs/alerts.md](08-tabs/alerts.md) | Notifications and Alerts: the Event Routing table, which events reach the message channels, and the engine that runs without the screen |
 
 ## Figures
 
@@ -131,6 +133,8 @@ them beside the first set. Counting both sets, the built PDF embeds 77 images.
 `splash-mark.png` under Part 3 belongs to neither set, so the built PDF embeds
 78 images.
 
+Now: the built PDF embeds 160 images, one for each image line in the pages it lays out (`tools/build_product_manual.py, in _figure_flowables`).
+
 ```
 docs/manual/figures/            the 38 manual images and the 39 charts
 ```
@@ -151,12 +155,12 @@ sit. That is the flag for a corrected PDF.
 
 `PART_FILES` in that tool names the eight files the PDF is the source of. The
 files under [08-tabs/](08-tabs/README.md),
-[09-updates-and-versioning.md](09-updates-and-versioning.md),
+[09-updates-and-versioning.md](../reference/09-updates-and-versioning.md),
 [10-live-trade-history.md](10-live-trade-history.md),
-[11-hop-protocol-and-rules-registry.md](11-hop-protocol-and-rules-registry.md),
+[11-hop-protocol-and-rules-registry.md](../reference/11-hop-protocol-and-rules-registry.md),
 [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) and
-[13-live-evidence.md](13-live-evidence.md) and
-[14-development-chronicle.md](14-development-chronicle.md) are not
+[13-live-evidence.md](../reference/13-live-evidence.md) and
+[14-development-chronicle.md](../reference/14-development-chronicle.md) are not
 among them and are never written.
 
 - 44 pages, 9,759 whitespace-separated tokens, 38 embedded images.
@@ -228,6 +232,8 @@ sentence that replaces it beneath.
 All 77 images live together in `docs/manual/figures/`, tracked, and
 [FIGURES.md](FIGURES.md) inventories both sets there.
 
+Now: the folder holds 169 images, every one tracked (`tools/build_product_manual.py, in DEFAULT_FIGURES_DIR`).
+
 > The build writes the PDF beside the figures, under the same ignore rule.
 
 The build still writes into the ignored directory, and the tracked copy at
@@ -248,6 +254,39 @@ when a row names the wrong page, when a listed section is absent from the PDF,
 when the part numbers repeat or skip, or when the count word disagrees with the
 number of parts. A figure a part file references and `artifacts/manual-figures/`
 does not hold stops the build by name.
+
+### Where the builder reads the venue export
+
+Three sentences on this page are overtaken. Each is quoted whole, with what the
+code does today beneath it.
+
+> Three flags move the input directory, the figures directory and the output
+> file.
+
+Four flags move them. `--evidence-dir` moves the venue input the builder draws
+the evidence figures from, and it defaults to `artifacts/evidence-input/` under
+the repository root.
+
+```python
+parser.add_argument("--evidence-dir", type=Path, default=EVIDENCE_DIR)
+```
+
+> Part 9 adds a second set:
+> [10-live-trade-history.md](10-live-trade-history.md) embeds 39 VWAP charts built
+> from the operator's venue export.
+
+Part 9 embeds 40 VWAP charts. `_write_asset_vwap` in
+`tools/build_product_manual.py` draws them from that export, one for each
+labelled base and one combined view.
+
+Now: Part 9 embeds 41 VWAP charts, one for each of the 40 labelled bases and the combined view (`tools/build_product_manual.py, in _write_asset_vwap`).
+
+> Every chart has its asset name painted out of the pixels, every page carries a
+> label such as `A01` in place of a symbol, and the PDF's own text holds no
+> symbol a reader could copy out.
+
+No VWAP chart has anything painted out. The builder writes the label where the
+asset name would sit, through `_draw_vwap` and `_draw_combined`.
 
 ## Other document producers in this repository
 

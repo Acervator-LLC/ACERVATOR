@@ -904,9 +904,9 @@ whether the version-one path rejects the unlisted time-in-force field
 
 ## Related pages
 
-- [`docs/manual/15-venue-compatibility.md`](../../manual/15-venue-compatibility.md)
+- [`docs/reference/15-venue-compatibility.md`](../../reference/15-venue-compatibility.md)
   - the venue table and the sector rows this page extends
-- [`docs/manual/16-sector-exchange-product-tree.md`](../../manual/16-sector-exchange-product-tree.md)
+- [`docs/reference/16-sector-exchange-product-tree.md`](../../reference/16-sector-exchange-product-tree.md)
   - the sector, venue and product levels
 - [`docs/audits/2026-10-08_coinbase_sector_order_formats/REPORT.md`](../2026-10-08_coinbase_sector_order_formats/REPORT.md)
   - the mirror this page translates from

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from .asset_class_surface import BUTTON_TEXT_PAD as CLASS_BUTTON_TEXT_PAD
 from .asset_class_surface import GROUP_SPACING_PX as CLASS_GROUP_SPACING
+from ..tooltips import set_description
 
 
 class SectorUnknown(RuntimeError):
@@ -195,7 +196,7 @@ class HeaderStripMixin:
             button = QPushButton(model["text"])
             button.setCheckable(True)
             button.setChecked(model["class"] == self._asset_class)
-            button.setToolTip(model["tooltip"])
+            set_description(button, model["tooltip"])
             button.setStyleSheet(model["style_sheet"])
             # Preferred, never Minimum: the group must give width back to the
             # counters when the window is narrow.
@@ -327,7 +328,7 @@ class HeaderStripMixin:
         live = add_exchange_enabled(key)
         for button in getattr(self, "_add_exchange_buttons", ()):
             button.setText(text)
-            button.setToolTip(tip)
+            set_description(button, tip)
             button.setEnabled(live)
 
     def _sync_class_group(self) -> None:
@@ -340,7 +341,7 @@ class HeaderStripMixin:
             was = button.blockSignals(True)
             button.setChecked(model["checked"])
             button.blockSignals(was)
-            button.setToolTip(model["tooltip"])
+            set_description(button, model["tooltip"])
 
     def _build_header_strip(self) -> QVBoxLayout:
         """Build the central ``QWidget``.
@@ -376,7 +377,7 @@ class HeaderStripMixin:
         self._stat_cards = {}
         for model in surface.COUNTER_CARDS:
             card = card_class(model["label"], model["initial_text"])
-            card.setToolTip(model["tooltip"])
+            set_description(card, model["tooltip"])
             if model["clickable"]:
                 # The declaration's tooltip already carries the click line.
                 card.set_clickable(True)

@@ -5,6 +5,8 @@
 ``build_scrumming_scrum_chain`` and ``build_scrumming_fold_chain`` build.
 It answers a ``GateScan`` of ``GateReading`` rows, each naming one gate's
 state, and ``GateScan.would_fire`` reads those rows as one verdict.
+``timeframe_gates`` runs both chains over one timeframe at a bot's own settings,
+which is how ``PhantomBot._tick`` reads its higher timeframe.
 """
 
 from __future__ import annotations
@@ -20,10 +22,12 @@ from .gate_chain import (
     build_scrumming_scrum_chain,
     effective_gate_flags,
 )
+from .gate_vocabulary import FOLD_BANK, SCRUM_BANK, LightReading, light_reading
+from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT, detect_bb_proximity
 from .indicators.bollinger import BollingerBands
 from .indicators.landing_strip import detect_landing_strip_v2
 from .indicators.types import SignalDirection
-from .otd_math import minimum_opposing_trade_distance_pct
+from .otd_math import distance_settings, minimum_opposing_trade_distance_pct
 from .scrumming.circuit_breakers import breaker_figures, breaker_move
 from .scrumming.target_ramp import (
     RAMP_FIRE,
@@ -31,7 +35,7 @@ from .scrumming.target_ramp import (
     next_ramp_mode,
     retreat_line,
 )
-from .ta_engine import MIN_CANDLES_FOR_TA
+from .ta_engine import MIN_CANDLES_FOR_TA, vote_sides
 
 #: The keys ``BollingerBands.compute`` publishes in ``Signal.details``.
 BAND_POSITION_KEY = "bb_position"
@@ -190,6 +194,7 @@ class GateScan:
     symbol: str = ""
     timeframe: str = ""
     readings: list = field(default_factory=list)
+    landing_strip_side: str = ""
 
     def named(self, state: Any) -> list:
         """The ``GateReading`` names in one state, in chain order."""
@@ -527,7 +532,8 @@ def confidence_floor(summary: Any, band: Any, candles: Any) -> float:
     """The TA confidence floor a scan judges ``summary`` direction at.
 
     ``voter_favour``, ``swing_favour`` and ``landing_strip_favour`` are
-    two of the three favours ``_skewed_confidence_floor`` divides by.
+    two of the four favours ``_skewed_confidence_floor`` divides by, and
+    ``summary`` signals hold the floor above what two indicators reach.
     """
     from .scrumming_bot import _skewed_confidence_floor
 
@@ -537,7 +543,7 @@ def confidence_floor(summary: Any, band: Any, candles: Any) -> float:
         + swing_favour(candles, position)
         + landing_strip_favour(band, candles)
     )
-    return _skewed_confidence_floor(skew)
+    return _skewed_confidence_floor(skew, getattr(summary, "signals", None) or [])
 
 
 def bull_candle_count(candles: Any) -> int:
@@ -618,6 +624,18 @@ def composite_net(
     return numerator / denominator
 
 
+#: The Indicator Voting Panel row key ``composite_rows`` writes ``composite_net`` to.
+COMPOSITE_KEY = "composite_net"
+
+
+def composite_rows(rows: dict) -> dict:
+    """Write each row's ``composite_net`` over every row of ``rows``, then
+    answer ``rows``."""
+    for timeframe, row in rows.items():
+        row[COMPOSITE_KEY] = composite_net(rows, timeframe, row["net_score"])
+    return rows
+
+
 def signal_detail(summary: Any, indicator: Any, key: Any) -> float:
     """One voter's published reading off ``summary``, or ``NO_WEIGHT``."""
     from .scrumming_bot import _extract_signal_detail
@@ -640,6 +658,7 @@ def build_context(
     stands the six ``POSITION_BOUND_GATES`` down.
     """
     held = settings if settings is not None else scan_settings(symbol)
+    distance_held = distance_settings(held)
     price = float(candles[-1].close) if candles else NO_BAND_VALUE
     bb_pos = float(getattr(band, BAND_POSITION_KEY, MIDLINE_POSITION))
     lower_dt, upper_dt = detect_thresholds(held)
@@ -647,19 +666,9 @@ def build_context(
     direction = getattr(summary, "consensus_direction", SignalDirection.NEUTRAL)
     confidence = float(getattr(summary, "consensus_confidence", NO_WEIGHT))
     at_upper, at_lower = band_touch(price, band, candles)
-    is_bullish = (
-        direction in (SignalDirection.BULLISH, SignalDirection.NEUTRAL)
-        and confidence >= floor
+    is_bullish, is_bearish = vote_sides(
+        direction, confidence, floor, band, getattr(summary, "signals", None) or []
     )
-    is_bearish = (
-        direction in (SignalDirection.BEARISH, SignalDirection.NEUTRAL)
-        and confidence >= floor
-    )
-    strip_side = str(getattr(band, "landing_strip_side", "") or "")
-    if getattr(band, "landing_strip", False) and strip_side == "upper":
-        is_bullish = True
-    if getattr(band, "landing_strip", False) and strip_side == "lower":
-        is_bearish = True
     trend_strength = bull_candle_count(candles) / TREND_CANDLES
     trend_hold = trend_strength > TREND_MIN_BULL_SHARE
     _, breaker = breaker_reading(candles, held)
@@ -722,8 +731,8 @@ def build_context(
         htf_bias_name=DIRECTION_NAMES.get(bias) if bias is not None else None,
         htf_blocks_scrum=htf_blocks_scrum,
         htf_blocks_fold=htf_blocks_fold,
-        scrumming_interval_pct=float(held.scrumming_interval_pct),
-        trading_fee_pct=float(held.trading_fee_pct),
+        scrumming_interval_pct=distance_held.interval_pct,
+        trading_fee_pct=distance_held.fee_pct,
         adx=signal_detail(summary, "adx", "adx"),
         efficiency_ratio=signal_detail(summary, "kaufman_er", "er"),
         z_score=signal_detail(summary, "zscore", "z"),
@@ -838,4 +847,69 @@ def scan_gates(
     )
     figures, move = breaker_reading(held, settings_held)
     readings.append(hard_breaker_row(figures, move))
-    return GateScan(symbol=str(symbol), timeframe=str(timeframe), readings=readings)
+    return GateScan(
+        symbol=str(symbol),
+        timeframe=str(timeframe),
+        readings=readings,
+        landing_strip_side=str(getattr(band, "landing_strip_side", "") or ""),
+    )
+
+
+def band_reading(candles: Any, settings: Any) -> Any:
+    """``detect_bb_proximity`` over ``candles`` at the two ``settings`` figures
+    ``ScrummingBot.tick`` passes.
+
+    None under ``MIN_CANDLES_FOR_TA``.
+    """
+    held = list(candles or [])
+    if len(held) < MIN_CANDLES_FOR_TA:
+        return None
+    return detect_bb_proximity(
+        held,
+        tolerance_pct=settings.bb_tolerance_pct,
+        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
+        min_pattern_candles=settings.bb_landing_strip_candles,
+    )
+
+
+def timeframe_gates(
+    symbol: Any,
+    timeframe: Any,
+    candles: Any,
+    summary: Any,
+    settings: Any = None,
+) -> GateScan:
+    """``scan_gates`` over one timeframe's ``candles`` and ``summary`` at ``settings``.
+
+    ``band_reading`` supplies the band and no higher timeframe is weighed.
+    """
+    held = settings if settings is not None else scan_settings(symbol)
+    return scan_gates(
+        symbol, timeframe, candles, summary, band_reading(candles, held), None, held
+    )
+
+
+def scan_reading(scan: GateScan) -> LightReading:
+    """``light_reading`` over one ``GateScan``, each side armed while
+    ``side_fires`` answers True.
+
+    A gate whose ``GateReading.ran`` is False reads not evaluated.
+    """
+    banks = ((SIDE_SCRUM, SCRUM_BANK), (SIDE_FOLD, FOLD_BANK))
+    rows = {bank: scan.side_readings(side) for side, bank in banks}
+    return light_reading(
+        armed={bank: scan.side_fires(side) for side, bank in banks},
+        blockers={
+            bank: [one.detail for one in held if one.state == STATE_BLOCKED]
+            for bank, held in rows.items()
+        },
+        replaced={
+            bank: [one.detail for one in held if one.state == STATE_OVERRIDDEN]
+            for bank, held in rows.items()
+        },
+        landing_strip_side=scan.landing_strip_side,
+        not_run={
+            bank: [one.name for one in held if not one.ran]
+            for bank, held in rows.items()
+        },
+    )

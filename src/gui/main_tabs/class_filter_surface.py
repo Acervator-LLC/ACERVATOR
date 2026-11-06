@@ -15,6 +15,8 @@ from typing import Any, Iterable, Optional
 from .asset_class_surface import (
     display_name,
     normalise,
+    recorded_symbol_classes,
+    recorded_venue_classes,
     symbol_class,
     venue_classes,
 )
@@ -58,15 +60,18 @@ def set_active(name: Any) -> str:
 #   narrowed to the class ``symbol_class`` holds for the symbol."
 # True today: ``symbol_class`` reads the recording first on every venue, so a
 # pair recorded under one sector is never answered under another.
-def market_class(venue_id: Any, symbol: Any = "") -> str:
+def market_class(
+    venue_id: Any, symbol: Any = "", venues: Any = None, symbols: Any = None
+) -> str:
     """The asset class one market belongs to, or an empty string for none.
 
     ``symbol_class`` reads the venue's own recording, then the one class the
-    venue serves, and answers an empty string where neither can.
+    venue serves, and answers an empty string where neither can; ``venues`` and
+    ``symbols`` stand in for the two recording reads.
     """
-    if not venue_classes(venue_id):
+    if not venue_classes(venue_id, venues):
         return ""
-    return symbol_class(venue_id, symbol)
+    return symbol_class(venue_id, symbol, symbols, venues)
 
 
 def bot_class(status: Any) -> str:
@@ -106,20 +111,30 @@ def venues_of_class(venue_ids: Iterable, name: Optional[Any] = None) -> list:
     return sorted(one for one in (venue_ids or ()) if key in venue_classes(one))
 
 
-def trades_of_class(rows: Any, name: Optional[Any] = None) -> list:
-    """Every trade row whose market belongs to one asset class.
+def trades_by_class(rows: Any, answered: Optional[dict] = None) -> dict:
+    """Every trade row filed under the class ``market_class`` answers for its
+    ``exchange`` and ``symbol``, each list in the order given.
 
-    A row names its venue under ``exchange`` and its market under ``symbol``,
-    which is the shape the History table reads.
+    ``market_class`` answers each distinct venue and symbol pair once from one
+    read of the recording, and ``answered`` carries those answers across calls.
     """
-    key = normalise(name) if name is not None else active()
-    kept = []
+    if answered is None:
+        answered = {}
+    venues: Optional[dict] = None
+    symbols: dict = {}
+    filed: dict = {}
     for row in rows or []:
         held = row if isinstance(row, dict) else {}
-        venue = held.get("exchange") or held.get("exchange_id") or ""
-        if market_class(venue, held.get("symbol", "")) == key:
-            kept.append(row)
-    return kept
+        venue = str(held.get("exchange") or held.get("exchange_id") or "")
+        pair = (venue, str(held.get("symbol", "") or ""))
+        if pair not in answered:
+            if venues is None:
+                venues = recorded_venue_classes()
+            if venue not in symbols:
+                symbols[venue] = recorded_symbol_classes(venue)
+            answered[pair] = market_class(venue, pair[1], venues, symbols[venue])
+        filed.setdefault(answered[pair], []).append(row)
+    return filed
 
 
 # OVERTAKEN, quoted whole:

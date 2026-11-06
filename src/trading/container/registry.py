@@ -150,6 +150,17 @@ class BotRegistryMixin:
     def get_bot(self, bot_id: str) -> Optional[BotContainer]:
         return self._bots.get(bot_id)
 
+    def bots_on_symbol(self, exchange_id: object, symbol: object) -> list[BotContainer]:
+        """Every registered bot whose ``config`` names ``exchange_id`` and ``symbol``, in
+        registration order.
+        """
+        return [
+            bot
+            for bot in list(self._bots.values())
+            if getattr(getattr(bot, "config", None), "exchange_id", None) == exchange_id
+            and getattr(getattr(bot, "config", None), "symbol", None) == symbol
+        ]
+
     def list_parent_bot_candidates_for_base_currency(
         self, base_currency: object, *, exchange_id: object
     ) -> list[tuple[str, BotContainer]]:

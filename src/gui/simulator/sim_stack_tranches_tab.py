@@ -18,8 +18,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..main_tabs.stack_tranches_tab_surface import (
+    ALIGNMENT_ROW_LABEL,
+    compose_event_alignment_row,
+)
 from .. import design_system as ds
 from ..descriptions import STACK_TRANCHES_TAB_DESCRIPTIONS
+from ..tooltips import set_description
 
 if TYPE_CHECKING:
     from .sim_bot_detail import SimBotDetailDialog
@@ -424,6 +429,14 @@ class SimStackTranchesTabMixin:
         )
         sf.addRow("Pending size (unfilled):", pending_lbl)
 
+        # compose_event_alignment_row is the one declaration of this row; the
+        # React page draws the same call's answer.
+        _alignment_text, _alignment_style = compose_event_alignment_row(tranches)
+        _alignment_lbl = QLabel(_alignment_text)
+        if _alignment_style:
+            _alignment_lbl.setStyleSheet(_alignment_style)
+        sf.addRow(ALIGNMENT_ROW_LABEL, _alignment_lbl)
+
         ages_sec = []
         for t in pending:
             ots = _as_finite_float(t.get("opened_ts"))
@@ -479,7 +492,9 @@ class SimStackTranchesTabMixin:
             else "Clear Stack Tranches"
         )
         stack_clear_btn.setEnabled(bool(_droppable))
-        stack_clear_btn.setToolTip(STACK_TRANCHES_TAB_DESCRIPTIONS["stack_clear_btn"])
+        set_description(
+            stack_clear_btn, STACK_TRANCHES_TAB_DESCRIPTIONS["stack_clear_btn"]
+        )
         stack_clear_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -501,8 +516,8 @@ class SimStackTranchesTabMixin:
             else "Clear Lifetime Counters"
         )
         stack_counters_btn.setEnabled(_stack_counters_stand)
-        stack_counters_btn.setToolTip(
-            STACK_TRANCHES_TAB_DESCRIPTIONS["stack_counters_btn"]
+        set_description(
+            stack_counters_btn, STACK_TRANCHES_TAB_DESCRIPTIONS["stack_counters_btn"]
         )
         stack_counters_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "

@@ -49,6 +49,7 @@ rule_id="DOC012"   # a dated update that runs backwards
 | [console.md](console.md) | Python log tail and the emitter signal stream | Live |
 | [system-status.md](system-status.md) | Emitter Network and Watchdog, the two halves that run today | Skeleton tab — issue #34 |
 | [settings.md](settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists | Live |
+| [alerts.md](alerts.md) | The two channel forms, the Event Routing table, the notification history | Both builds complete, the window opens neither |
 | [promotion-pipeline.md](promotion-pipeline.md) | How a strategy earns its way to real money | Four of four steps built |
 
 ## The live tab set
@@ -96,6 +97,83 @@ def _install_retired_tab_sentinels(self) -> None:
 The underlying engines behind several of those keep running; only the surface
 is gone.
 
+Read on the current tree, the engines that ran for nothing are stopped. Of the
+engines behind those pages, the window builds two: the risk engine and the
+notification manager. The risk engine still runs every 2 seconds, and its
+drawdown alerts still reach the Console and SMS. The audio suite's chime still
+plays from the Market Inspector.
+
+`src/gui/main_window.py` — `MainWindow.__init__`, the two engines the window builds
+
+```python
+            from ..trading.risk_manager import RiskManager
+            from ..core.notifications import get_notification_manager
+
+            self._risk_manager = RiskManager(bot_manager)
+            self._notif_manager = get_notification_manager()
+```
+
+| engine | before | now |
+| --- | --- | --- |
+| analytics | built at launch, a snapshot about every 10 s | not built |
+| testnet bridge | installed at launch, a 250 ms timer for the whole session | not installed |
+| trade journal | built at launch, three day files read | built only when an AI note is written |
+| reconciliation engine | built at launch, never called | not built |
+| crash snapshot | a whole-fleet file written every 30 s | not built |
+| risk engine | two fleet sweeps every 2 s | one sweep |
+
+### When a risk rule raises its alert
+
+Each of the seven risk rules raises its alert only for a reading strictly
+beyond its limit. A reading exactly on the limit raises none. Every alert text
+says the reading "exceeds" the limit, and every alert's reading does. The one
+test sits on the rule, and every rule calls it.
+
+`src/trading/risk_manager.py` — `RiskRule.exceeded_by`
+
+```python
+    def exceeded_by(self, reading: float) -> bool:
+        """True only for a ``reading`` strictly above ``threshold``; ``evaluate``
+        applies this one test to every rule.
+        """
+        return reading > self.threshold
+```
+
+Every alert writes one warning line to the Console and to `system.log`. A
+critical alert also goes to the notification manager, which sends it to the
+alert sound, Telegram and SMS. SMS sends only while the "P/L threshold alerts"
+box on `Settings > SMS` is ticked.
+
+| rule | limit | what it reads | severity |
+| --- | --- | --- | --- |
+| `max_drawdown` | 10 % | the fall of total P/L from its peak | warning |
+| `critical_drawdown` | 25 % | the fall of total P/L from its peak | critical |
+| `per_bot_loss` | $50 | one bot's realised loss | warning |
+| `asset_concentration` | 40 % | one asset's share of the running target balance | warning |
+| `exchange_concentration` | 60 % | one venue's share of the running target balance | warning |
+| `correlated_exposure` | 50 % | the combined share of a pair at a correlation of 0.7 or more | warning |
+| `rapid_loss` | 5 % | the fall of total P/L inside 300 s | critical |
+
+Driven on constructed fleets in a redirected home, with every send stopped at
+its import. One step is 0.0001 of P/L, the place each bot's status rounds to,
+or one cent of target balance.
+
+```
+rule                     one step below   on the limit   one step above
+max_drawdown             no alert         no alert       warning
+critical_drawdown        no alert         no alert       critical, to SMS
+per_bot_loss             no alert         no alert       warning
+asset_concentration      no alert         no alert       warning
+exchange_concentration   no alert         no alert       warning
+correlated_exposure      no alert         no alert       warning
+rapid_loss               no alert         no alert       critical, to SMS
+```
+
+A rule that alerts waits out its cooldown before it alerts again: 300 s, and
+600 s for `rapid_loss`. A reading on the limit raises nothing, so it starts no
+cooldown. Another asset beyond the limit in the same sweep then raises the
+alert for that rule.
+
 ## How a screen reaches its renderer
 
 One registry maps a method name to a view-model function. A surface is a plain
@@ -114,6 +192,50 @@ def build_registry() -> Dict[str, Handler]:
     one domain package.
     """
 ```
+
+The seven surfaces behind the retired tabs are in that registry, and building
+the registry imports none of them. Each one is imported on the first request
+for its own method, so a session that never asks for a retired page never
+loads its surface.
+
+`src/gui/main_tabs/retired_surfaces.py` — `on_demand_handlers`
+
+```python
+def on_demand_handlers() -> dict[str, Callable[[dict], dict]]:
+    """Return one handler per ``SURFACE_MODULES`` method, unimported until called."""
+    return {method: _handler(module) for method, module in SURFACE_MODULES.items()}
+```
+
+Read on the current tree, a packaged build carries none of the seven surfaces.
+`src/gui/main_tabs/retired_surfaces.py, in on_demand_handlers` registers a page
+only when the running program can find its surface, so a packaged build's
+registry holds none of the seven methods. A request for one gets the bridge's
+`UnknownMethod` refusal, and no import runs. A run from the source folder still
+answers all seven.
+
+`src/gui/main_tabs/retired_surfaces.py` — `on_demand_handlers` and `_is_carried`, as they read now
+
+```python
+def on_demand_handlers() -> dict[str, Callable[[dict], dict]]:
+    """Return one handler per ``SURFACE_MODULES`` method, unimported until called.
+
+    A method whose module ``_is_carried`` cannot find gets no handler.
+    """
+    return {
+        method: _handler(module)
+        for method, module in SURFACE_MODULES.items()
+        if _is_carried(module)
+    }
+
+
+def _is_carried(module_name: str) -> bool:
+    """Return True when ``find_spec`` finds ``module_name`` beside this module."""
+    return importlib.util.find_spec("." + module_name, __package__) is not None
+```
+
+The rule that leaves the seven out of the build is on
+[17-what-the-build-includes.md](../../reference/17-what-the-build-includes.md), under "A
+screen the window never builds".
 
 The transport is one JSON object per line over the pipe the parent process
 already owns: no socket and no port.

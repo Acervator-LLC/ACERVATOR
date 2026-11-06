@@ -649,16 +649,20 @@ def futures_sector(asset: Any) -> str:
 
     ``FUTURES_CLASS_SECTORS`` answers off the record's own
     ``product_class_name``, ``FUTURES_PRODUCT_SECTORS`` answers off its own
-    ``code``, and ``FUTURES_DEFAULT_SECTOR`` answers for a class and a code
-    naming no finer sector.
+    ``code``, ``FUTURES_DEFAULT_SECTOR`` answers for a class and a code naming
+    no finer sector, and ``contract_class`` files the answer.
     """
+    from ..trading.ata_spm import contract_class
+
     if not isinstance(asset, dict):
         return FUTURES_DEFAULT_SECTOR
     named = str(asset.get("product_class_name") or "").strip().lower()
     held = FUTURES_CLASS_SECTORS.get(named)
     if held:
-        return held
-    return FUTURES_PRODUCT_SECTORS.get(product_code(asset), FUTURES_DEFAULT_SECTOR)
+        return contract_class(held)
+    return contract_class(
+        FUTURES_PRODUCT_SECTORS.get(product_code(asset), FUTURES_DEFAULT_SECTOR)
+    )
 
 
 def asset_sector(asset: Any) -> Optional[str]:

@@ -66,7 +66,7 @@ from ..exchange.market_rules_store import recorded_rules
 from ..simulator.validation import BB_MIDLINE, bb_reading, latch
 from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext, effective_gate_flags
-from ..trading.otd_math import fold_rebuy_factor
+from ..trading.otd_math import BAND_TRAVEL_OFF_PCT, DistanceSettings
 from ..trading.scrumming.sizing import (
     BELOW_POSITION_MINIMUM,
     CLASS_CRYPTO,
@@ -569,7 +569,7 @@ def apply_fold(
     wires: Any = None,
 ) -> Optional[PaperTrade]:
     """Rebuy the tranches ``eligible_fold_tranches`` names at ``ticker_last``
-    under ``fold_rebuy_factor``, planned under ``cycle_growth_cap_usd`` by
+    under the bot's ``DistanceSettings``, planned under ``cycle_growth_cap_usd`` by
     ``plan_fold_consumption``, spent as ``fold_spend_usd`` under
     ``fold_taper`` with no wallet cap, booked as ``fold_units`` at ``price``,
     the tick's ``best_ask``, under ``rule``, settled by ``settle_fold_plan``,
@@ -612,8 +612,12 @@ def apply_fold(
             on_refusal(held)
         return None
     fee_pct = taker_fee_pct(bot)
-    factor = fold_rebuy_factor(bot.scrumming_interval_pct, fee_pct)
-    eligible = eligible_fold_tranches(balance.fold_tranches, float(ticker_last), factor)
+    distance = DistanceSettings(
+        bot.scrumming_interval_pct, fee_pct, BAND_TRAVEL_OFF_PCT
+    )
+    eligible = eligible_fold_tranches(
+        balance.fold_tranches, float(ticker_last), distance
+    )
     if not eligible:
         return None
     ordered = sorted(

@@ -16,6 +16,7 @@ from typing import Optional
 from PySide6 import QtCore, QtWidgets
 
 from .main_tabs import start_all_progress_surface as surface
+from .tooltips import set_description
 
 logger = logging.getLogger(surface.LOGGER_NAME)
 
@@ -72,11 +73,13 @@ class StartAllProgressDialog(QtWidgets.QDialog):
         button_row.addStretch(surface.BUTTON_ROW_LEADING_STRETCH)
 
         self._cancel_btn = QtWidgets.QPushButton(surface.CANCEL_TEXT)
+        set_description(self._cancel_btn, surface.CANCEL_TOOLTIP)
         self._cancel_btn.setEnabled(surface.CANCEL_ENABLED_AT_START)
         self._cancel_btn.clicked.connect(self._on_cancel)
         button_row.addWidget(self._cancel_btn)
 
         self._close_btn = QtWidgets.QPushButton(surface.CLOSE_TEXT)
+        set_description(self._close_btn, surface.CLOSE_TOOLTIP)
         self._close_btn.setEnabled(surface.CLOSE_ENABLED_AT_START)
         self._close_btn.clicked.connect(self.accept)
         button_row.addWidget(self._close_btn)

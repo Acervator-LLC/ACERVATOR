@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from . import fold_tranches_tab_surface as fold_tab
+
 METHOD = "fold_chrome.state"
 
 TIMER_ROW_LABEL = "Tranche despawn timer:"
@@ -45,22 +47,7 @@ PREVIEW_STACK_FORMAT = "{removed} of {open} stack tranche(s)"
 PREVIEW_STACK_KEPT_FORMAT = "{kept} stack kept (live order)"
 PREVIEW_AGELESS_FORMAT = "{kept} kept (no timestamp)"
 
-DESPAWN_ROW_TOOLTIP = (
-    "DESPAWN removes a tranche once it reaches this age.\n\n"
-    "The control is on the Settings tab, under Advanced -\n"
-    "Tranche Despawn Timer. 0 is Off and is the default.\n\n"
-    "IT IS NOT A TRADE. No order is placed or cancelled and no\n"
-    "balance moves. The scrum sale already happened, so the\n"
-    "dollars are already in the wallet; the record is only this\n"
-    "bot's queued intent to buy those units back. Removing it\n"
-    "returns that money to ordinary spendable balance and drops\n"
-    "the original-cost provenance the record carried.\n\n"
-    "A tranche with no timestamp is NEVER removed. A stack\n"
-    "tranche holding a resting exchange order is kept until that\n"
-    "order settles.\n\n"
-    "MERGE, DESPAWN and CLEAR are the only three things that\n"
-    "collapse or remove a tranche."
-)
+DESPAWN_ROW_TOOLTIP = fold_tab.DESPAWN_ROW_TOOLTIP
 
 SORT_TOOLTIP = "Choose the row order. Unreadable rows stay last."
 FILTER_TOOLTIP = "Show only rows that contain this text."

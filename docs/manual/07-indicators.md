@@ -2617,6 +2617,38 @@ is_bullish = direction in (BULLISH, NEUTRAL) and confidence >= floor
 is_bearish = direction in (BEARISH, NEUTRAL) and confidence >= floor
 ```
 
+**Current reading, how low the floor goes.** The bot relaxes the floor no
+further than what two indicators reach. The engine runs the vote again with the
+two heaviest voters at full confidence and the rest at none, at the bot's
+weights on that tick. A relaxed floor stays above that figure and never rises
+above 0.25, so a vote needs a third agreeing indicator wherever the plain floor
+needs one. The DIST sale and the hedge top-up read a second floor, the same one
+without hunger.
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+if denominator <= 1.0:
+    return floor / denominator
+past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
+return min(floor, max(floor / denominator, past_two))
+```
+
+**Current reading, three agreeing at the floor and at a strip.** The floor now
+stays above the two-indicator line at every skew, so it can rise over 0.25. A
+landing strip sets its flag only when the vote tops the same line. A bot with
+every weight at zero keeps its strip as before, because its vote has no line.
+Live, the Market Inspector scan, Paper and the Simulator read one function for
+both booleans.
+
+`src/trading/ta_engine.py` — `vote_sides`, the strip and the floor
+
+```python
+if strip and not three_agree(confidence, signals):
+    strip = ""
+clears = confidence >= floor
+```
+
 ### The band position
 
 **Functional.** The band position is %B: zero at the lower band, one at the
@@ -2794,8 +2826,8 @@ absences carry a written reason. The interval gate says in its own source that
 it needs no fold twin, because the bot returns early on the same condition. The
 trend-hold gate is declared sell-side only, and the config field that would arm
 a buy-side twin is declared and unread.
-[06-trading-tab.md](06-trading-tab.md) carries the proposal for that one, at
-the Strategy Gate Flags group.
+[06-trading-tab.md](06-trading-tab.md#strategy-gate-flags-rows) lists the flags
+the Strategy Gate Flags group holds.
 
 **Functional.** That config field is now removed. The buy side holds no flag for
 a trend hold and no gate for one, so the asymmetry is a plain absence rather

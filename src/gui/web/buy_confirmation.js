@@ -102,7 +102,6 @@
   var CHILD_STRETCH = "child_stretch";
 
   var ACCESSIBLE_NAME = "accessible_name";
-  var WINDOW_TITLE = "window_title";
   var MODAL = "modal";
   var MINIMUM_WIDTH_PX = "minimum_width_px";
   var SIZE_PX = "size_px";
@@ -114,6 +113,7 @@
   var WORD_WRAP = "word_wrap";
 
   var TEXT_KEY = "text";
+  var TOOLTIP_KEY = "tooltip";
   var ENABLED_KEY = "enabled";
 
   var REASON_CHILD = "reason";
@@ -798,6 +798,7 @@
       type: BUTTON_TYPE,
       disabled: one[ENABLED_KEY] === false,
       style: styleOf(one[STYLE_SHEET]),
+      title: text(one[TOOLTIP_KEY]),
       onClick: function () {
         press(props.name);
       }

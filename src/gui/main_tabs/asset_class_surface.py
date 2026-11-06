@@ -79,21 +79,20 @@ EQUITY_VENUES = frozenset(
         # record at all, www.tdameritrade.com answers only Schwab's own
         # authorization wall, and "tdameritrade" and "ameritrade" each name 0 of
         # the 1637 pages Schwab's own sitemap lists, where "futures" names 88 and
-        # an invented word names 0. The id stays in this set until the row that
-        # reshapes the Exchanges tab removes it.
+        # an invented word names 0. broker_connector_class answers None for it,
+        # so venue_classes lists it under no sector.
         "tdameritrade",
         "webull",
         "tastytrade",
-        "fidelity",
         "etrade",
         # interactivebrokers names the same firm as "ibkr", read 2026-10-11 from
         # the firm's own hosts: www.ibkr.com redirects to
         # www.interactivebrokers.com and serves the same 240,678 bytes, and an
         # invented host answers 000 with no DNS record. This id is read on one
-        # line of src/ and reaches one sector; "ibkr" is read in two files and
-        # reaches six, holds the EXTRA_VENUE_CLASSES row and keys every sizing
-        # row. The id stays in this set until the row that reshapes the Exchanges
-        # tab removes it, as tdameritrade above does.
+        # line of src/; "ibkr" is read in two files and reaches six sectors,
+        # holds the EXTRA_VENUE_CLASSES row and keys every sizing row.
+        # broker_connector_class answers None for this id, so venue_classes
+        # lists it under no sector, as it does tdameritrade above.
         "interactivebrokers",
         # OVERTAKEN, quoted whole:
         #   "robinhood_broker.VENUE_ID. The crypto id "robinhood" is a separate
@@ -153,10 +152,11 @@ DEFAULT_ACCENT = ds.STATUS_NEUTRAL
 #   "True today: the same entry also names forex, indices and futures_perps,
 #   which ``market_asset_class`` answers for 20, 6 and 168 of the venue's
 #   products."
-# True today: twenty venue ids carry an extra sector, not Coinbase alone.
-#: Venues serving a class other than the one their own id implies. Coinbase's
-#: products endpoint answers 1000 EQUITY products and labels 21 futures with a
-#: commodity underlying; ``derivatives`` resolves onto crypto through
+# True today: twenty-one venue ids carry an extra sector, not Coinbase alone.
+#: Venues serving a class other than the one their own id implies, each named
+#: only under a sector it trades a market in. Coinbase's products endpoint
+#: answers 1000 EQUITY products and labels 21 futures with a commodity
+#: underlying; ``derivatives`` resolves onto futures_perps through
 #: ``RETIRED_CLASSES``.
 EXTRA_VENUE_CLASSES = {
     "coinbase": (
@@ -183,9 +183,9 @@ EXTRA_VENUE_CLASSES = {
     # Bitget's own instrument record publishes four sector words — stock,
     # crypto, metal and commodity — and no index word on any of its 4603 rows.
     # Its eight index-fund tokens, RSPYUSDT and RQQQUSDT among them, each
-    # publish symbolType stock, so the indices row offers the venue and its
-    # recording answers no market under that sector.
-    "bitget": ("stocks", "commodities", "indices", "futures_perps"),
+    # publish symbolType stock and record under stocks, so no market of the
+    # venue's records under indices and indices is absent.
+    "bitget": ("stocks", "commodities", "futures_perps"),
     # Bitstamp publishes asset_class on the 20 PERPETUAL rows of its own
     # /markets/ endpoint and on none of its 251 SPOT rows: CRYPTO 13,
     # COMMODITIES 4, ETF 2, FX 1. Its own launch page names the same four
@@ -232,7 +232,6 @@ EXTRA_VENUE_CLASSES = {
     # product_type swap, with Pax Gold and Tether Gold on four pairs each and
     # the Australian dollar and the euro against the dollar and USDC.
     "gemini": ("commodities", "forex", "futures_perps"),
-    "huobi": ("stocks",),
     # Kraken quotes 12 spot pairs whose two legs are both a national currency
     # it lists, among them ZEURZUSD, ZGBPZUSD and AUDUSD.
     "kraken": ("stocks", "commodities", "forex", "indices", "futures_perps"),
@@ -244,12 +243,12 @@ EXTRA_VENUE_CLASSES = {
     # xStock pairs. The recording answers 160 stocks, 12 commodities and 527
     # futures. forex is added for two markets, USDC-EUR and USDT-EUR, which the
     # venue groups under its own FIAT word and names "USD Coin", "Tether" and
-    # "Euro". indices is added with no market: the venue publishes no index word
-    # in either vocabulary, and each of its thirteen index-fund and sector-fund
-    # contracts — SPY, QQQ, IWM, TQQQ, SQQQ, SOXL, SOXS, UVXY, XLE, EWJ, EWY,
-    # EWZ and KORU — publishes assetClass STOCK, the reading bitget and OKX took
-    # on their own index-fund tokens.
-    "kucoin": ("stocks", "commodities", "forex", "indices", "futures_perps"),
+    # "Euro". indices is absent because no market records there: the venue
+    # publishes no index word in either vocabulary, and each of its thirteen
+    # index-fund and sector-fund contracts — SPY, QQQ, IWM, TQQQ, SQQQ, SOXL,
+    # SOXS, UVXY, XLE, EWJ, EWY, EWZ and KORU — publishes assetClass STOCK, the
+    # reading bitget and OKX took on their own index-fund tokens.
+    "kucoin": ("stocks", "commodities", "forex", "futures_perps"),
     # mexc publishes its own trade zones on both of its hosts, and the zones
     # name all six sectors. Its spot exchangeInfo carries conceptPlates on all
     # 1890 rows — Tokenized Stocks 165 markets, Precious Metals 10, Pre-IPO 2,
@@ -266,21 +265,20 @@ EXTRA_VENUE_CLASSES = {
     # OKX's own instrument record numbers five asset categories — 1 Crypto,
     # 3 Stocks, 4 Commodities, 5 Forex, 6 Bonds — and no index number exists in
     # that vocabulary. Nine index-fund tickers are listed, SPY and QQQ among
-    # them, and each publishes 3, so the indices row offers the venue and its
-    # recording answers no market under that sector. The venue publishes 5 on
-    # none of its 2191 instruments, so forex is absent from this row.
-    "okx": ("stocks", "commodities", "indices", "futures_perps"),
+    # them, and each publishes 3 and records under stocks, so indices is absent.
+    # The venue publishes 5 on none of its 2191 instruments, so forex is absent
+    # from this row.
+    "okx": ("stocks", "commodities", "futures_perps"),
     # OKX US publishes the same five asset categories on its own host and
     # applies them to 1152 spot rows: 1013 Crypto, 135 Stocks, 4 Commodities,
     # none Forex and no index number in the vocabulary. Eight index-fund
-    # tickers are listed, XSPY and XQQQ among them, and each publishes Stocks,
-    # so the indices row offers the venue and its recording answers no market
-    # under that sector. futures_perps is absent because ccxt's okxus loads
-    # spot alone and OKX INC's own Terms 1.1 define a spot platform. Every one
-    # of the 135 stock markets is a Unified Tokenized Stock, whose own terms
-    # state the holder "is not located in, incorporated in, or current
-    # resident of the United States".
-    "okxus": ("stocks", "commodities", "indices"),
+    # tickers are listed, XSPY and XQQQ among them, and each publishes Stocks
+    # and records under stocks, so indices is absent. futures_perps is absent
+    # because ccxt's okxus loads spot alone and OKX INC's own Terms 1.1 define
+    # a spot platform. Every one of the 135 stock markets is a Unified
+    # Tokenized Stock, whose own terms state the holder "is not located in,
+    # incorporated in, or current resident of the United States".
+    "okxus": ("stocks", "commodities"),
     # Alpaca's own AssetClass enum names ten words and four of them reach a
     # sector this screen draws: crypto, us_equity, us_index and crypto_perp.
     # "stocks" arrives from EQUITY_VENUES, so this entry carries the rest.
@@ -308,19 +306,22 @@ EXTRA_VENUE_CLASSES = {
     # naming no sector this screen draws, which leaves each of those 11
     # recording under futures_perps alone. 43 + 15 + 13 + 8 + 11 = 90, and the
     # 91st is /USD. "stocks" arrives from EQUITY_VENUES, so this entry carries
-    # the other five.
-    # forex is added here, and it is the sector the screen was missing, seven
-    # venues running: /6A /6B /6C /6E /6J /6M /6N /6S /DX and the six micros
-    # /M6A /M6B /M6E /MCD /MJY /MSF, eleven of them ticking at 0.0001 and /MJY
-    # at 0.000001. There is no spot forex and no currency fund: over the 32
-    # us.etrade.com pages read, 998,389 characters, "forex", "spot forex",
-    # "currency pair" and "currency ETF" each name 0 where "FX (currency)"
-    # names 1 and "jurisdiction" names 41.
-    # crypto is added here too, and it is new: its own Crypto account page reads
-    # "Buy and sell BTC, ETH, and SOL with the same best-in-class trading
-    # experience you enjoy today", priced on its own table at "Crypto 0.50% On
-    # the dollar value of each trade".
-    # commodities, indices and crypto reach an order as a fund share, which is
+    # commodities and indices, the two sectors etrade_connector files a fund
+    # share under.
+    # forex holds contracts alone: /6A /6B /6C /6E /6J /6M /6N /6S /DX and the
+    # six micros /M6A /M6B /M6E /MCD /MJY /MSF, eleven of them ticking at 0.0001
+    # and /MJY at 0.000001. There is no spot forex and no currency fund: over
+    # the 32 us.etrade.com pages read, 998,389 characters, "forex", "spot
+    # forex", "currency pair" and "currency ETF" each name 0 where "FX
+    # (currency)" names 1 and "jurisdiction" names 41.
+    # crypto is absent. Its own Crypto account page reads "Buy and sell BTC,
+    # ETH, and SOL with the same best-in-class trading experience you enjoy
+    # today", priced on its own table at "Crypto 0.50% On the dollar value of
+    # each trade", and that spot crypto sits on the zerohash account below,
+    # which the Order API does not reach. Its 8 crypto contracts reach no order,
+    # and a crypto fund share records under stocks, because
+    # etrade_connector.FUND_SECTOR_SYMBOLS names no crypto fund.
+    # commodities and indices reach an order as a fund share, which is
     # securityType EQ. The venue's own ETF page names the families — "Basket of
     # equities, fixed income, or commodities" — states "We offer every ETF sold",
     # and names 22 funds by symbol for its overnight session: "Available for
@@ -336,7 +337,7 @@ EXTRA_VENUE_CLASSES = {
     # "securityType" 18. No futures or crypto documentation directory exists on
     # the doc host: both answer 400 at 58 bytes, the identical answer an
     # invented path gives. etrade_connector.order_body refuses a leg naming any
-    # word outside EQ.
+    # word outside EQ, so neither sector is named here.
     # Three legal entities carry these products and the API is published under
     # one. Quoted whole from every page's own footer: "Securities products and
     # investment advisory services offered by Morgan Stanley Smith Barney LLC,
@@ -358,91 +359,7 @@ EXTRA_VENUE_CLASSES = {
     # permissions are per product and the operator requests each once: futures
     # needs the futures upgrade its own page calls "Add futures to an existing
     # account", and crypto needs the linked zerohash account.
-    "etrade": ("crypto", "commodities", "forex", "indices", "futures_perps"),
-    # Fidelity's own Investment Accounts & Products page enumerates the products
-    # it sells in words: "Mutual funds, Stocks, ETFs, Fixed income bonds & CDs,
-    # Options, Crypto, Alternative investments, Margin trading, Precious metals,
-    # International". Its own site navigation names the same set on every one of
-    # the 50 www.fidelity.com pages read -- "Stocks, ETFs, Crypto | Mutual Funds
-    # | Fixed Income, Bonds & CDs | Options | IPOs | Annuities" -- its Trading
-    # section's Investment Choices sub-navigation links five pages, stock
-    # trading, options trading, gold-silver-platinum, international investments
-    # and investment research, and its commissions table has five product rows,
-    # Stocks, Options, ETFs, Bonds and CDs, Mutual Funds. Four enumerations, and
-    # not one names a futures market or a currency market. "stocks" arrives from
-    # EQUITY_VENUES, so this entry carries the other three.
-    # crypto is added here and it is new: "Buy, sell, and transfer crypto like
-    # bitcoin, ethereum, and solana", five assets by name -- Bitcoin (BTC),
-    # Ethereum (ETH), Litecoin (LTC), Solana (SOL) and Fidelity Digital Dollar
-    # (FIDD) -- with "trade sizes as low as $1", maximums of $5,000,000 on BTC,
-    # ETH and FIDD, $2,000,000 on SOL and $1,000,000 on LTC, a published 1% fee
-    # "on buy and sell transactions as 1% of the market value of executed
-    # orders", market and limit orders, and hours of its own: "Trading in
-    # Fidelity Crypto accounts is available 23 hours a day, from 1 a.m. ET until
-    # midnight". Crypto also reaches the equity route as a fund share: "Spot
-    # crypto ETPs (exchange-traded products) are offered by Fidelity Brokerage
-    # Services", FBTC, FETH and FSOL by name.
-    # commodities is added here and it is a physical market with its own
-    # published mechanics: gold, silver, platinum and palladium as coins and
-    # bullion bars, "Order quantity Whole ounces, or whole numbers of coins",
-    # "Order hours 8:00 a.m.-3:00 p.m. ET", "Minimum initial investment $2,500",
-    # and a fee table of 2.90% down to 0.99% buying and 2.00% down to 0.75%
-    # selling. The order route is a telephone: "Call us at 800-544-6666 to buy
-    # precious metals or to learn more."
-    # indices is added here and reaches an order as a fund share, the reading
-    # the etrade unit landed: its own ETF page offers "actively managed and index
-    # ETFs" and its zero-fee index funds are named by symbol, FNILX, FZROX,
-    # FZILX, FZIPX and FXAIX. A mutual fund takes a cash amount and is excluded
-    # from the equity shape by the venue's own words, "Fund shares are priced
-    # daily after the close of the market" and "We do not accept limit orders for
-    # mutual funds".
-    # forex and futures_perps are absent because the venue lists no product in
-    # either. Over the 53 pages its four live hosts serve, 888,215 characters,
-    # "forex" names 3 and all three sit on capitalmarkets.fidelity.com, while
-    # "FX", "currency pair" and "spot forex" each name 0 and "perpetual" names 0,
-    # against "ETFs" 321 and "stocks" 278. "futures" names 26 and not one is a
-    # product: the hits are a learning article titled "Using futures as an
-    # indicator", the SIPC notice that "commodity futures contracts and precious
-    # metals" are not SIPC-eligible, and index-futures prose inside that article.
-    # Over the 3203 URLs its own retail sitemap lists, "forex" names 0 and
-    # "futures" names 1, that same article.
-    # The three forex hits are an institutional division, quoted whole:
-    # "Fidelity Capital Markets (FCM) provides innovative trading and technology
-    # solutions, and execution services across multiple asset classes for
-    # institutional investors. Our offerings include a suite of electronic
-    # brokerage products for equities, options, prime brokerage, securities
-    # lending, fixed income, FOREX, and underwriting for municipal bonds and bank
-    # issued brokered CDs", and "Fidelity Capital Markets is a division of
-    # National Financial Services LLC, Member NYSE, SIPC". FCM names its own
-    # customers -- "asset managers, hedge funds, family offices, endowments" --
-    # and publishes no route: every path on that host answers 404 at the same
-    # 25,655 bytes, real-sounding and invented alike. The one currency surface a
-    # retail customer reaches is a wire and not a market: "The amount of currency
-    # you request is transferred in-kind (e.g., euros to euros) between financial
-    # institutions. Transfers are processed as a wire via the Society for
-    # Worldwide Interbank Financial Telecommunications (SWIFT)", over 15
-    # currencies, with "You'll need to contact a Fidelity International Trader at
-    # 800-544-2976 to complete the transaction."
-    # Four legal entities carry these four sectors and none publishes an order
-    # route. Securities are Fidelity Brokerage Services LLC with custody at
-    # National Financial Services LLC; crypto is "Fidelity Digital Asset
-    # Services, LLC, which is chartered as a limited purpose trust company by the
-    # New York State Department of Financial Services to engage in virtual
-    # currency business (NMLS ID 1773897)"; and metal orders "are handled by
-    # National Financial Services LLC (NFS)... NFS processes precious metal
-    # orders through FideliTrade which is not affiliated with either FBS or NFS."
-    # No eligibility rule names a refused state. The footer of 50 of the 53 pages
-    # reads "This is for persons in the US only." The crypto page is a per-state
-    # table and all 50 states carry a paragraph reading that "Fidelity Digital
-    # Assets provides custody and trading of cryptocurrencies in Fidelity Crypto
-    # accounts"; New York is not refused, unlike Schwab and cryptocom. The only
-    # exceptions are quoted whole: "Fidelity Crypto for IRAs currently isn't
-    # available in California or Oregon, and customers in Oregon can't buy, sell,
-    # or deposit solana (SOL). Fidelity Crypto and Fidelity Crypto for IRAs
-    # currently aren't available in Guam, Puerto Rico, U.S. Virgin Islands, or
-    # outside the U.S." California and Oregon close the IRA and not the account.
-    # One eligibility rule is a dollar and not a place: metals need $2,500.
-    "fidelity": ("crypto", "commodities", "indices"),
+    "etrade": ("commodities", "indices"),
     # Interactive Brokers' own OpenAPI document and contract pages name a
     # security type per sector, and all six are already offered here: crypto
     # from CRYPTO on Paxos and zerohash, stocks from STK and FUND, commodities
@@ -479,7 +396,10 @@ EXTRA_VENUE_CLASSES = {
     # Agriculture and Softs, indices 14 under Stock Indices, crypto 8 under
     # Crypto and forex 8 under Currency, with 7 under Interest Rates, a sector
     # this screen does not draw. 55 + 47 + 14 + 8 + 8 + 7 = 139. "stocks"
-    # arrives from EQUITY_VENUES, so this entry carries the other five.
+    # arrives from EQUITY_VENUES, so this entry carries the other four.
+    # crypto is absent: ata_spm.contract_class files the 8 Crypto contracts
+    # under futures_perps, and the bank holding Schwab's spot crypto publishes
+    # no API, as schwab_connector states above SchwabConnector.
     # forex is added here, and it is the sector the screen was missing: beside
     # the 8 Currency contracts the venue's own table "Currency pairs available
     # at Schwab" lists 70 spot pairs over 19 currency legs, its forex page reads
@@ -493,7 +413,7 @@ EXTRA_VENUE_CLASSES = {
     # Arizona"; and the Cryptocurrency Account Agreement states crypto accounts
     # "are available exclusively to residents of all 50 United States except New
     # York and Louisiana", with U.S. territories excluded as well.
-    "schwab": ("crypto", "commodities", "forex", "indices", "futures_perps"),
+    "schwab": ("commodities", "forex", "indices", "futures_perps"),
     # tastytrade's own Available Futures Products page names nine futures
     # families and 68 product codes, and every one of the 68 answers live on its
     # own credential-free /symbols/search/ route as instrument-type "Future",
@@ -576,12 +496,14 @@ EXTRA_VENUE_CLASSES = {
     "robinhood": ("commodities", "indices", "forex"),
 }
 
-#: The two articles a sentence takes before a sector name, and the first
-#: letters taking the second.
-#: The last recording read, under its ``recording_stamp``. One Live tab refresh
-#: asks ``venue_classes`` once a bot, and the file is 235 KB.
+#: The last ``recorded_venue_classes`` answer, held as one ``(stamp, classes)`` pair.
 _RECORDED_CACHE: dict = {}
 
+#: The last ``recorded_symbol_classes`` reads, as one ``(stamp, venue maps)`` pair.
+_SYMBOL_CLASS_CACHE: dict = {}
+
+#: The two articles a sentence takes before a sector name, and the first
+#: letters taking the second.
 ARTICLE_DEFAULT = "a"
 ARTICLE_VOWEL = "an"
 ARTICLE_VOWEL_LETTERS = "aeio"
@@ -888,7 +810,8 @@ def recording_stamp() -> tuple:
     """The recording file's path, modification time and size, or an empty tuple
     while no file is there.
 
-    ``recorded_venue_classes`` reads the recording again only when this moves.
+    ``recorded_venue_classes`` and ``recorded_symbol_classes`` read the
+    recording again only when this moves.
     """
     try:
         from ...exchange.market_rules_store import store_path
@@ -914,8 +837,9 @@ def recorded_venue_classes(document: Any = None) -> dict:
     except ImportError:
         return {}
     stamp = () if isinstance(document, dict) else recording_stamp()
-    if stamp and _RECORDED_CACHE.get("stamp") == stamp:
-        return dict(_RECORDED_CACHE["classes"])
+    cached = _RECORDED_CACHE.get("held")
+    if stamp and cached is not None and cached[0] == stamp:
+        return dict(cached[1])
     body = document if isinstance(document, dict) else load_document()
     declared = set(asset_classes())
     found: dict = {}
@@ -931,15 +855,28 @@ def recorded_venue_classes(document: Any = None) -> dict:
                 held.add(named)
         found[str(venue).strip().lower()] = frozenset(held)
     if stamp:
-        _RECORDED_CACHE["stamp"] = stamp
-        _RECORDED_CACHE["classes"] = dict(found)
+        _RECORDED_CACHE["held"] = (stamp, dict(found))
     return found
 
 
+def broker_served(venue_id: Any) -> Optional[tuple]:
+    """The ``SECTORS_SERVED`` of the class ``broker_connector_class`` answers for
+    ``venue_id``, and None where it answers no class."""
+    try:
+        from ...stocks.alpaca_connector import broker_connector_class, broker_sectors
+    except ImportError:
+        return None
+    if broker_connector_class(venue_id) is None:
+        return None
+    return broker_sectors(venue_id)
+
+
 def venue_classes(venue_id: Any, recorded: Any = None) -> frozenset:
-    """Every asset class one venue could serve: the class its own registry
-    lists it under, every class ``EXTRA_VENUE_CLASSES`` adds through
-    ``retired_onto``, and every class its recorded rows carry.
+    """Every asset class one venue trades a market in: the classes
+    ``EXTRA_VENUE_CLASSES`` adds through ``retired_onto``, stocks for an
+    ``EQUITY_VENUES`` id ``broker_served`` answers, and the classes its recorded
+    rows carry, held to a non-empty ``broker_served``, then crypto for an id in
+    ``crypto_venues``.
 
     ``recorded`` stands in for ``recorded_venue_classes``, so one read of the
     recording serves a whole panel.
@@ -948,12 +885,15 @@ def venue_classes(venue_id: Any, recorded: Any = None) -> frozenset:
     if not asked:
         return frozenset()
     found = {retired_onto(one) for one in EXTRA_VENUE_CLASSES.get(asked, ())}
-    if asked in EQUITY_VENUES:
+    served = broker_served(asked)
+    if asked in EQUITY_VENUES and served is not None:
         found.add("stocks")
-    if asked in crypto_venues():
-        found.add("crypto")
     held = recorded if isinstance(recorded, dict) else recorded_venue_classes()
     found |= set(held.get(asked, frozenset()))
+    if served:
+        found &= set(served)
+    if asked in crypto_venues():
+        found.add("crypto")
     return frozenset(found & set(asset_classes()))
 
 
@@ -972,7 +912,10 @@ def venue_served_classes(venue_id: Any, document: Any = None) -> frozenset:
 
 def recorded_symbol_classes(venue_id: Any) -> dict:
     """Every symbol one venue's recording holds mapped to its ``CLASS_FIELD``,
-    empty while the recording cannot be read."""
+    empty while the recording cannot be read.
+
+    One read of a venue serves every call until ``recording_stamp`` moves.
+    """
     try:
         from ...exchange.market_rules_store import recorded_classes
     except ImportError:
@@ -980,7 +923,18 @@ def recorded_symbol_classes(venue_id: Any) -> dict:
     asked = str(venue_id or "").strip().lower()
     if not asked:
         return {}
-    return recorded_classes(asked)
+    stamp = recording_stamp()
+    cached = _SYMBOL_CLASS_CACHE.get("held")
+    venues = (
+        dict(cached[1]) if stamp and cached is not None and cached[0] == stamp else {}
+    )
+    if asked in venues:
+        return dict(venues[asked])
+    found = recorded_classes(asked)
+    if stamp:
+        venues[asked] = dict(found)
+        _SYMBOL_CLASS_CACHE["held"] = (stamp, venues)
+    return found
 
 
 # OVERTAKEN, quoted whole:
@@ -989,7 +943,9 @@ def recorded_symbol_classes(venue_id: Any) -> dict:
 #   answers for a symbol the recording holds none for."
 # True today: a pair the recording holds no class for answers the one class
 # ``venue_classes`` names, and an empty string where that set holds several.
-def symbol_class(venue_id: Any, symbol: Any, recorded: Any = None) -> str:
+def symbol_class(
+    venue_id: Any, symbol: Any, recorded: Any = None, venues: Any = None
+) -> str:
     """The class ``recorded_symbol_classes`` holds for ``symbol`` on
     ``venue_id``, the one class ``venue_classes`` names where the recording
     holds none, and an empty string where that set holds several.
@@ -1002,7 +958,7 @@ def symbol_class(venue_id: Any, symbol: Any, recorded: Any = None) -> str:
     named = str(held.get(str(symbol or ""), "") or "")
     if named:
         return retired_onto(named)
-    served = venue_classes(venue_id)
+    served = venue_classes(venue_id, venues)
     if len(served) == 1:
         return next(iter(served))
     return ""
@@ -1045,20 +1001,27 @@ def markets_of_class(rows: Any, venue_id: Any, name: Any, recorded: Any = None) 
     return [row for row in listed if row_class(venue_id, row, held) == key]
 
 
+def named_venues(recorded: dict) -> frozenset:
+    """Every venue id ``crypto_venues``, ``EQUITY_VENUES``,
+    ``EXTRA_VENUE_CLASSES`` or ``recorded`` names, whatever its classes."""
+    return frozenset(
+        set(crypto_venues())
+        | set(EQUITY_VENUES)
+        | set(EXTRA_VENUE_CLASSES)
+        | set(recorded)
+    )
+
+
 def known_venues(recorded: Any = None) -> frozenset:
-    """Every venue id the platform holds: ``crypto_venues``, ``EQUITY_VENUES``,
-    every venue ``EXTRA_VENUE_CLASSES`` adds a sector for, and every venue
-    ``recorded_venue_classes`` holds rows for, with ``recorded`` standing in for
-    that read.
+    """Every id of ``named_venues`` that ``venue_classes`` answers a class for,
+    with ``recorded`` standing in for ``recorded_venue_classes``.
 
     ``venues_for_class`` narrows this by sector and ``init_wizard_surface``'s
     ``exchange_ids`` offers it whole, so neither list can hold a venue the other
     does not.
     """
     held = recorded if isinstance(recorded, dict) else recorded_venue_classes()
-    return frozenset(
-        set(crypto_venues()) | set(EQUITY_VENUES) | set(EXTRA_VENUE_CLASSES) | set(held)
-    )
+    return frozenset(vid for vid in named_venues(held) if venue_classes(vid, held))
 
 
 def venues_for_class(name: Any) -> frozenset:
@@ -1071,7 +1034,7 @@ def venues_for_class(name: Any) -> frozenset:
     key = normalise(name)
     recorded = recorded_venue_classes()
     return frozenset(
-        vid for vid in known_venues(recorded) if key in venue_classes(vid, recorded)
+        vid for vid in named_venues(recorded) if key in venue_classes(vid, recorded)
     )
 
 

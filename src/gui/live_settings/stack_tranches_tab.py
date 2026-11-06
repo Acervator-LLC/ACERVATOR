@@ -16,8 +16,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..main_tabs.stack_tranches_tab_surface import (
+    ALIGNMENT_ROW_LABEL,
+    SHADOW_ROW_LABEL,
+    compose_event_alignment_row,
+    compose_shadow_rows,
+)
 from .. import design_system as ds
 from ..descriptions import STACK_TRANCHES_TAB_DESCRIPTIONS
+from ..tooltips import set_description
 
 if TYPE_CHECKING:
     from ..bot_live_settings import BotLiveSettingsDialog
@@ -413,6 +420,14 @@ class StackTranchesTabMixin:
         )
         sf.addRow("Pending size (unfilled):", pending_lbl)
 
+        # compose_event_alignment_row is the one declaration of this row; the
+        # React page draws the same call's answer.
+        _alignment_text, _alignment_style = compose_event_alignment_row(tranches)
+        _alignment_lbl = QLabel(_alignment_text)
+        if _alignment_style:
+            _alignment_lbl.setStyleSheet(_alignment_style)
+        sf.addRow(ALIGNMENT_ROW_LABEL, _alignment_lbl)
+
         ages_sec = []
         for t in pending:
             ots = _as_finite_float(t.get("opened_ts"))
@@ -455,6 +470,9 @@ class StackTranchesTabMixin:
                 "Lifetime tranches discarded (removed, not filled):",
                 QLabel(str(discarded_lifetime)),
             )
+        shadow_text, shadow_lines = compose_shadow_rows(self._bot, now_ts)
+        if shadow_text:
+            sf.addRow(SHADOW_ROW_LABEL, QLabel(shadow_text))
 
         layout.addWidget(summary)
 
@@ -473,7 +491,9 @@ class StackTranchesTabMixin:
             else "Clear Stack Tranches"
         )
         stack_clear_btn.setEnabled(bool(_droppable))
-        stack_clear_btn.setToolTip(STACK_TRANCHES_TAB_DESCRIPTIONS["stack_clear_btn"])
+        set_description(
+            stack_clear_btn, STACK_TRANCHES_TAB_DESCRIPTIONS["stack_clear_btn"]
+        )
         stack_clear_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
             f"border: 1px solid {ds.ERROR}; padding: 6px 12px; }} "
@@ -493,8 +513,8 @@ class StackTranchesTabMixin:
         stack_counters_btn.setEnabled(
             bool(_stack_counter_total) or _stack_counter_refused
         )
-        stack_counters_btn.setToolTip(
-            STACK_TRANCHES_TAB_DESCRIPTIONS["stack_counters_btn"]
+        set_description(
+            stack_counters_btn, STACK_TRANCHES_TAB_DESCRIPTIONS["stack_counters_btn"]
         )
         stack_counters_btn.setStyleSheet(
             f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; color: {ds.FOLD_RATIO_AMBER}; "
@@ -511,7 +531,7 @@ class StackTranchesTabMixin:
         stack_btn_row.addStretch()
         layout.addLayout(stack_btn_row)
 
-        if not tranches:
+        if not tranches and not shadow_lines:
             empty_lbl = QLabel(
                 "No stack tranches yet. When Stack Mode is enabled "
                 "and a SCRUM fires, tranches will appear here."
@@ -522,7 +542,7 @@ class StackTranchesTabMixin:
             layout.addStretch()
             return w
 
-        detail_group = QGroupBox(f"Tranches ({len(tranches)})")
+        detail_group = QGroupBox(f"Tranches ({len(tranches) + len(shadow_lines)})")
         dg = QVBoxLayout(detail_group)
 
         header = QLabel(
@@ -567,6 +587,10 @@ class StackTranchesTabMixin:
                     else f" color: {ds.ERROR};" if status == "cancelled" else ""
                 )
             )
+            dg.addWidget(row)
+        for line in shadow_lines:
+            row = QLabel(line)
+            row.setStyleSheet("font-family: monospace; padding: 1px;")
             dg.addWidget(row)
 
         layout.addWidget(detail_group)

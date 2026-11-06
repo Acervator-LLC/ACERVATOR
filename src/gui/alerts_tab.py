@@ -30,6 +30,8 @@ try:
     from PySide6.QtGui import QColor
 
     from . import design_system as ds
+    from .main_tabs import alerts_tab_surface as surface
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -44,7 +46,22 @@ if _HAS_QT:
             super().__init__(parent)
             self.setAccessibleName("Notifications and Alerts tab")
             self._notif = notification_manager
+            self._rule_events: list = []
             self._setup_ui()
+
+        def _toggle_route(self, row, column) -> None:
+            """Route the clicked row's event to that column's channel, or stop it.
+
+            Both builds enter here: the Qt table's ``cellClicked`` and the drawn
+            table's routing call, and the write goes through
+            ``alerts_tab_surface.toggle_route``.
+            """
+            at = int(row)
+            if not 0 <= at < len(self._rule_events):
+                return
+            if surface.toggle_route(self._notif, self._rule_events[at], column) is None:
+                return
+            self.refresh()
 
         def _setup_ui(self):
             layout = QVBoxLayout(self)
@@ -151,15 +168,15 @@ if _HAS_QT:
             rules_layout = QVBoxLayout(rules_group)
 
             self._rules_table = QTableWidget()
-            self._rules_table.setColumnCount(5)
-            self._rules_table.setHorizontalHeaderLabels(
-                ["Event", "Priority", "In-App", "Telegram", "Sound"]
-            )
+            self._rules_table.setColumnCount(surface.RULES_COLUMN_COUNT)
+            self._rules_table.setHorizontalHeaderLabels(list(surface.RULES_COLUMNS))
             self._rules_table.horizontalHeader().setSectionResizeMode(
                 QHeaderView.Stretch
             )
             self._rules_table.setAlternatingRowColors(True)
+            self._rules_table.setEditTriggers(QTableWidget.NoEditTriggers)
             self._rules_table.verticalHeader().setVisible(False)
+            self._rules_table.cellClicked.connect(self._toggle_route)
             rules_layout.addWidget(self._rules_table)
             right_layout.addWidget(rules_group, stretch=1)
 
@@ -278,26 +295,23 @@ if _HAS_QT:
 
             # Event routing table
             rules = config.get("rules", {})
+            self._rule_events = list(rules)
             self._rules_table.setRowCount(len(rules))
             for row, (event, rule) in enumerate(rules.items()):
                 channels = rule.get("channels", [])
                 items = [
-                    event.replace("_", " ").title(),
-                    rule.get("priority", "medium"),
-                    "Yes" if "IN_APP" in channels else "No",
-                    "Yes" if "TELEGRAM" in channels else "No",
-                    "Yes" if "SOUND" in channels else "No",
+                    surface.event_title(event),
+                    rule.get("priority", surface.DEFAULT_PRIORITY),
+                ] + [
+                    surface.routed_text(channels, channel)
+                    for channel in surface.ROUTED_CHANNELS
                 ]
                 for col, text in enumerate(items):
                     item = QTableWidgetItem(text)
                     item.setTextAlignment(Qt.AlignCenter)
-                    if col >= 2:
-                        color = (
-                            QColor(ds.SUCCESS)
-                            if text == "Yes"
-                            else QColor(ds.TEXT_PLACEHOLDER)
-                        )
-                        item.setForeground(color)
+                    if col >= surface.COLORED_FROM_COLUMN:
+                        item.setForeground(QColor(surface.routed_color(text)))
+                        set_description(item, surface.ROUTE_DESCRIPTION)
                     self._rules_table.setItem(row, col, item)
 
             # Notification history

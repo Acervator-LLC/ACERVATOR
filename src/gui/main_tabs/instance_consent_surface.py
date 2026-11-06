@@ -36,6 +36,17 @@ LOGGER_NAME = "acervator.gui.instance_consent"
 
 ACCESSIBLE_NAME = "Instance Consent Dialog"
 WINDOW_TITLE = "Acervator - start the saved fleet?"
+
+REFUSE_TOOLTIP = (
+    "Leaves every saved bot stopped and keeps the recorded owner. You can start "
+    "bots by hand later."
+)
+CONSENT_TOOLTIP = (
+    "Records this machine as the fleet's owner, then starts the saved bots."
+)
+CONSENT_HELD_TOOLTIP = (
+    "Another Acervator holds the exclusive handle on this directory. Close it first."
+)
 MODAL = True
 MINIMUM_WIDTH_PX = 560
 DEFAULT_SIZE_PX = (640, 480)

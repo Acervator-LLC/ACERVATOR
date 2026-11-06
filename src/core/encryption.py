@@ -75,8 +75,18 @@ def master_key_phrase(master_key: bytes) -> str:
     return base64.urlsafe_b64encode(master_key).decode("ascii")
 
 
+def username_phrase(username: str) -> str:
+    """MASTER_FORMAT over *username*, the phrase an install holding no key builds.
+
+    ``vault_phrase`` answers this where ``held_master_key`` is None, and
+    ``src/gui/settings_dialog.py, in _username_phrase`` asks for it directly
+    while a key is held, which is the one moment the two answers differ.
+    """
+    return MASTER_FORMAT.format(username=str(username) or UNNAMED_OPERATOR)
+
+
 def vault_phrase(username: str) -> str:
-    """Return ``master_key_phrase`` of the held key, else MASTER_FORMAT on *username*.
+    """Return ``master_key_phrase`` of the held key, else ``username_phrase``.
 
     Where ``held_master_key`` answers None it returns what MASTER_FORMAT and
     UNNAMED_OPERATOR returned before any master key existed, and every encrypt
@@ -85,7 +95,7 @@ def vault_phrase(username: str) -> str:
     held = held_master_key()
     if held is not None:
         return master_key_phrase(held)
-    return MASTER_FORMAT.format(username=str(username) or UNNAMED_OPERATOR)
+    return username_phrase(username)
 
 
 def rekeyed_token(token: str, old_phrase: str, new_phrase: str) -> str:

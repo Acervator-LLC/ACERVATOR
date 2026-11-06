@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import Any, Callable, Optional
 
 from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
+from ..stack_math import is_shadow
 
 logger = logging.getLogger("acervator.bot")
 
@@ -116,6 +117,11 @@ SMART_CARTRIDGE_CEILING_OFF_TEXT: str = "off"
 #: confidence a detonation must reach.
 DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
 
+#: The span every Min Confidence box offers, the span ``VotingEngine`` gives a
+#: consensus confidence.
+DETONATION_BAR_MIN: float = 0.0
+DETONATION_BAR_MAX: float = 1.0
+
 #: ``BotConfig.position_ceiling_multiple`` opening figure, in anchor multiples,
 #: read by ``ceiling_multiple``.
 POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
@@ -129,6 +135,15 @@ CEILING_MULTIPLE_MAX: float = 10.0
 #: per cent of one sale's own proceeds.
 FOLD_RATIO_MIN_PCT: int = 1
 FOLD_RATIO_MAX_PCT: int = 100
+
+#: ``hunger_pace_candles`` holding no typed pace; ``hunger_gain_per_candle`` then
+#: reads 0.0.
+HUNGER_PACE_NONE: int = 0
+
+#: The span every Hunger Pace box offers and ``hunger_pace`` admits; 2**31 - 1 is a
+#: spin box's top.
+HUNGER_PACE_MIN_CANDLES: int = 1
+HUNGER_PACE_MAX_CANDLES: int = 2**31 - 1
 
 
 @dataclass
@@ -163,6 +178,8 @@ class BotConfig:
     ta_timeframe: str = "1h"  # Timeframe for TA indicator calculations
     # The length exchange_id does not serve, which _snap_ta_timeframe replaced.
     ta_timeframe_unserved: str = ""
+    # Weights this bot votes at; empty votes at the stored ta_indicator_weights.
+    own_ta_weights: dict = field(default_factory=dict)
 
     # % distance from the BB midline that switches SEARCH to TRACK; 10-90.
     scrum_detect_pct: int = 75
@@ -206,6 +223,16 @@ class BotConfig:
     fold_require_ta_bearish: bool = True  # Requires is_bearish for auto-fold
     fold_defer_to_htf: bool = True  # Refuses fold when higher-TF phantom is BEARISH
 
+    # Read through hunger_switched_on(); False keeps every floor unskewed by hunger.
+    hunger_enabled: bool = False
+    # Idle candles to full hunger, read through hunger_pace().
+    hunger_pace_candles: int = HUNGER_PACE_NONE
+    # ScrummingBot marks a sale's fold tranche in a bearish regime, read through
+    # shadow_switched_on().
+    shadow_enabled: bool = False
+    # The most hunger_gain_per_candle may add to the floor skew.
+    hunger_skew_max: float = 0.20
+
     visibility: str = "orderbook"  # "orderbook" or "internal"
     # Forces engine-initiated trades to execute as IOC-limit taker orders;
     # Manual Fire is unaffected.
@@ -237,13 +264,13 @@ class BotConfig:
     position_ceiling_enabled: bool = False
     # Range [1.0, 10.0].
     position_ceiling_multiple: float = POSITION_CEILING_MULTIPLE_DEFAULT
-    # A BULLISH reversal on detonation_timeframe at or above
-    # detonation_confidence_min market-sells above the anchor, once per reversal.
+    # A BULLISH reversal on detonation_timeframe at or above detonation_confidence_min,
+    # where three_agree holds, market-sells above the anchor once per reversal.
     # position_ceiling_enabled gates none of the three: detonation fires on the
     # anchor, not on the ceiling.
     detonation_enabled: bool = False
     detonation_timeframe: str = "1d"  # "1d", "1w"
-    # operator-adjustable 0.50-1.00
+    # Every Min Confidence box offers DETONATION_BAR_MIN to DETONATION_BAR_MAX.
     detonation_confidence_min: float = DETONATION_CONFIDENCE_MIN_DEFAULT
 
     # Read through expiry_close_decision() below, never raw. The close acts only
@@ -308,6 +335,18 @@ class BotConfig:
             shorter,
             self.symbol,
         )
+
+    @property
+    def hunger_gain_per_candle(self) -> float:
+        """Return one float step above ``hunger_skew_max`` over ``hunger_pace``, so
+        that many candles reach it; 0.0 while off."""
+        pace = hunger_pace(self)
+        ceiling = as_finite_float(self.hunger_skew_max)
+        if not hunger_switched_on(self) or pace == HUNGER_PACE_NONE:
+            return 0.0
+        if ceiling is None or ceiling <= 0.0:
+            return 0.0
+        return math.nextafter(ceiling / pace, math.inf)
 
     def validate_mode_shape(self) -> list:
         """Return mode-shape violations as human-readable strings.
@@ -397,6 +436,8 @@ _BOT_CONFIG_SHARED_FIELDS: frozenset = frozenset(
 _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
     {
         "profit_folding_active",
+        # ScrummingBot alone votes at own_ta_weights.
+        "own_ta_weights",
         # Scrumming-specific accumulation
         "scrumming_interval_pct",
         "scrum_fold_pct",
@@ -426,6 +467,12 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "scrum_defer_to_htf",
         "fold_require_ta_bearish",
         "fold_defer_to_htf",
+        # ScrummingBot.tick alone counts idle candles into its floor skew.
+        "hunger_enabled",
+        "hunger_pace_candles",
+        "hunger_skew_max",
+        # ScrummingBot alone opens Shadow Tranches.
+        "shadow_enabled",
         # risk-control fields
         "position_ceiling_enabled",
         "position_ceiling_multiple",
@@ -627,7 +674,8 @@ def fold_ratio_pct(config) -> int:
 
     `as_box_figure` over `FOLD_RATIO_MIN_PCT` to `FOLD_RATIO_MAX_PCT` is the
     admission, a figure it refuses answers `FOLD_RATIO_PCT_DEFAULT`, and
-    `_apply_scrum_fold_pct` and all three settings pages call it.
+    `_apply_scrum_fold_pct`, `_sale_surplus_usd` and all three settings pages
+    call it.
     """
     read = as_box_figure(
         getattr(config, "scrum_fold_pct", FOLD_RATIO_PCT_DEFAULT),
@@ -637,6 +685,27 @@ def fold_ratio_pct(config) -> int:
     if read is None:
         return FOLD_RATIO_PCT_DEFAULT
     return int(read)
+
+
+def hunger_switched_on(config) -> bool:
+    """True only while ``config.hunger_enabled`` is the boolean True, the Hunger
+    tick box's ticked state."""
+    return getattr(config, "hunger_enabled", False) is True
+
+
+def shadow_switched_on(config) -> bool:
+    """True only while ``config.shadow_enabled`` is the boolean True, the Accumulation
+    Shadow tick box's ticked state."""
+    return getattr(config, "shadow_enabled", False) is True
+
+
+def hunger_pace(config) -> int:
+    """Return ``config.hunger_pace_candles`` when ``as_whole_count`` admits it
+    inside the Hunger Pace span, else ``HUNGER_PACE_NONE``."""
+    pace = as_whole_count(getattr(config, "hunger_pace_candles", HUNGER_PACE_NONE))
+    if pace is None or not HUNGER_PACE_MIN_CANDLES <= pace <= HUNGER_PACE_MAX_CANDLES:
+        return HUNGER_PACE_NONE
+    return pace
 
 
 def target_growth_pct(config):
@@ -720,6 +789,8 @@ def _despawn_preview_fold(fold: list, cutoff: float, now: float, report: dict) -
     An ageless record counts as `ageless_kept`, never as removable.
     """
     for _t in fold:
+        if is_shadow(_t):
+            continue
         _age = _despawn_age_seconds(_t, "created_ts", now)
         if _age is None:
             report["ageless_kept"] += 1
@@ -766,8 +837,8 @@ def despawn_preview(
     Reads `fold_tranches` and `stack_tranches` without changing either list
     or any bot state. Applies the same predicate as
     `ScrummingBot._despawn_aged_tranches`: age >= days is removable, an
-    ageless record is kept, and a stack tranche holding a live exchange
-    order is kept.
+    ageless record is kept, a stack tranche holding a live exchange
+    order is kept, and an `is_shadow` record is kept.
 
     Args:
       fold_tranches: this bot's fold ledger, or None.
@@ -959,16 +1030,19 @@ def expiry_close_decision(config, rules, moment_s, start_s=0.0) -> dict:
     """
     answer: dict = {
         "acts": False,
-        "action": expiry_close_action(config),
-        "mode": expiry_lead_mode(config),
+        "action": None,
+        "mode": None,
         "lead_days": None,
         "days_left": None,
         "life_days": None,
-        "horizon_days": expiry_horizon_days(config),
+        "horizon_days": None,
         "reason": EXPIRY_NOT_EXPIRING,
     }
     if rules is None or not getattr(rules, "expires", False):
         return answer
+    answer["action"] = expiry_close_action(config)
+    answer["mode"] = expiry_lead_mode(config)
+    answer["horizon_days"] = expiry_horizon_days(config)
     moment = as_finite_float(moment_s)
     if moment is None:
         answer["reason"] = EXPIRY_UNREADABLE

@@ -28,11 +28,13 @@ from defusedxml import DefusedXmlException
 from defusedxml.ElementTree import ParseError, fromstring
 
 from ..core.safe_url import SafeRequest, openable_url, safe_urlopen
+from .main_tabs.crypto_news_ticker_surface import LABEL_TOOLTIP
 
 try:
     from PySide6.QtCore import QCoreApplication, QObject, QThread, QTimer, Qt, Signal
     from PySide6.QtGui import QCursor
     from PySide6.QtWidgets import QLabel, QWidget, QHBoxLayout
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:  # pragma: no cover
@@ -510,9 +512,7 @@ if _HAS_QT:
             # A headline is words from one of the ten NEWS_SOURCES, so the
             # label draws them as characters and resolves no address.
             self._label.setTextFormat(Qt.PlainText)
-            self._label.setToolTip(
-                "Crypto and fintech headlines from 10 RSS feeds. Click to open a story. Hover to pause. Refreshes hourly."
-            )
+            set_description(self._label, LABEL_TOOLTIP)
             self._label.setCursor(QCursor(Qt.PointingHandCursor))
             self._label.setStyleSheet("color: #cfe6ff; font-size: 11px;")
             self._label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -591,7 +591,7 @@ if _HAS_QT:
             _prefix = f"[{self._index + 1}/{len(self._headlines)}] "
             self._label.setText(_prefix + h.display_text())
             address, refused = opening_address(h.url)
-            self._label.setToolTip(hover_text(h.source.name, address, refused))
+            set_description(self._label, hover_text(h.source.name, address, refused))
 
         def _teardown_worker(self) -> None:
             """Clear ``_worker_thread`` and ``_worker`` after ``finished``.

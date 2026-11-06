@@ -28,6 +28,8 @@ try:
     )
     from PySide6.QtGui import QFont
 
+    from .tooltips import set_description
+
     _QT_AVAILABLE = True
 except ImportError:  # pragma: no cover
     _QT_AVAILABLE = False
@@ -244,6 +246,9 @@ if _QT_AVAILABLE:
             btn_yes.setStyleSheet(surface.YES_STYLE)
             btn_no.setStyleSheet(surface.NO_STYLE)
             btn_skip.setStyleSheet(surface.SKIP_STYLE)
+            set_description(btn_yes, surface.YES_TOOLTIP)
+            set_description(btn_no, surface.NO_TOOLTIP)
+            set_description(btn_skip, surface.SKIP_TOOLTIP)
             btn_yes.clicked.connect(lambda: self._answer(surface.ANSWER_YES))
             btn_no.clicked.connect(lambda: self._answer(surface.ANSWER_NO))
             btn_skip.clicked.connect(lambda: self._answer(surface.ANSWER_SKIP))

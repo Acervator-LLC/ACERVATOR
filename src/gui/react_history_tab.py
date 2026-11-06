@@ -20,6 +20,7 @@ from .main_tabs import history_tab_surface as surface
 from .react_history_panel import ROW_COUNT_JS, page_html
 
 try:
+    from PySide6.QtCore import QTimer
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWebEngineWidgets import QWebEngineView
     from PySide6.QtWidgets import QVBoxLayout
@@ -167,6 +168,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._page_ready = False
             self._painted = False
             self._last_model: dict = {}
+            self._push_due = False
             self._table = self
 
             self.setAccessibleName(ACCESSIBLE_NAME)
@@ -191,9 +193,24 @@ if _HAS_QT and _HAS_WEBENGINE:
 
         def set_model(self, model: dict) -> None:
             """Hold ``model`` and push it when the page is ready."""
+            self._push_due = False
             self._last_model = model
             if self._page_ready:
                 self._run(push_script(model))
+
+        def _queue_push(self) -> None:
+            """Push the whole tab once, on the next event-loop turn, for every
+            ``_queue_push`` this turn makes."""
+            if self._push_due:
+                return
+            self._push_due = True
+            QTimer.singleShot(0, self, self._push_queued)
+
+        def _push_queued(self) -> None:
+            """Build and push the model ``_queue_push`` asked for, unless a
+            ``set_model`` pushed one since or a ``_render_page`` is still due to."""
+            if self._push_due and self._drawn_render_id == self._render_build_id:
+                self.set_model(self._build_model())
 
         def row_count(self, callback: Callable[[Any], None]) -> bool:
             """Run ``ROW_COUNT_JS`` and hand the count to ``callback``.
@@ -267,14 +284,14 @@ if _HAS_QT and _HAS_WEBENGINE:
         def _set_status(self, text: str) -> None:
             """Show ``text`` where the summary line goes."""
             self._status = text
-            self.set_model(self._build_model())
+            self._queue_push()
 
         def _set_fetching(self, fetching: bool) -> None:
             """Show the busy bar and refuse Refresh while a fetch is in flight."""
             self._fetch_in_flight = fetching
             if not fetching:
                 self._status = None
-            self.set_model(self._build_model())
+            self._queue_push()
 
         def _filter_options(self) -> dict:
             """The exchange and symbol values the filter bar offers now."""
@@ -289,8 +306,9 @@ if _HAS_QT and _HAS_WEBENGINE:
             """Return the five filters to the values the tab opens on."""
             self._set_filter_state(hrc.default_filters())
 
-        def _build_model(self) -> dict:
-            """The whole tab as one payload, chrome and rows together."""
+        def _build_model(self, rendered: Optional[hrc.HistoryPage] = None) -> dict:
+            """The whole tab as one payload, chrome and the rows of ``rendered``,
+            by default the ``_current_page``."""
             return surface.build_view_model(
                 self._all_trades,
                 self._current_filters(),
@@ -299,9 +317,11 @@ if _HAS_QT and _HAS_WEBENGINE:
                 last_fetched_ts=self._last_fetched_ts,
                 fetching=self._fetch_in_flight,
                 status=self._status,
-                gate_index=self._page_gate_index,
-                voting_index=self._page_voting_index,
                 painted=self._painted,
+                retained=self._filtered,
+                totals=self._filtered_totals,
+                options=self._view_options,
+                rendered=self._current_page() if rendered is None else rendered,
             )
 
         def _render_page(self) -> None:
@@ -317,7 +337,7 @@ if _HAS_QT and _HAS_WEBENGINE:
             del total, max_page
             if self._status is not None:
                 self._status = None
-                self.set_model(self._build_model())
+                self._queue_push()
 
         def _apply_request(self, params: dict) -> None:
             """Take the page's action, filters and page number."""

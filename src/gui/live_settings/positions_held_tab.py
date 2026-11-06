@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from .. import design_system as ds
 from ..main_tabs import positions_held_surface
 from ..main_tabs.bot_status_table_surface import BUTTON_HEIGHT_PX, ROW_HEIGHT_PX
+from ..tooltips import set_description
 
 
 class PositionsHeldTabMixin:
@@ -126,6 +127,8 @@ class PositionsHeldTabMixin:
         columns = list(positions_held_surface.COLUMNS)
         table.setColumnCount(len(columns))
         table.setHorizontalHeaderLabels(columns)
+        for column, words in enumerate(positions_held_surface.COLUMN_TOOLTIPS):
+            set_description(table.horizontalHeaderItem(column), words)
         table.setRowCount(len(positions))
         table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
         table.verticalHeader().setVisible(False)
@@ -150,6 +153,7 @@ class PositionsHeldTabMixin:
                 table.setItem(row, col, item)
 
             fire_btn = QPushButton("Fire")
+            set_description(fire_btn, positions_held_surface.FIRE_TOOLTIP)
             fire_btn.setFixedHeight(BUTTON_HEIGHT_PX)
             fire_btn.setStyleSheet(
                 f"QPushButton {{ background: {ds.WARNING_STRONG}; color: white; "

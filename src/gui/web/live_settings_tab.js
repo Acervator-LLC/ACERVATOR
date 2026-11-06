@@ -861,14 +861,17 @@
     return lastEdit;
   }
 
+  // Each box is uncontrolled: it keeps the operator's edit, and a new stored value remounts it under a new key.
   function ComboControl(props) {
     var spec = props.spec;
     var items = comboItems(spec);
     var at = comboIndex(props.name);
     var chosen = at >= ZERO && at < items.length ? itemValue(items[at]) : undefined;
+    var held = chosen === undefined ? EMPTY : String(chosen);
     var selectProps = {
+      key: CONTROL_PART + held,
       className: TAB_CLASS,
-      value: chosen === undefined ? EMPTY : String(chosen),
+      defaultValue: held,
       title: label(tooltipOf(props.name)),
       onChange: function (event) {
         props.onEdit(props.name, event.target.value);
@@ -894,10 +897,12 @@
 
   function CheckControl(props) {
     var spec = props.spec;
+    var ticked = valueOf(props.name) === true;
     var boxProps = {
+      key: CONTROL_PART + String(ticked),
       className: TAB_CLASS,
       type: CHECKBOX_TYPE,
-      checked: valueOf(props.name) === true,
+      defaultChecked: ticked,
       title: label(tooltipOf(props.name)),
       onChange: function (event) {
         props.onEdit(props.name, event.target.checked);
@@ -945,11 +950,12 @@
     // Qt prints the words INSIDE the box, not beside it, so a box at its
     // lowest value draws the words and carries no number at all.
     var instead = specialText(spec, props.name);
+    var shown = instead === undefined ? text(valueOf(props.name)) : text(instead);
     var boxProps = {
-      key: CONTROL_PART,
+      key: CONTROL_PART + shown,
       className: TAB_CLASS,
       type: instead === undefined ? NUMBER_TYPE : TEXT_TYPE,
-      value: instead === undefined ? text(valueOf(props.name)) : text(instead),
+      defaultValue: shown,
       min: text(first(span)),
       max: text(second(span)),
       step: text(spec[STEP_FIELD]),
@@ -985,10 +991,12 @@
 
   function LineControl(props) {
     var spec = props.spec;
+    var shown = text(valueOf(props.name));
     var boxProps = {
+      key: CONTROL_PART + shown,
       className: TAB_CLASS,
       type: TEXT_TYPE,
-      value: text(valueOf(props.name)),
+      defaultValue: shown,
       placeholder: label(spec[PLACEHOLDER_FIELD]),
       title: label(tooltipOf(props.name)),
       onChange: function (event) {

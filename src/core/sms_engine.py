@@ -7,7 +7,9 @@ inside methods to avoid AV heuristic triggers when bundled.
 ``SMSConfig`` carries every value the Settings SMS page sets and
 ``sms_config_from_settings`` reads the stored ``message_channels`` group into
 one. The startup path pushes that config through ``update_config`` before any
-fill.
+fill. ``EVENT_SWITCHES`` pairs each event kind ``send`` accepts with the switch
+that gates it, and ``notifications.EVENT_MESSAGE_KIND`` names those kinds for
+its own alert events.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from .safe_url import safe_urlopen
 import logging
 import math
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from datetime import datetime
 from typing import Optional
 
@@ -32,6 +34,27 @@ TWILIO = "twilio"
 #: Every value ``provider`` may hold. ``send`` tests ``TWILIO`` and routes
 #: everything else through the email gateway.
 PROVIDERS: tuple[str, ...] = (EMAIL_GATEWAY, TWILIO)
+
+EVENT_BUY_FILL = "buy_fill"
+EVENT_SELL_FILL = "sell_fill"
+EVENT_BOT_STATE = "bot_state"
+EVENT_ERROR = "error"
+EVENT_PL_THRESHOLD = "pl_threshold"
+EVENT_BALANCE_WARNING = "balance_warning"
+EVENT_CONNECTION = "connection"
+
+#: Each event kind ``send`` accepts, and the ``SMSConfig`` switch that gates it.
+#: ``notifications.EVENT_MESSAGE_KIND`` names these constants for its own alert
+#: events, so a kind this engine holds no switch for cannot be spelled there.
+EVENT_SWITCHES: dict[str, str] = {
+    EVENT_BUY_FILL: "notify_buy_fills",
+    EVENT_SELL_FILL: "notify_sell_fills",
+    EVENT_BOT_STATE: "notify_bot_state_changes",
+    EVENT_ERROR: "notify_errors",
+    EVENT_PL_THRESHOLD: "notify_pl_threshold",
+    EVENT_BALANCE_WARNING: "notify_balance_warning",
+    EVENT_CONNECTION: "notify_connection_status",
+}
 
 
 @dataclass
@@ -205,20 +228,35 @@ class SMSEngine:
     def update_config(self, config: SMSConfig) -> None:
         self._config = config
 
-    def send(self, message: str, event_type: str = "info") -> bool:
+    def set_phone_number(self, phone: str) -> None:
+        """Set the destination number, keeping every other stored value.
+
+        The Notifications and Alerts tab writes the number through here, so the
+        number it sets and the number ``Settings > SMS`` stores are one field.
+        """
+        self._config = replace(self._config, phone_number=str(phone))
+
+    def send(self, message: str, event_type: str) -> bool:
+        """Send *message* when the switch ``event_type`` names is on.
+
+        ``event_type`` is one key of ``EVENT_SWITCHES`` and carries no default,
+        so a caller cannot ask for a send without naming which event it reports.
+        Returns False for every refusal, and names the refusal on the log.
+        """
         if not self._config.enabled:
+            logger.debug("%s off; %s not sent", SETTINGS_GROUP, event_type)
             return False
 
-        type_checks = {
-            "buy_fill": self._config.notify_buy_fills,
-            "sell_fill": self._config.notify_sell_fills,
-            "bot_state": self._config.notify_bot_state_changes,
-            "error": self._config.notify_errors,
-            "pl_threshold": self._config.notify_pl_threshold,
-            "balance_warning": self._config.notify_balance_warning,
-            "connection": self._config.notify_connection_status,
-        }
-        if not type_checks.get(event_type, False):
+        switch = EVENT_SWITCHES.get(event_type)
+        if switch is None:
+            logger.warning(
+                "%s holds no switch for event kind %r; not sent",
+                SETTINGS_GROUP,
+                event_type,
+            )
+            return False
+        if not getattr(self._config, switch):
+            logger.debug("%s %s off; %s not sent", SETTINGS_GROUP, switch, event_type)
             return False
 
         now = time.time()

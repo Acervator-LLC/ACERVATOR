@@ -572,7 +572,7 @@ zero for forex reads non-zero for every sector the venue does serve, so the zero
 is a reading and not a failure to search.
 
 The manual already carries this, on
-[`docs/manual/15-venue-compatibility.md`](../../manual/15-venue-compatibility.md):
+[`docs/reference/15-venue-compatibility.md`](../../reference/15-venue-compatibility.md):
 
 > **There is no forex on this endpoint.** The venue refuses the word, and none
 > of the types it accepts answers a currency pair.
@@ -823,9 +823,9 @@ is correct for crypto would be refused for stocks.
 
 ## Related pages
 
-- [`docs/manual/15-venue-compatibility.md`](../../manual/15-venue-compatibility.md)
+- [`docs/reference/15-venue-compatibility.md`](../../reference/15-venue-compatibility.md)
   — the venue table and the variant definitions this report reads against
-- [`docs/manual/16-sector-exchange-product-tree.md`](../../manual/16-sector-exchange-product-tree.md)
+- [`docs/reference/16-sector-exchange-product-tree.md`](../../reference/16-sector-exchange-product-tree.md)
   — the sector, venue and product levels
 - [`docs/audits/2026-10-07_venue_sector_readiness_matrix/REPORT.md`](../2026-10-07_venue_sector_readiness_matrix/REPORT.md)
   — which venue reaches which sector

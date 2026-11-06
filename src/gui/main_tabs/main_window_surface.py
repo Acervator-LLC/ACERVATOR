@@ -40,6 +40,7 @@ from __future__ import annotations
 import math
 from typing import Any, Optional
 
+from ...core.emit_contracts import read_settled_fill
 from ...core.settings import AppSettings
 from ...exchange.api_load_monitor import DEFAULT_SAFETY_PCT
 from ...trading.ta_engine import DEFAULT_WEIGHTS
@@ -56,6 +57,7 @@ from . import history_tab_surface
 from . import market_inspector_surface
 from ..paper import paper_trading_tab_surface
 from . import proof_of_accumulation_tab_surface
+from . import settings_dialog_surface
 from . import simulator_tab_surface
 from . import system_status_tab_surface
 from . import trade_charts_tab_surface
@@ -144,6 +146,33 @@ UNBUILT_TABS = (ACCUMULATION_TAB,)
 # `_reorder_main_tabs` and `reordered_tabs` move the bar into.
 BAR_TAB_ORDER = tuple(name for name in CANONICAL_TAB_ORDER if name not in UNBUILT_TABS)
 
+#: The name a screen reader announces for the main window.
+WINDOW_ACCESSIBLE_NAME = "Acervator Main Window"
+
+#: The description each main tab shows under the pointer, in both builds.
+TAB_TOOLTIPS = {
+    SIM_TAB: (
+        "Replays your fleet against stored market history. Nothing here reaches "
+        "an exchange."
+    ),
+    PAPER_TAB: (
+        "Runs bots on live prices with a pretend balance. No order reaches an "
+        "exchange."
+    ),
+    LIVE_TAB: "Your connected venues and their bots. Orders placed from here are real.",
+    CHARTS_TAB: "One candlestick chart per traded symbol, with indicator overlays.",
+    INSPECTOR_TAB: (
+        "Scans higher timeframes for candidate markets, publishes ATA-SMP posts "
+        "and proposes swarm topologies."
+    ),
+    SWARM_TAB: "Your bots as nodes, with the wires that route profit between them.",
+    HISTORY_TAB: (
+        "Trades pulled from your venues, paired with the bots' own logic and graded."
+    ),
+    STATUS_TAB: "The health of each subsystem, read from the emitters it runs.",
+    CONSOLE_TAB: "Every log line and signal check the program writes, as it writes them.",
+}
+
 # The bridge method that serves each tab. A frontend with no tab book of its
 # own joins its panels to this window's tabs on the method each one calls.
 TAB_METHODS = {
@@ -204,15 +233,37 @@ PILL_STYLE_FORMAT = (
 API_PILL_IDLE_TEXT = "API: —"
 API_PILL_IDLE_COLOUR = ds.CARD_METRIC_LABEL
 API_PILL_TOOLTIP = (
-    "Trailing 60 s calls-per-minute on the busiest connected exchange, the "
-    "share of that window its one connector worker was busy, and the calls "
-    "its queue refused. The percentage is the worse of the two loads, because "
-    "a refused call reaches no log and reads as idleness in the count alone."
+    "Load on the busiest exchange over the last minute: calls, worker busy share "
+    "and refused calls."
 )
-API_PILL_TOOLTIP_SAFETY_FORMAT = (
-    " Red above the {safety_pct:.0f} % phantom-creation safety threshold the "
-    "load monitor is holding."
+API_PILL_TOOLTIP_SAFETY_FORMAT = " Red above {safety_pct:.0f}%."
+
+# The Error Log dialog the ERRORS card opens
+
+ERROR_LOG_EVENTS_TOOLTIP = (
+    "Bot errors from this session, newest first. The last 200 are kept."
 )
+ERROR_LOG_SNAPSHOT_TOOLTIP = (
+    "Each bot's error counts and its last error, as the bot holds them now."
+)
+ERROR_LOG_EVENT_COLUMN_TOOLTIPS = (
+    "When the error was reported.",
+    "The bot that reported it, by the first eight characters of its id.",
+    "Errors in a row for that bot when this one arrived.",
+    "The error text the bot reported.",
+)
+ERROR_LOG_SNAPSHOT_COLUMN_TOOLTIPS = (
+    "The bot, by the first eight characters of its id.",
+    "The asset this bot accumulates.",
+    "Errors this bot has counted since its counters were last reset.",
+    "Errors in a row right now. Enough in a row sends the bot to cooldown.",
+    "The text of this bot's most recent error.",
+)
+ERROR_LOG_RESET_TOOLTIP = (
+    "Clears this list and every bot's error counts and last error, then saves. "
+    "Cannot be undone."
+)
+ERROR_LOG_CLOSE_TOOLTIP = "Closes the Error Log. Nothing is cleared."
 API_PILL_TEXT_FORMAT = (
     "API {exchange}: {calls_per_minute:.0f} CPM, worker {worker_busy_pct:.0f} %"
 )
@@ -306,7 +357,6 @@ RIFLE_TRADE_TYPES = ("SCRUM", "FOLD", "DIST")
 DRIP_TRADE_TYPE = "FOLD"
 BUY_SIDE = "BUY"
 SELL_SIDE = "SELL"
-FILL_NESTED_FIELD = "data"
 
 BEEP_FIRE_PHASE = "fire"
 BEEP_TRACK_PHASE = "track"
@@ -461,6 +511,43 @@ STARTED_LOG_FORMAT = "Acervator v{version} started."
 CONSOLE_ACTIVE_LOG_FORMAT = (
     "Acervator v{version} — Console logging active. " "All system messages appear here."
 )
+FLEET_LOCKED_TEXT = (
+    "The saved fleet is sealed. Every screen is open and no bot is loaded. "
+    "The fleet starts when the unlock password is given."
+)
+FLEET_LOCKED_SEQUENCE_LOG = (
+    "Fleet %s refused: the saved fleet is sealed and this session holds no "
+    "key, so no bot is started."
+)
+FLEET_UNLOCK_REFUSED_TEXT = (
+    "That password did not open the saved fleet. The fleet stays sealed and "
+    "no bot is loaded."
+)
+FLEET_UNLOCK_NO_READER_TEXT = (
+    "No saved-state reader is attached to this window, so the unlock cannot "
+    "reach the fleet file."
+)
+FLEET_UNLOCKED_FORMAT = "The saved fleet is open: {bots} bot(s) loaded."
+FLEET_UNLOCK_WIRES_FORMAT = "{wires} Smart Wire(s) loaded with the fleet."
+FLEET_UNLOCK_NO_START_TEXT = (
+    "The saved fleet is open and no fleet-start step is registered, so the "
+    "bots stay idle. Start All starts them."
+)
+FLEET_UNLOCK_SEALED_TEXT = (
+    "That password opened the key file, but the saved fleet did not open with "
+    "that key. The fleet stays sealed and no bot is loaded."
+)
+FLEET_SEALED_CREATE_TITLE = "Unlock the fleet first"
+FLEET_SEALED_CREATE_TEXT = (
+    "The saved fleet is sealed. A bot made now could not be saved, so no bot "
+    "is made. Unlock the fleet first: Settings, "
+    f"{settings_dialog_surface.USER_TAB} tab, "
+    f"{settings_dialog_surface.FLEET_LOCK_UNLOCK_BUTTON_TEXT}."
+)
+FLEET_SEALED_CREATE_ACTION = "BOT_CREATE_REFUSED"
+FLEET_SEALED_CREATE_RESULT = "REFUSED: the saved fleet is sealed"
+FLEET_SEALED_CREATE_USAGE = "No bot was created and no state was written."
+
 DEFAULT_THEME = "cyberpunk_dark"
 AI_RECONFIGURED_LOG_FORMAT = "AI Monitor reconfigured (phrase: '{phrase}...')"
 AI_PHRASE_CHARACTERS = 20
@@ -530,8 +617,12 @@ WIRED_PATHS = (
     "_wire_is_registered",
     "_wire_manager",
     "add_exchange_tab",
+    "fleet_locked",
+    "hold_fleet_for_unlock",
     "run_fleet_sequence",
     "set_async_loop",
+    "set_fleet_start_callback",
+    "unlock_fleet",
 )
 
 # The abbreviation tooltips the window applies to its own children
@@ -945,15 +1036,11 @@ def cached_candle_count(bot: Any) -> Optional[int]:
 
 
 def fill_fields(data: Any) -> dict:
-    """One fill's own fields, whichever level the emitter put them at.
+    """One fill's fields as ``read_settled_fill`` reads them, for ``_on_trade_filled_sfx``.
 
-    Four ``trade.filled`` emitters pass the fill as keywords and five nest it
-    under ``data``, so a reader of one level alone sees nothing from the other
-    five. ``_on_trade_filled_sfx`` reads the fill through this.
+    Raises ``FillShapeError`` for an announcement not in the ``SettledFill`` shape.
     """
-    held = data if isinstance(data, dict) else {}
-    nested = held.get(FILL_NESTED_FIELD)
-    return nested if isinstance(nested, dict) else held
+    return read_settled_fill(data).payload()
 
 
 def trade_filled_sounds(trade_type: Any, profit: Any, side: Any = "") -> list:

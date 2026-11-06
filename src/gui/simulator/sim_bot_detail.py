@@ -48,6 +48,7 @@ from .sim_phantom_bots_tab import SimPhantomBotsTabMixin
 from .sim_positions_held_tab import SimPositionsHeldTabMixin
 from .sim_settings_tab import SimSettingsTabMixin
 from .sim_stack_tranches_tab import SimStackTranchesTabMixin
+from ..tooltips import set_description
 
 logger = logging.getLogger(surface.LOGGER_NAME)
 
@@ -119,7 +120,7 @@ class SimBotDetailDialog(
 
         self._prev_btn = QPushButton(surface.PREV_LABEL)
         self._prev_btn.setStyleSheet(surface.NAV_BUTTON_STYLE)
-        self._prev_btn.setToolTip(surface.PREV_TOOLTIP)
+        set_description(self._prev_btn, surface.PREV_TOOLTIP)
         self._prev_btn.clicked.connect(
             lambda: self._navigate_to_sibling(surface.PREV_STEP)
         )
@@ -127,7 +128,7 @@ class SimBotDetailDialog(
 
         self._next_btn = QPushButton(surface.NEXT_LABEL)
         self._next_btn.setStyleSheet(surface.NAV_BUTTON_STYLE)
-        self._next_btn.setToolTip(surface.NEXT_TOOLTIP)
+        set_description(self._next_btn, surface.NEXT_TOOLTIP)
         self._next_btn.clicked.connect(
             lambda: self._navigate_to_sibling(surface.NEXT_STEP)
         )
@@ -166,6 +167,10 @@ class SimBotDetailDialog(
                 self._wrap_scrollable(self._create_positions_held_tab()),
                 surface.TAB_POSITIONS_HELD,
             )
+        for at in range(tabs.count()):
+            name = tabs.tabText(at)
+            if name in surface.TAB_TOOLTIPS:
+                set_description(tabs, surface.TAB_TOOLTIPS[name], at)
         layout.addWidget(tabs)
 
         btn_row = QHBoxLayout()
@@ -173,11 +178,13 @@ class SimBotDetailDialog(
         self._apply_btn = QPushButton(surface.APPLY_LABEL)
         self._apply_btn.setStyleSheet(surface.APPLY_STYLE)
         self._apply_btn.setEnabled(surface.APPLY_ENABLED_AT_START)
+        set_description(self._apply_btn, sim_surface.APPLY_TOOLTIP)
         self._apply_btn.clicked.connect(self._apply_changes)
         btn_row.addWidget(self._apply_btn)
 
         close_btn = QPushButton(surface.CLOSE_LABEL)
         close_btn.setStyleSheet(surface.CLOSE_STYLE)
+        set_description(close_btn, surface.CLOSE_TOOLTIP)
         close_btn.clicked.connect(self.accept)
         btn_row.addWidget(close_btn)
         layout.addLayout(btn_row)
@@ -226,7 +233,7 @@ class SimBotDetailDialog(
             rep_lbl.setStyleSheet(
                 f"font-weight: bold; font-size: 13px; color: {money_color(realised)};"
             )
-            rep_lbl.setToolTip(realised_tooltip(trade_count, age))
+            set_description(rep_lbl, realised_tooltip(trade_count, age))
             sf.addRow("Realised P/L:", rep_lbl)
             if unrealised != 0:
                 ue_lbl = QLabel(f"${unrealised:+,.4f}")
@@ -240,7 +247,7 @@ class SimBotDetailDialog(
         else:
             pending_lbl = QLabel(PENDING_TEXT)
             pending_lbl.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL};")
-            pending_lbl.setToolTip(PENDING_TIP)
+            set_description(pending_lbl, PENDING_TIP)
             sf.addRow("Realised P/L:", pending_lbl)
 
         sf.addRow("Total Trades:", QLabel(str(stats.get("total_trades", 0))))

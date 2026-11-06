@@ -17,6 +17,7 @@ class MarketInspectorTabMixin:
     """
 
     # MainWindow supplies these at runtime; the annotations create no attribute.
+    _bot_manager: Any
     _adopt_topology_proposal: Callable[..., Any]
     _push_candidate_to_sim: Callable[..., Any]
     _push_candidate_to_paper: Callable[..., Any]
@@ -24,6 +25,7 @@ class MarketInspectorTabMixin:
     _main_tabs: Any
     _schedule_async: Callable[..., Any]
     _settings: Any
+    fleet_locked: Callable[..., bool]
 
     def _build_market_inspector_tab(self) -> None:
         """Build the Inspector tab and add it to the main tab widget."""
@@ -37,11 +39,13 @@ class MarketInspectorTabMixin:
         self._market_inspector.set_exchange_source(
             connectors_getter=(lambda: getattr(self, "_exchange_connectors", {})),
             scheduler=self._schedule_async,
+            sealed=self.fleet_locked,
         )
         self._market_inspector.set_proposal_source(
             lambda: self._build_topology_proposals()
         )
         self._market_inspector.set_adopt_handler(self._adopt_topology_proposal)
+        self._market_inspector.set_phantom_source(self._fleet_bot)
         try:
             self._market_inspector.set_push_to_sim_handler(self._push_candidate_to_sim)
         except Exception as _ps_exc:  # noqa: BLE001 - the Sim tab may not build
@@ -55,6 +59,13 @@ class MarketInspectorTabMixin:
         self._wire_ata_chart_list(self._market_inspector)
         self._wire_ata_activity_log(self._market_inspector)
         self._main_tabs.addTab(self._market_inspector, INSPECTOR_TAB)
+
+    def _fleet_bot(self, bot_id: str) -> Any:
+        """The registered bot ``bot_id`` names, None while no ``_bot_manager`` holds it."""
+        manager = getattr(self, "_bot_manager", None)
+        if manager is None:
+            return None
+        return manager.get_bot(bot_id)
 
     def _wire_ata_activity_log(self, inspector: Any) -> None:
         """Point ``inspector``'s scan phase lines at the Live tab's ``StatusLog``.

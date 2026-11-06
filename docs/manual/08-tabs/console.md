@@ -887,4 +887,350 @@ the gate closed from 0.390 through 0.873 with no venue order call and open from
 itself still applies on every pass, because `_skewed_confidence_floor` is read
 above the line that announces it.
 
+## 2026-10-28 - #1374 - a locked launch starts no bot and the Console says what it waits for
+
+An optional password can seal the saved fleet. A launch that finds that password
+set, and holds no key for it, now draws every screen, loads no bot, and writes
+one Console line saying the fleet waits on the unlock. A locked launch is not an
+error and it writes no fault.
+
+### The three launches
+
+`src/core/state_manager.py, in launch_classification` is the one answer every
+launch site reads, so no two sites can decide the lock differently. It reads the
+plain-text latch first, through `in latch_on`, and classifies the file through
+`in probe` only when that latch is set.
+
+| the saved file | the answer | what the launch does |
+| -------------- | ---------- | -------------------- |
+| no latch | `open` | restores the fleet and arms the start, as before |
+| latch, key held | `unlocked` | the same, with the sealed payload opened |
+| latch, no key | `locked` | draws every screen, loads no bot, records why |
+
+Driven on a hand-built fleet of two bots and one wire, the three launches give
+three different answers. Pointed at one file instead, all three give `open` and
+the reading reports them alike, so the three answers are a reading of the file
+and not a fixed result.
+
+### Where the latch is read
+
+`main.py, in main` reads the classification before the fleet-start callback and
+before the fallback timer. Both the callback and the timer sit inside one branch
+a locked launch never takes, so no bot starts and nothing is scheduled.
+
+```mermaid
+flowchart TD
+    A[MainWindow built, every screen drawn] --> B[launch_classification]
+    B -->|open or unlocked| C[probe reads has_bots]
+    C --> D[restore_bots_from_state]
+    D --> E{eligible bots}
+    E -->|more than none| F[splash callback, with a 9500 ms timer behind it]
+    F --> G[run_fleet_sequence start]
+    B -->|locked| H[hold_fleet_for_unlock]
+    H --> I[one Console line, no bot loaded, no timer armed]
+```
+
+The launch with no latch is unchanged. Measured over six saved-file shapes —
+no bots, one bot, two bots and a wire, nested lots and tranches, unicode and
+floats and nulls, and an unknown top-level field — `in latch_on`, `in probe`,
+`in has_saved_state` and `in load_state` answer the same through the files
+before this section and the files after it. The control: one wire rate moved
+from 25.0 to 26.0 and the same comparison named `load_state` as different, so
+the six readings are a comparison that can fail.
+
+### What the Console says
+
+`src/gui/main_tabs/main_window_surface.py` declares every line below, so the Qt
+build and the React build draw the same words.
+
+| when | the line |
+| ---- | -------- |
+| a locked launch | `The saved fleet is sealed. Every screen is open and no bot is loaded. The fleet starts when the unlock password is given.` |
+| Start All while locked | the same line, and no bot is taken as eligible |
+| a password that does not open | `That password did not open the saved fleet. The fleet stays sealed and no bot is loaded.` |
+| a password that opens | `The saved fleet is open: N bot(s) loaded.` |
+| the wires that came with it | `N Smart Wire(s) loaded with the fleet.` |
+
+`src/gui/main_window.py, in hold_fleet_for_unlock` writes the first line and
+latches the window, and `in run_fleet_sequence` asks `in fleet_locked` before it
+reads the fleet at all. Driven with one eligible bot and the window latched, the
+sequence answered 0, never read the bot map, and left that line in the Console.
+With the same bot and the window not latched it read the bot map and went on
+into the start path, so the latch is what stops it.
+
+### The unlock given mid-session
+
+`src/gui/main_window.py, in unlock_fleet` takes the password, and no restart is
+needed. The order is fixed: `in unlock` holds the key, `in load_state` opens the
+payload, `in restore_bots_from_state` and `in restore_smart_wires_from_state`
+put the fleet in the process, and the callback `in set_fleet_start_callback`
+holds then runs. `main.py` registers that callback, which asks
+`InstanceGuard.evaluate` again with the bots the unlock loaded, because the
+launch asked it with a fleet of none.
+
+Driven on the sealed fleet of two:
+
+| the password | the answer | still locked | handed over | the fleet start |
+| ------------ | ---------- | ------------ | ----------- | --------------- |
+| wrong | False | yes | nothing | did not run |
+| right | True | no | both bots and the wire | ran once |
+
+### An unattended restart writes no fault
+
+`src/core/instance_guard.py, in authorise_auto_start` answers
+`WITHHELD_FLEET_SEALED` before it reads the ownership decision and before it can
+ask for consent, so a machine with nobody at it is never shown a question it
+cannot answer. Measured with every log record of the run counted:
+
+| the run | records | faults | consent asked | files written |
+| ------- | ------- | ------ | ------------- | ------------- |
+| the fleet is sealed | 1 at INFO | 0 | 0 | none |
+| the control: consent given, no exclusive handle | 1 at ERROR | 1 | 1 | — |
+
+The control is a condition that genuinely is a fault, and it reads as one
+through the same instrument, so the zero above is a reading.
+
+### What a locked launch does not read
+
+A locked launch reads no price. `src/exchange/data_pool.py, in register` has one
+caller, `src/trading/bot_container.py, in start`, and
+`in refresh_all_tickers` has one caller that walks the fleet's own connectors.
+`src/gui/main_window.py, in _pump_currency_rates` and `in _pump_market_pairs_scout`
+both read `_exchange_connectors`, and every line that writes that map sits
+inside `in _connect_broker_for_bot`, `in _connect_written_crypto_for_bot` or
+`in _connect_exchange_for_bot` — each of which takes a bot. No bot, no
+connector, no price. A launch with an empty saved file reads no price for the
+same reason, so a locked launch reads what a fleet of none reads.
+
+### Not drawn yet
+
+No screen takes the password. `src/gui/settings_dialog.py` owns that screen and
+it is not built, so `in unlock_fleet` is reachable from code and not yet from a
+keystroke.
+
+The Product Manual PDF rebuild is owed for this page.
+
+
+## 2026-10-28 - #1374 - the screen that takes the password is built
+
+### Where the sentences about the unlock now read differently
+
+Two readings above describe the build before the screens landed. They stand as
+written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "No screen takes the password. `src/gui/settings_dialog.py` owns that screen and it is not built, so `in unlock_fleet` is reachable from code and not yet from a keystroke." | Two screens take it. `src/gui/settings_dialog.py, in _create_fleet_lock_group` draws the Password and Confirm Password rows that set it, and `src/gui/fleet_unlock_dialog.py, in FleetUnlockDialog` takes it back. `in unlock_fleet` is reached from a keystroke |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt in this branch and carries this page |
+
+### Where the unlock screen appears
+
+`main.py, in main` hands `_ask_for_unlock` to the splash's finished hook inside
+the branch a locked launch takes, beside `in hold_fleet_for_unlock`. The screen
+therefore opens over a window that already drew every tab. Dismissing it leaves
+the fleet sealed and the Console line in place, and the Unlock the fleet now
+button on the Settings User tab raises the same screen again.
+
+```mermaid
+flowchart TD
+    A[launch_classification reads locked] --> B[hold_fleet_for_unlock]
+    B --> C[one Console line, no bot loaded]
+    C --> D[the splash closes]
+    D --> E[ask_for_unlock]
+    E -->|password given| F[unlock_fleet, the fleet loads]
+    E -->|Not now| G[the fleet stays sealed]
+    G --> H[Settings, User tab, Unlock the fleet now]
+    H --> E
+```
+
+### What the screen was measured doing
+
+Driven as a built widget against a sealed fleet of two bots and one wire: the
+Unlock button is dead on an empty row; a wrong password answered `refused`, put
+the Console's own refusal sentence on the screen, left the fleet sealed and
+changed no file; the right password answered `opened` and both bots and the wire
+came out of the payload in the same session.
+
+The control for that reading: the same screen pointed at a window answering no
+`unlock_fleet` answered `no_window`, reported no unlock, and said so on the
+screen. So a reading that reports a reachable screen can also report that no
+screen accepts the password.
+
+The words on the screen are the Console's words.
+`src/gui/main_tabs/fleet_unlock_surface.py` takes its detail line from
+`src/gui/main_tabs/main_window_surface.py, FLEET_LOCKED_TEXT` and its refusal
+line from `FLEET_UNLOCK_REFUSED_TEXT`, so the screen and the Console cannot
+disagree.
+
+The rows that set the password are on the Settings page. See
+[the Settings page](settings.md).
+
+
+## 2026-10-28 - #1374 - a locked launch reads the prices a screen draws for a market
+
+A locked launch now reads every price a screen draws for a market, not for a
+bot. The venue keys are sealed with the fleet, so each of these reads goes
+through a route that carries no key.
+
+### Where the sentence about prices now reads differently
+
+The reading above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "A locked launch reads no price." | A locked launch reads three prices: the rate strip, the Charts ATA-SMP list and the Market Inspector scans. The prices that come through a bot or a venue connection wait for the unlock |
+
+### The prices a locked launch reads
+
+The dashboard tick runs every two seconds. While the window is latched, it feeds
+the two price screens it owns, and no other launch takes that branch.
+
+```python
+if self.fleet_locked():
+    self._feed_locked_price_screens()
+```
+
+`src/gui/main_window.py, in _feed_locked_price_screens` rebuilds the Charts
+ATA-SMP list, fetches the market on screen with no connector, and asks
+`in _pump_currency_rates` for the rates.
+
+| the screen | the read | the route, no key |
+| --- | --- | --- |
+| Live tab, the rate strip, on both builds | BTC/USD and ETH/USD | `src/exchange/currency_rate_monitor.py, in refresh_from_feed`, through `src/paper/live_feed_source.py, in LiveFeedSource.ticker` |
+| Charts, the ATA-SMP list | the candles of the market on screen | `src/exchange/chart_data.py, in ChartDataFetcher.fetch`, which reads CoinGecko with no connector |
+| Market Inspector, Scan Now and Scan All | each scanned market's candles | `src/gui/main_tabs/market_inspector_surface.py, in sector_candle_read`, the public Coinbase route |
+
+The Market Inspector scans read on a locked launch before this change. The rate
+strip and the Charts ATA-SMP list did not.
+
+### The prices that wait for the unlock
+
+| the read | why it waits |
+| --- | --- |
+| the venue page bot rows, the bulk ticker refresher, the Charts live list, the header strip, the voting panel's votes | each one reads a bot, and no bot is loaded |
+| the market pairs scout | it reads each venue's ticker list through a venue connection, and only a bot's start opens one |
+| Market Inspector, Refresh | its markets are the connected venue's own list, read through a venue connection |
+
+On a locked launch the Refresh line names the seal instead of asking for an
+exchange. `src/gui/main_tabs/market_inspector_surface.py,
+SEALED_NO_CONNECTORS_TEXT` holds it:
+
+```
+The saved fleet is sealed, so no bot has opened a venue connection. Give the password: Settings, User tab, Unlock the fleet now.
+```
+
+The Paper and Sim tabs read their own public routes for their own bots, and the
+lock seals neither of those fleets.
+
+### What the price readings were measured doing
+
+Driven through the real dashboard tick, with every venue answered by a stand-in
+shaped like the public replies the code parses:
+
+```
+latched, no bot       rate strip   both prices, on the Qt panel and the React line
+                      Charts       96 candles from CoinGecko
+                      Scan Now     300 candles from the public route
+                      Refresh      the sealed line
+not latched, no bot   rate strip   pending, Charts 0 candles, Refresh asks for an exchange
+before this change    latched      rate strip pending, Charts 0 candles
+```
+
+The unlatched run is the control: the same reading reports the reads that did
+not run. A launch with no password reads the same through the files before this
+section and the files after it: with a fleet and a connector the tick schedules
+the same rate read, and with neither it schedules nothing.
+
+The Product Manual PDF rebuild is owed for this page.
+
+
+## 2026-10-28 - #1374 - a sealed fleet makes no new bot
+
+While the saved fleet is sealed, New Bot and Adopt make no bot. Each press puts
+one box over the window and one line in the Console, and nothing opens and
+nothing is written. A bot made then could not be saved, so it would trade with
+no record that the next launch could load.
+
+### Where the press stops
+
+`src/gui/main_window.py, in _refuse_while_sealed` is the one place every press
+stops. It reads `src/core/state_manager.py, in launch_classification`, which is
+the answer every launch site reads and the answer under which each save is
+refused.
+
+```python
+def _create_bot(self, exchange_id="", defaults_override=None):
+    """Open the Bot Creation Wizard; ``defaults_override`` merges in."""
+    if self._refuse_while_sealed(exchange_id):
+        return
+```
+
+| the press | how it reaches the stop |
+| --- | --- |
+| + New Bot, Qt build | `src/gui/widgets/exchange_tab.py, in ExchangeTab.__init__` hands it to `in _create_bot` |
+| + New Bot, React build | `src/gui/react_exchange_tab.py, in ExchangeTabReact._answer` hands it to `in _create_bot` |
+| Adopt, both builds | `in _adopt_topology_proposal` asks the stop before its confirm box and before its wire snapshot |
+
+These are the only presses that make a live bot. The restore at launch and the
+restore at the unlock bring back the saved fleet, and neither runs while it is
+sealed. Paper and Sim bots live in their own fleets, and the lock seals neither.
+
+### What he sees
+
+Both builds draw the same box, because one window holds every page in both.
+`src/gui/main_tabs/main_window_surface.py` declares the words.
+
+| where | the words |
+| --- | --- |
+| the box title | Unlock the fleet first |
+| the box and the Console line | The saved fleet is sealed. A bot made now could not be saved, so no bot is made. Unlock the fleet first: Settings, User tab, Unlock the fleet now. |
+
+The last sentence takes the button name from
+`src/gui/main_tabs/settings_dialog_surface.py, FLEET_LOCK_UNLOCK_BUTTON_TEXT`, so
+the route and the button cannot disagree. The API log records one
+`BOT_CREATE_REFUSED` line.
+
+### What was measured
+
+Driven with the home redirected, against a sealed fleet of two bots, through the
+files before this section and the files after it. The wizard, the pre-flight
+check and the venue connect were stand-ins, and every other part was the real
+one. No socket left the machine.
+
+| the press | before | after |
+| --- | --- | --- |
+| + New Bot, Qt build | the wizard built, 1 bot made and not saved, and its Start reached the venue connect | the box and the line; no wizard, no bot, the file unchanged |
+| + New Bot, React build | the same | the same |
+| Adopt, 2 bots and 1 wire | the confirm box, a snapshot file, 2 bots and 1 wire made and not saved | the box and the line; no confirm box, no snapshot, no bot, no wire |
+
+With no password set, and after an unlock, all three presses made the same bots
+through both sets of files, on both builds, and saved them. The control: one
+target balance moved from 200 to 201, and the comparison named the bot that
+differed.
+
+### An unlock that opens the key and not the fleet
+
+`src/gui/main_window.py, in unlock_fleet` now answers False when the password
+opens the key file and the saved fleet does not open with that key. That happens
+when the two files come from two different seals, or the fleet file is damaged.
+The window stays held, no key is held, and the Console says:
+
+```
+That password opened the key file, but the saved fleet did not open with that key. The fleet stays sealed and no bot is loaded.
+```
+
+Measured both ways on a key file from another seal. Before, the unlock answered
+True, the window let go of the lock, the Console said the fleet was open with 0
+bots, and the fleet start ran, while a save still left the file unchanged. After,
+the unlock answered False, the window stayed held, and the fleet start did not
+run.
+
+### Where an earlier sentence now reads differently
+
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
+
 Back to [the subsystem index](README.md).

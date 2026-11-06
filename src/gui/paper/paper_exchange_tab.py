@@ -16,10 +16,13 @@ import logging
 from ...core.privacy_mask_registry import get_privacy_mask_registry
 from .. import design_system as ds
 from ..main_tabs.exchange_tab_surface import (
+    ADD_BOT_TOOLTIP,
     COMMAND_BUTTONS,
+    COMMAND_TOOLTIPS,
     DANGER_COMMAND_LABEL,
     EXTRACTOR_TABLE_STRETCH,
     FLEET_COMMANDS,
+    PRIVACY_TOOLTIP,
     SCRUM_TABLE_STRETCH,
     shift_held_after_key,
 )
@@ -39,6 +42,7 @@ try:
 
     from .paper_bot_status_table import PaperBotStatusTable
     from .paper_extractor_bot_table import PaperExtractorBotTable
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -78,9 +82,7 @@ if _HAS_QT:
             self._exchange_name = exchange_name
             header = QHBoxLayout()
             self._privacy_mode_btn = QPushButton("Privacy Mode: OFF")
-            self._privacy_mode_btn.setToolTip(
-                "Masks every registered field at once, for screen sharing. Each field's own dot still works when this is OFF."
-            )
+            set_description(self._privacy_mode_btn, PRIVACY_TOOLTIP)
             self._privacy_mode_btn.setFocusPolicy(Qt.NoFocus)
             self._privacy_mode_btn.clicked.connect(self._on_global_privacy_clicked)
             self._refresh_privacy_mode_btn_style()
@@ -88,6 +90,7 @@ if _HAS_QT:
             # Plain space where Live draws the news line, which is not forked.
             header.addStretch()
             self._add_bot_btn = QPushButton("+ New Bot")
+            set_description(self._add_bot_btn, ADD_BOT_TOOLTIP)
             self._add_bot_btn.setProperty("accent", True)
             if on_new_bot:
                 self._add_bot_btn.clicked.connect(lambda: on_new_bot(exchange_id))
@@ -175,6 +178,7 @@ if _HAS_QT:
             cmd_bar = QHBoxLayout()
             for label, cmd in COMMAND_BUTTONS:
                 btn = QPushButton(label)
+                set_description(btn, COMMAND_TOOLTIPS[cmd])
                 if label == DANGER_COMMAND_LABEL:
                     btn.setProperty("danger", True)
                 btn.clicked.connect(lambda _checked, c=cmd: self._cmd(c))

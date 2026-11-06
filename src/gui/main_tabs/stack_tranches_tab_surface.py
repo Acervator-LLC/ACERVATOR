@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .. import design_system as ds
+from ..descriptions import STACK_TRANCHES_TAB_DESCRIPTIONS
 
 METHOD = "stack_tranches_tab.state"
 
@@ -25,6 +26,7 @@ CONTENT_SPACING_PX = 8
 CONTENT_MARGINS_SET = False
 
 TRANCHES_ATTRIBUTE = "_stack_tranches"
+SHADOW_ATTRIBUTE = "_shadow_tranches"
 CREATED_ATTRIBUTE = "_stack_created"
 DISCARDED_ATTRIBUTE = "_stack_discarded"
 RESET_TS_ATTRIBUTE = "_stack_counters_reset_ts"
@@ -58,6 +60,16 @@ OLDEST_AGE_ROW_LABEL = "Oldest pending age:"
 OPENED_ROW_LABEL = "Lifetime tranches opened:"
 FILL_RATIO_ROW_LABEL = "Fill ratio (filled/opened):"
 DISCARDED_ROW_LABEL = "Lifetime tranches discarded (removed, not filled):"
+ALIGNMENT_ROW_LABEL = "Standing size vs the events that produced it:"
+SHADOW_ROW_LABEL = "Shadow Tranches:"
+
+EVENT_ID_KEY = "opposing_event_id"
+EVENT_UNITS_KEY = "opposing_event_units"
+
+ALIGNMENT_FORMAT = "{standing:,.6f} standing / {produced:,.6f} produced"
+ALIGNMENT_NO_EVENT_TEXT = "no tranche names an opposing event"
+ALIGNMENT_OVER_SUFFIX = "  (over by {over:,.6f})"
+ALIGNMENT_UNNAMED_SUFFIX = "  (+{unnamed} naming no event)"
 
 COUNT_FORMAT = "{count}"
 PENDING_SIZE_FORMAT = "{size_total:,.6f} base units"
@@ -86,25 +98,11 @@ RATIO_GREEN = ds.SUCCESS
 
 CLEAR_BUTTON_COUNTED_FORMAT = "Clear {droppable} Stack Tranche(s)"
 CLEAR_BUTTON_PLAIN_TEXT = "Clear Stack Tranches"
-CLEAR_BUTTON_TOOLTIP = (
-    "Discard this bot's standing stack tranches.\n\n"
-    "Places NO order and cancels NO order. Holdings, cost "
-    "basis and target balance are untouched. A tranche "
-    "holding a resting exchange order is KEPT - removing "
-    "it would leave that order on the book with nothing "
-    "tracking it."
-)
+CLEAR_BUTTON_TOOLTIP = STACK_TRANCHES_TAB_DESCRIPTIONS["stack_clear_btn"]
 
 COUNTERS_BUTTON_COUNTED_FORMAT = "Clear Lifetime Counters ({created} opened)"
 COUNTERS_BUTTON_PLAIN_TEXT = "Clear Lifetime Counters"
-COUNTERS_BUTTON_TOOLTIP = (
-    "Set this bot's two stack lifetime counters to "
-    "zero.\n\n"
-    "Places NO order and removes NO tranche. Standing stack "
-    "tranches, holdings, cost basis and target balance are "
-    "all untouched - this clears the record of what "
-    "happened, not what the bot holds."
-)
+COUNTERS_BUTTON_TOOLTIP = STACK_TRANCHES_TAB_DESCRIPTIONS["stack_counters_btn"]
 
 DANGER_BUTTON_STYLE = (
     f"QPushButton {{ background: {ds.SETTINGS_DANGER_SURFACE}; "
@@ -147,6 +145,11 @@ PRICE_REFUSED_FORMAT = "{dash:>11}"
 SIZE_FORMAT = "{value:>10.6f}"
 SIZE_REFUSED_FORMAT = "{dash:>10}"
 FILL_FORMAT = "${value:.8f}"
+
+SHADOW_SUMMARY_FORMAT = "{count} holding {units:,.6f} base units"
+SHADOW_INDEX_FORMAT = "S{number}"
+SHADOW_MODE = "SHADOW"
+SHADOW_STATUS = "holding"
 
 MODE_VISIBLE = "VISIBLE"
 MODE_INVISIBLE = "INVISIBLE"
@@ -338,6 +341,44 @@ def as_finite_float(value) -> Optional[float]:
     from ...trading.bot_container import as_finite_float as admitted
 
     return admitted(value)
+
+
+def compose_event_alignment_row(tranches: list) -> tuple:
+    """``(text, style)`` for the alignment row: the standing size against what
+    the events that produced it acquired, red while the first exceeds the
+    second.
+
+    A tranche naming no event is counted in the suffix and never added to
+    either figure, and the style is RATIO_NO_STYLE while the two agree.
+    """
+    produced: dict = {}
+    standing = 0.0
+    unnamed = 0
+    for record in list(tranches or []):
+        if not isinstance(record, dict):
+            unnamed += 1
+            continue
+        size = as_finite_float(record.get(SIZE_KEY, 0))
+        event_id = str(record.get(EVENT_ID_KEY, "") or "")
+        event_units = as_finite_float(record.get(EVENT_UNITS_KEY))
+        if size is None or not event_id or event_units is None:
+            unnamed += 1
+            continue
+        standing += size
+        produced[event_id] = event_units
+    if not produced:
+        text = ALIGNMENT_NO_EVENT_TEXT
+        if unnamed:
+            text += ALIGNMENT_UNNAMED_SUFFIX.format(unnamed=unnamed)
+        return (text, RATIO_NO_STYLE)
+    total_produced = sum(produced.values())
+    text = ALIGNMENT_FORMAT.format(standing=standing, produced=total_produced)
+    if unnamed:
+        text += ALIGNMENT_UNNAMED_SUFFIX.format(unnamed=unnamed)
+    if standing - total_produced > 1e-9:
+        text += ALIGNMENT_OVER_SUFFIX.format(over=standing - total_produced)
+        return (text, RATIO_STYLE_FORMAT.format(colour=RATIO_RED))
+    return (text, RATIO_NO_STYLE)
 
 
 def lifetime_counter(bot, field: str) -> Optional[int]:
@@ -636,6 +677,9 @@ class StackTranchesTabModel:
             )
         self._add_row(PENDING_SIZE_ROW_LABEL, size_text, PENDING_SIZE_STYLE)
 
+        _alignment_text, _alignment_style = compose_event_alignment_row(tranches)
+        self._add_row(ALIGNMENT_ROW_LABEL, _alignment_text, _alignment_style)
+
         ages = []
         for row in pending:
             opened = as_finite_float(row.get(OPENED_TS_KEY))
@@ -661,6 +705,9 @@ class StackTranchesTabModel:
                 DISCARDED_ROW_LABEL,
                 counter_text(self.state.discarded_lifetime),
             )
+        shadow_text, shadow_lines = compose_shadow_rows(self.bot, now_ts)
+        if shadow_text:
+            self._add_row(SHADOW_ROW_LABEL, shadow_text)
 
         self._record(STEP_BUTTONS)
         self.state.droppable = len(
@@ -686,17 +733,22 @@ class StackTranchesTabModel:
         )
         self.state.counters_button_enabled = counters_stand
 
-        if not tranches:
+        if not tranches and not shadow_lines:
             self._record(STEP_EMPTY)
             self.state.empty_shown = True
             return self
 
         self._record(STEP_DETAIL)
         self.state.detail_shown = True
-        self.state.detail_title = DETAIL_GROUP_TITLE_FORMAT.format(count=len(tranches))
+        self.state.detail_title = DETAIL_GROUP_TITLE_FORMAT.format(
+            count=len(tranches) + len(shadow_lines)
+        )
         for row in tranches:
             self.state.detail_rows.append(self._detail_line(row, now_ts))
             self.state.detail_styles.append(self._detail_style(row))
+        for line in shadow_lines:
+            self.state.detail_rows.append(line)
+            self.state.detail_styles.append(ROW_BASE_STYLE + ROW_PLAIN_STYLE)
         return self
 
     def _add_row(self, label: str, value: str, style: str = RATIO_NO_STYLE) -> None:
@@ -988,13 +1040,60 @@ def pane_model() -> StackTranchesTabModel:
     return PANE_MODEL
 
 
+def compose_shadow_rows(bot: Any, now_ts: float) -> tuple:
+    """The ``SHADOW_ROW_LABEL`` text and one ``ROW_FORMAT`` line per row of ``bot``.
+
+    A line's price is the row's sale floor and its fill is what the row paid. ``""``
+    and no lines answer a bot with no row; the Qt tab and the React page draw this.
+    """
+    from ...trading.bot_container import as_finite_float as admitted
+    from ...trading.otd_math import DistanceSettingUnreadable, opposing_sale_price
+
+    rows = list(getattr(bot, SHADOW_ATTRIBUTE, None) or [])
+    if not rows:
+        return "", []
+    try:
+        otd_pct = float(bot.opposing_trade_distance_pct())
+    except (AttributeError, DistanceSettingUnreadable):
+        otd_pct = None
+    lines = []
+    total = 0.0
+    for number, row in enumerate(rows, start=1):
+        units = admitted(row.get("units", 0)) or 0.0
+        paid = admitted(row.get("price", 0)) or 0.0
+        created = admitted(row.get("created_ts"))
+        total += units
+        lines.append(
+            ROW_FORMAT.format(
+                index=SHADOW_INDEX_FORMAT.format(number=number),
+                price=(
+                    PRICE_REFUSED_FORMAT.format(dash=NO_VALUE)
+                    if otd_pct is None
+                    else PRICE_FORMAT.format(value=opposing_sale_price(paid, otd_pct))
+                ),
+                size=SIZE_FORMAT.format(value=units),
+                mode=SHADOW_MODE,
+                status=SHADOW_STATUS,
+                fill=FILL_FORMAT.format(value=paid),
+                age=(
+                    format_age(now_ts - created)
+                    if created is not None and created > 0
+                    else NO_VALUE
+                ),
+            )
+        )
+    return SHADOW_SUMMARY_FORMAT.format(count=len(rows), units=total), lines
+
+
 def payload_labels() -> dict:
     """The summary row labels, keyed by the row they name."""
     return {
+        "shadow": SHADOW_ROW_LABEL,
         "pending": PENDING_ROW_LABEL,
         "filled": FILLED_ROW_LABEL,
         "cancelled": CANCELLED_ROW_LABEL,
         "pending_size": PENDING_SIZE_ROW_LABEL,
+        "alignment": ALIGNMENT_ROW_LABEL,
         "oldest_age": OLDEST_AGE_ROW_LABEL,
         "opened": OPENED_ROW_LABEL,
         "fill_ratio": FILL_RATIO_ROW_LABEL,

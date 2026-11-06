@@ -33,7 +33,6 @@ class StateRestoreMixin:
     _ta_weights: Any
     register: Callable[..., tuple]
 
-    # -- State persistence -----------------------------------------------
     def save_all_state(self) -> None:
         """Write every registered bot's state, the Smart Wire topology and
         the per-bot wire ledgers through the state manager.

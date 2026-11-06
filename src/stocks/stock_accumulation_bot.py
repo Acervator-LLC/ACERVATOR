@@ -155,8 +155,6 @@ class StockAccumulationBot:
         self._max_dd = 0.0
         self._start_time = 0.0
 
-    # ── Market Hours (Equity-Specific) ─────────────────────
-
     def _check_market_hours(self) -> bool:
         """Check if trading is allowed right now."""
         if self._trading_halted:
@@ -168,8 +166,6 @@ class StockAccumulationBot:
         # Pre-market: 4:00-9:30 ET (if config.allow_premarket)
         # After-hours: 16:00-20:00 ET (if config.allow_afterhours)
         return self._market_open
-
-    # ── PDT Protection (Equity-Specific) ───────────────────
 
     def _check_pdt(self) -> bool:
         """Check if we're approaching the PDT limit."""
@@ -189,8 +185,6 @@ class StockAccumulationBot:
     def _record_day_trade(self):
         """Record a day trade (buy + sell same day)."""
         self._day_trades.append(time.time())
-
-    # ── Settlement Tracking (Equity-Specific) ──────────────
 
     def _track_settlement(self, trade_usd: float, side: str):
         """Track T+2 settlement."""
@@ -217,8 +211,6 @@ class StockAccumulationBot:
         return sum(
             s["amount"] for s in self._pending_settlement if s["settles_at"] > now
         )
-
-    # ── Core Tick (Transposed from Crypto) ─────────────────
 
     async def tick(self, candles: list = None):
         """
@@ -369,8 +361,6 @@ class StockAccumulationBot:
                     self._boost_fold_q = 0
                     self._track_settlement(buy_usd, "buy")
 
-    # ── Smart Wire Integration ─────────────────────────────
-
     def set_smart_wire(self, mgr: SmartWireManager):
         self._smart_wire = mgr
 
@@ -378,8 +368,6 @@ class StockAccumulationBot:
         """Report profit to Smart Wire for cross-compounding."""
         if self._smart_wire:
             self._smart_wire.record_profit(self.bot_id, amount)
-
-    # ── Lifecycle ──────────────────────────────────────────
 
     async def start(self):
         self.state = BotState.RUNNING

@@ -51,6 +51,13 @@ SPLIT_STRETCH_SIGNALS = 2
 
 PAUSE_BUTTON_TEXT = "⏸  Pause"
 CLEAR_BUTTON_TEXT = "Clear"
+PAUSE_BUTTON_TOOLTIP = (
+    "Freezes both Console panes, or resumes them. Log lines wait in a capped "
+    "buffer until you resume."
+)
+CLEAR_BUTTON_TOOLTIP = (
+    "Empties the Console's log pane. The log files on disk are not touched."
+)
 PAUSE_INDICATOR_TEXT = ""
 SIGNAL_HEADER_TEXT = "  SIGNALS — name · expected · actual"
 #: A console line paints in these channels where its markup names none.
@@ -167,6 +174,7 @@ SPLITTER = {
 
 PAUSE_BUTTON = {
     "text": PAUSE_BUTTON_TEXT,
+    "tooltip": PAUSE_BUTTON_TOOLTIP,
     "checkable": True,
     "checked": False,
     "background": ds.MAIN_BUTTON_SURFACE,
@@ -193,6 +201,7 @@ PAUSE_INDICATOR = {
 
 CLEAR_BUTTON = {
     "text": CLEAR_BUTTON_TEXT,
+    "tooltip": CLEAR_BUTTON_TOOLTIP,
     "checkable": False,
     "background": ds.MAIN_BUTTON_SURFACE,
     "color": ds.TEXT_CONSOLE,

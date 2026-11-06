@@ -41,6 +41,7 @@ from ...core.safe_url import NO_ADDRESS_REASON, openable_url
 from ...exchange.crypto_assets import AssetManager
 from ...exchange.exchange_chart_urls import chart_url
 from ...trading.ata_asset_maps import organisation_page
+from ...trading.container.config import DETONATION_CONFIDENCE_MIN_DEFAULT
 from ...trading.target_bands import (
     ammo_target,
     ammo_units,
@@ -48,6 +49,7 @@ from ...trading.target_bands import (
     manual_fire_dust_band,
 )
 from .. import design_system as ds
+from ..descriptions import fitted
 from .table_cells_surface import (
     NO_TARGET_TEXT,
     POSITION_BLANK_TEXT,
@@ -81,50 +83,14 @@ COLUMN_LABELS = (
 COLUMN_COUNT = len(COLUMN_LABELS)
 
 COLUMN_TOOLTIPS = {
-    0: (
-        "The target asset this bot accumulates, drawn as that asset's own\n"
-        "official logo. An asset with no logo kept yet shows its ticker.\n"
-        "Click a mark to open that asset's own organisation in your browser.\n"
-        "A mark for an asset with no web address is not a link and says so.\n"
-        "The bot's own id is no longer shown here: it stays in the record\n"
-        "and in the logs, and the Detail button opens the bot that holds it."
-    ),
-    1: (
-        "Trading pair (Target Asset / Base Currency), coloured by current state.\n"
-        "Green = RUNNING · Amber = PAUSED · Gray = IDLE/STOPPED\n"
-        "Red = ERROR · Orange = COOLDOWN · Cyan = STARTING\n"
-        "Hover a cell to read the mode and the state in full."
-    ),
-    2: (
-        "Current Position Value — what this bot's holdings are worth now,\n"
-        "priced from the exchange (holdings × exchange price × quote rate).\n"
-        "Blank whenever no fresh exchange price exists: the cell never shows\n"
-        "a last-known figure, a computed stand-in or a ledger value.\n"
-        "Hover a blank cell to read which of those is missing."
-    ),
+    0: "The asset this bot accumulates. A mark opens its organisation.",
+    1: "The trading pair, coloured by this bot's state.",
+    2: "What the holdings are worth now, priced from the exchange.",
     3: "Total number of executed buy and sell trades",
-    4: "Target Balance — the operator-set balance this bot trades\n"
-    "relative to. Position can never exceed Target × (1 + Max Target Growth %).",
-    5: (
-        "Target Balance denominated in BTC (target USD ÷ BTC/USD spot).\n"
-        "Suffix Δ = 24h % change of <target>/BTC minus 24h % of "
-        "<target>/USD.\n"
-        "Positive Δ (green) = BTC-quoted pair cheaper in USD terms than USD-quoted.\n"
-        "Blank when pair unlisted on this exchange or target is BTC itself."
-    ),
-    6: (
-        "Target Balance denominated in ETH (target USD ÷ ETH/USD spot).\n"
-        "Suffix Δ = 24h % change of <target>/ETH minus 24h % of "
-        "<target>/USD.\n"
-        "Positive Δ (green) = ETH-quoted pair cheaper in USD terms than USD-quoted.\n"
-        "Blank when pair unlisted on this exchange or target is ETH itself."
-    ),
-    7: (
-        "Ammo — distance of current position value from Target.\n"
-        "Green = surplus above target (Scrum territory, next action = SELL).\n"
-        "Red = deficit below target (Fold territory, next action = BUY).\n"
-        "Neutral grey = within dust band around target (no action pending)."
-    ),
+    4: "The balance this bot trades against, and its hard cap.",
+    5: "Target balance in BTC. Blank when the pair is unlisted.",
+    6: "Target balance in ETH. Blank when the pair is unlisted.",
+    7: "The distance from Target. Green sells, red buys.",
     8: "Manual Fire — force immediate scrum/fold evaluation on next tick",
     9: "Click for full bot detail and status explanation",
 }
@@ -180,9 +146,6 @@ REVEALED_GLYPH = "●"
 MASKED_GLYPH = "○"
 STATE_MASKED = "MASKED"
 STATE_REVEALED = "REVEALED"
-HEADER_STATE_TIP_FORMAT = (
-    "\n\nPrivacy: {state} (field {field_id}).\n" "Click the dot under this label."
-)
 HEADER_DOT_TIP_FORMAT = "{field_id}: {state}. Click to {action}."
 HEADER_DOT_ACTION_MASK = "mask"
 HEADER_DOT_ACTION_REVEAL = "reveal"
@@ -244,8 +207,8 @@ LOGO_SIZE_PX = 32
 ROW_LOGO_MARGIN_PX = 2
 ROW_HEIGHT_PX = LOGO_SIZE_PX + 2 * ROW_LOGO_MARGIN_PX
 
-LOGO_TIP_FORMAT = "{asset} — the target asset this bot accumulates"
-NO_LOGO_TIP_FORMAT = "{asset} — no logo is kept for this asset yet"
+LOGO_TIP_FORMAT = "{asset}, the asset this bot accumulates."
+NO_LOGO_TIP_FORMAT = "{asset}. No logo is kept for it yet."
 LOGO_DATA_FORMAT = "data:image/{extension};base64,{body}"
 LOGO_READ_FAILED_LOG = "Logo read failed for %r: %s: %s"
 LOGO_READ_ERRORS = (OSError, ValueError, TypeError)
@@ -255,9 +218,7 @@ LOGO_READ_ERRORS = (OSError, ValueError, TypeError)
 OPENING_SCHEMES: tuple[str, ...] = ("https",)
 
 ORGANISATION_TIP_FORMAT = "Open {host} in default browser: {address}"
-NO_ORGANISATION_TIP_FORMAT = (
-    "no web address is known for {asset}, so this mark is not a link"
-)
+NO_ORGANISATION_TIP_FORMAT = "No web address is known, so this mark opens nothing."
 #: What a mark's tooltip reads when an address was known and refused.
 REFUSED_ORGANISATION_TIP_FORMAT = "{asset} opens nothing: {reason}"
 ORGANISATION_READ_FAILED_LOG = "Organisation address read failed for %r: %s: %s"
@@ -413,92 +374,69 @@ FIRE_GLOWS = {
 }
 
 FIRE_TIP_SCRUM_SOLID = (
-    "ARMED for SCRUM. Holdings above target and all gates clear. "
-    "Clicking fires a market sell back to target."
+    "Armed: every scrum gate is clear. Pressing sells back to target at market."
 )
 FIRE_TIP_SCRUM_OUTLINE = (
-    "Manual SCRUM override. Auto-fire is blocked. Clicking fires a "
-    "market sell back to target and bypasses the auto gates."
+    "Auto-scrum is held. Pressing sells back to target at market anyway."
 )
 FIRE_TIP_FOLD_CEILING = (
-    "Fold is hard-stopped: the position ceiling is reached. "
-    "Manual Fire still rebalances, bypassing the ceiling."
+    "Fold stopped at the position ceiling. Pressing still rebalances past it."
 )
 FIRE_TIP_FOLD_SOLID = (
-    "ARMED for FOLD. Holdings below target and all gates clear. "
-    "Clicking fires a market buy back to target."
+    "Armed: every fold gate is clear. Pressing buys back to target at market."
 )
 FIRE_TIP_FOLD_OUTLINE = (
-    "Manual FOLD override. Auto-fire is blocked. Clicking fires a "
-    "market buy back to target and bypasses the auto gates."
+    "Auto-fold is held. Pressing buys back to target at market anyway."
 )
 FIRE_TIP_PHASE_FIRE = (
-    "Organic FIRE phase — bot at band but "
-    "holdings within dust band of target. "
-    "Clicking has no effect."
+    "At the band, but within the dust band of target. Pressing does nothing."
 )
 FIRE_TIP_PHASE_TRACK = (
-    "TRACKING — bot detected band approach. "
-    "Fire is available but bot is within dust "
-    "band; rebalance would be a no-op."
+    "Tracking toward the band, within the dust band of target. Pressing does "
+    "nothing."
 )
-FIRE_TIP_PHASE_SEARCH = (
-    "Bot within dust band of target. " "Manual Fire would be a no-op."
-)
+FIRE_TIP_PHASE_SEARCH = "Within the dust band of target. Pressing does nothing."
 #: The one headline every Fire refusal opens with, on both build variants.
 MANUAL_FIRE_HEADLINE = "MANUAL FIRE WILL NOT ACT"
 FIRE_TIP_MANUAL_NOOP_FORMAT = (
-    MANUAL_FIRE_HEADLINE + " — |delta| ${magnitude:,.4f} is inside Manual "
-    "Fire's own dust band of ${dust_band:,.2f}. Pressing logs a no-op and "
-    "moves no figure on this row. The autonomous engine still works this "
-    "range, which starts at ${tick_band:,.2f}, so the next tick may act "
-    "where the button will not."
+    MANUAL_FIRE_HEADLINE + ": ${magnitude:,.4f} is inside its ${dust_band:,.2f} "
+    "band. The engine acts from ${tick_band:,.2f}."
 )
 FIRE_TIP_MANUAL_DISPUTED_FORMAT = (
-    MANUAL_FIRE_HEADLINE + " — the exchange reports {venue_units:,.6f} units "
-    "(${venue_usd:,.2f}) and this bot counts {bot_units:,.6f} "
-    "(${bot_usd:,.2f}). The two stand ${gap:,.2f} apart, past Manual Fire's "
-    "band of ${dust_band:,.2f}. The press reads the exchange before it sizes "
-    "a trade, so it will not act on a position the exchange disputes. The "
-    "next audit brings the two counts together."
+    MANUAL_FIRE_HEADLINE + ": the exchange holds {venue_units:,.6f} units, this "
+    "bot {bot_units:,.6f}. The next audit settles it."
 )
 FIRE_TIP_NOT_SCRUMMING = "Manual Fire is scrumming-only."
 FIRE_TIP_INACTIVE_FORMAT = "Bot is {state}; start or resume to enable Fire."
 DETAIL_TIP = "View full bot status, configuration, and error details"
 
-BLOCKERS_TIP_FORMAT = "\nBlocked by: {blockers}"
+BLOCKERS_TIP_FORMAT = "\nHeld by: {blockers}."
 BLOCKERS_SEPARATOR = ", "
+#: How many gate labels the held-by line names before it counts the rest.
+BLOCKERS_SHOWN = 3
+BLOCKERS_MORE_FORMAT = " +{count}"
+#: The label a blocker no gate prefix names reads as.
+OTHER_BLOCKER_LABEL = "other"
 NO_BLOCKERS_TEXT = ""
 
 CEILING_HARD_STOP_RATIO = 1.0
 CEILING_APPROACH_RATIO = 0.5
 PERCENT_SCALE = 100
 
-CEILING_REACHED_FORMAT = (
-    "\n\n⚠ CEILING REACHED "
-    "({pct:.1f}% of ${ceiling_usd:.2f}) — "
-    "fold hard-stopped, scrum only."
-)
+CEILING_REACHED_FORMAT = "\nCeiling reached ({pct:.0f}%): folds stopped."
 CEILING_APPROACH_FORMAT = (
-    "\n\n⚠ Approaching ceiling "
-    "({pct:.1f}% of ${ceiling_usd:.2f}) — "
-    "fold size tapered to {taper_pct:.0f}%."
+    "\nNear ceiling ({pct:.0f}%): folds tapered to {taper_pct:.0f}%."
 )
-CEILING_NORMAL_FORMAT = (
-    "\n\nCeiling: {pct:.1f}% of " "${ceiling_usd:.2f} " "(fold size: {taper_pct:.0f}%)."
-)
+CEILING_NORMAL_FORMAT = "\nCeiling {pct:.0f}% used; fold size {taper_pct:.0f}%."
 DETONATION_FORMAT = (
-    "\nDetonation armed: monitoring "
-    "{timeframe} for BULLISH "
-    "auto-harvest at confidence "
-    "{confidence:.2f} or above."
+    "\nDetonation armed: {timeframe}, confidence {confidence:.2f} or above."
 )
 
 FOLD_TAPER_FIELD = "fold_size_taper"
 FOLD_TAPER_FIELD_RETIRED = "fold_rate_taper"
 DEFAULT_FOLD_TAPER = 1.0
 DEFAULT_DETONATION_TIMEFRAME = "1d"
-DEFAULT_DETONATION_CONFIDENCE = 0.75
+DEFAULT_DETONATION_CONFIDENCE = DETONATION_CONFIDENCE_MIN_DEFAULT
 DEFAULT_QUOTE_TO_USD = 1.0
 NO_TARGET_VALUE = 0.0
 NO_PRICE = 0.0
@@ -512,6 +450,7 @@ MANUAL_FIRE_REFUSES = "refuses"
 MANUAL_FIRE_PARKED = "parked"
 VENUE_UNITS_FIELD = "audited_venue_units"
 VENUE_REFUSAL_FIELD = "venue_units_refusal"
+LOT_UNITS_FIELD = "lot_book_units"
 SYMBOL_SEPARATOR = "/"
 QUOTE_BTC = "BTC"
 QUOTE_ETH = "ETH"
@@ -643,13 +582,13 @@ def header_state(masked: bool) -> str:
     return STATE_MASKED if masked else STATE_REVEALED
 
 
-def header_tooltip(column: int, field_id: str, masked: bool) -> str:
-    """One maskable column header's tooltip, its privacy state appended."""
+def header_tooltip(column: int, direction: str) -> str:
+    """One column header's tooltip: its ``COLUMN_TOOLTIPS`` sentence and its sort line.
+
+    The dot under the label carries the privacy state, in ``header_dot_tooltip``.
+    """
     tip = COLUMN_TOOLTIPS.get(column, EMPTY_TEXT)
-    state_tip = HEADER_STATE_TIP_FORMAT.format(
-        state=header_state(masked), field_id=field_id
-    )
-    return (tip + state_tip).strip()
+    return (tip + sort_tooltip(column, direction)).strip()
 
 
 def header_dot_tooltip(field_id: str, masked: bool) -> str:
@@ -677,7 +616,7 @@ def header_view(
     direction = sort_direction(column, sort_column, descending)
     found = {
         "text": label,
-        "tooltip": COLUMN_TOOLTIPS.get(column, EMPTY_TEXT),
+        "tooltip": header_tooltip(column, direction),
         "field_id": EMPTY_TEXT,
         "masked": False,
         "dot_text": EMPTY_TEXT,
@@ -688,12 +627,10 @@ def header_view(
         "sort_mark": sort_mark(direction),
     }
     if field_id and masked is not None:
-        found["tooltip"] = header_tooltip(column, field_id, masked)
         found["field_id"] = field_id
         found["masked"] = bool(masked)
         found["dot_text"] = header_glyph(masked)
         found["dot_tooltip"] = header_dot_tooltip(field_id, masked)
-    found["tooltip"] = (found["tooltip"] + sort_tooltip(column, direction)).strip()
     return found
 
 
@@ -932,10 +869,54 @@ def fold_taper_of(status: Any) -> float:
 
 
 def blockers_text(blockers: list) -> str:
-    """The line naming the gates that hold automatic fire back."""
-    if not blockers:
+    """The line naming, by gate label, the gates that hold automatic fire back.
+
+    ``gate_for_blocker`` names each refusal phrase; the first ``BLOCKERS_SHOWN``
+    labels print and ``BLOCKERS_MORE_FORMAT`` counts the rest.
+    """
+    from ...trading.gate_vocabulary import gate_for_blocker
+
+    labels: list = []
+    for one in blockers or []:
+        named = gate_for_blocker(one) or OTHER_BLOCKER_LABEL
+        if named not in labels:
+            labels.append(named)
+    if not labels:
         return NO_BLOCKERS_TEXT
-    return BLOCKERS_TIP_FORMAT.format(blockers=BLOCKERS_SEPARATOR.join(blockers))
+    shown = BLOCKERS_SEPARATOR.join(labels[:BLOCKERS_SHOWN])
+    if len(labels) > BLOCKERS_SHOWN:
+        shown += BLOCKERS_MORE_FORMAT.format(count=len(labels) - BLOCKERS_SHOWN)
+    return BLOCKERS_TIP_FORMAT.format(blockers=shown)
+
+
+def risk_lines(
+    ceiling_enabled: Any,
+    ceiling_ratio: Any,
+    fold_taper: float,
+    fold_blocked: bool,
+    detonation_enabled: Any,
+    detonation_tf: Any,
+    detonation_bar: Any = DEFAULT_DETONATION_CONFIDENCE,
+) -> list:
+    """The ceiling line and the detonation line a Fire tooltip may add, in that order."""
+    lines: list = []
+    if ceiling_enabled and ceiling_ratio is not None:
+        pct = ceiling_ratio * PERCENT_SCALE
+        taper_pct = fold_taper * PERCENT_SCALE
+        if fold_blocked:
+            lines.append(CEILING_REACHED_FORMAT.format(pct=pct))
+        elif ceiling_ratio >= CEILING_APPROACH_RATIO:
+            lines.append(CEILING_APPROACH_FORMAT.format(pct=pct, taper_pct=taper_pct))
+        else:
+            lines.append(CEILING_NORMAL_FORMAT.format(pct=pct, taper_pct=taper_pct))
+    if detonation_enabled:
+        lines.append(
+            DETONATION_FORMAT.format(
+                timeframe=str(detonation_tf).upper(),
+                confidence=float(detonation_bar),
+            )
+        )
+    return lines
 
 
 def target_value(status: Any) -> float:
@@ -965,6 +946,11 @@ def holdings_of(status: Any) -> float:
 def venue_units_of(status: Any) -> Any:
     """The ``VENUE_UNITS_FIELD`` reading this bot reports, uncoerced for ``ammo_units``."""
     return status.get(VENUE_UNITS_FIELD)
+
+
+def lot_units_of(status: Any) -> Any:
+    """The ``LOT_UNITS_FIELD`` lot total this bot reports, uncoerced for ``ammo_units_note``."""
+    return status.get(LOT_UNITS_FIELD)
 
 
 def venue_refusal_of(status: Any) -> Any:
@@ -1523,6 +1509,7 @@ class BotStatusTableModel:
             price_age_s,
             venue_units_of(status),
             venue_refusal_of(status),
+            lot_units_of(status),
         )
         symbol = status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT
         base_asset = base_asset_of(symbol)
@@ -1606,6 +1593,7 @@ class BotStatusTableModel:
         price_age_s,
         venue_units,
         venue_refusal=None,
+        lot_units=None,
     ) -> dict:
         """The Ammo cell, computed from a fresh price wherever one exists.
 
@@ -1624,6 +1612,7 @@ class BotStatusTableModel:
             price_age_s=price_age_s,
             venue_units=venue_units,
             venue_refusal=venue_refusal,
+            lot_units=lot_units,
         )
 
     def _logo_cell(self, symbol, shown) -> dict:
@@ -1711,7 +1700,6 @@ class BotStatusTableModel:
         armed_action = status.get("armed_action")
         ceiling_enabled = status.get("position_ceiling_enabled", False)
         ceiling_ratio = status.get("ceiling_ratio")
-        ceiling_usd = status.get("position_ceiling_usd")
         fold_taper = fold_taper_of(status)
         detonation_enabled = status.get("detonation_enabled", False)
         detonation_tf = status.get("detonation_timeframe", DEFAULT_DETONATION_TIMEFRAME)
@@ -1723,10 +1711,9 @@ class BotStatusTableModel:
             and ceiling_ratio is not None
             and ceiling_ratio >= CEILING_HARD_STOP_RATIO
         )
-        risk = self.risk_suffix(
+        risk = risk_lines(
             ceiling_enabled,
             ceiling_ratio,
-            ceiling_usd,
             fold_taper,
             fold_blocked,
             detonation_enabled,
@@ -1737,78 +1724,33 @@ class BotStatusTableModel:
         if verdict == MANUAL_FIRE_REFUSES:
             return (
                 FIRE_PATH_MANUAL_NOOP,
-                manual_fire_noop_tooltip(ammo, target_val, dispute) + risk,
+                fitted(manual_fire_noop_tooltip(ammo, target_val, dispute), *risk),
             )
         acts = verdict == MANUAL_FIRE_ACTS
         auto_fire = status.get("auto_fire", {}) or {}
         if armed_action == "scrum" and acts:
             if bool(auto_fire.get("scrum_armed", False)):
-                return FIRE_PATH_SCRUM_SOLID, FIRE_TIP_SCRUM_SOLID + risk
+                return FIRE_PATH_SCRUM_SOLID, fitted(FIRE_TIP_SCRUM_SOLID, *risk)
             blockers = list(auto_fire.get("scrum_blockers", []) or [])
             return (
                 FIRE_PATH_SCRUM_OUTLINE,
-                FIRE_TIP_SCRUM_OUTLINE + blockers_text(blockers) + risk,
+                fitted(FIRE_TIP_SCRUM_OUTLINE, blockers_text(blockers), *risk),
             )
         if armed_action == "fold" and acts:
             blockers = list(auto_fire.get("fold_blockers", []) or [])
             if fold_blocked:
-                return FIRE_PATH_FOLD_CEILING, FIRE_TIP_FOLD_CEILING + risk
+                return FIRE_PATH_FOLD_CEILING, fitted(FIRE_TIP_FOLD_CEILING, *risk)
             if bool(auto_fire.get("fold_armed", False)):
-                return FIRE_PATH_FOLD_SOLID, FIRE_TIP_FOLD_SOLID + risk
+                return FIRE_PATH_FOLD_SOLID, fitted(FIRE_TIP_FOLD_SOLID, *risk)
             return (
                 FIRE_PATH_FOLD_OUTLINE,
-                FIRE_TIP_FOLD_OUTLINE + blockers_text(blockers) + risk,
+                fitted(FIRE_TIP_FOLD_OUTLINE, blockers_text(blockers), *risk),
             )
         if scrum_phase == "fire":
-            return FIRE_PATH_PHASE_FIRE, FIRE_TIP_PHASE_FIRE + risk
+            return FIRE_PATH_PHASE_FIRE, fitted(FIRE_TIP_PHASE_FIRE, *risk)
         if scrum_phase == "track":
             return FIRE_PATH_PHASE_TRACK, FIRE_TIP_PHASE_TRACK
         return FIRE_PATH_PHASE_SEARCH, FIRE_TIP_PHASE_SEARCH
-
-    def risk_suffix(
-        self,
-        ceiling_enabled,
-        ceiling_ratio,
-        ceiling_usd,
-        fold_taper,
-        fold_blocked,
-        detonation_enabled,
-        detonation_tf,
-        detonation_bar=DEFAULT_DETONATION_CONFIDENCE,
-    ) -> str:
-        """The lines the Fire tooltip carries about this bot's risk controls.
-
-        ``detonation_bar`` is the confidence a detonation must reach, so the
-        tooltip names the bar beside ``detonation_tf``.
-        """
-        parts = []
-        if ceiling_enabled and ceiling_ratio is not None:
-            pct = ceiling_ratio * PERCENT_SCALE
-            taper_pct = fold_taper * PERCENT_SCALE
-            if fold_blocked:
-                parts.append(
-                    CEILING_REACHED_FORMAT.format(pct=pct, ceiling_usd=ceiling_usd)
-                )
-            elif ceiling_ratio >= CEILING_APPROACH_RATIO:
-                parts.append(
-                    CEILING_APPROACH_FORMAT.format(
-                        pct=pct, ceiling_usd=ceiling_usd, taper_pct=taper_pct
-                    )
-                )
-            else:
-                parts.append(
-                    CEILING_NORMAL_FORMAT.format(
-                        pct=pct, ceiling_usd=ceiling_usd, taper_pct=taper_pct
-                    )
-                )
-        if detonation_enabled:
-            parts.append(
-                DETONATION_FORMAT.format(
-                    timeframe=detonation_tf.upper(),
-                    confidence=float(detonation_bar),
-                )
-            )
-        return EMPTY_TEXT.join(parts)
 
     def _detail_button(self) -> dict:
         """The Detail button, which is the same on every row."""
@@ -2141,7 +2083,6 @@ def build_view_model(model: BotStatusTableModel) -> dict:
         },
         "fire_inactive_tooltip_format": FIRE_TIP_INACTIVE_FORMAT,
         "fire_manual_noop_tooltip_format": FIRE_TIP_MANUAL_NOOP_FORMAT,
-        "header_state_tip_format": HEADER_STATE_TIP_FORMAT,
         "header_dot_tip_format": HEADER_DOT_TIP_FORMAT,
         "header_dot_action_mask": HEADER_DOT_ACTION_MASK,
         "header_dot_action_reveal": HEADER_DOT_ACTION_REVEAL,

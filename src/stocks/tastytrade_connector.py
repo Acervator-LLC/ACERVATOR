@@ -576,9 +576,11 @@ def futures_sector(asset: Any) -> str:
 
     ``MARKET_SECTOR_SECTORS`` reads the record's own ``market-sector`` first,
     nested under ``future-product`` or written flat, then
-    ``FUTURES_PRODUCT_SECTORS`` reads its ``product_code`` and a contract neither
-    names falls to ``FUTURES_SECTOR``.
+    ``FUTURES_PRODUCT_SECTORS`` reads its ``product_code``, a contract neither
+    names falls to ``FUTURES_SECTOR``, and ``contract_class`` files the answer.
     """
+    from ..trading.ata_spm import contract_class
+
     held = asset if isinstance(asset, dict) else {}
     nested = held.get("future-product")
     sources = (nested if isinstance(nested, dict) else {}, held)
@@ -586,8 +588,10 @@ def futures_sector(asset: Any) -> str:
         word = str(source.get("market-sector") or "").strip().lower()
         named = MARKET_SECTOR_SECTORS.get(word)
         if named:
-            return named
-    return FUTURES_PRODUCT_SECTORS.get(product_code(held), FUTURES_SECTOR)
+            return contract_class(named)
+    return contract_class(
+        FUTURES_PRODUCT_SECTORS.get(product_code(held), FUTURES_SECTOR)
+    )
 
 
 def asset_sector(asset: Any) -> Optional[str]:

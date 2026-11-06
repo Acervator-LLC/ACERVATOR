@@ -15,12 +15,13 @@ from . import design_system as ds
 # One definition of the texts the Electron table also draws.
 from .main_tabs.table_cells_surface import (
     AGED_PRICE_TIP_FORMAT,
-    MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX,
-    MANUAL_FIRE_NOOP_TIP_FORMAT,
+    EMPTY_POSITION_TIP,
+    PENDING_PRICE_TIP,
     PRICE_STALE_AFTER_S,
     PRICED_POSITION_TIP_FORMAT,
     STALE_TIP_FORMAT,
-    TWO_READS_TIP,
+    TERRITORY_TIPS,
+    ammo_tip,
     ammo_units_note,
     balance_units_note,
     held_figure_text,
@@ -34,7 +35,6 @@ from .main_tabs.table_cells_surface import (
 from ..trading.target_bands import (
     MANUAL_FIRE_REFUSE_PCT,
     ammo_units,
-    manual_fire_dust_band,
     manual_fire_will_noop,
     target_territory,
 )
@@ -190,6 +190,7 @@ def _compose_ammo_cell(
     price_age_s: float | None = None,
     venue_units: float | None = None,
     venue_refusal=None,
+    lot_units: float | None = None,
 ) -> dict:
     """Compute the Ammo cell: distance from target, and its signal.
 
@@ -209,7 +210,7 @@ def _compose_ammo_cell(
         return f"${abs(v):,.4f}"
 
     units, from_venue = ammo_units(holdings, venue_units)
-    units_note = ammo_units_note(units, holdings, from_venue)
+    units_note = ammo_units_note(units, holdings, from_venue, lot_units)
     fresh_ok = units > 0 and cur_price > 0
     fresh_pv = _priced_position(units, cur_price, qrate) if fresh_ok else 0.0
     # Freshness-SELECTED, not max(): recompute whenever the inputs are
@@ -228,10 +229,7 @@ def _compose_ammo_cell(
             "delta": delta,
             "stale": False,
             "position_val": position_val,
-            "tip": (
-                "No position — initial entry pending. "
-                "Ammo = full target (bot must buy in)."
-            ),
+            "tip": ammo_tip(EMPTY_POSITION_TIP, units_note),
         }
 
     if position_val <= 0 and units > 0:
@@ -243,61 +241,41 @@ def _compose_ammo_cell(
             "delta": 0.0,
             "stale": False,
             "position_val": position_val,
-            "tip": (
-                f"Holdings present ({units:.6f}) but price not "
-                f"yet fetched. Ammo will update on first tick."
-            ),
+            "tip": ammo_tip(PENDING_PRICE_TIP, units_note),
         }
 
     delta = position_val - target_val
     territory = target_territory(position_val, target_val)
     if territory == "scrum":
         color = _AMMO_SCRUM
-        tip = "Scrum territory — sell surplus on bullish"
     elif territory == "fold":
         color = _AMMO_FOLD
-        tip = "Fold territory — buy deficit on bearish"
     else:
         color = _AMMO_NEUTRAL
-        tip = "Within dust band — no action pending"
+    tip = TERRITORY_TIPS[territory]
 
-    mf_dust = manual_fire_dust_band(target_val)
     # 0 < abs(delta) is a display test, not the engine's rule.
     manual_fire_noop = 0 < abs(delta) and manual_fire_will_noop(
         position_val, target_val
     )
     text = _mag(delta) if target_val > 0 else "---"
-    old_price = False
     if stale:
         # The cached stats field was used; it never wears a signal colour.
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
         tip = STALE_TIP_FORMAT.format(stats_pv=stats_pv)
-        old_price = True
     elif price_age_s is not None and price_age_s > _PRICE_STALE_AFTER_S:
         # The arithmetic ran; the input price is what aged.
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
         tip = AGED_PRICE_TIP_FORMAT.format(price_age_s=price_age_s)
-        old_price = True
-    tip = f"{tip}{units_note}"
     from_two_reads = two_reads(
         holdings, units, from_venue, cur_price, qrate, price_age_s
     )
     held_note = venue_held_note(venue_refusal)
     if held_note:
         text = venue_held_figure(text, venue_refusal)
-        tip = f"{tip}{held_note}"
-    if from_two_reads:
-        # The drawn figure carries the amount alone; the tooltip says the rest.
-        tip = f"{tip}{TWO_READS_TIP}"
-    # Appended after all three tip writers, so no branch can drop it.
-    if manual_fire_noop:
-        tip = MANUAL_FIRE_NOOP_TIP_FORMAT.format(
-            tip=tip, magnitude=abs(delta), dust_band=mf_dust
-        )
-        if old_price:
-            tip = f"{tip}{MANUAL_FIRE_NOOP_OLD_PRICE_SUFFIX}"
+    tip = ammo_tip(tip, units_note, held_note, manual_fire_noop, from_two_reads)
     return {
         "text": text,
         "color": color,

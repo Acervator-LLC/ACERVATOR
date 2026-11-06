@@ -6288,6 +6288,20 @@ written under no contract and the observer does not read it. Live's trade
 rows carry an empty exchange, because the live fire sites pass none; the
 Simulator's carry the bot's exchange in that field.
 
+**The current reading, 2026-10-29.** Live's trade rows now carry the bot's
+exchange too, because every Live fill is sent in one shape that names it. The
+Simulator's emitter builds that same shape, so its dollar figure arrives as
+`usd`, the name the trade log reads. One scrum of 1.25 units at $100 with a
+$0.75 fee wrote $125.00 to the trade log on the commit before this change, the
+units times the price, and writes $124.25 now. A fold row wrote $123.50 on both.
+
+`src/simulator/sim_bus.py, in RunEmitter.trade_filled` — the one shape, with the
+run's stamp beside it
+
+```python
+        self._send(TRADE_TOPIC, **fill.payload(), **self.stamp(trade.ts_ms))
+```
+
 ### What the bucket holds and how large it grows
 
 After a run the sim bucket holds the four files beside the sim fleet file and
@@ -8194,7 +8208,7 @@ columns and a privacy dot on each header.
 
 Column 2 is now Current Position Value, priced from the exchange, and the state
 colour it used to carry sits on the Bot ID cell. The Trading tab page describes
-both — see [The bot tables](06-trading-tab.md).
+both — see [The bot tables](../06-trading-tab.md#the-bot-tables).
 
 `src/gui/widgets/bot_status_table.py` — `BotStatusTable.SCRUMMING_COLUMNS`
 
@@ -9262,6 +9276,28 @@ The live bot's `stats.realised_pnl` is written by nothing on its scrum and
 fold path, so the walk writes it no more than the live bot does; the realised
 surplus of a completed cycle reaches the row where the live bot books it, in
 the target's growth, the folded sum and the standing surplus.
+
+True today: the live bot's `stats.realised_pnl` is written at its exchange
+walk, from the exchange's own fill history. The snapshot this walk sends still
+carries no realised figure.
+
+```python
+# src/trading/scrumming/reconciliation.py, in refresh_exchange_position_health
+                self.stats.realized_pnl_exchange = self.stats.realised_pnl = float(
+                    _ph.realized_pnl_usd
+                )
+
+# src/simulator/back_test.py, in stats_snapshot
+        "unrealised_pnl": position.unrealised_pnl_usd(price),
+```
+
+The Product Manual PDF rebuild is owed for this page.
+
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this page |
 
 ### Scrums and folds form tranches on the record
 

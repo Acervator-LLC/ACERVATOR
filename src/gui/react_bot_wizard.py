@@ -318,7 +318,7 @@ if _HAS_WEBENGINE:
 
         def get_bot_config(self) -> dict:
             """The settings the new bot is created from."""
-            return dict(self._payload.get("config") or {})
+            return surface.with_new_bot_weights(dict(self._payload.get("config") or {}))
 
         def answer_call(self, payload: str) -> bool:
             """Answer one page action with a freshly built payload.

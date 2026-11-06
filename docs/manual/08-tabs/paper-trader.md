@@ -1637,6 +1637,8 @@ lot sold from, in the dict shape Live's `_tick_execute_scrum` builds. A fold
 is planned under the cycle growth cap, as Live's `tick_phases` plans it, and
 the target's growth from the surplus is unit Q4's.
 
+Now: the fold reads each tranche against the bot's distance settings, as Live's fold does, and the factor helper named above is gone (`src/paper/paper_run.py, in apply_fold`).
+
 `src/paper/paper_run.py` — the scrum's size and proceeds
 
 ```python
@@ -2034,6 +2036,19 @@ opened on the upper side when it reaches 0.25.
 `grow_target` writes, `growth_applied_usd` and `target_path`. Every
 `PaperTrade` now carries `target_usd_after`, the balance's target once the
 growth has been taken.
+
+**Current reading.** The surplus a fold books is the units it bought less the
+units its scrum sold, priced at the fold. Live, Paper and the Simulator read it
+through one function, so all three book the same figure. A scrum of 0.1 units at
+$100 and a fold at $98, at a 0.6 per cent fee, book $0.14 of surplus in Paper and
+in the Simulator alike.
+
+`src/trading/scrumming/sizing.py` — `fold_surplus_usd`
+
+```python
+asset_at_scrum = sum(units_at_scrum(one) for one in slices)
+return max(0.0, priced_usd(float(units_bought) - asset_at_scrum, float(fill_price)))
+```
 
 ### The run writes the record, and the row follows
 
@@ -3134,6 +3149,9 @@ answer with the declared sectors, and
 `is_derivative` test behind it and its suffix list are removed, and
 `symbol_class` is the one resolver left.
 
+The sentence above naming crypto is overtaken, and it is kept as written.
+`retired_onto` now resolves `derivatives` onto futures_perps.
+
 A contract market still answers its own sector. The recording carries
 `futures_perps` on a perpetual row, which is the sector the taxonomy declares
 and the sector the Futures / Perps button filters on.
@@ -3269,9 +3287,8 @@ own declared figure
 
 A figure set in Settings still wins, and a paper bot's own saved record wins
 over that, so an existing paper bot keeps the figure it was created with. The
-declarations themselves, the full reader list and what the counts were before
-are on the Trading tab page under
-[Where the wizard's phantom defaults come from](../06-trading-tab.md).
+Trading tab page lists the Live wizard's rows under
+[Phantom Bots rows](../06-trading-tab.md#phantom-bots-rows).
 
 All three wizard phantom pages were built and both boxes read off the built
 widgets. With nothing stored, each falls back to the declaration and opens on

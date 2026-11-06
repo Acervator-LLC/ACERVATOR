@@ -30,6 +30,8 @@ try:
         QWidget,
     )
 
+    from .tooltips import set_description
+
     _HAS_QT = True
 except ImportError:
     # Without Qt, ConsoleQtTab is never defined and its import fails by name.
@@ -76,6 +78,7 @@ if _HAS_QT:
             self.pause_button = QPushButton(surface.PAUSE_BUTTON_TEXT)
             self.pause_button.setCheckable(True)
             self.pause_button.setStyleSheet(surface.PAUSE_BUTTON_STYLE)
+            set_description(self.pause_button, surface.PAUSE_BUTTON_TOOLTIP)
             self.pause_button.clicked.connect(self._pause_clicked)
             control_layout.addWidget(self.pause_button)
 
@@ -87,6 +90,7 @@ if _HAS_QT:
 
             self.clear_button = QPushButton(surface.CLEAR_BUTTON_TEXT)
             self.clear_button.setStyleSheet(surface.CLEAR_BUTTON_STYLE)
+            set_description(self.clear_button, surface.CLEAR_BUTTON_TOOLTIP)
             self.clear_button.clicked.connect(self._clear_clicked)
             control_layout.addWidget(self.clear_button)
 

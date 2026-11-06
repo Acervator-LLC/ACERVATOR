@@ -152,6 +152,8 @@
   var CONFIGURED = "configured";
 
   var COLUMNS = "columns";
+  var COLUMN_TOOLTIPS = "column_tooltips";
+  var TOOLTIP_FIELD = "tooltip";
   var COLUMN_COUNT = "column_count";
   var CELL_COLUMN_COUNT = "cell_column_count";
   var ROWS = "rows";
@@ -615,6 +617,10 @@
 
   function columnNames() {
     return listField(tableBag(), COLUMNS);
+  }
+
+  function columnTooltips() {
+    return listField(tableBag(), COLUMN_TOOLTIPS);
   }
 
   function columnNamed(at) {
@@ -1247,6 +1253,7 @@
     headProps[COLUMN_ATTR] = text(props.at);
     headProps[KEY_ATTR] = text(props.name);
     headProps[ARIA_LABEL] = label(props.name);
+    headProps.title = label(columnTooltips()[props.at]);
     return element(HEAD_CELL_TAG, headProps, text(props.name));
   }
 
@@ -1271,6 +1278,7 @@
     buttonProps[INDEX_ATTR] = text(props.at);
     buttonProps[ACTION_ATTR] = label(action(FIRE_CLICKED));
     buttonProps[ARIA_LABEL] = label(fire[TEXT_FIELD]);
+    buttonProps.title = label(fire[TOOLTIP_FIELD]);
     return element(BUTTON_TAG, buttonProps, text(fire[TEXT_FIELD]));
   }
 

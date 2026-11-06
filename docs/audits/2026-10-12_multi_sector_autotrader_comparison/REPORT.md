@@ -137,7 +137,7 @@ under that code is a perpetual whose own record reads `STOCK` and `NASDAQ`. The
 contract is Nokia. The manual's own table reads:
 
 ```
-docs/manual/15-venue-compatibility.md, under "KuCoin, read on 2026-10-11"
+docs/reference/15-venue-compatibility.md, under "KuCoin, read on 2026-10-11"
     base  AMD  read before forex   true stocks
     base  NOK  read before forex   true stocks
     base  RON  read before forex   true futures_perps

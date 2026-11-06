@@ -60,12 +60,13 @@ from tools.build_variants import (  # noqa: E402
     windows_version_fields,
 )
 from tools.spec_common import (  # noqa: E402
-    EXCLUDES,
     bake_version_datas,
     build_graceful_datas,
+    excludes_for,
     hiddenimports_for,
     read_acervator_version,
     reachable_only,
+    report_unreachable,
 )
 
 block_cipher = None
@@ -107,8 +108,12 @@ VERSION_RESOURCE = VSVersionInfo(
 # collect_submodules('src') stays HERE and not in tools/spec_common.py so
 # that the shared module never has to import PyInstaller.
 # reachable_only drops the names main.py cannot reach. PyInstaller's own
-# import walk still runs, so a dropped name that anything imports stays in.
+# import walk still runs, so a dropped name that anything imports stays in,
+# unless excludes_for names it: only a screen the window never builds imports it.
+# report_unreachable prints every dropped name into the build log first.
 # ---------------------------------------------------------------------------
+report_unreachable(PROJECT_ROOT)
+
 a = Analysis(
     [os.path.join(PROJECT_ROOT, 'main.py')],
     pathex=[PROJECT_ROOT],
@@ -125,7 +130,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=list(EXCLUDES),
+    excludes=excludes_for(PROJECT_ROOT),
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,

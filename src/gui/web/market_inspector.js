@@ -1491,7 +1491,7 @@
     return element(BUTTON_TAG, buttonProps, text(row[ONE]));
   }
 
-  // PanelCell is one cell of the Indicator Voting Panel ATA-SMP carries.
+  // PanelCell is one cell of a panel grid an open entry carries.
   // The Qt _VotingPanel gives its own QLabel the same width and height.
   function PanelCell(props) {
     var cell = asList(props.cell);
@@ -1534,9 +1534,9 @@
     return element(DIV_TAG, lineProps, text(asList(props.row)[ONE]));
   }
 
-  // VotingPanel is the Indicator Voting Panel one scanned asset carries,
-  // with that asset's gate chain result under it. It draws only the
-  // markets ATA-SMP read; no live bot feeds it.
+  // VotingPanel is one panel grid with its lines under it: the Indicator
+  // Voting Panel of a scanned asset or of a bot and its phantom, or that
+  // bot's gate lights.
   function VotingPanel(props) {
     var panel = props.panel;
     var frame = styleOf(panel[STRIP_BOX_STYLE]);

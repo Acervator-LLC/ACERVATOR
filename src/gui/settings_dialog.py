@@ -104,6 +104,8 @@ try:
     )
     from PySide6.QtCore import Qt, Signal
 
+    from .tooltips import set_description
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -187,8 +189,7 @@ if _HAS_QT:
                 exchanges that belong to that wing:
                   * crypto: the CCXT-supported list (binance, coinbase,
                     kraken, etc.) — current behaviour
-                  * stock:  the broker list (alpaca, etrade, fidelity,
-                    ibkr, robinhood, schwab, tastytrade, webull) with
+                  * stock:  the brokers `offered_brokers` names, with
                     its own banner, and every control settled per
                     venue by `credential_form`
                 The "Configured Exchanges" list at the top of the tab
@@ -202,6 +203,7 @@ if _HAS_QT:
                 if wing in ("crypto", "stock")
                 else "Settings"
             )
+            self.setAccessibleName(sds.DIALOG_ACCESSIBLE_NAME)
             self.setMinimumSize(700, 600)
             self._sm = settings_manager
             self._status_log = status_log
@@ -240,6 +242,10 @@ if _HAS_QT:
             tabs.addTab(self._create_sms_tab(), "SMS")
             tabs.addTab(self._create_ai_monitor_tab(), "AI Monitor")
             self._tabs = tabs
+            for at in range(tabs.count()):
+                said = sds.TAB_TOOLTIPS.get(tabs.tabText(at))
+                if said:
+                    set_description(tabs, said, at)
             layout.addWidget(tabs)
 
             btn_row = QHBoxLayout()
@@ -253,6 +259,17 @@ if _HAS_QT:
             self._save_btn.clicked.connect(lambda: self._save())
             btn_row.addWidget(self._save_btn)
             layout.addLayout(btn_row)
+            set_description(self._cancel_btn, sds.BUTTON_TOOLTIPS["cancel_btn"])
+            set_description(self._save_btn, sds.BUTTON_TOOLTIPS["save_btn"])
+            self._describe_controls()
+
+        def _describe_controls(self) -> None:
+            """Sets each ``sds.CONTROL_SPECS`` tooltip on the control held as ``self._<name>``."""
+            for spec in sds.CONTROL_SPECS:
+                said = spec.get("tooltip")
+                held = getattr(self, f"_{spec['name']}", None)
+                if said and held is not None:
+                    set_description(held, said)
 
         @property
         def tab(self) -> str:
@@ -281,14 +298,150 @@ if _HAS_QT:
             form = QFormLayout(w)
             self._username = QLineEdit()
             form.addRow("Username:", self._username)
+            form.addRow(self._create_fleet_lock_group(w))
             return w
+
+        def _create_fleet_lock_group(self, parent: QWidget) -> QGroupBox:
+            """Build the Fleet Lock group from ``sds.FLEET_LOCK_CONTROLS``, the declaration the React page draws.
+
+            ``_settle_fleet_lock`` is the only method that writes a key, so a keystroke in either row changes nothing on disk.
+            """
+            group = QGroupBox(sds.FLEET_LOCK_GROUP_TITLE, parent)
+            form = QFormLayout(group)
+
+            self._lock_state = QLabel(group)
+            self._lock_state.setWordWrap(True)
+            form.addRow(self._lock_state)
+
+            built: dict = {}
+            buttons = QHBoxLayout()
+            for one in sds.FLEET_LOCK_CONTROLS:
+                name = str(one.get("name") or "")
+                if one.get("kind") == sds.LINE:
+                    row = QLineEdit(group)
+                    if one.get("echo") == sds.HIDDEN_ECHO:
+                        row.setEchoMode(QLineEdit.Password)
+                    row.setPlaceholderText(str(one.get("placeholder") or ""))
+                    form.addRow(str(one.get("label") or ""), row)
+                    built[name] = row
+                elif one.get("kind") == sds.PRESS:
+                    press = QPushButton(str(one.get("text") or ""), group)
+                    press.setCheckable(one.get("checkable") is True)
+                    press.setProperty(sds.DANGER_PROPERTY, one.get("danger") is True)
+                    buttons.addWidget(press)
+                    built[name] = press
+            form.addRow(buttons)
+
+            self._lock_phrase = built.get(sds.FLEET_LOCK_PHRASE_NAME)
+            self._lock_confirm = built.get(sds.FLEET_LOCK_CONFIRM_NAME)
+            self._lock_unlock = built.get(sds.FLEET_LOCK_UNLOCK_NAME)
+            self._lock_clear = built.get(sds.FLEET_LOCK_CLEAR_NAME)
+            if self._lock_unlock is not None:
+                self._lock_unlock.clicked.connect(self._open_fleet_unlock)
+            if self._lock_clear is not None:
+                self._lock_clear.toggled.connect(self._show_fleet_lock_state)
+
+            self._describe_fleet_lock()
+            self._report_fleet_lock_faults()
+            self._show_fleet_lock_state()
+            return group
+
+        def _describe_fleet_lock(self) -> None:
+            """Hang each ``sds.FLEET_LOCK_CONTROLS`` description on its control through ``set_description``."""
+            for one in sds.FLEET_LOCK_CONTROLS:
+                held = getattr(self, "_" + str(one.get("name") or ""), None)
+                if held is not None and "description" in one:
+                    set_description(held, one["description"])
+
+        def _report_fleet_lock_faults(self) -> list:
+            """Log every ``sds.fleet_lock_faults`` record at error and answer the list.
+
+            ``fleet_lock_faults`` holds the faults this build read, on both builds.
+            """
+            found = sds.fleet_lock_faults()
+            for one in found:
+                logger.error(sds.FLEET_LOCK_FAULT_LOG_FORMAT.format(**one))
+            self.fleet_lock_faults = list(found)
+            return found
+
+        def _fleet_lock_drawn(self) -> bool:
+            """Whether this build holds every control ``sds.FLEET_LOCK_HELD_NAMES`` names.
+
+            ``_create_fleet_lock_group`` builds them for the Qt page, and the React page holds one holder for each.
+            """
+            return all(
+                getattr(self, "_" + name, None) is not None
+                for name in sds.FLEET_LOCK_HELD_NAMES
+            )
+
+        def _fleet_lock_held(self) -> bool:
+            """Whether a sealed master key file is on disk for this install.
+
+            ``src/core/encryption.py, in has_master_key`` is the whole reading,
+            and an unreadable file answers False there.
+            """
+            from src.core.encryption import has_master_key
+
+            return bool(has_master_key())
+
+        def _fleet_lock_opened(self) -> bool:
+            """Whether this session already holds the opened master key.
+
+            ``src/core/encryption.py, in held_master_key`` answers it, and a
+            change of password reseals the key it returns.
+            """
+            from src.core.encryption import held_master_key
+
+            return held_master_key() is not None
+
+        def _show_fleet_lock_state(self) -> None:
+            """Put the lock the install holds, or the demolition, on the group's line.
+
+            ``sds.fleet_lock_words`` carries the resting sentence and
+            ``sds.FLEET_LOCK_CLEAR_QUESTION`` replaces it while ``_lock_clear``
+            is pressed in, so the demolition is on screen before Save is reached.
+            """
+            if not self._fleet_lock_drawn():
+                return
+            held = self._fleet_lock_held()
+            clearing = bool(self._lock_clear.isChecked())
+            self._lock_state.setText(
+                sds.FLEET_LOCK_CLEAR_QUESTION
+                if clearing
+                else sds.fleet_lock_words(held)
+            )
+            self._lock_phrase.setPlaceholderText(
+                sds.FLEET_LOCK_PHRASE_PLACEHOLDER_HELD
+                if held
+                else sds.FLEET_LOCK_PHRASE_PLACEHOLDER_ABSENT
+            )
+            self._lock_confirm.setEnabled(not clearing)
+            self._lock_unlock.setEnabled(held and not self._fleet_lock_opened())
+            self._lock_clear.setEnabled(held)
+
+        def _log_fleet_lock(self, words: str, level: str) -> None:
+            """Put one Fleet Lock line on the status log where this dialog holds one."""
+            if self._status_log:
+                self._status_log.log(words, level)
+
+        def _open_fleet_unlock(self) -> None:
+            """Raise the unlock screen over this dialog and refresh the group's line.
+
+            ``src/gui/fleet_unlock_dialog.py, in ask_for_unlock`` owns the
+            screen and the window it hands the password to, and this method
+            decides nothing about the password itself.
+            """
+            from .fleet_unlock_dialog import ask_for_unlock
+
+            ask_for_unlock(self.parent(), parent=self)
+            self._show_fleet_lock_state()
 
         def _create_exchange_tab(self) -> QWidget:
             w = QWidget()
             layout = QVBoxLayout(w)
 
             if self._wing == "stocks":
-                _banner = QLabel(sds.STOCK_BANNER_TEXT)
+                _banner = QLabel(sds.stock_banner_text())
                 _banner.setWordWrap(sds.STOCK_BANNER_WORD_WRAP)
                 # Qt reads eight hex digits alpha-first, so the edge is
                 # written rgba and draws the tint it names.
@@ -338,18 +491,12 @@ if _HAS_QT:
             self._new_api_key.setPlaceholderText(
                 "API Key or organizations/.../.../apiKeys/..."
             )
-            self._new_api_key.setToolTip(
-                "For Coinbase CDP keys, paste the full organizations/.../apiKeys/... string"
-            )
             add_form.addRow("API Key:", self._new_api_key)
 
             self._new_api_secret = QTextEdit()
             self._new_api_secret.setMaximumHeight(60)
             self._new_api_secret.setPlaceholderText(
                 "API Secret or EC Private Key (PEM format with \\n is OK)"
-            )
-            self._new_api_secret.setToolTip(
-                "For Coinbase CDP keys, paste the whole PEM key with its BEGIN and END lines. Literal newline escapes are converted."
             )
             add_form.addRow("API Secret:", self._new_api_secret)
 
@@ -374,7 +521,6 @@ if _HAS_QT:
             self._new_verification_code.setPlaceholderText(
                 sds.VERIFICATION_CODE_PLACEHOLDER
             )
-            self._new_verification_code.setToolTip(sds.VERIFICATION_CODE_TOOLTIP)
             self._new_verification_code.setVisible(False)
             add_form.addRow(sds.VERIFICATION_CODE_LABEL, self._new_verification_code)
 
@@ -406,6 +552,7 @@ if _HAS_QT:
             layout.addWidget(add_group)
 
             rm_btn = QPushButton("Remove Selected")
+            set_description(rm_btn, sds.BUTTON_TOOLTIPS["remove_btn"])
             rm_btn.setProperty("danger", True)
             rm_btn.clicked.connect(self._remove_exchange)
             layout.addWidget(rm_btn)
@@ -428,12 +575,19 @@ if _HAS_QT:
                 logger.warning("Exchange Status read no recorded state: %s", exc)
                 return {}
 
-        def _refresh_exchange_status(self) -> None:
-            """Draw one pressable row per venue serving the dialog's sector.
+        def _stored_exchanges(self) -> list:
+            """Every entry ``list_exchanges`` answers on ``_sm``, and none without a store."""
+            return list(self._sm.list_exchanges()) if self._sm else []
 
-            Reads the recorded states off disk, so a redraw places no venue call.
+        def _refresh_exchange_status(self) -> None:
+            """Draw one pressable row per venue ``exchange_status_rows`` answers,
+            each stored entry ``dialog_venue_states`` marks not offered included.
+
+            ``_recorded_venue_states`` reads off disk, so a redraw places no venue call.
             """
-            states = self._recorded_venue_states()
+            states = sds.dialog_venue_states(
+                self._recorded_venue_states(), self._stored_exchanges()
+            )
             self._venue_states = states
             rows = sds.exchange_status_rows(self._status_class(), states)
             # clear() drops the selection, and the rows return in the same
@@ -488,7 +642,7 @@ if _HAS_QT:
                 press = QPushButton(one["text"], self._venue_array)
                 press.setFont(acs.segment_font())
                 press.setStyleSheet(one["style_sheet"])
-                press.setToolTip(one["tooltip"])
+                set_description(press, one["tooltip"])
                 press.setEnabled(bool(one["venue"]))
                 press.setCheckable(bool(one["venue"]))
                 press.setChecked(int(one["at"]) == selected)
@@ -508,7 +662,7 @@ if _HAS_QT:
                     int(one["column_span"]),
                 )
             self._venue_pages.setText(pages["text"])
-            self._venue_pages.setToolTip(pages["tooltip"])
+            set_description(self._venue_pages, pages["tooltip"])
             self._venue_pages.setStyleSheet(pages["style_sheet"])
             self._venue_pages.setFont(acs.segment_font())
             self._venue_pages.setMinimumHeight(height)
@@ -554,7 +708,9 @@ if _HAS_QT:
             every reader of the chosen venue takes it from here.
             """
             return sds.row_venue_id(
-                self._status_class(), self._exchange_list.currentRow()
+                self._status_class(),
+                self._exchange_list.currentRow(),
+                getattr(self, "_venue_states", {}),
             )
 
         def _draw_chosen_venue(self) -> None:
@@ -565,13 +721,17 @@ if _HAS_QT:
             """
             self._chosen_venue.setText(
                 sds.chosen_venue_text(
-                    self._status_class(), self._exchange_list.currentRow()
+                    self._status_class(),
+                    self._exchange_list.currentRow(),
+                    getattr(self, "_venue_states", {}),
                 )
             )
 
         def _open_credentials_for_row(self, at) -> None:
             """Bind the Add-exchange form to the venue the row at ``at`` names."""
-            venue = sds.row_venue_id(self._status_class(), at)
+            venue = sds.row_venue_id(
+                self._status_class(), at, getattr(self, "_venue_states", {})
+            )
             if not venue:
                 return
             self._exchange_list.setCurrentRow(int(at))
@@ -619,7 +779,8 @@ if _HAS_QT:
             if not coded:
                 self._new_verification_code.clear()
             self._add_btn.setText(str(form["add_text"]))
-            self._test_btn.setToolTip(str(form["test_tip"]))
+            set_description(self._test_btn, str(form["test_tip"]))
+            set_description(self._add_btn, str(form["add_tip"]))
             self._add_btn.setEnabled(bool(form["add_enabled"]))
             self._test_btn.setEnabled(bool(form["test_enabled"]))
 
@@ -911,8 +1072,17 @@ if _HAS_QT:
             eid = text.split("(")[-1].rstrip(")")
             from src.exchange.credential_state import forget
 
-            from .main_tabs.settings_dialog_surface import removed_feedback_text
+            from .main_tabs.settings_dialog_surface import (
+                remove_refusal,
+                removed_feedback_text,
+            )
 
+            refusal = remove_refusal(eid, self._window_fleet())
+            if refusal:
+                self._set_feedback(refusal, "warning")
+                if self._status_log:
+                    self._status_log.log(refusal, "warning")
+                return
             self._sm.remove_exchange(eid)
             self._exchange_list.takeItem(self._exchange_list.row(item))
             forget(eid)
@@ -960,6 +1130,7 @@ if _HAS_QT:
                 slider = QSlider(Qt.Horizontal)
                 slider.setRange(*TA_SLIDER_RANGE)
                 slider.setValue(ta_slider_value(default_w))
+                set_description(slider, sds.ta_tooltip(ind_name))
                 row.addWidget(slider)
                 val_label = QLabel(ta_value_text(default_w))
                 val_label.setMinimumWidth(TA_VALUE_MIN_WIDTH)
@@ -994,9 +1165,6 @@ if _HAS_QT:
                 self._phantom_timeframe.addItem(tf, tf)
             self._phantom_timeframe.setCurrentIndex(
                 self._phantom_timeframe.findData(PHANTOM_TIMEFRAME_DEFAULT)
-            )
-            self._phantom_timeframe.setToolTip(
-                "The one phantom timeframe a new bot starts with"
             )
             layout.addWidget(self._phantom_timeframe)
             lock_group = QGroupBox("Higher-TF Lock Settings")
@@ -1034,22 +1202,15 @@ if _HAS_QT:
             layout = QVBoxLayout(w)
             self._sound_enabled = QCheckBox("Enable sound notifications")
             self._sound_enabled.setChecked(True)
-            self._sound_enabled.setToolTip("Master switch for all audio notifications")
             layout.addWidget(self._sound_enabled)
 
             layout.addWidget(QLabel("Sound Events:"))
             self._sound_buy = QCheckBox("Buy order fills (blurb + squirt tone)")
             self._sound_buy.setChecked(True)
-            self._sound_buy.setToolTip(
-                "Plays a low bubbly rising tone when a buy order is filled"
-            )
             layout.addWidget(self._sound_buy)
 
             self._sound_sell = QCheckBox("Sell order fills (bell + jingle tone)")
             self._sound_sell.setChecked(True)
-            self._sound_sell.setToolTip(
-                "Plays a high bright bell tone when a sell order is filled"
-            )
             layout.addWidget(self._sound_sell)
 
             self._sound_error = QCheckBox("Errors (alert tone)")
@@ -1062,36 +1223,20 @@ if _HAS_QT:
 
             self._sound_fire = QCheckBox("Scrum/Fold Fire (sniper rifle shot)")
             self._sound_fire.setChecked(True)
-            self._sound_fire.setToolTip(
-                "Synthesized rifle shot plays when a scrum or fold\n"
-                "actually executes. Also plays on Manual Fire."
-            )
             layout.addWidget(self._sound_fire)
 
             self._sound_track = QCheckBox(
                 "Tracking beeps (speeds up as bot closes on fire)"
             )
             self._sound_track.setChecked(True)
-            self._sound_track.setToolTip(
-                "Short beep paced by scrum phase:\n"
-                "  SEARCH = silent\n"
-                "  TRACK  = slow beep (800ms)\n"
-                "  FIRE   = fast beep (200ms)"
-            )
             layout.addWidget(self._sound_track)
 
             self._sound_profit = QCheckBox("P/L increase (coins dropping into bucket)")
             self._sound_profit.setChecked(True)
-            self._sound_profit.setToolTip(
-                "A three-coin bucket drop plays on any trade with realized profit. Fires on scrumming and Extractor bots alike."
-            )
             layout.addWidget(self._sound_profit)
 
             self._sound_drip = QCheckBox("Accumulation (water drip)")
             self._sound_drip.setChecked(True)
-            self._sound_drip.setToolTip(
-                "A water drip plays on FOLD, when the bot buys back more than it sold. Silent on SCRUM and DIST."
-            )
             layout.addWidget(self._sound_drip)
 
             vol_row = QHBoxLayout()
@@ -1115,27 +1260,30 @@ if _HAS_QT:
             for _key, name in SOUND_CONFIG_FIELDS:
                 getattr(self, f"_{name}").toggled.connect(self._push_sound_config)
 
+            tips = {name: tip for _text, name, tip in sds.SOUND_TEST_BUTTONS}
             test_row = QHBoxLayout()
             test_buy = QPushButton("Test Buy")
+            set_description(test_buy, tips["buy"])
             test_buy.clicked.connect(lambda: self._test_sound("buy"))
             test_row.addWidget(test_buy)
             test_sell = QPushButton("Test Sell")
+            set_description(test_sell, tips["sell"])
             test_sell.clicked.connect(lambda: self._test_sound("sell"))
             test_row.addWidget(test_sell)
             test_fire = QPushButton("Test Fire")
-            test_fire.setToolTip("Play the sniper rifle SFX.")
+            set_description(test_fire, tips["fire"])
             test_fire.clicked.connect(lambda: self._test_sound("fire"))
             test_row.addWidget(test_fire)
             test_track = QPushButton("Test Track")
-            test_track.setToolTip("Play one tracking beep.")
+            set_description(test_track, tips["track"])
             test_track.clicked.connect(lambda: self._test_sound("track"))
             test_row.addWidget(test_track)
             test_profit = QPushButton("Test Profit")
-            test_profit.setToolTip("Play the coins-in-bucket SFX.")
+            set_description(test_profit, tips["profit"])
             test_profit.clicked.connect(lambda: self._test_sound("profit"))
             test_row.addWidget(test_profit)
             test_drip = QPushButton("Test Drip")
-            test_drip.setToolTip("Play the water-drip SFX.")
+            set_description(test_drip, tips["drip"])
             test_drip.clicked.connect(lambda: self._test_sound("drip"))
             test_row.addWidget(test_drip)
             layout.addLayout(test_row)
@@ -1193,9 +1341,6 @@ if _HAS_QT:
             layout.setSpacing(8)
 
             self._sms_enabled = QCheckBox("Enable SMS notifications")
-            self._sms_enabled.setToolTip(
-                "Send text messages to your phone for trading events"
-            )
             layout.addWidget(self._sms_enabled)
 
             provider_group = QGroupBox("SMS Provider")
@@ -1253,7 +1398,6 @@ if _HAS_QT:
             self._sms_gateway = QLineEdit()
             self._sms_gateway.setMinimumHeight(28)
             self._sms_gateway.setPlaceholderText("5551234567@vtext.com")
-            self._sms_gateway.setToolTip("Full email address for carrier SMS gateway")
             pf.addRow("Gateway Email:", self._sms_gateway)
 
             self._sms_smtp_user = QLineEdit()
@@ -1427,6 +1571,7 @@ if _HAS_QT:
             sf.addRow("Checks completed:", self._ai_checks)
 
             self._ai_test_btn = QPushButton("Test Handshake")
+            set_description(self._ai_test_btn, sds.BUTTON_TOOLTIPS["ai_test_btn"])
             self._ai_test_btn.setMinimumHeight(32)
             self._ai_test_btn.setStyleSheet(
                 "background: #1a3a4a; color: #00ddff; border: 1px solid #00aacc; "
@@ -1819,7 +1964,7 @@ if _HAS_QT:
             if callable(getattr(box, "setStyleSheet", None)):
                 box.setStyleSheet(f"color: {REFUSED_FIGURE_COLOR};")
             if callable(getattr(box, "setToolTip", None)):
-                box.setToolTip(said(key, box.toolTip()))
+                set_description(box, said())
 
         @staticmethod
         def _clear_refused(box: object) -> None:
@@ -1937,6 +2082,204 @@ if _HAS_QT:
                     )
             return True
 
+        def _settle_fleet_lock(self) -> None:
+            """Put the Fleet Lock question to the operator, then seal, reseal or clear.
+
+            ``sds.fleet_lock_intent`` is the whole decision and
+            ``_seal_fleet_lock``, ``_reseal_fleet_lock`` and
+            ``_clear_fleet_lock`` are the three that touch a file, each reached
+            only after the operator answers Yes to the question that names what
+            it does. A build whose ``_fleet_lock_drawn`` answers False is left
+            alone, so no Save reports a question it had no rows to put.
+            """
+            if not self._fleet_lock_drawn():
+                return
+            answer = sds.fleet_lock_intent(
+                self._fleet_lock_held(),
+                self._lock_phrase.text(),
+                self._lock_confirm.text(),
+                self._lock_clear.isChecked(),
+                self._fleet_lock_opened(),
+            )
+            action = answer["action"]
+            if action == sds.FLEET_LOCK_NOTHING:
+                return
+            if not answer["asks"]:
+                self._log_fleet_lock(answer["refusal"], "warning")
+                return
+            reply = QMessageBox.question(
+                self,
+                answer["title"],
+                answer["words"],
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                self._log_fleet_lock(sds.FLEET_LOCK_KEPT_LOG, "warning")
+                return
+            typed = self._lock_phrase.text()
+            try:
+                if action == sds.FLEET_LOCK_SET:
+                    self._seal_fleet_lock(typed)
+                elif action == sds.FLEET_LOCK_CHANGE:
+                    self._reseal_fleet_lock(typed)
+                else:
+                    self._clear_fleet_lock(typed)
+            except (OSError, ValueError, KeyError) as exc:
+                logger.warning("fleet lock abandoned: %s", exc)
+                self._log_fleet_lock(
+                    sds.FLEET_LOCK_REFUSED_LOG_FORMAT.format(error=exc), "error"
+                )
+            self._lock_phrase.clear()
+            self._lock_confirm.clear()
+            self._lock_clear.setChecked(False)
+            self._show_fleet_lock_state()
+
+        def _state_manager(self):
+            """The saved-fleet reader this dialog reseals through.
+
+            The window that opened this dialog holds the one the fleet runs on,
+            and ``src/core/state_manager.py, in StateManager`` resolves the same
+            file for a reader built here where that window holds none.
+            """
+            from src.core.state_manager import StateManager
+
+            manager = getattr(self._window_fleet(), "_state_manager", None)
+            return manager if manager is not None else StateManager()
+
+        def _window_fleet(self) -> object:
+            """Answer the ``BotManager`` the opening window runs, or None."""
+            return getattr(self.parent(), "_bot_manager", None)
+
+        def _move_vault(self, old_phrase: str, new_phrase: str) -> dict:
+            """Reseal every stored venue secret from *old_phrase* to *new_phrase*.
+
+            ``src/core/encryption.py, in rekey_credential_stores`` carries both
+            stores, and a venue it could not open keeps the tokens it had and is
+            named under ``refused``.
+            """
+            from src.core.encryption import rekey_credential_stores
+
+            return rekey_credential_stores(self._sm, old_phrase, new_phrase)
+
+        def _username_phrase(self) -> str:
+            """The vault phrase an install holding no master key builds.
+
+            ``src/core/encryption.py, in username_phrase`` answers it off the
+            stored Username whether or not this session holds a key, which
+            ``in vault_phrase`` would not while the lock is open.
+            """
+            from src.core.encryption import username_phrase
+
+            return username_phrase(str(self._sm.get(sds.USERNAME_KEY, "") or ""))
+
+        def _seal_fleet_lock(self, typed: str) -> None:
+            """Mint a master key, seal it under *typed*, and move the fleet and the vault.
+
+            The sealed key is opened again before it reaches disk, so a seal
+            that does not round-trip writes nothing; the latch is set through
+            ``reseal_on_disk`` before the vault moves, so the saved fleet is
+            never the thing left behind.
+            """
+            from src.core.encryption import (
+                hold_master_key,
+                master_key_phrase,
+                open_master_key,
+                seal_master_key,
+                write_master_key,
+            )
+
+            was = self._username_phrase()
+            sealed = seal_master_key(typed)
+            key = open_master_key(sealed, typed)
+            write_master_key(sealed)
+            hold_master_key(key)
+            if not self._state_manager().reseal_on_disk():
+                self._log_fleet_lock(sds.FLEET_LOCK_STATE_REFUSED_LOG, "error")
+            moved = self._move_vault(was, master_key_phrase(key))
+            self._report_vault_move(sds.FLEET_LOCK_SET_LOG_FORMAT, moved)
+
+        def _reseal_fleet_lock(self, typed: str) -> None:
+            """Seal the held master key under *typed* and write it over the key file.
+
+            Nothing but the key file moves: ``src/core/encryption.py, in
+            vault_phrase`` and the fleet payload are both keyed on the master
+            key, and ``seal_master_key`` is given the key this session already
+            holds.
+            """
+            from src.core.encryption import (
+                held_master_key,
+                seal_master_key,
+                write_master_key,
+            )
+
+            key = held_master_key()
+            if key is None:
+                self._log_fleet_lock(sds.FLEET_LOCK_CHANGE_NEEDS_UNLOCK_LOG, "warning")
+                return
+            write_master_key(seal_master_key(typed, key))
+            self._log_fleet_lock(sds.FLEET_LOCK_CHANGED_LOG, "success")
+
+        def _clear_fleet_lock(self, typed: str) -> None:
+            """Destroy the sealed key and the vault *typed* opens, the key file last.
+
+            ``src/core/state_manager.py, in unseal_on_disk`` has to write the
+            fleet back in plain text before ``master_key_path`` is unlinked, and
+            a run that stops before it keeps the sealed key, so a second press
+            of Clear is the recovery at every point.
+            """
+            from src.core.encryption import (
+                hold_master_key,
+                master_key_phrase,
+                master_key_path,
+                open_master_key,
+                read_master_key,
+            )
+
+            sealed = read_master_key()
+            if sealed is None:
+                self._log_fleet_lock(sds.FLEET_LOCK_WRONG_PHRASE_LOG, "warning")
+                return
+            try:
+                key = open_master_key(sealed, typed)
+            except ValueError:
+                self._log_fleet_lock(sds.FLEET_LOCK_WRONG_PHRASE_LOG, "warning")
+                return
+            back_to = self._username_phrase()
+            hold_master_key(key)
+            moved = self._move_vault(master_key_phrase(key), back_to)
+            if self._state_manager().unseal_on_disk():
+                master_key_path().unlink(missing_ok=True)
+                self._report_vault_move(sds.FLEET_LOCK_CLEARED_LOG_FORMAT, moved)
+                return
+            hold_master_key(None)
+            self._log_fleet_lock(sds.FLEET_LOCK_CLEAR_INCOMPLETE_LOG, "error")
+
+        def _report_vault_move(self, words: str, moved: dict) -> None:
+            """Put what ``_move_vault`` resealed, and what it refused, on the status log.
+
+            ``sds.FLEET_LOCK_REFUSED_LOG_FORMAT`` is not this refusal: a venue
+            under ``refused`` keeps the tokens it had and is named through
+            ``sds.RENAME_REFUSED_LOG_FORMAT``.
+            """
+            resealed = moved["resealed"]
+            self._log_fleet_lock(
+                words.format(
+                    count=len(resealed),
+                    names=sds.RENAME_NAMES_JOIN.join(resealed),
+                ),
+                "success",
+            )
+            refused = moved["refused"]
+            if refused:
+                self._log_fleet_lock(
+                    sds.RENAME_REFUSED_LOG_FORMAT.format(
+                        count=len(refused),
+                        names=sds.RENAME_NAMES_JOIN.join(refused),
+                    ),
+                    "error",
+                )
+
         def _save(self) -> None:
             """Save all settings and close. ALWAYS closes the dialog."""
             import sys
@@ -1958,6 +2301,13 @@ if _HAS_QT:
                 write_username = False
                 logger.warning(
                     "Username question not put; the stored name is kept: %s", _rn_exc
+                )
+
+            try:
+                self._settle_fleet_lock()
+            except RENAME_FAULTS as _fl_exc:
+                logger.warning(
+                    "Fleet Lock question not put; the lock is kept: %s", _fl_exc
                 )
 
             # A setting that fails to save never blocks the close.

@@ -201,6 +201,7 @@ try:
         QPen,
         QLinearGradient,
     )
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -219,6 +220,7 @@ if _HAS_QT:
 
         def __init__(self, field_id: str, on_toggle=None, parent=None):
             super().__init__(parent)
+            self.setAccessibleName("Indicator Panel Privacy Dot")
             self._field_id = field_id
             self._on_toggle = on_toggle
             self.setFixedSize(self._SIZE_PX, self._SIZE_PX)
@@ -257,9 +259,10 @@ if _HAS_QT:
                 "} "
                 "_IVPPrivacyDot:hover { border: 1px solid #ffffff; }"
             )
-            self.setToolTip(
+            set_description(
+                self,
                 f"{self._field_id}: {state}. "
-                f"Click to {'reveal' if masked else 'mask'}."
+                f"Click to {'reveal' if masked else 'mask'}.",
             )
 
     # (key, label, group) for the panel's 12 indicators.
@@ -310,10 +313,11 @@ if _HAS_QT:
             from PySide6.QtWidgets import QSizePolicy
 
             self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            self.setToolTip(
+            set_description(
+                self,
                 "Animated bar graph: per-indicator vote confidence for "
                 "the parent bot's timeframe, colour-coded by direction "
-                "(green=bullish, red=bearish, grey=neutral)."
+                "(green=bullish, red=bearish, grey=neutral).",
             )
             self.setAccessibleName("Indicator Confidence Bar Graph")
 
@@ -523,9 +527,10 @@ if _HAS_QT:
             self._top = 0
             self._base = 0
             self.setAccessibleName("Collated Indicator Pillars")
-            self.setToolTip(
+            set_description(
+                self,
                 "Net, Comp and Conf run the height of the panel because "
-                "they are derived from the twelve voters above them."
+                "they are derived from the twelve voters above them.",
             )
 
         def set_pillars(self, pillars: list) -> None:
@@ -634,6 +639,9 @@ if _HAS_QT:
 
             header.addWidget(QLabel("Bot:"))
             self._bot_selector = QComboBox()
+            set_description(
+                self._bot_selector, INDICATOR_PANEL_DESCRIPTIONS["bot_selector"]
+            )
             self._bot_selector.setMinimumWidth(180)
             self._bot_selector.addItem("(select a bot)", "")
             self._bot_selector.currentIndexChanged.connect(self._on_bot_selected)
@@ -653,8 +661,9 @@ if _HAS_QT:
             )
             self._staleness_label.setWordWrap(True)
             self._staleness_label.setAccessibleName("TA Staleness Banner")
-            self._staleness_label.setToolTip(
-                "Shown when the panel has only a stored TA read, naming its age and why no current one exists."
+            set_description(
+                self._staleness_label,
+                "Shown when the panel has only a stored TA read, naming its age and why no current one exists.",
             )
             self._staleness_label.hide()
             layout.addWidget(self._staleness_label)
@@ -666,125 +675,13 @@ if _HAS_QT:
                 "background: rgba(30, 40, 60, 60); "
                 "border-radius: 2px;"
             )
-            self._rate_strip.setToolTip(INDICATOR_PANEL_DESCRIPTIONS["rate_strip"])
+            set_description(
+                self._rate_strip, INDICATOR_PANEL_DESCRIPTIONS["rate_strip"]
+            )
             self._rate_strip.setAccessibleName("Currency Rate Strip")
             layout.addWidget(self._rate_strip)
 
-            self._HEADER_TOOLTIPS = {
-                "TF": (
-                    "Timeframe identifier. Each row = one timeframe's "
-                    "verdict (5m/15m/1h/4h/1d/phantoms)."
-                ),
-                "BB": (
-                    "Bollinger Bands — distance from band extremes as "
-                    "% conviction. ▲▼ shows direction; NN% shows "
-                    "vote confidence."
-                ),
-                "VTX": (
-                    "Vortex — VI+ vs VI− crossover conviction. "
-                    "▲▼ direction + NN% confidence."
-                ),
-                "MACD": (
-                    "MACD — histogram + crossover + divergence. "
-                    "▲▼ direction + NN% confidence."
-                ),
-                "SRsi": (
-                    "Stochastic RSI — K/D crossover in oversold/"
-                    "overbought zones. ▲▼ direction + NN% confidence."
-                ),
-                "Ichi": (
-                    "Ichimoku Cloud — future twist + cloud breakout + "
-                    "Tenkan/Kijun. ▲▼ direction + NN% confidence."
-                ),
-                "Vol": (
-                    "Volume composite — OBV divergence + MFI + CMF + "
-                    "volume spike ratio. ▲▼ direction + NN% confidence."
-                ),
-                "Sling": (
-                    # Attribution matches SlingshotIndicator's corrected
-                    # docstring in trading/indicators/slingshot.py.
-                    "Slingshot — name is Chris Moody's; squeeze is Carter's "
-                    "TTM Squeeze (via LazyBear), snapback is Bollinger's own "
-                    "band rules. ▲▼ direction + NN% confidence."
-                ),
-                "ADX": (
-                    "ADX — Average Directional Index. Cell shows the "
-                    "RAW ADX value (NOT a percentage), 0–100. "
-                    "ADX <20: ranging (cell reads 'Rng NN'). "
-                    "ADX 20–35: developing trend. ADX >35: strong "
-                    "trend. ADX >50: parabolic / unsustainable. "
-                    "Direction symbol from DI+/DI− cross when "
-                    "trending.\n\nDUAL THRESHOLDS (intentional): the "
-                    "voter goes NEUTRAL below ADX 20; the separate "
-                    "ADXTrendSuppressionGate blocks SCRUM only at "
-                    "ADX≥30, not below it. An ADX of 25 shows a "
-                    "developing trend here and does not trip the "
-                    "gate."
-                ),
-                "STrd": (
-                    "Supertrend — ATR-banded trend line. ▲▼ direction "
-                    "+ NN% confidence (proportional to distance from "
-                    "band)."
-                ),
-                "ZSc": (
-                    "Z-Score — statistical extremity. Cell shows the "
-                    "RAW signed z-value (NOT a percentage). "
-                    "|z| >2: strong bearish/bullish mean-revert "
-                    "signal. |z| <1.5: NEUTRAL (no action).\n\n"
-                    "ZScoreExtremityGate is ASYMMETRIC: "
-                    "blocks SCRUM at z<-2 (don't sell the statistical "
-                    "bottom), blocks FOLD at z>+2 (don't buy the "
-                    "statistical top). High +z is exactly the right "
-                    "condition for SCRUM; low -z is exactly the right "
-                    "condition for FOLD; the gate filters only the "
-                    "contrarian-wrong action on each side."
-                ),
-                "KER": (
-                    "Kaufman Efficiency Ratio — trend efficiency 0–1. "
-                    "Cell shows the RAW ER value (NOT a percentage). "
-                    "ER ≤0.05: no-edge market (gate suppresses scrum). "
-                    "ER ≥0.50: trending (voter contributes direction). "
-                    "ER ≥0.70: highly efficient trend.\n\nDIRECTION "
-                    "SYMBOL SEMANTICS: at ER <0.50 the voter is "
-                    "NEUTRAL (─), not directional. The ▲/▼ symbols "
-                    "only appear when ER ≥0.50 and reflect the "
-                    "PRICE direction during the trend, not 'KER says "
-                    "market is bullish/bearish.' KER doesn't have an "
-                    "opinion about market direction — it measures "
-                    "trend QUALITY only.\n\nDUAL THRESHOLDS "
-                    "(intentional): voter activates at ER ≥0.50; gate "
-                    "(EfficiencyRatioRegimeGate) suppresses scrum at "
-                    "ER ≤0.05 or ER ≥0.70. Different consumers, "
-                    "different thresholds, same field."
-                ),
-                "RSI": (
-                    "RSI — classic 70/30 overbought/oversold + "
-                    "divergence. ▲▼ direction + NN% confidence."
-                ),
-                "Net": (
-                    "Net — weighted bull − bear vote tally. "
-                    "Sum of (confidence × weight) for BULLISH voters "
-                    "minus same for BEARISH voters. NEUTRAL voters "
-                    "contribute 0. Theoretical range ±11.7; in "
-                    "practice rarely outside ±3."
-                ),
-                "Comp": (
-                    "Composite Net — parent Net rank-weighted with all "
-                    "active higher-TF phantom bot summaries. "
-                    "Phantoms boost (bullish) or suppress (bearish) "
-                    "the parent's signal only when Phantom Bots "
-                    "are enabled and have completed their first "
-                    "signal cycle. Populated on the parent bot's TF "
-                    "row only; phantom TF rows read “—”."
-                ),
-                "Conf": (
-                    "Confidence — |Net| / total_weight_of_active_voters, "
-                    "capped at 1.0. Reflects BREADTH of agreement, not "
-                    "magnitude. A 30% reading typically means 6 voters "
-                    "strongly agree + 6 are NEUTRAL — not 'panel "
-                    "disagrees'. Green ≥60%, amber ≥30%, gray <30%."
-                ),
-            }
+            self._HEADER_TOOLTIPS = dict(ivp.HEADER_TOOLTIPS)
             row_a_container, self._table_a, self._conf_bars_a = (
                 self._make_indicator_row(_ROW_A_INDICATOR_COLS, include_aggregates=True)
             )
@@ -865,10 +762,13 @@ if _HAS_QT:
             )
             table.setColumnCount(len(col_names))
             table.setHorizontalHeaderLabels(col_names)
-            for _idx, _name in enumerate(col_names):
+            col_tips = ivp.column_tooltips(
+                indicator_subset, include_aggregates=include_aggregates
+            )
+            for _idx, _words in enumerate(col_tips):
                 _hdr = table.horizontalHeaderItem(_idx)
                 if _hdr is not None:
-                    _hdr.setToolTip(self._HEADER_TOOLTIPS.get(_name, _name))
+                    set_description(_hdr, _words)
             hdr = table.horizontalHeader()
 
             # Columns stretch equally but never below the widest
@@ -1241,8 +1141,8 @@ if _HAS_QT:
                     tf_item = QTableWidgetItem(tf)
                     tf_item.setTextAlignment(Qt.AlignCenter)
                     tf_item.setFont(QFont("", -1, QFont.Bold))
-                    tf_item.setToolTip(
-                        self._HEADER_TOOLTIPS.get(ivp.TF_COLUMN_TITLE, tf)
+                    set_description(
+                        tf_item, self._HEADER_TOOLTIPS.get(ivp.TF_COLUMN_TITLE, tf)
                     )
                     _tbl.setItem(row, 0, tf_item)
 
@@ -1336,7 +1236,7 @@ if _HAS_QT:
             red, green, blue = colors["fill_rgb"]
             cell.setForeground(QBrush(QColor(colors["text_color"])))
             cell.setBackground(QBrush(QColor(red, green, blue, colors["fill_alpha"])))
-            cell.setToolTip(ivp.indicator_cell_tooltip(ind_key, sig))
+            set_description(cell, ivp.indicator_cell_tooltip(ind_key, sig))
             table.setItem(row, col, cell)
 
         def _collated_bars(self, tf_data) -> list:
@@ -1366,7 +1266,7 @@ if _HAS_QT:
             if cell.get("text_color"):
                 item.setForeground(QBrush(QColor(cell["text_color"])))
             if cell.get("tooltip"):
-                item.setToolTip(cell["tooltip"])
+                set_description(item, cell["tooltip"])
             table.setItem(row, col, item)
             return item
 
@@ -1465,9 +1365,10 @@ if _HAS_QT:
             super().__init__(parent)
             self.setWindowTitle(f"Signal Detail: {indicator_name}")
             self.setMinimumSize(400, 300)
-            self.setToolTip(
+            set_description(
+                self,
                 f"Detailed signal history and response controls for "
-                f"the {indicator_name} indicator."
+                f"the {indicator_name} indicator.",
             )
             self.setAccessibleName(f"{indicator_name} Signal Detail Dialog")
 

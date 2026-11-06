@@ -402,7 +402,7 @@ Run three times over 23 minutes, at 16:50Z, 17:02:55Z and 17:13:38Z. All three r
 ## 10. The manual page is add-only
 
 The census ran against
-`git show origin/current:docs/manual/15-venue-compatibility.md`, decoded as
+`git show origin/current:docs/reference/15-venue-compatibility.md`, decoded as
 UTF-8:
 
 ```
@@ -433,7 +433,7 @@ Run serial, one file at a time, on every file this unit touches.
 | `src/stocks/alpaca_connector.py` | passed | passed | — |
 | `src/trading/scrumming/sizing.py` | passed | passed | — |
 | `src/gui/main_tabs/asset_class_surface.py` | passed | — | — |
-| `docs/manual/15-venue-compatibility.md` | — | — | passed |
+| `docs/reference/15-venue-compatibility.md` | — | — | passed |
 | this page | — | — | passed |
 
 Each archetype was calibrated before any verdict was reported, by running its own

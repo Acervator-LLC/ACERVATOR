@@ -614,7 +614,7 @@ and what the census uses now, and gateio reads 6679 markets.
 ## The manual page is add-only
 
 Every sentence of the published page survives verbatim in the working page.
-Measured against `git show origin/current:docs/manual/15-venue-compatibility.md`,
+Measured against `git show origin/current:docs/reference/15-venue-compatibility.md`,
 decoded as UTF-8:
 
 ```

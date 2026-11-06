@@ -11,6 +11,7 @@
   var ALPHA_UNIT = "alpha_unit";
   var ARROW_ALPHA = "arrow_alpha";
   var FLIP_BUTTON = "flip_button";
+  var FLIP_TOOLTIP = "tooltip";
   var BACKGROUND_ALPHA = "background_alpha";
   var BACKGROUND_RGB = "background_rgb";
   var BARS = "bars";
@@ -477,6 +478,7 @@
     buttonProps[SLOT_ATTR] = FLIP_PART;
     buttonProps[ARIA_LABEL] = text(button[NAME]);
     buttonProps[OTHER_TEXT_ATTR] = text(button[OTHER_TEXT]);
+    buttonProps.title = label(button[FLIP_TOOLTIP]);
     return element(BUTTON_TAG, buttonProps, text(button[TEXT]));
   }
 
@@ -519,6 +521,7 @@
     };
     selectProps[PART_ATTR] = SELECTOR_PART;
     selectProps[SLOT_ATTR] = SELECTOR_PART;
+    selectProps.title = label(objectField(model, HEADER).selector_tooltip);
     return element(SELECT_TAG, selectProps, drawn);
   }
 

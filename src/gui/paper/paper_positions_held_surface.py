@@ -14,6 +14,10 @@ from typing import Any
 from ..main_tabs import positions_held_surface as live
 
 METHOD = "paper_positions_held_tab.state"
+FIRE_TOOLTIP = (
+    "Asks to sell all of this position's units. The Paper Trader sends nothing, "
+    "so it refuses and says why."
+)
 
 
 class PaperPositionsHeldTabModel(live.PositionsHeldTabModel):
@@ -29,4 +33,5 @@ def build_view_model(
     """Live's ``build_view_model`` under ``METHOD``."""
     payload = dict(live.build_view_model(model, build_now=build_now))
     payload["method"] = METHOD
+    payload["fire_button"] = {**payload["fire_button"], "tooltip": FIRE_TOOLTIP}
     return payload

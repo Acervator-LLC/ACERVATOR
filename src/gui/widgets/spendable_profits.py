@@ -10,9 +10,12 @@ from ...trading.target_bands import TERRITORY_FOLD, TERRITORY_SCRUM
 from .. import design_system as ds
 from ..main_tabs.header_strip_surface import VALUE_FONT_MIN_PX, VALUE_FONT_PX
 from ..main_tabs.spendable_profits_surface import (
+    ACCESSIBLE_NAME,
     COLUMNS,
     FIELD_ID_BY_KEY,
     MONEY_KEYS,
+    SPENDABLE_UNKNOWN_TOOLTIP,
+    UNREADABLE_TOOLTIP,
     column_cell,
     money_amount,
 )
@@ -26,6 +29,7 @@ try:
     from .eliding_label import ElidingLabel
     from .fitted_label import FittedLabel
     from .privacy_dot import PrivacyDot
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -74,25 +78,10 @@ if _HAS_QT:
 
         #: Every column drawing money, which shrinks rather than shortens.
         _MONEY_KEYS = MONEY_KEYS
-        _PNL_TIP = (
-            "P/L — the unrealised profit and loss the exchange answers across "
-            "every bot's open position. It is the only profit and loss figure "
-            "the strip carries."
-        )
-        _AMMO_TIP = (
-            "Total Ammo — every bot's Target Delta added together, in whole "
-            "dollars. Green while more bots hold more than their target, red "
-            "while more hold less."
-        )
-        _SPENDABLE_ABSENT_TIP = (
-            "This amount is not in the data the strip was given for this refresh."
-        )
-        _UNREADABLE_TIP = (
-            "This amount did not arrive as a number, so nothing is shown for it."
-        )
-        #: The columns carrying a tooltip, by key. Every other column's
-        #: caption says all there is to say about it.
-        _TIP_BY_KEY = {"pnl": _PNL_TIP, "total_ammo": _AMMO_TIP}
+        _SPENDABLE_ABSENT_TIP = SPENDABLE_UNKNOWN_TOOLTIP
+        _UNREADABLE_TIP = UNREADABLE_TOOLTIP
+        #: Each column's description, read from the declaration the React strip reads.
+        _TIP_BY_KEY = {column["key"]: column["label_tooltip"] for column in COLUMNS}
 
         def __init__(self, parent=None):
             super().__init__(parent)
@@ -106,6 +95,7 @@ if _HAS_QT:
 
         def _setup_ui(self) -> None:
             """Build the frame, one column per ``COLUMNS`` entry, and their dots."""
+            self.setAccessibleName(ACCESSIBLE_NAME)
             self.setFrameShape(QFrame.StyledPanel)
             self.setStyleSheet(
                 "SpendableProfitsWidget { "
@@ -131,10 +121,7 @@ if _HAS_QT:
             self._spend_label.setStyleSheet(self._SPENDABLE_LABEL_STYLE)
             self._spend_label.setAlignment(self._LABEL_ALIGN)
             self._hold_caption_width(self._spend_label)
-            self._spend_label.setToolTip(
-                "Cash balance pulled from the exchange, across the bots "
-                "sharing one wallet."
-            )
+            set_description(self._spend_label, self._TIP_BY_KEY[COLUMNS[0]["key"]])
             spend_col.addWidget(self._spend_label)
             self._amount = FittedLabel(_ABSENT_TEXT, self._VALUE_PX, self._VALUE_MIN_PX)
             self._amount.set_skin(self._VALUE_SKIN_MUTED)
@@ -170,7 +157,7 @@ if _HAS_QT:
                 lbl.setStyleSheet(self._LABEL_STYLE)
                 lbl.setAlignment(self._LABEL_ALIGN)
                 self._hold_caption_width(lbl)
-                lbl.setToolTip(tip)
+                set_description(lbl, tip)
                 col.addWidget(lbl)
                 if key in self._MONEY_KEYS:
                     val = FittedLabel(_ABSENT_TEXT, self._VALUE_PX, self._VALUE_MIN_PX)
@@ -179,7 +166,7 @@ if _HAS_QT:
                     val = ElidingLabel(_ABSENT_TEXT)
                     val.setStyleSheet(self._VALUE_STYLE_DEFAULT)
                 val.setAlignment(self._VALUE_ALIGN)
-                val.setToolTip(tip)
+                set_description(val, tip)
                 self._stats[key] = val
                 col.addWidget(val)
                 dot = PrivacyDot(
@@ -225,7 +212,7 @@ if _HAS_QT:
                 self._ammo_skin(ammo, kept.get("ammo_lean"))
             )
             self._amount.set_skin(skin)
-            self._amount.setToolTip(tip)
+            set_description(self._amount, tip)
             self._amount.setText(cells[COLUMNS[0]["key"]]["text"])
             for key, label in self._stats.items():
                 label.setText(cells[key]["text"])

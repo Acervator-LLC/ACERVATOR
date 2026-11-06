@@ -33,6 +33,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from ...exchange.timeframes import ALL_TIMEFRAMES
+from ..descriptions import PHANTOM_BOTS_TAB_DESCRIPTIONS
 from ...trading.phantom_balance import one_active_phantom_timeframe
 from .. import design_system as ds
 from .indicator_panel_surface import ABSENT_CELL_TEXT
@@ -83,12 +84,8 @@ LOCK_ROW_LABEL = "Candles to lock:"
 LOCK_MIN = 1
 LOCK_MAX = 10
 LOCK_DEFAULT = 2
-LOCK_TOOLTIP = (
-    "How many candles a higher-TF lock persists. The coordinator "
-    "keeps the figure and saves it with the bot. Nothing creates a "
-    "lock today, so Active Locks stays empty and SCRUM lock state "
-    "stays UNLOCKED."
-)
+LOCK_TOOLTIP = PHANTOM_BOTS_TAB_DESCRIPTIONS["phantom_lock"]
+ENABLE_TOOLTIP = PHANTOM_BOTS_TAB_DESCRIPTIONS["phantoms_enabled"]
 
 SUMMARY_GROUP_TITLE = "Coordinator Status"
 FORM_CONFIGURED_BY_HOST = True
@@ -131,6 +128,15 @@ PHANTOM_COLUMNS = (
     "Bullish/Bearish",
     "Confidence",
 )
+PHANTOM_COLUMN_TOOLTIPS = (
+    "The timeframe this phantom reads.",
+    "Whether this phantom is idle, running or stopped.",
+    "The dollar target this phantom reports.",
+    "The trade count this phantom reports. A phantom places no orders.",
+    "Profit this phantom reports. A phantom holds no position, so it reports none.",
+    "Indicators voting bullish and bearish on this phantom's timeframe.",
+    "How strongly the indicators agree on this timeframe, as a percentage.",
+)
 PHANTOM_COLUMN_COUNT = 7
 PHANTOM_TABLE_MAX_HEIGHT_PX = 280
 PNL_COLUMN = 4
@@ -138,6 +144,12 @@ CONFIDENCE_COLUMN = 6
 
 LOCKS_GROUP_TITLE_FORMAT = "Active Locks ({count})"
 LOCK_COLUMNS = ("Source TF", "Source Bot", "Direction", "Candles left")
+LOCK_COLUMN_TOOLTIPS = (
+    "The phantom timeframe that set this lock.",
+    "The bot whose phantom set this lock.",
+    "The trade direction this lock holds off.",
+    "Candles left before this lock ends.",
+)
 LOCK_COLUMN_COUNT = 4
 LOCK_TABLE_MAX_HEIGHT_PX = 220
 SOURCE_BOT_COLUMN = 1
@@ -145,6 +157,7 @@ DIRECTION_COLUMN = 2
 
 HEADER_RESIZE_MODE = "ResizeToContents"
 VERTICAL_HEADER_VISIBLE = True
+ROW_NUMBER_TOOLTIP = "Row numbers, counted from one."
 EDIT_TRIGGERS = "NoEditTriggers"
 ALTERNATING_ROW_COLORS = True
 
@@ -1297,7 +1310,11 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
             "index": model.step_refusal.get("index", NO_REFUSAL_INDEX),
         },
         "enable_group": {"title": ENABLE_GROUP_TITLE},
-        "enable_check": {"text": ENABLE_CHECK_TEXT, "checked": model.enable_checked},
+        "enable_check": {
+            "text": ENABLE_CHECK_TEXT,
+            "tooltip": ENABLE_TOOLTIP,
+            "checked": model.enable_checked,
+        },
         "timeframe_group": {"title": TF_GROUP_TITLE},
         "timeframe_hint": {
             "text": TF_HINT_TEXT,
@@ -1339,6 +1356,7 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
         },
         "phantom_table": {
             "columns": list(PHANTOM_COLUMNS),
+            "column_tooltips": list(PHANTOM_COLUMN_TOOLTIPS),
             "column_count": PHANTOM_COLUMN_COUNT,
             "max_height_px": PHANTOM_TABLE_MAX_HEIGHT_PX,
             "pnl_column": PNL_COLUMN,
@@ -1354,6 +1372,7 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
         },
         "locks_table": {
             "columns": list(LOCK_COLUMNS),
+            "column_tooltips": list(LOCK_COLUMN_TOOLTIPS),
             "column_count": LOCK_COLUMN_COUNT,
             "max_height_px": LOCK_TABLE_MAX_HEIGHT_PX,
             "source_bot_column": SOURCE_BOT_COLUMN,
@@ -1365,6 +1384,7 @@ def build_view_model(model: PhantomBotsTabModel, build_now: bool = False) -> dic
         "table_rules": {
             "header_resize_mode": HEADER_RESIZE_MODE,
             "vertical_header_visible": VERTICAL_HEADER_VISIBLE,
+            "corner_tooltip": ROW_NUMBER_TOOLTIP,
             "edit_triggers": EDIT_TRIGGERS,
             "alternating_row_colors": ALTERNATING_ROW_COLORS,
         },

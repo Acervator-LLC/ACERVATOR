@@ -99,6 +99,19 @@ failed to draw.
 | Bot Swarm Topologies | One of three sentences, by scan state |
 | Phantom Bot HTF Signals | "Phantom Bot source not wired." |
 
+The Phantom Bot HTF Signals row above is overtaken, and it is kept as written. The
+line now names the state of its source. With no bot lookup wired, it says the
+source is not wired. With the lookup wired and no bot running a phantom timeframe,
+it counts the bots it read.
+
+`src/gui/main_tabs/market_inspector_surface.py` — `phantom_zone_text`
+
+```python
+if bots is None:
+    return PHANTOM_HTF_UNWIRED_TEXT
+return PHANTOM_HTF_NONE_FORMAT.format(count=len(list(bots)))
+```
+
 The Qt build gives every zone a `ProposalStepper`. The two web hosts give every
 zone a `ZoneStepper`. Both are written from one description of the zone, so a
 zone's lines are decided in one place.
@@ -242,6 +255,11 @@ Neither added sector carries a listed market yet, so a scan of either walks no
 sector at all. The map store answers an empty set for a class it holds no entry
 for, which is what it already does for crypto.
 
+The two sentences above are overtaken for Futures / Perps, and both are kept as
+written. A Futures / Perps scan now walks the venue's futures list, because every
+product on a crypto root is placed there. An Indices scan walks the same list for
+a product on an index root.
+
 The operator asked for the published names rather than this project's own.
 
 > I just want to adopt the standard categorization and language so that the implementation is professional and accurate...
@@ -254,6 +272,10 @@ A retired class name still resolves.
 | `energy` | commodities |
 | `derivatives` | crypto, because a futures product takes the class of its underlying |
 | a name neither taxonomy holds | none; the press is refused |
+
+The `derivatives` row above is overtaken, and it is kept as written. The name now
+answers futures_perps, the class the contract rule files a contract on a crypto
+underlying under.
 
 A refused name runs no scan, so no class is scanned with no timeframes behind it.
 
@@ -342,6 +364,14 @@ The four commodity spot pairs carry no venue at all. A futures row in any class 
 reachable and unwired: the venue takes orders on its US futures products, and the
 futures adapter reads candles and places none.
 
+The table above gains a row, and it is kept as written. Futures / Perps answers
+what a futures row answers, because `CLASS_DEPLOYABILITY` holds the futures form's
+own record for it.
+
+| Class | Reachable from home | Venue wired |
+| ----- | ------------------- | ----------- |
+| futures_perps | yes, the venue takes orders on its US futures products over the same API | no, the futures adapter reads candles and places none |
+
 ### The form each listing carries
 
 Every row draws the form its product takes. The form rides on the row; no control
@@ -365,6 +395,23 @@ def futures_placement(product: Any) -> tuple[str, str, str]:
 
 A root neither the record nor the root table resolves is held back, named on the
 order line and counted. Nothing is guessed.
+
+The placement above now ends in the contract rule, and the block is kept as
+written. A crypto root answers Futures / Perps, and an index root answers Indices
+with no sector.
+
+```python
+# src/trading/ata_asset_maps.py, in futures_placement
+    root = _root_of(product)
+    if not root:
+        return "", NO_ASSET_CLASS, ""
+    if not _non_crypto(product) and (root in CRYPTO_SYMBOLS or _crypto_sector(root)):
+        return root, contract_class(CLASS_CRYPTO), _crypto_sector(root)
+    held = NON_CRYPTO_ROOTS.get(root)
+    if held is None:
+        return root, NO_ASSET_CLASS, ""
+    return held[2], contract_class(held[0]), held[1]
+```
 
 ### The ticker field
 
@@ -1807,6 +1854,38 @@ Derivatives is not a class. Each futures product takes the class of its underlyi
 and the product list is read at press time from the venue's own public route,
 ranked by its own 24-hour volume times price.
 
+The second sentence above is overtaken in part, and it is kept as written. A
+product on a crypto root now takes Futures / Perps. A press reads this list for
+the classes the placement can answer, and `FUTURES_CLASSES` derives that set from
+the placement's own tables.
+
+```python
+# src/gui/main_tabs/market_inspector_surface.py, in FUTURES_CLASSES
+FUTURES_CLASSES = tuple(
+    sorted(
+        {
+            ata_spm.contract_class(one)
+            for one in (
+                ata_spm.CLASS_CRYPTO,
+                *(row[0] for row in ata_asset_maps.NON_CRYPTO_ROOTS.values()),
+            )
+        }
+    )
+)
+```
+
+Driven over six product records written for the reading, with the home
+redirected and every network name refused, through `futures_listings` and
+`class_markets` on the tree before this change and on this one:
+
+```
+                                   scan before    scan now        recording
+three contracts on a crypto root   crypto         futures_perps   futures_perps
+two contracts on a commodity root  commodities    commodities     commodities
+one contract on an index root      stocks         indices         indices
+scan and recording agree           2 of 6         6 of 6
+```
+
 `src/trading/ata_asset_maps.py` — where the futures list comes from
 
 ```python
@@ -2008,6 +2087,17 @@ def _adopt_topology_proposal(self, proposal: dict) -> None:
 An adopt that aborts part way calls `_report_adopt_orphans`, which names the bot
 ids it created and left unwired. Adopt is the only control on this screen that
 creates anything.
+
+While the saved fleet is sealed, Adopt shows none of that. The handler asks
+`src/gui/main_window.py, in _refuse_while_sealed` first, so the press puts one
+box over the window and one Console line saying to unlock first. No confirm box,
+no wizard, no wire and no snapshot file follow. The words and the measurement are
+on [the Console page](console.md).
+
+```python
+if self._refuse_while_sealed():
+    return
+```
 
 ## Push to the Simulator, the Paper Trader and Live
 
@@ -2295,6 +2385,17 @@ total = float(interval_pct) + float(fee_pct)
 return max(OTD_MIN_PCT, min(OTD_MAX_PCT, total))
 ```
 
+**Current reading.** The sum keeps a floor of two fees: where the interval sits
+under the fee, the distance is two fees. A scan holds no fills, so no venue fee
+raises the fee it reads from its settings.
+
+`src/trading/ata_gate_scan.py` — `build_context`
+
+```python
+held = settings if settings is not None else scan_settings(symbol)
+distance_held = distance_settings(held)
+```
+
 Landing Strip is the second number. The band-proximity detector reads whether price
 has sat against a Bollinger band for a run of candles, and it answers a side. An
 upper strip is a sell reversal and a lower strip is a buy reversal. The side and
@@ -2321,6 +2422,32 @@ class GateScan:
     """Every gate reading over one market, with the side that would fire."""
 
     confidence_floor: float = 0.0
+```
+
+**Current reading, the line under the scan's floor.** The scan's floor takes the
+line a bot's floor takes. The favours relax it no further than what the two
+heaviest voters of the scanned vote reach at full confidence, and never above
+0.25. So a scan needs a third agreeing indicator wherever the plain floor needs
+one.
+
+`src/trading/ata_gate_scan.py` — `confidence_floor`
+
+```python
+return _skewed_confidence_floor(skew, getattr(summary, "signals", None) or [])
+```
+
+**Current reading, the scan's floor and its strip.** The scan's floor now keeps
+the line at every skew, so it can rise over 0.25. The scan's own copy of the
+strip rule is gone. It calls the function a bot calls, so a strip sets the
+scan's side only when three indicators agree. The scan's LS light reads cyan
+only while the TA light on its bank shows neither a refusal nor an override.
+
+`src/trading/ata_gate_scan.py` — `build_context`
+
+```python
+is_bullish, is_bearish = vote_sides(
+    direction, confidence, floor, band, getattr(summary, "signals", None) or []
+)
 ```
 
 `src/trading/ta_engine.py` — the candle floor the engine sets
@@ -3935,6 +4062,87 @@ PHANTOM_HTF_UNWIRED_TEXT = "Phantom Bot source not wired."
 ```
 
 In development.
+
+The section above is overtaken, and it is kept as written. The zone now reads the
+fleet. It steps through one entry for each bot that runs a phantom timeframe, in
+fleet order. A bot whose phantom bots are off gets no entry. The Indicator Voting
+Panel does the same: it adds no phantom row for that bot.
+
+`src/gui/main_tabs/market_inspector_surface.py` — `phantom_entries`
+
+```python
+return [phantom_entry(one) for one in bots or [] if phantom_timeframe(one)]
+```
+
+The tab builder hands the zone one lookup into the bot manager. On each two-second
+refresh the zone looks up the bots the other tabs are fed, and draws them again.
+
+`src/gui/main_tabs/market_inspector_tab.py` — `MarketInspectorTabMixin._build_market_inspector_tab`
+
+```python
+self._market_inspector.set_phantom_source(self._fleet_bot)
+```
+
+One entry names the market, the bot's own timeframe and its phantom timeframe. The
+line under it gives Comp and Conf for each of the two. The next line gives the gate
+sentence for each, in the words of the bot's own GATES line.
+
+```
+ZZZ/USD 1h with phantom 1d
+1h Comp +0.94 Conf 8% · 1d Comp +2.64 Conf 23%
+1h gates: Scrum blocked adx_trend_suppression, efficiency_ratio_regime, overridden TA.
+Fold blocked BB, MID, TA, TRNQ, zscore_extremity. · 1d gates: Scrum blocked FIRE,
+adx_trend_suppression. Fold blocked BB, MID, TA.
+```
+
+Clicking the entry opens two grids. The first is the Indicator Voting Panel, with one
+row for each timeframe. The second is the nineteen gate lights, the scrum bank above
+the fold bank, with one row for each timeframe. Each light keeps the colour the
+History tab gives it.
+
+The bot's row comes from its last tick. The phantom's row comes from the phantom's
+last read. On each pass of its loop, the phantom runs both of the bot's gate chains
+over the candles it read, at the bot's own settings. That reading changes no trade.
+
+`src/trading/phantom_balance.py` — `PhantomBot._tick`
+
+```python
+self.last_gates = timeframe_gates(
+    self.symbol, self.timeframe, candles, summary, self.settings
+)
+```
+
+A higher timeframe reads the market and not the position. The six gates that read
+the position do not run at the phantom read. Their lights stay grey, and the entry
+names them under the grid. The bot's own row holds those six.
+
+```
+1d position: Scrum TGT, INT, OTD and Fold TRNQ, CEIL, OTD did not run. They read
+the bot's position, at 1h.
+```
+
+| Piece | Module | Symbol |
+| ----- | ------ | ------ |
+| the bots the zone reads | `src/gui/main_tabs/market_inspector_surface.py` | `phantom_fleet` |
+| the one active timeframe | `src/trading/phantom_balance.py` | `one_active_phantom_timeframe` |
+| the bot's own lights | `src/trading/scrumming/snapshots.py` | `state_reading` |
+| the phantom's lights | `src/trading/ata_gate_scan.py` | `scan_reading` |
+| the gate sentence | `src/trading/scrumming/snapshots.py` | `bank_text` |
+| Comp for each row | `src/trading/ata_gate_scan.py` | `composite_rows` |
+| the gate light grid | `src/gui/main_tabs/market_inspector_surface.py` | `lights_panel` |
+
+Driven on a constructed bot over a stand-in venue that refuses every order, the
+zone's lights equal the lights the bot's own chains decide at both timeframes. One
+changed gate input moves one light, which shows the comparison can report.
+
+```
+bots in the fleet                              2, one running a phantom timeframe
+entries in the zone                            1; 2 with the second bot's phantoms on
+lights equal to the bot's own chains           19 of 19 at 1h, 19 of 19 at 1d
+one gate input changed, lights that moved      1 at 1h, 1 at 1d
+Qt and React fields compared                   20 equal, 0 different
+orders placed, venue sockets opened            0, 0
+```
 
 ## The asset logo library
 

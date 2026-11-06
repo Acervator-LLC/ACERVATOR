@@ -22,6 +22,7 @@
   var SEPARATOR = "_";
   var SPACE = " ";
   var FUNCTION_KIND = "function";
+  var STRING_KIND = "string";
 
   var roots = [];
   var dragging = null;
@@ -59,6 +60,9 @@
     made[TAB_ATTRIBUTE] = props.name;
     made[SELECTED_ARIA] = chosen ? "true" : "false";
     made[SELECTED_ATTRIBUTE] = chosen ? "true" : undefined;
+    if (typeof props.description === STRING_KIND && props.description) {
+      made.title = props.description;
+    }
     if (typeof props.onMove === FUNCTION_KIND) {
       made.draggable = true;
       made.onDragStart = function (event) {
@@ -83,6 +87,12 @@
     return given && typeof given[name] === "string" ? given[name] : label(name);
   }
 
+  // The window's host hands the bar each tab's description; the shell hands none.
+  function descriptionFor(name, given) {
+    var held = given || global.acervatorMainWindowDescriptions;
+    return held && typeof held[name] === STRING_KIND ? held[name] : undefined;
+  }
+
   function TabBar(props) {
     var made = [];
     for (var index = 0; index < props.names.length; index++) {
@@ -92,6 +102,7 @@
           at: index,
           name: props.names[index],
           text: textFor(props.names[index], props.labels),
+          description: descriptionFor(props.names[index], props.descriptions),
           selected: props.selected,
           onSelect: props.onSelect,
           onMove: props.onMove
@@ -130,6 +141,7 @@
         element(TabBar, {
           names: Array.isArray(model.names) ? model.names : [],
           labels: model.labels,
+          descriptions: model.descriptions,
           selected: model.selected,
           onSelect:
             typeof model.onSelect === FUNCTION_KIND ? model.onSelect : ignore,

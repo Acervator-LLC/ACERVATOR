@@ -132,6 +132,8 @@ try:
         QWidget,
     )
 
+    from ..tooltips import set_description
+
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
@@ -183,7 +185,7 @@ if _HAS_QT:
 
             self._list_btn = QPushButton(LIST_TEXTS[self._list_mode], self)
             self._list_btn.setAccessibleName("Chart list")
-            self._list_btn.setToolTip(LIST_TOGGLE_TOOLTIP)
+            set_description(self._list_btn, LIST_TOGGLE_TOOLTIP)
             self._list_btn.setStyleSheet(LIST_TOGGLE_STYLE)
             self._list_btn.setFixedSize(
                 self._list_toggle_width(), LIST_TOGGLE_HEIGHT_PX
@@ -193,7 +195,7 @@ if _HAS_QT:
 
             self._prev_btn = QPushButton(PREV_TEXT, self)
             self._prev_btn.setAccessibleName("Previous asset")
-            self._prev_btn.setToolTip(PREV_TOOLTIP)
+            set_description(self._prev_btn, PREV_TOOLTIP)
             self._prev_btn.setFixedSize(ARROW_WIDTH_PX, ARROW_HEIGHT_PX)
             self._prev_btn.setStyleSheet(ARROW_STYLE)
             self._prev_btn.clicked.connect(lambda: self.step(-1))
@@ -201,7 +203,7 @@ if _HAS_QT:
 
             self._ticker_combo = QComboBox(self)
             self._ticker_combo.setAccessibleName("Asset ticker")
-            self._ticker_combo.setToolTip(TICKER_TOOLTIP)
+            set_description(self._ticker_combo, TICKER_TOOLTIP)
             self._ticker_combo.setMinimumWidth(TICKER_MIN_WIDTH_PX)
             self._ticker_combo.setFixedHeight(CONTROL_HEIGHT_PX)
             self._ticker_combo.setStyleSheet(TICKER_STYLE)
@@ -210,7 +212,7 @@ if _HAS_QT:
 
             self._next_btn = QPushButton(NEXT_TEXT, self)
             self._next_btn.setAccessibleName("Next asset")
-            self._next_btn.setToolTip(NEXT_TOOLTIP)
+            set_description(self._next_btn, NEXT_TOOLTIP)
             self._next_btn.setFixedSize(ARROW_WIDTH_PX, ARROW_HEIGHT_PX)
             self._next_btn.setStyleSheet(ARROW_STYLE)
             self._next_btn.clicked.connect(lambda: self.step(1))

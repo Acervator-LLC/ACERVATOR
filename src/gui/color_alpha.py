@@ -31,6 +31,7 @@ CSS_ALPHA_HIGHEST = 1
 CSS_ALPHA_UNIT = 1.0 / ALPHA_HIGHEST
 
 RGBA_CALL = re.compile(r"rgba\(([^()]*)\)")
+RGBA_OPEN = "rgba("
 RGBA_FIELDS = 4
 ALPHA_AT = 3
 FIELD_SPLIT = ","
@@ -112,6 +113,8 @@ def css_rgba(text: str) -> str:
     fourth field of an ``rgba`` call is carried through untouched, so a
     Qt-only value such as ``qlineargradient`` keeps its own shape.
     """
+    if RGBA_OPEN not in text:
+        return text
     return RGBA_CALL.sub(_css_call, text)
 
 

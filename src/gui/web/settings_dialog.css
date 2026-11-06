@@ -224,6 +224,11 @@ button.acervator-settings-dialog[data-part="button"]:disabled {
   cursor: default;
 }
 
+button.acervator-settings-dialog[data-part="button"][aria-pressed="true"] {
+  background: var(--grid);
+  border-style: inset;
+}
+
 .acervator-settings-dialog[data-part="banner"] {
   flex: none;
 }

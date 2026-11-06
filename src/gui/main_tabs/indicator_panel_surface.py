@@ -25,6 +25,7 @@ from typing import Any, Optional
 from ...exchange.timeframes import ALL_TIMEFRAMES
 
 from .. import design_system as ds
+from ..descriptions import INDICATOR_PANEL_DESCRIPTIONS
 from . import privacy_dot_surface
 from .native_chart_surface import (
     ARROW_GLYPH_FAMILY,
@@ -75,6 +76,7 @@ HEADER = {
     "margins_px": [4, 2, 4, 2],
     "bot_label_text": "Bot:",
     "selector_minimum_width_px": 180,
+    "selector_tooltip": INDICATOR_PANEL_DESCRIPTIONS["bot_selector"],
 }
 
 TITLE_HEADING_PROPERTY = "heading"
@@ -390,12 +392,8 @@ STALENESS_BACKGROUND_ALPHA = 90
 STALENESS_FORMAT = "⏱ THESE VOTES ARE OLD — read at {when}, {age}. {message}"
 
 STALENESS_TOOLTIP = (
-    "Shown when the votes below are the last ones this bot "
-    "produced, not current ones. It carries the time they "
-    "were read, how old they are, and why no current ones "
-    "exist. Nothing is recalculated to show it. "
-    "The same line also appears with no votes below it, "
-    "naming the one reason that applies."
+    "Shown when the panel has only a stored TA read, or no reading at all, "
+    "naming the age and cause."
 )
 
 RATE_STRIP_TEXT_COLOR = "#66ccff"
@@ -415,12 +413,7 @@ RATE_STRIP_JOIN = "   "
 RATE_STRIP_SOURCE_FORMAT = "  ·  {source}"
 RATE_STRIP_SOURCE_NONE = "none"
 
-RATE_STRIP_TOOLTIP = (
-    "Live BTC/USD and ETH/USD spot from the connected "
-    "exchange plus satoshi-per-USD and gwei-per-USD "
-    "conversions (1 gwei = 10⁹ wei). Refreshed on the "
-    "dashboard tick."
-)
+RATE_STRIP_TOOLTIP = INDICATOR_PANEL_DESCRIPTIONS["rate_strip"]
 
 BARS_TOOLTIP = (
     "Animated bar graph: per-indicator vote confidence for "
@@ -892,23 +885,12 @@ HEADER_TOOLTIPS = {
         "volume spike ratio. ▲▼ direction + NN% confidence."
     ),
     "Sling": (
-        "Slingshot — name is Chris Moody's; squeeze is Carter's "
-        "TTM Squeeze (via LazyBear), snapback is Bollinger's own "
-        "band rules. ▲▼ direction + NN% confidence."
+        "Slingshot — a squeeze release or a Bollinger snapback. "
+        "▲▼ direction + NN% confidence."
     ),
     "ADX": (
-        "ADX — Average Directional Index. Cell shows the "
-        "RAW ADX value (NOT a percentage), 0–100. "
-        "ADX <20: ranging (cell reads 'Rng NN'). "
-        "ADX 20–35: developing trend. ADX >35: strong "
-        "trend. ADX >50: parabolic / unsustainable. "
-        "Direction symbol from DI+/DI− cross when "
-        "trending.\n\nDUAL THRESHOLDS (intentional): the "
-        "voter goes NEUTRAL below ADX 20; the separate "
-        "ADXTrendSuppressionGate blocks SCRUM only at "
-        "ADX≥30, not below it. An ADX of 25 shows a "
-        "developing trend here and does not trip the "
-        "gate."
+        "ADX — raw 0 to 100, not a percent. Under 20 ranges; "
+        "the gate stops a scrum at 30."
     ),
     "STrd": (
         "Supertrend — ATR-banded trend line. ▲▼ direction "
@@ -916,62 +898,28 @@ HEADER_TOOLTIPS = {
         "band)."
     ),
     "ZSc": (
-        "Z-Score — statistical extremity. Cell shows the "
-        "RAW signed z-value (NOT a percentage). "
-        "|z| >2: strong bearish/bullish mean-revert "
-        "signal. |z| <1.5: NEUTRAL (no action).\n\n"
-        "ZScoreExtremityGate is ASYMMETRIC: "
-        "blocks SCRUM at z<-2 (don't sell the statistical "
-        "bottom), blocks FOLD at z>+2 (don't buy the "
-        "statistical top). High +z is exactly the right "
-        "condition for SCRUM; low -z is exactly the right "
-        "condition for FOLD; the gate filters only the "
-        "contrarian-wrong action on each side."
+        "Z-Score — raw and signed, not a percent. The gate stops "
+        "a scrum under −2, a fold over +2."
     ),
     "KER": (
-        "Kaufman Efficiency Ratio — trend efficiency 0–1. "
-        "Cell shows the RAW ER value (NOT a percentage). "
-        "ER ≤0.05: no-edge market (gate suppresses scrum). "
-        "ER ≥0.50: trending (voter contributes direction). "
-        "ER ≥0.70: highly efficient trend.\n\nDIRECTION "
-        "SYMBOL SEMANTICS: at ER <0.50 the voter is "
-        "NEUTRAL (─), not directional. The ▲/▼ symbols "
-        "only appear when ER ≥0.50 and reflect the "
-        "PRICE direction during the trend, not 'KER says "
-        "market is bullish/bearish.' KER doesn't have an "
-        "opinion about market direction — it measures "
-        "trend QUALITY only.\n\nDUAL THRESHOLDS "
-        "(intentional): voter activates at ER ≥0.50; gate "
-        "(EfficiencyRatioRegimeGate) suppresses scrum at "
-        "ER ≤0.05 or ER ≥0.70. Different consumers, "
-        "different thresholds, same field."
+        "Kaufman Efficiency Ratio — a raw 0 to 1 trend-quality "
+        "reading. It votes at 0.50 and over."
     ),
     "RSI": (
         "RSI — classic 70/30 overbought/oversold + "
         "divergence. ▲▼ direction + NN% confidence."
     ),
     "Net": (
-        "Net vote. The bullish weight of the twelve voters above, less "
-        "their bearish weight. Above zero the panel leans up. Below zero "
-        "it leans down. A voter with no opinion adds nothing. The bar "
-        f"below stands full at {NET_PILLAR_FULL_SCALE:.2f} either way, and "
-        "a bigger vote draws a brighter bar."
+        "Net vote — the bullish weight of the voters above, less their "
+        f"bearish weight. The bar fills at {NET_PILLAR_FULL_SCALE:.2f}."
     ),
     "Comp": (
-        "Comp is short for composite Net. It is this bot's Net vote, "
-        "joined with the Net vote of each higher timeframe a phantom bot "
-        "watches. A higher timeframe pulls the reading its own way. With "
-        "no phantom bot running, Comp reads the same as Net. A dash means "
-        "this row carries no composite of its own."
+        "Comp — this bot's Net joined with each higher timeframe a "
+        "phantom watches. A dash means none."
     ),
     "Conf": (
-        "Conf is short for confidence. It measures how far the voters "
-        "agree with each other, and nothing else. It is the Net vote "
-        "divided by the weight of every voter that cast one. 0% means "
-        "the voters cancel out or none has an opinion. 100% means every "
-        "voter that cast one agrees. A high reading does not say the "
-        "trade is a good one, only that the panel is of one mind. Grey "
-        "is under 30%, amber is 30% and over, green is 60% and over."
+        "Conf — how far the voters agree. Grey is under 30%, amber 30% "
+        "and over, green 60% and over."
     ),
 }
 
@@ -987,6 +935,18 @@ def column_titles(subset: list, *, include_aggregates: bool = False) -> list:
     pad = AGGREGATE_TITLES if include_aggregates else []
     titles = titles + list(pad)
     return titles + [EMPTY_TITLE] * (PANEL_COLUMN_COUNT - len(titles))
+
+
+def column_tooltips(subset: list, *, include_aggregates: bool = False) -> list:
+    """The ``HEADER_TOOLTIPS`` sentence over each ``column_titles`` column; a blank one carries its pillar's."""
+    first = PANEL_COLUMN_COUNT - len(AGGREGATE_TITLES)
+    described = []
+    titles = column_titles(subset, include_aggregates=include_aggregates)
+    for at, title in enumerate(titles):
+        if title == EMPTY_TITLE and at >= first:
+            title = AGGREGATE_TITLES[at - first]
+        described.append(HEADER_TOOLTIPS.get(title, title))
+    return described
 
 
 class IndicatorTableModel:
@@ -1009,7 +969,7 @@ class IndicatorTableModel:
         return len(self.titles)
 
     def tooltips(self) -> list:
-        return [HEADER_TOOLTIPS.get(title, title) for title in self.titles]
+        return column_tooltips(self.subset, include_aggregates=self.include_aggregates)
 
     def _indicator_cells(self, signals: dict) -> list:
         cells = []

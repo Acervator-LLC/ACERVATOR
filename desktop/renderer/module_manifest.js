@@ -95,4 +95,6 @@ window.ACERVATOR_MODULES = [
   "paper_table_cells.js",
   "paper_trading_tab.js",
   "class_note.js",
+  "fleet_unlock.js",
+  "splash_screen.js",
 ];

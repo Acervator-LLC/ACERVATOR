@@ -76,6 +76,9 @@
   var NEXT_CLICKED = "next_clicked";
   var APPLY_CLICKED = "apply_clicked";
   var CLOSE_CLICKED = "close_clicked";
+  var APPLY_TOOLTIP = "apply_tooltip";
+  var CLOSE_TOOLTIP = "close_tooltip";
+  var TAB_TOOLTIPS = "tab_tooltips";
 
   var DECLARED_FIELDS = [
     "accepted", ACTIONS, "age_days_format", "age_hours_format",
@@ -83,12 +86,12 @@
     "applied_entry_format", "applied_entry_separator", "applied_error_format",
     "applied_join", "applied_log", "applied_refused_format",
     "applied_synced_format", APPLY_ENABLED, "apply_enabled_at_start",
-    APPLY_LABEL, APPLY_STYLE, BOT, "bot_id_short_length",
+    APPLY_LABEL, APPLY_STYLE, APPLY_TOOLTIP, BOT, "bot_id_short_length",
     "bot_manager_attribute", "bus_topics", "call_names", "calls",
     CHANGE_APPLIED_FORMAT, CHANGE_APPLIED_STYLE, CHANGE_EMPTY_TEXT,
     CHANGE_FIELD_SEPARATOR, CHANGE_LABEL, CHANGE_PENDING_FORMAT,
     CHANGE_PENDING_STYLE, CHANGE_STYLE, CHANGES, CLOSE_LABEL,
-    CLOSE_STYLE, "coordinator_attribute", "coordinator_lock_attribute",
+    CLOSE_STYLE, CLOSE_TOOLTIP, "coordinator_attribute", "coordinator_lock_attribute",
     CURRENT_TAB, FIRST_TAB_INDEX, FOLD_CHROME_CONTROLS_PARAM,
     "fold_sort_key", "fold_sort_queue_order",
     FORM_FIELD_GROWTH, FORM_HORIZONTAL_SPACING_PX, FORM_MARGINS_PX,
@@ -117,12 +120,12 @@
     "state_unknown_fg", "style_sheet", TAB_BOT_SWARM, TAB_FOLD_TRANCHES,
     TAB_MARKET_INSPECTOR, TAB_PHANTOM_BOTS, TAB_PLAN,
     TAB_BOT_PARAM, TAB_POSITIONS_HELD, TAB_SETTINGS, TAB_STACK_TRANCHES,
-    TAB_STATUS, TABS, "timer_delays_ms", "timers", TITLE, "title_format",
+    TAB_STATUS, TAB_TOOLTIPS, TABS, "timer_delays_ms", "timers", TITLE, "title_format",
     WRAPPED_TABS
   ];
 
   var DECLARED_BAGS = [
-    ACTIONS, BOT, CHANGES, "runtime_routed", "skin", STATE_COLORS, "timers"
+    ACTIONS, BOT, CHANGES, "runtime_routed", "skin", STATE_COLORS, TAB_TOOLTIPS, "timers"
   ];
 
   var DECLARED_LISTS = [
@@ -135,7 +138,7 @@
   // Every word this shell draws, refused as markup before React draws it.
   var WORD_FIELDS = [
     TITLE, HEADER_LABEL, STATE_LABEL, CHANGE_LABEL, PREV_LABEL, NEXT_LABEL,
-    APPLY_LABEL, CLOSE_LABEL, PREV_TOOLTIP, NEXT_TOOLTIP
+    APPLY_LABEL, CLOSE_LABEL, PREV_TOOLTIP, NEXT_TOOLTIP, APPLY_TOOLTIP, CLOSE_TOOLTIP
   ];
 
   // Every Qt sheet this shell paints, named by the field it arrived in.
@@ -907,6 +910,7 @@
       tabProps[KEY_ATTR] = text(name);
       tabProps[INDEX_ATTR] = String(at);
       tabProps[CURRENT_ATTR] = text(current);
+      tabProps.title = label(objectField(model, TAB_TOOLTIPS)[name]);
       return element(BUTTON_TAG, tabProps, text(name));
     });
     return element(DIV_TAG, barProps, drawn);
@@ -985,6 +989,7 @@
         part: APPLY_BUTTON_PART,
         sheet: model[APPLY_STYLE],
         words: model[APPLY_LABEL],
+        tooltip: model[APPLY_TOOLTIP],
         action: actionNamed(model, APPLY_CLICKED),
         enabled: model[APPLY_ENABLED] === true,
         onPress: applyChanges
@@ -994,6 +999,7 @@
         part: CLOSE_BUTTON_PART,
         sheet: model[CLOSE_STYLE],
         words: model[CLOSE_LABEL],
+        tooltip: model[CLOSE_TOOLTIP],
         action: actionNamed(model, CLOSE_CLICKED),
         onPress: closeWindow
       })

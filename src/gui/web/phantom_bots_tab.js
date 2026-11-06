@@ -184,6 +184,8 @@
   var VALUE = "value";
   var TOOLTIP = "tooltip";
   var COLUMNS = "columns";
+  var COLUMN_TOOLTIPS = "column_tooltips";
+  var CORNER_TOOLTIP = "corner_tooltip";
   var COLUMN_COUNT = "column_count";
   var MAX_HEIGHT_PX = "max_height_px";
   var ROW_COUNT = "row_count";
@@ -624,6 +626,10 @@
     return listField(tableBag(kind), COLUMNS).slice();
   }
 
+  function columnTooltipsOf(kind) {
+    return listField(tableBag(kind), COLUMN_TOOLTIPS).slice();
+  }
+
   function rowsOf(kind) {
     return listField(tableBag(kind), ROWS);
   }
@@ -942,6 +948,7 @@
     var boxProps = {
       className: TAB_CLASS,
       type: CHECKBOX_TYPE,
+      title: label(check[TOOLTIP]),
       checked: check[CHECKED] === true,
       onChange: function (event) {
         pressEnable(event.target.checked, props.onEnable);
@@ -1155,6 +1162,7 @@
     headProps[COLUMN_ATTR] = text(props.at);
     headProps[KEY_ATTR] = text(props.name);
     headProps[ARIA_LABEL] = label(props.name);
+    headProps.title = label(props.tooltip);
     return element(HEAD_CELL_TAG, headProps, text(props.name));
   }
 
@@ -1180,6 +1188,7 @@
       var numberProps = { className: TAB_CLASS };
       numberProps[PART_ATTR] = parts.number;
       numberProps[ROW_ATTR] = text(props.at);
+      numberProps.title = props.numberTip;
       drawn.push(element(HEAD_CELL_TAG, numberProps, String(props.at + STEP)));
     }
     columnsOf(props.kind).forEach(function (name, column) {
@@ -1239,6 +1248,7 @@
     if (numbered) {
       var cornerProps = { className: TAB_CLASS };
       cornerProps[PART_ATTR] = parts.corner;
+      cornerProps.title = label(rules[CORNER_TOOLTIP]);
       headCells.push(element(HEAD_CELL_TAG, cornerProps, null));
     }
     columnsOf(kind).forEach(function (name, at) {
@@ -1247,6 +1257,7 @@
           key: String(at),
           part: parts.headerCell,
           name: name,
+          tooltip: columnTooltipsOf(kind)[at],
           at: at
         })
       );
@@ -1275,7 +1286,8 @@
                 kind: kind,
                 parts: parts,
                 at: at,
-                numbered: numbered
+                numbered: numbered,
+                numberTip: label(rules[CORNER_TOOLTIP])
               });
             })
           )

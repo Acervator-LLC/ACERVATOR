@@ -31,7 +31,9 @@ import time
 from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
+from ..core.emit_contracts import FILL_BUY, FILL_SELL
 from ..exchange.base import OrderType
+from ..exchange.market_rules_store import quote_currency
 from .bot_container import (
     DOLLAR_PEGGED_CURRENCIES,
     BotContainer,
@@ -41,6 +43,7 @@ from .bot_container import (
 from .buy_safety import verify_buy_safe_or_refuse
 from .container.config import stored_list
 from .phantom_balance import TIMEFRAME_SECONDS
+from .scrumming.execution import SettledFillFee, fill_fee_fields, venue_fee_record
 from .scrumming.sizing import DRAWDOWN_STATE
 from .ta_signal_provider import TASignalProvider, TASnapshot
 
@@ -164,6 +167,8 @@ class ExtractorBot(BotContainer):
         self._chunk_size_base: float = self._chunk_size_usd  # rebased when rate is set
         self._chunk_free_base: float = self._chunk_size_base
         self._chunk_extracted_total: float = 0.0  # cumulative base extracted
+        # The venue fee of the piece the next booker announces.
+        self._held_fill_fee: Optional[SettledFillFee] = None
 
         # update_usd_per_base_rate falls back to this window's median on a spike.
         self._recent_rates: list[float] = []  # last 3 accepted rates
@@ -181,7 +186,6 @@ class ExtractorBot(BotContainer):
         self._closed_position_log: list[dict] = []  # last 200 closed
         self._closed_log_max: int = 200
 
-        # ── Top-N watch list ──
         self._watch_list: list[str] = []
         # Zero means never refreshed, so the first tick is always due.
         self._watch_list_refreshed_at: float = 0.0
@@ -201,14 +205,11 @@ class ExtractorBot(BotContainer):
             timeframe=self._timeframe,
         )
 
-        # ── Trade metrics ──
         self._cycle_extracted_total: float = 0.0  # this session
         self._lifetime_extracted_total: float = 0.0
 
         # Reserved at set_initial_chunk_rate, released at stop(), pulsed each tick.
         self._crr_token: Optional[str] = None
-
-    # ── Public chunk-rate setter ────────────────────────────────────
 
     def set_initial_chunk_rate(
         self, usd_per_base: float, *, total_holdings: Optional[float]
@@ -393,8 +394,6 @@ class ExtractorBot(BotContainer):
             "registry_updated": registry_updated,
         }
 
-    # ── Lifecycle override: release reservation on stop ─────────────
-
     async def stop(self) -> None:
         """Release the capital reservation, then delegate to
         BotContainer.stop() for the standard shutdown path.
@@ -428,8 +427,6 @@ class ExtractorBot(BotContainer):
                 # via set_initial_chunk_rate and this token is pruned by TTL.
         await super().stop()
 
-    # ── Capacity check ──────────────────────────────────────────────
-
     def _has_chunk_capacity(self, artillery_base: float) -> bool:
         """Return True iff this bot's claim-aware free chunk has room
         for one more artillery round of `artillery_base` base units.
@@ -454,8 +451,6 @@ class ExtractorBot(BotContainer):
             if pos.state == POSITION_STATE_DRAWDOWN:
                 return "red"
         return "yellow"
-
-    # ── Watch-list refresh ──────────────────────────────────────────
 
     async def _refresh_watch_list(self) -> None:
         """Re-rank the top-N ``*/<base>`` pairs by 24h volume.
@@ -562,8 +557,6 @@ class ExtractorBot(BotContainer):
         elapsed = time.time() - self._watch_list_refreshed_at
         return elapsed >= self._refresh_interval_seconds()
 
-    # ── USD ↔ base conversion ───────────────────────────────────────
-
     def _usd_to_base(self, usd: float) -> float:
         """Divide ``usd`` by ``_usd_per_base_rate`` to reach base-currency units."""
         if self._usd_per_base_rate <= 0:
@@ -657,8 +650,6 @@ class ExtractorBot(BotContainer):
             return float(_free)
         except (TypeError, ValueError):
             return None
-
-    # ── Pair filter and signals ───────────────────────────────────────
 
     def _pair_filter_matches(self, market) -> bool:
         """Return True if `market` belongs in this bot's scanning universe.
@@ -773,8 +764,6 @@ class ExtractorBot(BotContainer):
         self._usd_per_base_rate = new_rate
         return True, "accepted"
 
-    # ── State-machine evaluators ────────────────────────────────────
-
     def _position_value_usd(
         self,
         pos: ExtractorPosition,
@@ -814,8 +803,6 @@ class ExtractorBot(BotContainer):
             self.config.extractor_exit_pct / 100.0
         )
         return base_back_after_fee > base_in_proportional
-
-    # ── Pair action evaluation ──────────────────────────────────────
 
     async def _evaluate_open_position(
         self,
@@ -920,7 +907,7 @@ class ExtractorBot(BotContainer):
         # is in flight writes config.extractor_exit_pct as the operator set it.
         try:
             await self._execute_bullish_exit(
-                pos, alt_price_in_base, exit_pct=FULL_EXIT_PCT
+                pos, alt_price_in_base, exit_pct=FULL_EXIT_PCT, operator_initiated=True
             )
         except Exception as exc:
             msg = (
@@ -984,12 +971,13 @@ class ExtractorBot(BotContainer):
         pos: ExtractorPosition,
         alt_price_in_base: float,
         exit_pct: Optional[float] = None,
+        operator_initiated: bool = False,
     ) -> None:
         """Sell ``exit_pct`` of the position back to base.
 
         ``exit_pct`` defaults to ``config.extractor_exit_pct``;
-        ``manual_fire_position`` passes ``FULL_EXIT_PCT`` instead of writing the
-        config field, so no save can read a temporary share.
+        ``manual_fire_position`` passes ``FULL_EXIT_PCT`` and ``operator_initiated``
+        instead of writing the config field, so no save can read a temporary share.
         """
         share_pct = (
             float(self.config.extractor_exit_pct)
@@ -1023,19 +1011,75 @@ class ExtractorBot(BotContainer):
         if order is None:
             return
 
-        filled_units = float(
-            getattr(order, "filled", None)
-            or getattr(order, "amount", None)
-            or units_to_sell
+        filled_units, fill_price, _settled, _last = await self._read_settled_order(
+            order, pos.pair
         )
-        fill_price = float(
-            getattr(order, "average_price", None)
-            or getattr(order, "average", None)
-            or getattr(order, "price", None)
-            or alt_price_in_base
+        _exit = {
+            "pair": pos.pair,
+            "share_pct": share_pct,
+            "operator_initiated": bool(operator_initiated),
+        }
+        self._hold_resting_order(
+            order, "_book_exit", "sell", filled_units, fill_price, _exit
         )
+        self._held_fill_fee = (
+            venue_fee_record(_settled, filled_units, fill_price)
+            if _settled is not None
+            else None
+        )
+        if filled_units <= 0:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"EXTRACTOR EXIT SENT, NO FILL REPORTED: {pos.pair} "
+                    f"{units_to_sell:.6f} was accepted and the venue reported no "
+                    f"filled amount. The position and the pool are unchanged, and "
+                    f"the sale is booked when the venue reports its fill."
+                ),
+            )
+            return
+        await self._book_exit(
+            filled_units,
+            fill_price or alt_price_in_base,
+            self._order_asked_units(self._last_settled_order or order, units_to_sell),
+            True,
+            **_exit,
+        )
+
+    async def _book_exit(
+        self,
+        units: float,
+        fill_price: float,
+        asked: float,
+        _first: bool,
+        *,
+        pair: str,
+        share_pct: float,
+        operator_initiated: bool = False,
+    ) -> None:
+        """Book one settled piece of an exit sale on the position for ``pair``, lock
+        the base it returned to the pool, and announce it as an ``EXTRACTOR_EXIT``.
+
+        The piece takes its share of ``cost_basis_base`` by the units it sold, and the
+        position closes once ``alt_units`` is spent.
+        """
+        pos = self._positions.get(pair)
+        if pos is None:
+            logger.warning(
+                "Extractor %s exit fill on %s found no open position to book against",
+                self.bot_id,
+                pair,
+            )
+            return
+        filled_units = float(units)
+        _whole_order = filled_units >= asked
         base_received = filled_units * fill_price
-        cost_basis_proportional = pos.cost_basis_base * (share_pct / 100.0)
+        cost_basis_proportional = (
+            pos.cost_basis_base * (share_pct / 100.0)
+            if _whole_order or pos.alt_units <= 0
+            else pos.cost_basis_base * (filled_units / pos.alt_units)
+        )
         gain_base = base_received - cost_basis_proportional
 
         # Update position: deduct sold units, deduct proportional cost basis
@@ -1053,9 +1097,10 @@ class ExtractorBot(BotContainer):
         # The sale has filled, so the base currency is back. Tell the
         # parent bot, which is what stops the parent selling it away.
         self._hand_base_currency_to_parent(base_received, pos.pair)
+        self._count_trade_volume(filled_units, fill_price, self._usd_per_base_rate)
 
         # If position fully exited, remove + log to closed list
-        if pos.alt_units < 1e-12 or share_pct >= 100.0:
+        if pos.alt_units < 1e-12 or (share_pct >= 100.0 and _whole_order):
             self._closed_position_log.append(
                 {
                     "pair": pos.pair,
@@ -1084,6 +1129,17 @@ class ExtractorBot(BotContainer):
                 f"received {base_received:.8f} base; "
                 f"gain {gain_base:+.8f} base."
             ),
+        )
+        self._announce_fill(
+            kind="EXTRACTOR_EXIT",
+            side=FILL_SELL,
+            units=filled_units,
+            price=fill_price,
+            usd=self._base_to_usd(base_received),
+            profit=self._base_to_usd(gain_base),
+            operator_initiated=operator_initiated,
+            fee=self._fill_fee_fields_for(pair, fill_price),
+            symbol=pair,
         )
 
     def _hand_base_currency_to_parent(self, base_received: float, pair: str) -> None:
@@ -1178,35 +1234,84 @@ class ExtractorBot(BotContainer):
         if order is None:
             return
 
-        filled_units = float(
-            getattr(order, "filled", None)
-            or getattr(order, "amount", None)
-            or alt_units_to_buy
+        filled_units, fill_price, _settled, _last = await self._read_settled_order(
+            order, pair
         )
-        fill_price = float(
-            getattr(order, "average_price", None)
-            or getattr(order, "average", None)
-            or getattr(order, "price", None)
-            or alt_price_in_base
+        _round = {
+            "pair": pair,
+            "artillery_base": float(artillery_base),
+            "artillery_usd": float(artillery_usd),
+        }
+        self._hold_resting_order(
+            order, "_book_artillery", "buy", filled_units, fill_price, _round
         )
+        self._held_fill_fee = (
+            venue_fee_record(_settled, filled_units, fill_price)
+            if _settled is not None
+            else None
+        )
+        if filled_units <= 0:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"EXTRACTOR ARTILLERY SENT, NO FILL REPORTED: {pair} "
+                    f"{alt_units_to_buy:.6f} was accepted and the venue reported "
+                    f"no filled amount. No position was opened and the pool is "
+                    f"unchanged; the round is booked when the venue reports its fill."
+                ),
+            )
+            return
+        await self._book_artillery(
+            filled_units,
+            fill_price or alt_price_in_base,
+            self._order_asked_units(
+                self._last_settled_order or order, alt_units_to_buy
+            ),
+            True,
+            **_round,
+        )
+
+    async def _book_artillery(
+        self,
+        units: float,
+        fill_price: float,
+        _asked: float,
+        _first: bool,
+        *,
+        pair: str,
+        artillery_base: float,
+        artillery_usd: float,
+    ) -> None:
+        """Book one settled piece of an artillery round: debit the pool, open or add to
+        the position for ``pair``, and announce it as an ``EXTRACTOR_ARTILLERY``.
+        """
+        filled_units = float(units)
         actual_base_spent = filled_units * fill_price
 
         # Debit chunk
         self._chunk_free_base -= actual_base_spent
+        self._count_trade_volume(filled_units, fill_price, self._usd_per_base_rate)
 
-        # Create position
-        pos = ExtractorPosition(
-            pair=pair,
-            state=POSITION_STATE_IN_FLIGHT,
-            artillery_size_base=artillery_base,
-            artillery_size_usd_at_entry=artillery_usd,
-            alt_units=filled_units,
-            entry_price_base_per_alt=fill_price,
-            avg_buy_price_base_per_alt=fill_price,
-            cost_basis_base=actual_base_spent,
-            opened_at=time.time(),
-        )
-        self._positions[pair] = pos
+        pos = self._positions.get(pair)
+        if pos is None:
+            pos = ExtractorPosition(
+                pair=pair,
+                state=POSITION_STATE_IN_FLIGHT,
+                artillery_size_base=artillery_base,
+                artillery_size_usd_at_entry=artillery_usd,
+                alt_units=filled_units,
+                entry_price_base_per_alt=fill_price,
+                avg_buy_price_base_per_alt=fill_price,
+                cost_basis_base=actual_base_spent,
+                opened_at=time.time(),
+            )
+            self._positions[pair] = pos
+        else:
+            pos.alt_units += filled_units
+            pos.cost_basis_base += actual_base_spent
+            if pos.alt_units > 0:
+                pos.avg_buy_price_base_per_alt = pos.cost_basis_base / pos.alt_units
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -1218,8 +1323,50 @@ class ExtractorBot(BotContainer):
                 f"{self._chunk_free_base:.8f} base."
             ),
         )
+        self._announce_fill(
+            kind="EXTRACTOR_ARTILLERY",
+            side=FILL_BUY,
+            units=filled_units,
+            price=fill_price,
+            usd=self._base_to_usd(actual_base_spent),
+            profit=0.0,
+            operator_initiated=False,
+            fee=self._fill_fee_fields_for(pair, fill_price),
+            symbol=pair,
+        )
 
-    # ── tick() — main per-cycle entrypoint ──────────────────────────
+    def _note_resting_fee(
+        self,
+        record: dict,
+        units: float,
+        price: float,
+        fee: float,
+        fee_currency: str,
+    ) -> None:
+        """Hold the venue fee of one later piece of a held order on ``_held_fill_fee``
+        for the booker that announces it.
+        """
+        del record
+        self._held_fill_fee = SettledFillFee(
+            units=float(units),
+            price=float(price),
+            fee_amount=float(fee),
+            currency=str(fee_currency or "").strip().upper(),
+            reported=float(fee) > 0.0,
+        )
+
+    def _fill_fee_fields_for(self, pair: str, fill_price: float) -> dict:
+        """The ``SettledFill`` fee field of a fill on ``pair`` at ``fill_price``, read by
+        ``fill_fee_fields`` off ``_held_fill_fee``, which this consumes.
+        """
+        record = self._held_fill_fee
+        self._held_fill_fee = None
+        return fill_fee_fields(
+            record,
+            fill_price,
+            quote_currency(pair).strip().upper(),
+            self._usd_per_base_rate,
+        )
 
     async def tick(self) -> None:
         """One tick of the Extractor.
@@ -1247,6 +1394,14 @@ class ExtractorBot(BotContainer):
                     _crr_exc,
                 )
 
+        try:
+            await self._reconcile_resting_orders()
+        except Exception as _rest_exc:
+            logger.warning(
+                "Extractor %s held-order reconcile raised: %s", self.bot_id, _rest_exc
+            )
+        _held_pairs = {str(r.get("symbol", "")) for r in self._resting_orders}
+
         # Step 0: refresh watch list if due
         if self._watch_list_due_for_refresh():
             await self._acquire_usd_per_base_rate()
@@ -1254,6 +1409,8 @@ class ExtractorBot(BotContainer):
 
         # Step 1: manage open positions
         for pair, pos in list(self._positions.items()):
+            if pair in _held_pairs:
+                continue
             snapshot = await self._ta_provider.evaluate(pair)
             if snapshot is None:
                 continue  # warmup or exchange hiccup; skip this pair
@@ -1290,7 +1447,7 @@ class ExtractorBot(BotContainer):
 
         # Step 2: scan watch list for new entries
         for pair in self._watch_list:
-            if pair in self._positions:
+            if pair in self._positions or pair in _held_pairs:
                 continue  # one position per pair
             snapshot = await self._ta_provider.evaluate(pair)
             if snapshot is None:
@@ -1326,8 +1483,6 @@ class ExtractorBot(BotContainer):
                 continue
             # First eligible wins per tick — break to manage capital
             break
-
-    # ── Positions snapshot (for detail-dialog Positions Held tab) ──
 
     def positions_for_gui(self) -> list[dict]:
         """Return a list of per-position dicts for the detail dialog's
@@ -1473,8 +1628,6 @@ class ExtractorBot(BotContainer):
         rows.sort(key=lambda r: r["tranche_id"])
         return rows
 
-    # ── Status snapshot (for GUI / dashboard) ───────────────────────
-
     def get_status(self) -> dict:
         """Snapshot of Extractor state for the bot table / dashboard."""
         base = super().get_status() if hasattr(super(), "get_status") else {}
@@ -1499,8 +1652,6 @@ class ExtractorBot(BotContainer):
             }
         )
         return base
-
-    # ── State persistence ──────────────────────────────────────────
 
     def export_state(self) -> dict:
         """Serialize the Extractor's runtime state for save/restore."""
@@ -1532,6 +1683,7 @@ class ExtractorBot(BotContainer):
                 for p in self._positions.values()
             ],
             "closed_position_log": list(self._closed_position_log),
+            "resting_orders": self._export_resting_orders(),
             "watch_list": list(self._watch_list),
             "tick_counter": self._tick_counter,
             "cycle_extracted_total": self._cycle_extracted_total,
@@ -1597,6 +1749,7 @@ class ExtractorBot(BotContainer):
                 )
                 continue
         self._closed_position_log = stored_list(state.get("closed_position_log"))
+        self._import_resting_orders(state.get("resting_orders"))
         self._watch_list = stored_list(state.get("watch_list"))
         self._tick_counter = int(state.get("tick_counter", 0))
         self._cycle_extracted_total = float(state.get("cycle_extracted_total", 0.0))

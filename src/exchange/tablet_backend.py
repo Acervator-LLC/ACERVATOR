@@ -79,7 +79,6 @@ class TabletBackend:
             s: self._default_market(s) for s in self._rows
         }
 
-    # -- market metadata ------------------------------------------------
     @staticmethod
     def _default_market(symbol: str) -> dict:
         """Return a ccxt market dict in the shape get_markets parses."""
@@ -113,7 +112,6 @@ class TabletBackend:
         prec = int(self.market(symbol)["precision"]["price"])
         return f"{float(price):.{prec}f}"
 
-    # -- clock ----------------------------------------------------------
     def current_ts_ms(self) -> Optional[int]:
         if not self._clock or self._clock_i >= len(self._clock):
             return None
@@ -214,7 +212,6 @@ class TabletBackend:
     def _last_close(self, symbol: str) -> float:
         return float(self._visible(symbol)[-1][4])
 
-    # -- ccxt: market data ----------------------------------------------
     def fetch_ohlcv(
         self,
         symbol: str,
@@ -282,7 +279,6 @@ class TabletBackend:
             "timestamp": self.current_ts_ms(),
         }
 
-    # -- ccxt: account --------------------------------------------------
     def fetch_balance(self, params: Optional[dict] = None) -> dict:
         """Return the ccxt balance shape: per-currency free/used/total plus mirrors."""
         out: dict = {"info": {}, "free": {}, "used": {}, "total": {}}
@@ -301,7 +297,6 @@ class TabletBackend:
     def _fee_rate(self, symbol: str) -> float:
         return float(self._fee_by_symbol.get(str(symbol), self._default_fee))
 
-    # -- ccxt: orders ---------------------------------------------------
     def create_order(
         self,
         symbol: str,

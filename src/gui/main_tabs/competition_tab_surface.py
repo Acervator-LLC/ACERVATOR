@@ -34,8 +34,9 @@ from typing import Any, Optional
 
 from .. import design_system as ds
 from ..color_alpha import css_colours
+from . import retired_surfaces
 
-METHOD = "competition_tab.state"
+METHOD = retired_surfaces.COMPETITION_TAB_METHOD
 
 ACCESSIBLE_NAME = "Competition Tab"
 SECTION_ACCESSIBLE_NAME = "Section"

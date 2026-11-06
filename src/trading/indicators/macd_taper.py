@@ -89,7 +89,6 @@ def detect_macd_taper(histogram: list, lookback: int = 8) -> dict:
     # Approaching zero line?
     toward_cross = abs_vals[-1] < abs_vals[0] * 0.5 if abs_vals[0] > 1e-9 else False
 
-    # ── Classify ──────────────────────────────────────────────────────────
     if alternating and amplitude_shrinking and taper_strength >= 0.5:
         result.update(
             {

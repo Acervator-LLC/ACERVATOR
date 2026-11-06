@@ -38,6 +38,11 @@ PROBE_EMPTY = "empty"
 PROBE_HAS_BOTS = "has_bots"
 PROBE_UNREADABLE = "unreadable"
 
+LAUNCH_OPEN = "open"
+LAUNCH_LOCKED = "locked"
+LAUNCH_UNLOCKED = "unlocked"
+"""The three answers ``launch_classification`` gives a launch."""
+
 FLEET_SEALED_NOTE = (
     "The saved fleet is sealed and this session holds no key for it. No bot is "
     "loaded and none starts. This is NOT the same as having no saved bots, and "
@@ -89,6 +94,10 @@ DIFF_UNREADABLE_LOG = (
 """What ``diff_primary_vs_backup`` logs when it answers an empty list unread."""
 
 UNLOCK_NO_KEY_LOG = "Fleet unlock refused: this install holds no sealed master key"
+
+RESEAL_NO_FILE_LOG = (
+    "No %s on disk to reseal, so the lock applies to the first fleet saved"
+)
 
 UNLOCK_REFUSED_LOG = "Fleet unlock refused: %s"
 
@@ -333,6 +342,18 @@ class StateManager:
             logger.warning(LATCH_READ_FAILED_LOG, self._path.name, exc)
             return False
 
+    def launch_classification(self) -> str:
+        """``LAUNCH_OPEN``, ``LAUNCH_LOCKED`` or ``LAUNCH_UNLOCKED`` for this file.
+
+        One answer every launch site reads, so ``main.py`` and
+        ``src/gui/main_window.py`` cannot decide the lock differently. A file
+        carrying no latch answers ``LAUNCH_OPEN`` without a ``probe``, which is
+        the launch an install with no password runs.
+        """
+        if not self.latch_on():
+            return LAUNCH_OPEN
+        return LAUNCH_LOCKED if self.probe() == PROBE_SEALED else LAUNCH_UNLOCKED
+
     def unlock(self, password: str) -> bool:
         """Hold the master key *password* opens, so ``load_state`` opens the payload.
 
@@ -353,6 +374,54 @@ class StateManager:
             return False
         hold_master_key(opened)
         return True
+
+    def reseal_on_disk(self) -> bool:
+        """Write the saved fleet back, sealed the way the held key says now.
+
+        ``src/gui/settings_dialog.py, in _settle_fleet_lock`` calls it the moment
+        a password is set, changed or cleared, so the latch on disk matches the
+        key this process holds without waiting for the next shutdown save. With
+        a key held the four fleet fields move inside the payload, and with none
+        held they come back out in plain text. Answers False where ``load_state``
+        could only reach a sealed payload, which is the one state a write must
+        never replace.
+        """
+        state = self.load_state()
+        if fleet_sealed(state):
+            logger.error(SAVE_REFUSED_SEALED_LOG, self._path.name)
+            return False
+        if not state:
+            logger.info(RESEAL_NO_FILE_LOG, self._path.name)
+            return True
+        return self.write_state(state)
+
+    def unseal_on_disk(self) -> bool:
+        """Write the opened fleet back in plain text and release the key that opened it.
+
+        The only path that turns the latch off: ``load_state`` opens the payload
+        with the key still held, ``hold_master_key`` then releases it, and the
+        two sealed fields are dropped from what reaches the file.
+        ``src/gui/settings_dialog.py, in _clear_fleet_lock`` is the one caller,
+        and a payload that would not open answers False with the file untouched.
+        """
+        state = self.load_state()
+        if fleet_sealed(state):
+            logger.error(SAVE_REFUSED_SEALED_LOG, self._path.name)
+            return False
+        from .encryption import hold_master_key
+
+        plain = {
+            one: value
+            for one, value in state.items()
+            if one not in (SEALED_LATCH_FIELD, SEALED_PAYLOAD_FIELD)
+        }
+        hold_master_key(None)
+        try:
+            atomic_write_json(self._path, plain, indent=2, default=str)
+            return True
+        except Exception as exc:  # noqa: BLE001 - never break a clear
+            logger.error(WRITE_FAILED_LOG, self._path.name, type(exc).__name__, exc)
+            return False
 
     def _unseal(self, state: dict, name: str) -> dict:
         """``unseal`` over *state*, named *name* in whatever it logs."""

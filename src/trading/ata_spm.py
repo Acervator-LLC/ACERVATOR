@@ -32,10 +32,6 @@ from .ata_gate_scan import (
     BAND_POSITION_KEY,
     BAND_UPPER_KEY,
 )
-from .indicators.bb_proximity import (
-    CONSOLIDATION_THRESHOLD_PCT,
-    detect_bb_proximity,
-)
 from .indicators.bollinger import BollingerBands
 from .indicators.types import (
     PERCENT_PER_RATIO_UNIT,
@@ -43,7 +39,7 @@ from .indicators.types import (
     SignalDirection,
     VotingSummary,
 )
-from .otd_math import minimum_opposing_trade_distance_pct
+from .otd_math import minimum_opposing_trade_distance_pct_from_config
 from .scrumming import sizing
 from .ta_engine import VotingEngine
 
@@ -81,18 +77,27 @@ CLASS_OPTIONS = "options"
 #: sorts a future as one of six instrument categories, beside equities and
 #: debt, so the class belongs to the underlying and the contract form rides on
 #: the listing. ``ata_asset_maps.futures_placement`` reads each product's own
-#: underlying and answers the class holding it.
+#: underlying and answers the class ``contract_class`` files it under.
 RETIRED_CLASS_DERIVATIVES = "derivatives"
+
+
+def contract_class(sector: Any) -> str:
+    """The sector a contract product records under: ``CLASS_FUTURES_PERPS``
+    where ``sector`` is ``CLASS_CRYPTO``, else ``sector``."""
+    named = str(sector or "")
+    return CLASS_FUTURES_PERPS if named == CLASS_CRYPTO else named
+
 
 #: A class name an earlier taxonomy drew, and the live class now holding its
 #: markets. The S&P GSCI makes energy and metals sectors of commodities, so a
-#: held selection naming either still reaches the markets it named. Every CDE
-#: product this repository has read carries a crypto underlying, so a held
-#: ``derivatives`` selection reaches crypto.
+#: held selection naming either still reaches the markets it named. A held
+#: ``derivatives`` selection reaches the class ``contract_class`` files a
+#: contract on a crypto underlying under, where the CDE products on a crypto
+#: root sit.
 RETIRED_CLASSES = {
     "metals": CLASS_COMMODITIES,
     "energy": CLASS_COMMODITIES,
-    RETIRED_CLASS_DERIVATIVES: CLASS_CRYPTO,
+    RETIRED_CLASS_DERIVATIVES: contract_class(CLASS_CRYPTO),
 }
 
 CRYPTO_TIMEFRAMES = ("5m", "1h", "1d", "1w")
@@ -1839,28 +1844,16 @@ def panel_rows_for(scans: Any, symbol: Any) -> dict:
         for one in scan.votes:
             if one.symbol == str(symbol):
                 found[one.timeframe] = one.panel_row()
-    for timeframe, row in found.items():
-        row["composite_net"] = ata_gate_scan.composite_net(
-            found, timeframe, row["net_score"]
-        )
-    return found
+    return ata_gate_scan.composite_rows(found)
 
 
 def proximity_of(candles: Any, settings: Any) -> Any:
     """The ``detect_bb_proximity`` reading, which carries the landing strip.
 
-    ``bb_tolerance_pct`` and ``bb_landing_strip_candles`` come off
-    ``settings``, the same two ``ScrummingBot.tick`` passes.
+    ``ata_gate_scan.band_reading`` takes it at ``settings``, the reading a
+    ``PhantomBot`` takes on its own timeframe.
     """
-    held = list(candles or [])
-    if len(held) < ata_gate_scan.MIN_CANDLES_FOR_TA:
-        return None
-    return detect_bb_proximity(
-        held,
-        tolerance_pct=settings.bb_tolerance_pct,
-        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-        min_pattern_candles=settings.bb_landing_strip_candles,
-    )
+    return ata_gate_scan.band_reading(candles, settings)
 
 
 def chart_candles(candles: Any) -> list:
@@ -1997,9 +1990,7 @@ def pull(
         landing_strip_candles=int(
             getattr(proximity, "landing_strip_candles", NO_BARS) or NO_BARS
         ),
-        otd_pct=minimum_opposing_trade_distance_pct(
-            settings.scrumming_interval_pct, settings.trading_fee_pct
-        ),
+        otd_pct=minimum_opposing_trade_distance_pct_from_config(settings),
         gates=gates,
         panel=dict(rows or {}),
     )

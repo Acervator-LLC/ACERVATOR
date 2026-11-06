@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import design_system as ds
+from ..tooltips import set_description
 
 _NO_COLUMN_MAP: Mapping[int, str] = MappingProxyType({})
 _NO_WIDTH_MAP: Mapping[int, int] = MappingProxyType({})
@@ -196,7 +197,7 @@ class ColumnarTableWidget(QTableWidget):
         for col, tip in columns.tooltips.items():
             item = self.horizontalHeaderItem(col)
             if item:
-                item.setToolTip(tip)
+                set_description(item, tip)
 
 
 __all__ = [

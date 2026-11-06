@@ -53,6 +53,7 @@
   var PANE_FIELDS = [LOG_PANE, SIGNAL_PANE];
 
   var TEXT = "text";
+  var TOOLTIP = "tooltip";
   var BLOCKS = "blocks";
   var BLOCK_COUNT = "block_count";
   var IS_EMPTY = "is_empty";
@@ -383,7 +384,12 @@
   function PaneButton(props) {
     var button = props.button;
     var style = withStretch(sheetStyle(button[STYLE_SHEET]), props.stretch);
-    var buttonProps = { className: BAR_CLASS, style: style, type: BUTTON_TYPE };
+    var buttonProps = {
+      className: BAR_CLASS,
+      style: style,
+      type: BUTTON_TYPE,
+      title: text(button[TOOLTIP])
+    };
     buttonProps[PART_ATTR] = props.part;
     buttonProps[SLOT_ATTR] = props.slot;
     buttonProps[ACTION_ATTR] = text(props.action);

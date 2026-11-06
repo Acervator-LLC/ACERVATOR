@@ -20,6 +20,8 @@ from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..exchange.base import ExchangeInterface
+    from .ata_gate_scan import GateScan
+    from .container.config import BotConfig
 
 from ..core.event_bus import get_event_bus
 from ..core.settings import DEFAULT_LOCK_CANDLE_COUNT
@@ -196,6 +198,28 @@ def weigh_higher_tf_bias(
     }
 
 
+def summary_row(summary: VotingSummary) -> dict:
+    """``summary`` as the Indicator Voting Panel row ``get_multi_tf_summary``
+    writes for one timeframe, without its ``locks``."""
+    return {
+        "bullish": summary.bullish_count,
+        "bearish": summary.bearish_count,
+        "neutral": summary.neutral_count,
+        "net_score": summary.net_score,
+        "confidence": summary.consensus_confidence,
+        "direction": summary.consensus_direction.name,
+        "signals": [
+            {
+                "indicator": s.indicator,
+                "direction": s.direction.name,
+                "confidence": round(s.confidence, 3),
+                "details": s.details,
+            }
+            for s in summary.signals
+        ],
+    }
+
+
 @dataclass
 class TradeLock:
     """One entry in ``TimeframeCoordinator._locks``.
@@ -236,6 +260,7 @@ class PhantomBot:
         coordinator: "TimeframeCoordinator",
         ta_weights: Optional[dict[str, float]] = None,
         bus=None,
+        settings: Optional[BotConfig] = None,
     ) -> None:
         self.parent_bot_id = parent_bot_id
         self.phantom_id = phantom_id
@@ -245,10 +270,12 @@ class PhantomBot:
         self.symbol = symbol
         self.coordinator = coordinator
         self.voting_engine = VotingEngine(weights=ta_weights)
+        self.settings = settings
 
         self._bus = bus if bus is not None else get_event_bus()
         self.state = BotState.IDLE
         self.last_summary: Optional[VotingSummary] = None
+        self.last_gates: Optional[GateScan] = None
         self.last_action_time: float = 0.0
         self.total_trades: int = 0
         self._current_holdings: float = 0.0
@@ -302,11 +329,11 @@ class PhantomBot:
             await asyncio.sleep(min(self.candle_seconds, 60))
 
     async def _tick(self) -> None:
-        """Fetch candles for ``timeframe`` and set ``last_summary`` from
-        ``voting_engine``.
+        """Set ``last_summary`` from ``voting_engine`` and ``last_gates`` from
+        ``timeframe_gates`` over the same ``timeframe`` candles at ``settings``.
 
-        Returns without setting ``last_summary`` below ``MIN_TICK_CANDLES``,
-        and constructs no order on any path.
+        Returns without setting either below ``MIN_TICK_CANDLES``, and constructs
+        no order on any path.
         """
         raw = await self.exchange.get_ohlcv(
             self.symbol,
@@ -319,6 +346,7 @@ class PhantomBot:
 
         summary = self.voting_engine.compute_all(candles, self.timeframe)
         self.last_summary = summary
+        self.last_gates = None
 
         self._bus.emit(
             "phantom.analysis",
@@ -328,6 +356,11 @@ class PhantomBot:
             bearish=summary.bearish_count,
             net_score=summary.net_score,
             confidence=summary.consensus_confidence,
+        )
+        from .ata_gate_scan import timeframe_gates
+
+        self.last_gates = timeframe_gates(
+            self.symbol, self.timeframe, candles, summary, self.settings
         )
 
     def get_status(self) -> dict:
@@ -467,21 +500,7 @@ class TimeframeCoordinator:
         for p in sorted(phantoms, key=lambda x: x.rank):
             if p.last_summary:
                 result[p.timeframe] = {
-                    "bullish": p.last_summary.bullish_count,
-                    "bearish": p.last_summary.bearish_count,
-                    "neutral": p.last_summary.neutral_count,
-                    "net_score": p.last_summary.net_score,
-                    "confidence": p.last_summary.consensus_confidence,
-                    "direction": p.last_summary.consensus_direction.name,
-                    "signals": [
-                        {
-                            "indicator": s.indicator,
-                            "direction": s.direction.name,
-                            "confidence": round(s.confidence, 3),
-                            "details": s.details,
-                        }
-                        for s in p.last_summary.signals
-                    ],
+                    **summary_row(p.last_summary),
                     "locks": [
                         lk
                         for lk in self.get_active_locks()
@@ -512,9 +531,10 @@ class PhantomBalanceManager:
         symbol: str,
         balance_scaling: str = "equal",
         ta_weights: Optional[dict[str, float]] = None,
+        settings: Optional[BotConfig] = None,
     ) -> list[PhantomBot]:
         """Build one ``PhantomBot`` on the one timeframe
-        ``one_active_phantom_timeframe`` names, and register it on ``coordinator``.
+        ``one_active_phantom_timeframe`` names, at the parent's ``settings``.
 
         ``balance_scaling`` of "weighted" scales ``target_balance`` by
         ``tf_rank``; any other value gives every phantom ``target_balance``.
@@ -548,6 +568,7 @@ class PhantomBalanceManager:
                 ta_weights=ta_weights,
                 # Inherit the coordinator's bus; None falls back to the global.
                 bus=getattr(self.coordinator, "_bus", None),
+                settings=settings,
             )
             self.coordinator.register_phantom(phantom)
             phantoms.append(phantom)

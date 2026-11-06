@@ -139,8 +139,6 @@ class FeatureTelemetry:
         if autoload:
             self.load()
 
-    # ── declaration ──────────────────────────────────────────────
-
     def declare(self, *names: str) -> None:
         """Register feature names that SHOULD fire. A declared
         feature with zero calls is reported as DEAD; an undeclared
@@ -155,8 +153,6 @@ class FeatureTelemetry:
                     continue
                 self._declared.add(n)
                 self._counters.setdefault(n, FeatureCounter(name=n))
-
-    # ── recording ────────────────────────────────────────────────
 
     def _counter(self, name: str) -> FeatureCounter:
         c = self._counters.get(name)
@@ -217,8 +213,6 @@ class FeatureTelemetry:
             raise
         else:
             self.record_call(name)
-
-    # ── reading ──────────────────────────────────────────────────
 
     def get(self, name: str) -> Optional[FeatureCounter]:
         with self._lock:
@@ -371,7 +365,6 @@ class FeatureTelemetry:
                 L.append(f"{k}: {v}")
         L.append("")
 
-        # -- verdict banner: the first thing to read ---------------
         problems = len(dead) + len(stalled) + len(broken)
         if problems == 0 and active:
             L.append("**VERDICT: all declared features fired.**")
@@ -385,7 +378,6 @@ class FeatureTelemetry:
             )
         L.append("")
 
-        # -- dead ---------------------------------------------------
         L.append("## Dead features (declared, never called)")
         L.append("")
         if dead:
@@ -403,7 +395,6 @@ class FeatureTelemetry:
             L.append("_None._")
         L.append("")
 
-        # -- stalled ------------------------------------------------
         L.append("## Stalled features (worked before, silent now)")
         L.append("")
         if stalled:
@@ -421,7 +412,6 @@ class FeatureTelemetry:
             L.append("_None._")
         L.append("")
 
-        # -- python errors ------------------------------------------
         L.append("## Python errors (exceptions raised)")
         L.append("")
         py_rows = [
@@ -443,7 +433,6 @@ class FeatureTelemetry:
             L.append("_None._")
         L.append("")
 
-        # -- application errors -------------------------------------
         L.append("## Application errors (skips with reasons)")
         L.append("")
         app_rows = [
@@ -465,7 +454,6 @@ class FeatureTelemetry:
             L.append("_None._")
         L.append("")
 
-        # -- active -------------------------------------------------
         L.append("## Active features (fired this session)")
         L.append("")
         if active:
@@ -488,8 +476,6 @@ class FeatureTelemetry:
         except OSError as exc:
             logger.warning("feature_telemetry: markdown write failed: %s", exc)
             return None
-
-    # ── persistence ──────────────────────────────────────────────
 
     def load(self) -> bool:
         """Restore lifetime counters. Returns True on success.
@@ -549,8 +535,6 @@ class FeatureTelemetry:
                     self._counters[n] = FeatureCounter(name=n)
         return len(names)
 
-
-# ── singleton ────────────────────────────────────────────────────
 
 _telemetry: Optional[FeatureTelemetry] = None
 _singleton_lock = threading.Lock()

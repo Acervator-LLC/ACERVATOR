@@ -270,6 +270,8 @@ compounded fold, and `src/trading/scrumming/wire_routing.py`, in
 `_route_scrum_proceeds_via_wires` on a scrum, a manual scrum and a detonation.
 A transfer cannot reach the totals without reaching the breakdown.
 
+Now: a scrum or a manual scrum books each wire's share of its surplus alone, and a detonation books no transfer (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
+
 `src/trading/smart_wire.py` — `book_transfer`
 
 ```python
@@ -464,6 +466,38 @@ part-spent tranches instead of opening more records, and
 `_bound_new_fold_tranches` merges one sell's fresh slice back to a single
 record when the fill arrived as many lots. Both reduce the record count and
 move USD; neither loses any.
+
+### A fourth function combines a standing pair within a tenth of a percent
+
+**The sentence at the head of this subsection is overtaken.** It is not edited
+and not removed. It read:
+
+> Three functions collapse or remove a tranche. No other code path does.
+
+A fourth now does. `src/trading/scrumming/fold_tranches.py`, in
+`_combine_fold_tranches_within_distance`, combines two standing fold tranches
+whose reference prices sit inside a tenth of a percent of each other. It runs
+each time a sale queues a tranche, after the top-up.
+
+`src/trading/scrumming/sizing.py`, in `merge_fold_tranches_within_distance`,
+holds the arithmetic, and `src/trading/stack_math.py`, in
+`within_merge_distance`, holds the figure. The Stack ladder read that same
+declaration already.
+
+The survivor keeps the lower reference price, which is the stricter fold
+threshold, sums the cash and the units, takes the units-weighted original cost
+and names both events. It moves USD and loses none, as the two merges above it
+do, and it brings the opened counter down by what it combined so
+`created - closed - discarded == standing` still holds.
+
+Driven on a hand-built pair in one run: refs 0.05 percent apart combined, two
+records into one carrying $100.0000 and 1.000000 units at a cost basis of
+85.00000000; refs 0.5 percent apart stayed as two.
+
+A standing Stack rung also combines with a new rung inside the same distance,
+through `src/trading/stack_math.py`, in `merge_into_standing_rungs`. A rung
+holding a venue order is never a candidate, since combining it would need that
+order cancelled.
 
 **Despawn.** Aged tranches are removed outright. The record leaves the book,
 the queue total recomputes from what is left, and the count lands in the
@@ -917,6 +951,8 @@ The React side is a subclass, not a rewrite. It replaces only the method that
 builds the widgets, so an edit still travels the same route into the bot.
 `_mark_changed` records the field against what the bot holds now, and
 `_apply_changes` writes it. The window carries no second copy of that logic.
+
+Now: each box on the React Settings tab keeps the operator's edit until Apply, and the window records it only where the Qt control could hold it, a list pick as its item (`src/gui/main_tabs/live_settings_tab_surface.py, in admitted_edit`).
 
 `src/gui/react_bot_live_settings.py` — `BotLiveSettingsReactDialog.apply_edit`
 
@@ -1543,6 +1579,52 @@ file saved with a password: the top level holds five fields — `fleet_sealed`,
 `sealed_fleet`, `saved_at`, `saved_at_human` and `version` — and not one of the
 four fleet fields. Read on the same material saved with no password: the same
 seven fields the page describes, and no latch.
+
+### What a routing row reads while the fleet is sealed
+
+**The sentence this stands beside**, from the section on the privacy dot. It is
+not edited and not removed:
+
+> The dot flips `bot_swarm.identifiers`, the glyph turns from `●` to `○`, and the
+> routing row labels turn from the symbol and short id to `**** [********]`.
+
+**The current reading.** A row label is the pair and the short id while the
+fleet is open. While the fleet is sealed there is no pair to read, and the row
+says so in a word instead of drawing a question mark.
+`src/gui/main_tabs/quick_routing_surface.py, in SEALED_SYMBOL` holds that word
+and `in LiveRoutingTab.state_symbol` returns it when
+`src/core/state_manager.py, in fleet_sealed` answers True.
+`in QuickRoutingModel.symbol_for` carries it into the label, and
+`src/gui/visualizer/quick_routing.py, in QuickRoutingMatrix._symbol_for` answers
+the same word on the Qt panel.
+
+Read on a hand-built fleet of two, once sealed with a password and once saved
+without one:
+
+```
+the file   privacy dot   symbol_for    the drawn row label
+sealed     off           SEALED        SEALED [UNIT-A1]
+sealed     on            SEALED        **** [********]
+plain      off           AAA/BBB       AAA/BBB [UNIT-A1]
+plain      on            AAA/BBB       **** [********]
+```
+
+The privacy dot still masks a sealed row, so the sentence above holds unchanged
+for what the dot does.
+
+`?` is what the row reads for a bot the stored settings cannot answer for, and
+that case is still a question mark.
+`src/gui/main_tabs/quick_routing_surface.py, in UNKNOWN_SYMBOL` holds it. A
+sealed fleet and a bot with no stored symbol are two different readings and the
+row no longer draws them alike.
+
+Both builds draw the word. The label is formatted before the panel is handed
+its values, so the React page draws `SEALED [UNIT-A1]` from the same string the
+Qt panel draws.
+
+**Owed, one line.** `docs/Acervator-Product-Manual.pdf` needs a rebuild for this
+page, `docs/manual/08-tabs/bot-swarm.md`. Another branch holds that binary and
+this change does not touch it.
 
 ### The grid is the only surface that draws a bot's figures
 

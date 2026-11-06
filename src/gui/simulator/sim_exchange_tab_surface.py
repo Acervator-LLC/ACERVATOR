@@ -47,6 +47,16 @@ ACTIONS = {
 }
 
 
+#: The description each command button carries; the Simulator's bar has no SHIFT form.
+SIM_COMMAND_TOOLTIPS = {
+    "start": "Starts the selected simulated bot.",
+    "pause": "Pauses the selected simulated bot.",
+    "stop": "Stops the selected simulated bot.",
+    "restart": "Restarts the selected simulated bot.",
+    "delete": "Deletes the selected simulated bot.",
+}
+
+
 def mode_buttons(active: str = sim.MODES[0]) -> list:
     """The three mode buttons as the page draws them, in ``sim.MODES`` order,
     the one for ``active`` carrying the ON sheet and ``active`` True."""
@@ -55,6 +65,7 @@ def mode_buttons(active: str = sim.MODES[0]) -> list:
             "key": mode,
             "text": sim.MODE_TEXT[mode],
             "accessible_name": sim.MODE_TEXT[mode],
+            "tooltip": sim.MODE_TOOLTIPS[mode],
             "style_sheet": mode_style(mode, active),
             "active": mode == active,
             "focus_policy": live.PRIVACY_FOCUS_POLICY,
@@ -101,6 +112,7 @@ def build_view_model(
         "mode_buttons": mode_buttons(active_mode),
         "header_stretch": model.header_stretch,
         "add_bot_label": live.ADD_BOT_LABEL,
+        "add_bot_tooltip": live.ADD_BOT_TOOLTIP,
         "add_bot_accent": live.ADD_BOT_ACCENT,
         "new_bot_asks": list(model.new_bot_asks),
         "bot_wizard_module": live.BOT_WIZARD_MODULE,
@@ -117,6 +129,7 @@ def build_view_model(
         "extractor_section_style": live.EXTRACTOR_SECTION_STYLE,
         "extractor_section_visible": model.extractor_section_visible,
         "command_buttons": [list(pair) for pair in live.COMMAND_BUTTONS],
+        "command_tooltips": dict(SIM_COMMAND_TOOLTIPS),
         "danger_command_label": live.DANGER_COMMAND_LABEL,
         "commands_sent": [list(sent) for sent in model.commands_sent],
         "scrum_table": live.table_view(model.scrum_table),

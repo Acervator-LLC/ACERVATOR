@@ -184,6 +184,8 @@
     };
     hostProps[PART_ATTR] = HOST_PART;
     hostProps[ROLE_ATTR] = BUTTON_ROLE;
+    hostProps.title =
+      typeof model[TOOLTIP] === "string" && model[TOOLTIP].length ? model[TOOLTIP] : undefined;
     hostProps[FLAT_ATTR] = text(model[FLAT]);
     hostProps[FOCUS_ATTR] = text(model[FOCUS_POLICY]);
     hostProps[CURSOR_ATTR] = text(model[CURSOR_SHAPE]);

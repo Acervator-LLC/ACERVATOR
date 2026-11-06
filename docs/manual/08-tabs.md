@@ -345,8 +345,8 @@ self._spendable_widget.update_profits(
 
 Turning Privacy Mode on masks that em dash to asterisks, which reads as a
 hidden number rather than an empty column.
-[06-trading-tab.md](06-trading-tab.md) carries the proposal for the first of
-the two. Issue #428 carries a second disagreement on this strip, between what
+[06-trading-tab.md](06-trading-tab.md#the-header-strip) lists what each cell
+reads. Issue #428 carries a second disagreement on this strip, between what
 the counter tooltips promise and what the cards draw.
 
 **The issue #428 clause above is overtaken.** It is not edited and not removed.
@@ -365,6 +365,18 @@ SCRUMMED_TOOLTIP   "the dollars every bot has sold so far this year ...
                     comes from the exchange's own trade history, so the venue
                     and the card agree ... It survives a restart."
 FOLDED_TOOLTIP     the same sentence for buys
+```
+
+**Current reading, 2026-10-29.** Both counter descriptions are shorter, within twenty words. They
+keep the source and the restart.
+
+`src/gui/main_tabs/header_strip_surface.py` — `SCRUMMED_TOOLTIP`
+
+```python
+SCRUMMED_TOOLTIP = (
+    "Dollars every bot has sold this year, read from the exchange's own trade "
+    "history. It survives a restart."
+)
 ```
 
 Both columns now carry an exchange figure. The window hands the strip the same
@@ -1713,6 +1725,8 @@ seven summary rows and two Clear buttons. Phantom Bots draws four summary rows,
 twelve timeframe boxes and the candles-to-lock number. Take the bot out of the
 window's answer and every one of those rows goes.
 
+Now: a bot holding a Shadow Tranche draws one more Stack Tranches summary row, and one more detail row for each Shadow Tranche (`src/gui/main_tabs/stack_tranches_tab_surface.py, in compose_shadow_rows`).
+
 ```
 page                  rows  order choices  elements   with the bot removed
 fold-tranches-page      11              5        69    0,  5, 33
@@ -2382,6 +2396,14 @@ answer from the shipped fetch, given to each side through its own receiver.
 alerts tab       13 routing rows, 4 history rows      differences 0
 news strip       6 stories, 8 steps, wraps 6 to 1     differences 0
 ```
+
+The routing table now draws **14** rows. `AlertEvent.TRADE_EXECUTED` in
+`src/core/notifications.py` became `BUY_FILLED` and `SELL_FILLED`, one event for
+each of the two fill boxes on `Settings > SMS`. The table reads the rows off
+`NotificationManager.get_config`, so it draws whatever that answers and no count
+is written on the page. Eleven of the fourteen rows name the SMS channel, which
+`notifications.message_channels_for` gives every event
+`notifications.EVENT_MESSAGE_KIND` pairs with a switch.
 
 Every alert row matches: its time, its priority word, its title, its message,
 its channels, and the colour of each. The four priorities draw in four colours,
@@ -3649,3 +3671,275 @@ one declaration         yes                no, each build its own copy
 
 Two runtime lines are appended to a Fire description and are not part of the
 sentence: a ceiling warning, and the list of gates blocking a fire.
+
+### 2026-10-28 - #53 - the four live screens route every description through one helper
+
+The operator ranks four screens as the ones he works: Trading, Charts, Bot Swarm
+and Market Inspector. On those screens every control now carries a description,
+every description fits the twenty-word figure, and every one of them is set by
+`src/gui/tooltips.py, in set_description`.
+
+**The one way in had no callers, so no rule could reach a single box.** The
+helper existed and 84 calls on these four screens went straight to the toolkit
+instead. Each of those 84 is now a `set_description` call, so the next rule about
+a description is one change rather than 84.
+
+```
+                                  before   after
+set_description calls in src           1      100
+setToolTip calls in src/gui          603      520
+on the four screens                   84        0
+```
+
+**The twenty was prose, and prose reaches no screen.** No module held the
+figure: `src/gui/theme_engine.py` declares the box's width, padding, text size
+and wait, and none of the four is a word count. `src/gui/tooltips.py, in
+DESCRIPTION_WORD_LIMIT` now holds it, `set_description` reads it on every call,
+and a description over it is still shown and is named in the GUI log with its
+word count. The screen never loses a sentence to the figure, and an over-long
+one stops being invisible.
+
+**What the built screens report.** Each of the four was built with no window on
+screen, its widget tree walked, and `toolTip()` read off every control. A
+scrollbar and the toolkit's own tab arrows are left out; they are the toolkit's,
+not the product's.
+
+```
+screen                        controls   no description   over twenty words
+                                         before  after    before   after
+Trading                             44      10      3          7       0
+Trading, one exchange layer         37       6      0         10       0
+Charts                              19       1      0          3       0
+Bot Swarm                           17       7      0          0       0
+Market Inspector                    73      36      0          3       0
+Market Inspector, topologies         3       0      0          0       0
+Market Inspector, topology preview  14       9      0          1       0
+total                              207      69      3         24       0
+```
+
+The three left are the indicator panel's blank padding columns. `src/gui/main_tabs/indicator_panel_surface.py,
+in column_titles` pads each table to a fixed column count with an empty title, so
+those three head nothing and describe nothing.
+
+**Where the 66 new descriptions went.**
+
+```
+the Market Inspector's credential boxes      20, one format naming the field and venue
+its venue buttons                            10, each naming its credential state
+its ATA settings boxes                        6, one per setting a phase reads
+the Bot Swarm's swarm buttons and theme menu  7
+one exchange layer's fleet commands           6, each naming what SHIFT adds
+the topology preview's two column sets        8
+the six Add Exchange buttons on the empty-state cards
+the indicator panel's bot menu, the Charts timeframe menu, New Bot, Cancel
+```
+
+**Two sentence sets lived in several files, and a screen read the wrong copy.**
+The Extractor table's eight column descriptions were declared four times — in
+`src/gui/main_tabs/extractor_bot_table_surface.py` and again in the Live, Paper
+and Simulator tables — and the topology preview typed four of its own beside the
+surface that already held them. Each now reads the one declaration, so the Qt
+screen and the browser screen draw one sentence.
+
+```
+                                           declarations before   after
+Extractor column descriptions                              4       1
+topology preview's bots, wires and adopt                   2       1
+```
+
+The three Extractor tables were built and each asked what its eight column
+headings report: all three read the same, and all three are under the figure.
+Control: changing one column in the surface alone makes that comparison report a
+difference.
+
+The copies had already drifted. `src/gui/main_tabs/market_inspector_topologies_surface.py`
+still held a 31-word bots sentence and a 21-word adopt sentence while the Qt
+dialog beside it held the short ones, so the browser screen was over the figure
+and the Qt screen was not.
+
+**What a shorter sentence costs here.** The indicator panel's column headings
+lost the most. Their long form named the author of each indicator, the raw value
+range, and the second threshold a gate reads where it differs from the voter's.
+Each heading keeps what the column is and the one threshold that acts:
+
+```
+heading   words before   after
+Conf                86      19
+KER                107      17
+ADX                 78      19
+ZSc                 73      19
+Comp                56      17
+Net                 49      19
+```
+
+A column heading also carries the line about pressing the label to sort, which
+is nine of the twenty. `src/gui/main_tabs/bot_status_table_surface.py, in
+COLUMN_TOOLTIPS` is therefore held to eleven words a column, and the browser
+build appends a privacy line of ten instead.
+
+**One defect found in the same files.** `src/gui/widgets/exchange_tab.py, in
+ExchangeTab` installs an event filter on the application and never took it off.
+A layer taken off the bar stopped its feeds and left the filter in place, so
+every later key press reached a freed widget. `stop_feeds` now removes it, and
+the same teardown that raised in that filter ends clean.
+
+**The rebuild is owed.** `docs/Acervator-Product-Manual.pdf` is not rebuilt here;
+another branch holds that file. This page, `docs/manual/08-tabs.md`, is the one
+that needs it.
+
+### 2026-10-29 - every other screen describes every control in twenty words
+
+Every screen the window builds now gives each control a description of twenty
+words or fewer. No description names a version, an issue or a pull request. The
+section above covers four screens in the Qt build. This section covers the rest
+of the window, and the browser build of every screen.
+
+**What the built screens report.** Each screen was built with no window on
+screen, once in the Qt build and once in the browser build. Every control, table
+heading and tab was asked for its description. Each figure adds the two builds
+together. A planted description of twenty-one words reads as over in both
+builds, and a planted one of twenty reads as within.
+
+```
+screen                          controls   no description   over twenty   a number
+                                           before  after    before after  before after
+Window header strip                   30       6      0         21     0       0     0
+Window status bar                      0       0      0          2     0       0     0
+Main tab bar                          18      18      0          0     0       0     0
+Live tab                             270      34      0         27     0       0     0
+Charts tab                            38      15      0          0     0       0     0
+Inspector tab                        101       0      0          3     0       0     0
+Swarm tab                             36      13      0          0     0       0     0
+History tab                           22      10      0          2     0       0     0
+Status tab                            80      80      0          0     0       0     0
+Console tab                            4       4      0          0     0       0     0
+Paper tab                            126      62      0         11     0       0     0
+Sim tab                              121      81      0         11     0       0     0
+Settings, crypto                     212     137      0          4     0       0     0
+Settings, stocks                     212     137      0          4     0       0     0
+Live Bot Settings, Scrumming         194      83      0         53     0       1     0
+Live Bot Settings, Extractor         118      28      0         32     0       1     0
+Paper Bot Settings, Scrumming        163      54      0         53     0       1     0
+Paper Bot Settings, Extractor        107      19      0         32     0       1     0
+Sim Bot Settings, Scrumming          163      54      0         53     0       1     0
+Sim Bot Settings, Extractor          107      19      0         32     0       1     0
+Live bot wizard                      151      29      0         34     0       0     0
+Paper bot wizard                     145      30      0         30     0       0     0
+Sim bot wizard                       145      30      0         30     0       0     0
+Error Log                             16      14      0          0     0       0     0
+Start All                              4       4      0          0     0       0     0
+Buy confirmation                       6       6      0          0     0       0     0
+Fleet unlock                           6       0      0          0     0       0     0
+Instance consent                       4       4      0          0     0       0     0
+every screen                        2599     971      0        434     0       6     0
+```
+
+The Qt build draws the Status tab's column heads as labels, so that build counts
+no control there. Those heads now carry the sentences the browser build draws.
+
+**One sentence, both builds.** A sentence that each build typed for itself now
+sits once, in the screen's surface module or in `src/gui/descriptions.py`. Both
+builds read that one copy. The Bot Settings tables, the phantom and lock tables,
+the Positions Held headings, the Settings dialog and the creation wizard hold
+most of them.
+
+```
+declaration in src/gui/descriptions.py   on origin/current   this change
+SETTINGS_TAB_DESCRIPTIONS                               50            59
+BOT_WIZARD_DESCRIPTIONS                                 49            61
+PHANTOM_BOTS_TAB_DESCRIPTIONS                            1             2
+FOLD_TRANCHES_TAB_DESCRIPTIONS                           6             6
+TRADING_TAB_DESCRIPTIONS                                 3             3
+STACK_TRANCHES_TAB_DESCRIPTIONS                          2             2
+INDICATOR_PANEL_DESCRIPTIONS                             2             2
+```
+
+**Every description goes through one helper.** The screens the window builds
+set each description with `src/gui/tooltips.py, in set_description`. The
+Settings dialog sets each control's sentence from that control's declaration, in
+`src/gui/settings_dialog.py, in _describe_controls`.
+
+```
+                                  on origin/current   this change
+set_description calls in src                   112           717
+setToolTip calls in src/gui                    512            19
+```
+
+Two of the 19 are inside the helper itself, and one is the header strip card
+that the helper calls through. The other 16 are on screens the window does not
+build.
+
+**Descriptions built while the screen runs.** Each description built from live
+values was built with the longest values its inputs can take. All 186 of them
+fit, and the longest is twenty words. Where a description adds lines to a
+sentence, `src/gui/descriptions.py, in fitted` keeps each line
+only while the whole stays within twenty words.
+
+```
+description                                      words before   after
+Fire, held, with gates, ceiling and detonation             68      17
+Fire, armed, with ceiling and detonation                   42      20
+Fire, nothing to do                                        74      16
+Fire, the exchange count disagrees                         82      18
+bot table heading, browser build                           30      20
+asset mark, no logo and no web address                     24      18
+Bot Swarm node                                             21      20
+Extractor tranche row                                      92      17
+Extractor pool                                             27      14
+Position Value, two reads                                  59      18
+creation wizard information button                         71       6
+```
+
+**What a shorter description costs.**
+
+- The Fire button names the gates that hold it by their gate label. It names
+  three and counts the rest. When the gates fill the twenty words, the ceiling
+  and detonation lines are left out. When there is room for one line, the
+  ceiling line comes first.
+- The Position Value cell says that Ammo uses the exchange's count, and gives
+  that count. It no longer explains why the two dollar figures on the row differ.
+- The Extractor tranche row names the Extractor that holds the lease and the
+  amount leased. The alt units and the last mark follow only while they fit. The
+  paragraph about why the row is a record and not inventory is gone.
+- The Bot Swarm node reads `Growth` where it read `Realised growth`.
+- The creation wizard's information button says what pressing it does. The box
+  it opens still holds the asset's full description.
+
+#### Where the readings above now differ
+
+The readings above stand as written. This table gives what each one reads now.
+
+| written above | what it reads now |
+| --- | --- |
+| "Two runtime lines are appended to a Fire description and are not part of the sentence: a ceiling warning, and the list of gates blocking a fire." | Three lines can follow the sentence: the gates that hold it, a ceiling line and a detonation line. Each is kept only while the whole stays within twenty words. |
+| "the five sentences      15 to 19 words" | The five sentences are 11 to 13 words, so a line can follow each one. |
+| "A description on every control that has none is unbuilt" | Every control the window builds carries a description. |
+| "178 of the 597 calls build their text at runtime, so no static count reaches them." | The 186 descriptions built at runtime were driven at their longest values, and none is over twenty words. |
+| "`src/gui/tooltips.py, in DESCRIPTION_WORD_LIMIT` now holds it" | `src/gui/descriptions.py` holds the figure, and the helper imports it from there. |
+| "The three left are the indicator panel's blank padding columns." | Each blank head sits over a pillar the other table titles, and carries that pillar's sentence. |
+| "the browser build appends a privacy line of ten instead." | No heading carries a privacy line. The dot under the label carries the privacy state. |
+| "SETTINGS_TAB_DESCRIPTIONS        50 controls" and the rows under it | The declaration table in this section gives the current counts. |
+| "set_description calls in src           1      100" | 717 calls, and 19 direct calls are left in `src/gui`. |
+
+The padded heads take their sentence from
+`src/gui/main_tabs/indicator_panel_surface.py, in column_tooltips`. A heading's
+sentence comes from `src/gui/main_tabs/bot_status_table_surface.py, in
+header_tooltip`.
+
+**The rebuild is owed.** `docs/Acervator-Product-Manual.pdf` is not rebuilt
+here. This page, `docs/manual/08-tabs.md`, needs it.
+
+## 2026-10-28 - #1374 - where the owed rebuild now stands
+
+### Where the sentence about the rebuild now reads differently
+
+One reading above describes the state before this branch. It stands as written,
+and this is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "**The rebuild is owed.** `docs/Acervator-Product-Manual.pdf` is not rebuilt here; another branch holds that file. This page, `docs/manual/08-tabs.md`, is the one that needs it." | `docs/Acervator-Product-Manual.pdf` is rebuilt in this branch from the merged pages, and it carries this page |
+
+`tools/build_product_manual.py` is what builds it, and the page order it reads
+is the order of `docs/manual`.
+

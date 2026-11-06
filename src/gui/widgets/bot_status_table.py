@@ -31,6 +31,11 @@ from ..main_tabs.bot_status_table_surface import (
     FIRE_TIP_FOLD_CEILING,
     FIRE_TIP_FOLD_OUTLINE,
     FIRE_TIP_FOLD_SOLID,
+    FIRE_TIP_INACTIVE_FORMAT,
+    FIRE_TIP_NOT_SCRUMMING,
+    FIRE_TIP_PHASE_FIRE,
+    FIRE_TIP_PHASE_SEARCH,
+    FIRE_TIP_PHASE_TRACK,
     FIRE_TIP_SCRUM_OUTLINE,
     FIRE_TIP_SCRUM_SOLID,
     FIXED_WIDTHS,
@@ -57,9 +62,11 @@ from ..main_tabs.bot_status_table_surface import (
     SORTABLE_COLUMNS,
     TOOLTIP_LINE_GAP,
     SortLookups,
+    blockers_text,
     fold_taper_of,
     icon_asset_of,
     kept_logo_path,
+    lot_units_of,
     manual_fire_dispute,
     manual_fire_noop_tooltip,
     manual_fire_verdict,
@@ -68,6 +75,7 @@ from ..main_tabs.bot_status_table_surface import (
     organisation_address,
     organisation_tooltip,
     order_statuses,
+    risk_lines,
     selection_after_press,
     selection_after_view_moved,
     sort_direction,
@@ -75,6 +83,7 @@ from ..main_tabs.bot_status_table_surface import (
     sort_tooltip,
     target_value,
 )
+from ..descriptions import fitted
 from ..table_cells import (
     _ammo_price_pool,
     _compose_ammo_cell,
@@ -129,6 +138,7 @@ try:
     from . import ColumnSpec, ColumnarTableWidget
     from .bot_selection import _reanchor_bot_selection, _select_row_for_bot
     from .privacy_dot import PrivacyDot
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -501,7 +511,7 @@ if _HAS_QT:
             cells = []
             for col, label in enumerate(self.COLUMNS):
                 item = QTableWidgetItem("")
-                item.setToolTip(self._header_tooltip(col))
+                set_description(item, self._header_tooltip(col))
                 self.setHorizontalHeaderItem(col, item)
                 cells.append(
                     ColumnHeaderCell(
@@ -541,7 +551,7 @@ if _HAS_QT:
                 cell.set_sort_mark(sort_mark(direction))
                 item = self.horizontalHeaderItem(col)
                 if item is not None:
-                    item.setToolTip(self._header_tooltip(col))
+                    set_description(item, self._header_tooltip(col))
 
         def sort_state(self) -> tuple:
             """Which column this table is ordered by, and which way."""
@@ -700,14 +710,17 @@ if _HAS_QT:
             path = kept_logo_path(symbol)
             icon = self._logo_icon(path) if path else None
             if icon is None:
-                item.setToolTip(
-                    NO_LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip
+                set_description(
+                    item,
+                    NO_LOGO_TIP_FORMAT.format(asset=asset)
+                    + TOOLTIP_LINE_GAP
+                    + mark_tip,
                 )
                 return
             item.setIcon(icon)
             item.setText("")
-            item.setToolTip(
-                LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip
+            set_description(
+                item, LOGO_TIP_FORMAT.format(asset=asset) + TOOLTIP_LINE_GAP + mark_tip
             )
 
         def _write_row(self, row: int, status: dict) -> None:
@@ -739,6 +752,7 @@ if _HAS_QT:
                 price_age_s=_price_age,
                 venue_units=status.get("audited_venue_units"),
                 venue_refusal=status.get("venue_units_refusal"),
+                lot_units=lot_units_of(status),
             )
             ammo_color = QColor(_ammo["color"])
             ammo_tip = _ammo["tip"]
@@ -786,7 +800,7 @@ if _HAS_QT:
                 if col == 1 and text:
                     color = self.STATE_COLORS.get(state, QColor(ds.TEXT_HIGH))
                     item.setForeground(color)
-                    item.setToolTip(mode_tooltip(mode, state))
+                    set_description(item, mode_tooltip(mode, state))
                     # UserRole carries (exchange_id, raw_symbol) for _on_cell_clicked.
                     try:
                         from ...exchange.exchange_chart_urls import (
@@ -803,11 +817,12 @@ if _HAS_QT:
                             _f = item.font()
                             _f.setUnderline(True)
                             item.setFont(_f)
-                            item.setToolTip(
+                            set_description(
+                                item,
                                 item.toolTip()
                                 + TOOLTIP_LINE_GAP
                                 + f"Open chart on {exchange_id} "
-                                f"in default browser: {_url}"
+                                f"in default browser: {_url}",
                             )
                     except Exception as _chart_url_exc:
                         # The status dict may be the malformed input, so only the exception is logged.
@@ -819,14 +834,14 @@ if _HAS_QT:
                 if col == 0:
                     self._draw_logo(item, symbol, text)
                 if col == 2:
-                    item.setToolTip(_position["tip"])
+                    set_description(item, _position["tip"])
                 if col == 5:
                     item.setForeground(QColor(target_btc_color))
                 if col == 6:
                     item.setForeground(QColor(target_eth_color))
                 if col == 7:
                     item.setForeground(ammo_color)
-                    item.setToolTip(ammo_tip)
+                    set_description(item, ammo_tip)
                 self.setItem(row, col, item)
 
             # The fill states the direction of the rebalance before the operator clicks.
@@ -834,7 +849,6 @@ if _HAS_QT:
             armed_action = status.get("armed_action")
             ceiling_enabled = status.get("position_ceiling_enabled", False)
             ceiling_ratio = status.get("ceiling_ratio")
-            ceiling_usd = status.get("position_ceiling_usd")
             fold_taper = fold_taper_of(status)
             detonation_enabled = status.get("detonation_enabled", False)
             detonation_tf = status.get("detonation_timeframe", "1d")
@@ -887,36 +901,15 @@ if _HAS_QT:
                             _glow_exc,
                         )
 
-                def _risk_suffix() -> str:
-                    parts = []
-                    if ceiling_enabled and ceiling_ratio is not None:
-                        pct = ceiling_ratio * 100
-                        if fold_blocked_by_ceiling:
-                            parts.append(
-                                f"\n\n⚠ CEILING REACHED "
-                                f"({pct:.1f}% of ${ceiling_usd:.2f}) — "
-                                f"fold hard-stopped, scrum only."
-                            )
-                        elif ceiling_ratio >= 0.5:
-                            parts.append(
-                                f"\n\n⚠ Approaching ceiling "
-                                f"({pct:.1f}% of ${ceiling_usd:.2f}) — "
-                                f"fold size tapered to {fold_taper*100:.0f}%."
-                            )
-                        else:
-                            parts.append(
-                                f"\n\nCeiling: {pct:.1f}% of "
-                                f"${ceiling_usd:.2f} "
-                                f"(fold size: {fold_taper*100:.0f}%)."
-                            )
-                    if detonation_enabled:
-                        parts.append(
-                            f"\nDetonation armed: monitoring "
-                            f"{detonation_tf.upper()} for BULLISH "
-                            f"auto-harvest at confidence "
-                            f"{float(detonation_bar):.2f} or above."
-                        )
-                    return "".join(parts)
+                risk = risk_lines(
+                    ceiling_enabled,
+                    ceiling_ratio,
+                    fold_taper,
+                    fold_blocked_by_ceiling,
+                    detonation_enabled,
+                    detonation_tf,
+                    detonation_bar,
+                )
 
                 if fire_verdict == MANUAL_FIRE_REFUSES:
                     # Two reasons reach this path: a position the exchange
@@ -925,9 +918,12 @@ if _HAS_QT:
                     fire_path = FIRE_PATH_MANUAL_NOOP
                     fire_btn.setText(mask_or(FIRE_LABEL_MANUAL_NOOP, FIRE_MASK_FIELD))
                     fire_btn.setStyleSheet(FIRE_STYLE_MANUAL_NOOP)
-                    fire_btn.setToolTip(
-                        manual_fire_noop_tooltip(_ammo, target_val, fire_dispute)
-                        + _risk_suffix()
+                    set_description(
+                        fire_btn,
+                        fitted(
+                            manual_fire_noop_tooltip(_ammo, target_val, fire_dispute),
+                            *risk,
+                        ),
                     )
                 elif armed_action == "scrum" and fire_acts:
                     # Solid means auto would fire now; outline means only manual remains.
@@ -944,7 +940,7 @@ if _HAS_QT:
                             f"border: 1px solid {ds.ERROR};"
                         )
                         _apply_glow(ds.ERROR)
-                        fire_btn.setToolTip(FIRE_TIP_SCRUM_SOLID + _risk_suffix())
+                        set_description(fire_btn, fitted(FIRE_TIP_SCRUM_SOLID, *risk))
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked by ≥1 gate.
@@ -957,13 +953,13 @@ if _HAS_QT:
                         )
                         # No glow — visually quieter so operator
                         # sees the difference at a glance.
-                        _blockers_text = (
-                            "\nBlocked by: " + ", ".join(_scrum_blockers)
-                            if _scrum_blockers
-                            else ""
-                        )
-                        fire_btn.setToolTip(
-                            FIRE_TIP_SCRUM_OUTLINE + _blockers_text + _risk_suffix()
+                        set_description(
+                            fire_btn,
+                            fitted(
+                                FIRE_TIP_SCRUM_OUTLINE,
+                                blockers_text(_scrum_blockers),
+                                *risk,
+                            ),
                         )
                 elif armed_action == "fold" and fire_acts:
                     # Mirrors the SCRUM branch above.
@@ -981,7 +977,7 @@ if _HAS_QT:
                             f"border: 1px dashed {ds.CARD_METRIC_LABEL};"
                         )
                         _apply_glow(ds.STATE_ENGAGED_GLOW)
-                        fire_btn.setToolTip(FIRE_TIP_FOLD_CEILING + _risk_suffix())
+                        set_description(fire_btn, fitted(FIRE_TIP_FOLD_CEILING, *risk))
                     elif _auto_armed_fold:
                         # Solid green — auto-fire FOLD would fire NOW.
                         fire_path = FIRE_PATH_FOLD_SOLID
@@ -992,7 +988,7 @@ if _HAS_QT:
                             f"border: 1px solid {ds.STATE_ARMED};"
                         )
                         _apply_glow(ds.STATE_ARMED)
-                        fire_btn.setToolTip(FIRE_TIP_FOLD_SOLID + _risk_suffix())
+                        set_description(fire_btn, fitted(FIRE_TIP_FOLD_SOLID, *risk))
                     else:
                         # Outline only — manual override available
                         # but auto-fire is blocked.
@@ -1003,13 +999,13 @@ if _HAS_QT:
                             "background-color: transparent; "
                             f"border: 1px dashed {ds.STATE_ARMED};"
                         )
-                        _blockers_text = (
-                            "\nBlocked by: " + ", ".join(_fold_blockers)
-                            if _fold_blockers
-                            else ""
-                        )
-                        fire_btn.setToolTip(
-                            FIRE_TIP_FOLD_OUTLINE + _blockers_text + _risk_suffix()
+                        set_description(
+                            fire_btn,
+                            fitted(
+                                FIRE_TIP_FOLD_OUTLINE,
+                                blockers_text(_fold_blockers),
+                                *risk,
+                            ),
                         )
                 elif scrum_phase == "fire":
                     # Inside the dust band, so amber: no rebalance is needed.
@@ -1021,22 +1017,14 @@ if _HAS_QT:
                         f"border: 1px solid {ds.STATE_PENDING};"
                     )
                     _apply_glow(ds.STATE_PENDING)
-                    fire_btn.setToolTip(
-                        "Organic FIRE phase — bot at band but "
-                        "holdings within dust band of target. "
-                        "Clicking has no effect." + _risk_suffix()
-                    )
+                    set_description(fire_btn, fitted(FIRE_TIP_PHASE_FIRE, *risk))
                 elif scrum_phase == "track":
                     fire_path = FIRE_PATH_PHASE_TRACK
                     fire_btn.setStyleSheet(
                         "font-size: 10px; padding: 1px 6px; "
                         f"color: {ds.WARNING}; font-weight: bold;"
                     )
-                    fire_btn.setToolTip(
-                        "TRACKING — bot detected band approach. "
-                        "Fire is available but bot is within dust "
-                        "band; rebalance would be a no-op."
-                    )
+                    set_description(fire_btn, FIRE_TIP_PHASE_TRACK)
                 else:
                     # SEARCH / idle — subdued red
                     fire_path = FIRE_PATH_PHASE_SEARCH
@@ -1044,10 +1032,7 @@ if _HAS_QT:
                         "font-size: 10px; padding: 1px 6px; "
                         f"color: {ds.ERROR}; font-weight: bold;"
                     )
-                    fire_btn.setToolTip(
-                        "Bot within dust band of target. "
-                        "Manual Fire would be a no-op."
-                    )
+                    set_description(fire_btn, FIRE_TIP_PHASE_SEARCH)
             else:
                 fire_btn.setStyleSheet(
                     "font-size: 10px; padding: 1px 6px; color: "
@@ -1055,11 +1040,11 @@ if _HAS_QT:
                 )
                 if not is_scrumming:
                     fire_path = FIRE_PATH_NOT_SCRUMMING
-                    fire_btn.setToolTip("Manual Fire is scrumming-only.")
+                    set_description(fire_btn, FIRE_TIP_NOT_SCRUMMING)
                 else:
                     fire_path = FIRE_PATH_INACTIVE
-                    fire_btn.setToolTip(
-                        f"Bot is {state}; start or resume to enable Fire."
+                    set_description(
+                        fire_btn, FIRE_TIP_INACTIVE_FORMAT.format(state=state)
                     )
             # The path the row chose, readable off the button itself.
             fire_btn.setProperty(FIRE_PATH_PROPERTY, fire_path)
@@ -1069,8 +1054,8 @@ if _HAS_QT:
             detail_btn = QPushButton("Detail")
             detail_btn.setFixedHeight(BUTTON_HEIGHT_PX)
             detail_btn.setStyleSheet("font-size: 10px; padding: 1px 6px;")
-            detail_btn.setToolTip(
-                "View full bot status, configuration, and error details"
+            set_description(
+                detail_btn, "View full bot status, configuration, and error details"
             )
             detail_btn.clicked.connect(lambda _checked, b=bid: self._on_detail(b))
             self.setCellWidget(row, 9, detail_btn)

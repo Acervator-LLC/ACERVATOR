@@ -23,6 +23,11 @@ BUDGET_TEXT_FORMAT = "{budget} — consumed ${consumed:,.4f}"
 class PaperLiveSettingsTabModel(live.LiveSettingsTabModel):
     """Live's Settings tab model over ``denom_rates``."""
 
+    #: ``src.paper.paper_run`` votes through ``ta_direction``, which reads no hunger.
+    runs_hunger = False
+    #: ``src.paper.paper_run`` keeps its own tranches and opens no Shadow Tranche.
+    runs_shadow = False
+
     def __init__(
         self,
         bot: Any = None,

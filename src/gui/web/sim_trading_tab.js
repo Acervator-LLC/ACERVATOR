@@ -113,6 +113,7 @@
   var MINIMUM_HEIGHT = "minimum_height_px";
   var PLACEHOLDER = "placeholder";
   var EXCHANGE_TABS = "exchange_tabs";
+  var EXCHANGE_TAB_TOOLTIPS = "exchange_tab_tooltips";
   var CURRENT_EXCHANGE = "current_exchange";
   var PLACEHOLDER_SHOWN = "placeholder_shown";
   var TEXT = "text";
@@ -871,6 +872,7 @@
         wayInAsked(model[ACTION]);
       }
     };
+    buttonProps.title = label(model[TOOLTIP]);
     buttonProps[PART_ATTR] = WAY_IN_BUTTON_PART;
     buttonProps[KEY_ATTR] = text(props.layerKey);
     buttonProps[INDEX_ATTR] = String(props.at);
@@ -932,6 +934,7 @@
         wayInAsked(model[ACTION]);
       }
     };
+    buttonProps.title = label(model[TOOLTIP]);
     buttonProps[PART_ATTR] = PLACEHOLDER_WAY_IN_PART;
     buttonProps[KEY_ATTR] = text(props.layerKey);
     buttonProps[INDEX_ATTR] = String(props.at);
@@ -957,6 +960,7 @@
     if (model[MODE_FOCUSABLE] === false) {
       buttonProps.tabIndex = NOT_FOCUSABLE;
     }
+    buttonProps.title = label(model[TOOLTIP]);
     buttonProps[PART_ATTR] = PLACEHOLDER_MODE_PART;
     buttonProps[KEY_ATTR] = text(model[KEY]);
     buttonProps[INDEX_ATTR] = String(props.at);
@@ -1127,6 +1131,7 @@
     buttonProps[EXCHANGE_ATTR] = props.exchangeId;
     buttonProps[CURRENT_ATTR] = text(props.current);
     buttonProps[ARIA_LABEL] = label(props.caption);
+    buttonProps.title = label(props.tooltip);
     return element(BUTTON_TAG, buttonProps, text(props.caption));
   }
 
@@ -1193,6 +1198,7 @@
             layerKey: text(layer[KEY]),
             exchangeId: one,
             caption: text(tabs[one]),
+            tooltip: objectField(layer, EXCHANGE_TAB_TOOLTIPS)[one],
             current: one === onShow
           });
         });
@@ -1249,6 +1255,7 @@
         flipAsked(INDICATORS_LAYER, flipRect(event.currentTarget));
       }
     };
+    buttonProps.title = label(model[TOOLTIP]);
     buttonProps[PART_ATTR] = FLIP_BUTTON_PART;
     buttonProps[SLOT_ATTR] = FLIP_BUTTON_PART;
     buttonProps[ACTION_ATTR] = text(props.actions[FLIP_ACTION]);
@@ -1412,6 +1419,7 @@
         tabletChosen(text(event && event.target ? event.target.value : EMPTY));
       }
     };
+    selectProps.title = text(chooser[TOOLTIP]);
     selectProps[PART_ATTR] = TABLET_CHOOSER_PART;
     selectProps[SLOT_ATTR] = TABLET_CHOOSER_PART;
     selectProps[ARIA_LABEL] = text(chooser[NAME]);
@@ -1424,6 +1432,7 @@
         retrieveAsked();
       }
     };
+    buttonProps.title = text(button[TOOLTIP]);
     buttonProps[PART_ATTR] = RETRIEVE_BUTTON_PART;
     buttonProps[SLOT_ATTR] = RETRIEVE_BUTTON_PART;
     buttonProps[ARIA_LABEL] = text(button[NAME]);

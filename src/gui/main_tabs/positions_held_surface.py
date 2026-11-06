@@ -145,6 +145,15 @@ COLUMNS = tuple(heading for _, heading in CELL_COLUMNS) + (FIRE_HEADING,)
 COLUMN_NAMES = tuple(name for name, _ in CELL_COLUMNS) + (FIRE_NAME,)
 CELL_COLUMN_COUNT = len(CELL_COLUMNS)
 COLUMN_COUNT = len(COLUMNS)
+COLUMN_TOOLTIPS = (
+    "The market this position is held in.",
+    "This position's state: in flight, drawdown or bullish exit.",
+    "Units of the held asset in this position.",
+    "The dollar size of this position when it opened.",
+    "Approximate dollar value of the held units, priced at their average buy price.",
+    "Change from the entry value to the current value, as a percentage.",
+    "Holds each position's Fire button.",
+)
 
 
 def column_at(name: str) -> int:
@@ -210,6 +219,10 @@ CELL_FORMATS = {
 }
 
 FIRE_BUTTON_TEXT = "Fire"
+FIRE_TOOLTIP = (
+    "Sells all of this position's units at market price, after you confirm. "
+    "The money returns to the pool."
+)
 FIRE_BUTTON_HEIGHT_PX = 24
 FIRE_BUTTON_STYLE = (
     f"QPushButton {{ background: {ds.WARNING_STRONG}; color: white; "
@@ -949,6 +962,7 @@ def build_view_model(
         },
         "positions_table": {
             "columns": list(COLUMNS),
+            "column_tooltips": list(COLUMN_TOOLTIPS),
             "column_count": COLUMN_COUNT,
             "cell_column_count": CELL_COLUMN_COUNT,
             "header_resize_mode": HEADER_RESIZE_MODE,
@@ -973,6 +987,7 @@ def build_view_model(
         },
         "fire_button": {
             "text": FIRE_BUTTON_TEXT,
+            "tooltip": FIRE_TOOLTIP,
             "fixed_height_px": FIRE_BUTTON_HEIGHT_PX,
             "style_sheet": FIRE_BUTTON_STYLE,
             "pairs": list(model.fire_pairs),

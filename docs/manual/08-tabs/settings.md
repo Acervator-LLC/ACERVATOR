@@ -894,6 +894,11 @@ DEFAULT_WEIGHTS = {
 }
 ```
 
+Since 2026-10-28 a new bot does not start at these figures. It starts at twelve
+zeros of its own, written by `src/trading/ta_engine.py, in new_bot_weights`, and
+takes this page's figures at the next Save. The sliders still open at the figures
+above. The dated entry for that day at the end of this page carries the readings.
+
 A weight moved here reaches nothing. Save reads no widget on this page, the
 load path restores none, and the settings schema declares no field for
 indicator weights. The voting engine takes a weights argument and falls back to
@@ -1039,6 +1044,22 @@ on the direction that engine reports. Detonation cannot fire in any case: its
 confidence bar starts at 0.50, and one 240-candle tape put the highest
 consensus at 0.1242 with the figures declared and 0.1016 with all twelve at
 0.30.
+
+**Current reading, the first buy.** The initial-entry check still votes at the
+published figures. Its bearish vote now needs three agreeing indicators on that
+same vote, more than the 0.1966 two reach with all twelve voting. A bot whose own
+twelve figures are all zero, which every new bot holds until Save, buys on the
+direction alone as before.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_initial_entry`
+
+```python
+if not three_agree(
+    summary.consensus_confidence,
+    summary.signals,
+    self._voting_engine.indicator_weights,
+):
+```
 
 #### A phantom keeps the figures its set was created with
 
@@ -2091,6 +2112,21 @@ self._sound_enabled.setChecked(True)
 self._sound_enabled.setToolTip("Master switch for all audio notifications")
 ```
 
+**Current reading, 2026-10-29.** The words are the same. Each Settings control's sentence is now the
+`tooltip` of its entry in the control declarations, and the dialog sets them all
+once its tabs are built.
+
+`src/gui/settings_dialog.py` — `_describe_controls`
+
+```python
+def _describe_controls(self) -> None:
+    for spec in sds.CONTROL_SPECS:
+        said = spec.get("tooltip")
+        held = getattr(self, f"_{spec['name']}", None)
+        if said and held is not None:
+            set_description(held, said)
+```
+
 Buy order fills - Plays a low rising tone when a buy fills. Key `buy_sound`,
 on.
 
@@ -2165,6 +2201,9 @@ self._sound_fire.setToolTip(
 )
 ```
 
+**Current reading, 2026-10-29.** The words are the same, and the dialog sets them
+from this box's control declaration, as it does the master switch above.
+
 Tracking beeps - Paces a beep by the scrum phase: silent in SEARCH, slow in
 TRACK, fast in FIRE. Key `track_sound`, on.
 
@@ -2184,6 +2223,20 @@ profit. Key `profit_sound`, on.
 
 The tooltip is the only place on the page that names the condition exactly:
 realised profit above zero, on grid and scrumming bots alike.
+
+Read today: the coins follow the profit a fill's announcement carries. A fold,
+a Manual Fire, cartridge or wire-stack buy, and a manual tranche fire carry the
+target growth they applied. A detonation carries the position's value above its
+anchor target, and an Extractor exit carries its gain. Every other fill, a scrum
+and a distribution sale among them, carries $0.00 and plays no coins.
+
+Now: the wire stack is gone, and the growth a cartridge, Manual Fire or manual tranche fire carries reads each tranche's sale price less its wire share (`src/trading/scrumming/sizing.py, in discharge_gain_usd`).
+
+```python
+# src/gui/main_tabs/main_window_surface.py, in trade_filled_sounds
+    if profit > 0:
+        played.append(PROFIT_SOUND)
+```
 
 `src/gui/settings_dialog.py` — the profit box
 
@@ -2406,6 +2459,17 @@ elif taken_side == SELL_SIDE:
     played.append(SELL_SOUND)
 ```
 
+**The current reading, 2026-10-29.** Every place in the bot that books a fill
+now sends it in one flat shape, so `fill_fields` reads one level only. It reads
+the fill through `read_settled_fill`, which refuses a fill that is not in that
+shape, and all eighteen kinds of fill reach the sounds.
+
+`src/gui/main_tabs/main_window_surface.py` — the one shape the sounds read
+
+```python
+    return read_settled_fill(data).payload()
+```
+
 The six Test buttons carry a part name of their own, and the page's click
 listener reports the plain button part alone, so a press on the React page
 reports nothing to the dialog. Those six are buttons, not settings, and the
@@ -2462,6 +2526,9 @@ self._sms_enabled.setToolTip(
 )
 layout.addWidget(self._sms_enabled)
 ```
+
+**Current reading, 2026-10-29.** The words are the same, and the dialog sets them
+from this box's control declaration.
 
 Provider - Chooses how a message leaves the machine: a carrier's email gateway,
 or the Twilio web interface. Key `provider`, at the email gateway. Nothing
@@ -2530,6 +2597,9 @@ self._sms_gateway.setPlaceholderText("5551234567@vtext.com")
 self._sms_gateway.setToolTip("Full email address for carrier SMS gateway")
 pf.addRow("Gateway Email:", self._sms_gateway)
 ```
+
+**Current reading, 2026-10-29.** The words are the same, and the dialog sets them
+from this row's control declaration.
 
 SMTP Username - Sets the mailbox a message is sent from. Key `smtp_username`,
 empty.
@@ -2670,6 +2740,71 @@ The last event row, and the third of the three that open clear.
 self._sms_connection = QCheckBox("Exchange connection status")
 ef.addRow(self._sms_connection)
 ```
+
+#### What the eight event rows reach today
+
+The eight sentences above are the specification. Five of the eight rows now
+govern a real send.
+
+`src/core/notifications.py, in attach_to_bus` subscribes the fill topic, and
+`src/core/notifications.py, in get_notification_manager` makes that
+subscription as it builds the manager. A filled trade therefore raises
+`BUY_FILLED` or `SELL_FILLED` with no window in the path.
+`src/core/notifications.py, in _send_sms` hands the engine the event, and
+`src/core/sms_engine.py, in send` reads `EVENT_SWITCHES` to find the switch that
+gates it. `Buy fills` gates `buy_fill` and `Sell fills` gates `sell_fill`.
+
+`P/L threshold alerts` is reached from
+`src/core/notifications.py, in check_pnl_milestone`, which now reads
+`pl_threshold_amount` and raises one alert for each new whole multiple of it.
+`Exchange connection status` is reached from
+`src/exchange/ccxt_connector.py, in _alert_venue`, for a lost connection and for
+a venue that answers again.
+
+The figure `check_pnl_milestone` is handed is the fleet's realised total, the
+sum of each bot's `stats.realised_pnl`. That field had no writer and read zero,
+so the alert never fired. The exchange walk now writes it with the bot's
+realised figure from the exchange's own fill history. The walk runs at most once
+in 300 seconds, so the alert follows a fill by up to 300 seconds.
+
+Read today: the realised figure moves when the fill is announced, while the bot
+holds a complete fill history from its last walk. The window checks the
+milestone every two seconds, so the alert follows the fill by up to two seconds.
+The walk then writes the exchange's own figure over it.
+
+```python
+# src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._join_fill_history
+        health = compute_position_health(held, self.config.symbol.split("/")[0])
+        self.stats.realized_pnl_exchange = float(health.realized_pnl_usd)
+        self.stats.realised_pnl = float(health.realized_pnl_usd)
+```
+
+```python
+# src/trading/scrumming/reconciliation.py, in refresh_exchange_position_health
+                self.stats.realized_pnl_exchange = self.stats.realised_pnl = float(
+                    _ph.realized_pnl_usd
+                )
+
+# src/gui/main_window.py, in _refresh_dashboard
+                        self._notif_manager.check_pnl_milestone(
+                            agg.get("total_realised_pnl", 0)
+                        )
+```
+
+Three rows still wait on a trigger of their own.
+
+| Row | What is missing |
+|---|---|
+| Bot state changes | Nothing raises `BOT_STARTED`, `BOT_STOPPED` or `BOT_ERROR` |
+| API errors and failures | No alert event names a failed venue call. `src/exchange/ccxt_connector.py, in note_venue_refusal` raises one for a lost connection alone |
+| Low balance warnings | No alert event names a low balance |
+
+The number the send reaches is one field.
+`src/core/notifications.py, in configure_sms` writes the number the
+Notifications and Alerts tab types into `SMSConfig.phone_number`, which is the
+field `Phone Number` on this page stores.
+
+The Product Manual PDF rebuild is owed for this page.
 
 Max messages per hour - Caps how many messages one hour may carry. Key
 `max_messages_per_hour`, 1 to 100, at 20. Below the area the figure shows.
@@ -3779,6 +3914,11 @@ and the status log, and nothing else.
 
 `_sync_exchange_tabs` only adds a tab, so the removed venue's tab stays on
 screen until the next launch.
+
+OVERTAKEN, and the table above is kept as written. Remove Selected now refuses
+this press while a bot on the venue still trades, and it names the bot. The
+section *2026-10-29 - A venue a running bot trades on is kept* holds the
+reading.
 
 ## 2026-09-11 - Position Distance is off the Trading page
 
@@ -5074,6 +5214,20 @@ distribution takes.
 One DIST sell leaves one tranche behind. `_bound_new_fold_tranches` merges the slice
 the build loop appended back to a single record, so the number of positions a
 distribution opens is 1 at an accumulator of 5.0 units and 1 at 3.0.
+
+**Current reading.** The distribution no longer sells one accumulator. Each fold
+that buys more units than its scrum sold queues one set: those extra units beside
+the price the fold paid. A sale takes only the sets whose price, raised by the
+Minimum Opposing Trade Distance, the market has reached, and the sold units come off
+those sets alone. The venue bound reads the free units in the balance the venue
+reports. With Stack Mode on, each set gets one ladder, never one per tick, and a
+fold whose own ladder opens queues no set.
+
+`src/trading/scrumming/distribution.py` — `dist_sets_clearing`
+
+```python
+return [one for one in sets if dist_floor_price(one, otd_pct) <= price]
+```
 
 ### Nine sell-side calls that refused a count
 
@@ -7661,7 +7815,7 @@ the home trees redirected and every outbound socket refused:
 | Indices | 1 note | 1 row, `Coinbase (coinbase)` |
 | Futures / Perps | 1 note | 1 row, `Coinbase (coinbase)` |
 
-[The sector and product tree](../16-sector-exchange-product-tree.md) records the
+[The sector and product tree](../../reference/16-sector-exchange-product-tree.md) records the
 same six registrations.
 
 ### The Add box is named after the sector
@@ -7947,7 +8101,7 @@ narrows the same set to the sector the operator is on.
 | Sector | The tab offers | Venues the tab offered and the wizard did not, before | After |
 | ------ | -------------: | ----------------------------------------------------- | ----- |
 | crypto | 21 | alpaca, ibkr, robinhood, schwab, tastytrade, webull | none |
-| stocks | 19 | alpaca, etrade, fidelity, ibkr, interactivebrokers, schwab, tastytrade, tdameritrade, webull | none |
+| stocks | 19 | alpaca, etrade, fidelity (not offered on any tab), ibkr, interactivebrokers, schwab, tastytrade, tdameritrade, webull | none |
 | commodities | 16 | alpaca, etrade, ibkr, schwab, tastytrade, webull | none |
 | forex | 6 | ibkr | none |
 | indices | 13 | alpaca, etrade, ibkr, schwab, tastytrade, webull | none |
@@ -8139,7 +8293,7 @@ widgets and hung one sentence on all seven. Each one now answers for itself.
 `validate_credentials`, holds a route that reaches no session: a hand-written
 connector's own `credential_refusal`, or a venue id
 `src/exchange/ccxt_connector.py`, in `SUPPORTED_EXCHANGES`, names. Nine of the
-21 stocks venues hold neither — alpaca, etrade, fidelity, ibkr,
+21 stocks venues hold neither — alpaca, etrade, fidelity (not offered on any tab), ibkr,
 interactivebrokers, schwab, tastytrade, tdameritrade, webull — and their Test
 Connection carries `NO_CREDENTIAL_TEST_TIP` in place of a press that cannot
 answer.
@@ -8154,7 +8308,7 @@ their Add press is refused and the feedback row carries `NO_CONNECTOR_PROMPT`.
 | ------ | ----------- | -------------- |
 | alpaca | the key id, `src/stocks/alpaca_connector.py`, in `connect` | the secret key |
 | etrade | the consumer key, `src/stocks/etrade_connector.py`, in `connect` | the consumer signing key |
-| fidelity | dropped — `src/stocks/fidelity_connector.py`, in `connect`, answers False with `ORDER_ROUTE_UNPUBLISHED` | dropped |
+| fidelity | not offered on any tab, so no form takes its key | not offered |
 | ibkr | the bearer token, `src/stocks/ibkr_connector.py`, in `connect` | unused |
 | robinhood | no typed row; `src/trading/ata_spm_signin.py`, in `BROWSER_AUTHORIZATION_SECTORS`, sends it to the browser press | no typed row |
 | schwab | the bearer token, `src/stocks/schwab_connector.py`, in `connect` | unused |
@@ -8196,7 +8350,7 @@ not.
 | ----- | ------------------- | -------- | --------------- | --------- |
 | alpaca | drawn | absent | refused | takes a press |
 | etrade | drawn | drawn | refused | takes a press |
-| fidelity | drawn | absent | refused | takes a press |
+| fidelity | not offered on any tab, so absent | absent | refused | refused |
 | ibkr | drawn | absent | refused | takes a press |
 | robinhood | absent | absent | refused | Connect with a Browser |
 | schwab | drawn | absent | refused | takes a press |
@@ -8308,6 +8462,17 @@ True today: the banner reads from `STOCK_BANNER_TEXT`, which names the eight
 brokers, says the form takes each one's key and secret, and says Test Connection
 answers where a credential can be checked without a session. The page carries
 that block twice and both are overtaken by this one sentence.
+
+OVERTAKEN, and the paragraph above is kept as written. The banner now reads
+from `stock_banner_text`, which counts and names the brokers `offered_brokers`
+answers. Seven are named, and Fidelity is not one of them, because no tab offers
+it.
+
+```python
+# src/gui/main_tabs/settings_dialog_surface.py, in offered_brokers
+    listed = acs.venues_for_class(class_of_wing(STOCK_WING))
+    return tuple(sorted(one for one in listed if broker_connector_class(one)))
+```
 
 OVERTAKEN, quoted whole:
 
@@ -9256,5 +9421,627 @@ QComboBox::drop-down {
     width: 24px;
 }
 ```
+
+
+## 2026-10-28 - #1374 - the Fleet Lock rows, and the screen that gives the password back
+
+The User tab takes one optional password beside the Username. With a password
+set, the saved fleet and the venue vault are both sealed, and a launch starts no
+bot until the password is given. With no password set the page behaves as it
+always did.
+
+`src/gui/main_tabs/settings_dialog_surface.py, in fleet_lock_intent` holds the
+whole decision, so the Qt build and the drawn build take and refuse the same
+thing.
+
+### The four controls
+
+| On screen | What it is | Module, symbol |
+| --- | --- | --- |
+| Password | Takes a new password, hidden as it is typed | `src/gui/settings_dialog.py, in _create_fleet_lock_group` |
+| Confirm Password | Takes it a second time | the same |
+| Unlock the fleet now | Raises the unlock screen; live only while a key file exists and this session holds no key | `src/gui/settings_dialog.py, in _open_fleet_unlock` |
+| Clear the lock | Presses in to arm the demolition; live only while a key file exists | `src/gui/settings_dialog.py, in _show_fleet_lock_state` |
+
+A line above the four says which state the install is in.
+`src/gui/main_tabs/settings_dialog_surface.py, in fleet_lock_words` holds both
+sentences.
+
+### What a Save does with the two rows
+
+Nothing is written when a key is typed. Save is the only moment anything moves.
+
+| The rows | The answer | What happens |
+| --- | --- | --- |
+| both empty | `nothing` | no question, no line, no file touched |
+| one filled, one empty | `half_filled` | one Console line, no file touched |
+| the two differ | `mismatch` | one Console line, no file touched |
+| both match, no lock held | `set` | the question, then the seal |
+| both match, a lock held and open | `change` | the question, then the reseal |
+| both match, a lock held and shut | `change_needs_unlock` | one Console line, no file touched |
+| Clear armed, Password row empty | `clear_needs_password` | one Console line, no file touched |
+| Clear armed, Password row filled | `clear` | the question, then the demolition |
+
+Measured on the built page: the four refusing rows put 0 questions on screen and
+left both files byte-identical.
+
+### What changes on disk
+
+```mermaid
+flowchart TD
+    A[Save pressed] --> B[fleet_lock_intent]
+    B -->|set| C[seal_master_key, write_master_key]
+    C --> D[reseal_on_disk, the latch goes on]
+    D --> E[rekey_credential_stores, the vault moves to the master key]
+    B -->|change| F[seal_master_key over the key this session holds]
+    F --> G[write_master_key, one file, nothing else moves]
+    B -->|clear| H[open_master_key with the typed password]
+    H --> I[rekey_credential_stores, the vault moves back to the username]
+    I --> J[unseal_on_disk, the latch goes off]
+    J --> K[master_key_path unlinked]
+```
+
+| He does | What moves |
+| --- | --- |
+| sets a password | the sealed key file appears under `src/core/log_paths.py, in resolve_state_root`. The saved fleet's top level drops from seven fields to five: the four fleet fields move inside one `sealed_fleet` token. Every stored venue secret moves from the Username phrase to the master key |
+| changes it | the sealed key file only. `src/core/encryption.py, in seal_master_key` is given the key this session already holds, so the vault phrase and the fleet payload do not move |
+| clears it | every stored venue secret moves back to the Username phrase, the saved fleet is written back in plain text, and the sealed key file is unlinked last |
+
+The key file is the last thing to go and the first thing to arrive, so a second
+press of Clear the lock is the recovery at every point a run can stop.
+`src/core/state_manager.py, in unseal_on_disk` is the only path that turns the
+latch off, and it keeps the key file where it could not write the fleet back.
+
+### The question before the seal
+
+A password is never taken on the press alone. The box reads
+`This password becomes the only way into your lot book` and its words state that
+the password is never written down, that nobody can reset it, and that losing it
+loses every bot, every tranche and every lot the saved fleet holds.
+`src/gui/main_tabs/settings_dialog_surface.py, FLEET_LOCK_SET_QUESTION` holds
+them.
+
+Measured: answering No left the key file absent and both files byte-identical.
+Answering Yes wrote the key file, turned the latch on, and moved one stored
+venue secret under the new key.
+
+### The demolition
+
+Clear the lock presses in and stays in. While it is in, the line above the rows
+is replaced by the demolition itself: the sealed key file goes, the venue vault
+goes, and every venue has to be entered again by hand on the Exchanges page.
+Save then puts the same words in a box that opens on No.
+
+Three things have to agree before anything is destroyed: the button is pressed
+in, the current password is in the Password row, and the box is answered Yes.
+
+| The arm | Key file after | Files changed |
+| --- | --- | --- |
+| armed, Password row empty | present | none |
+| armed, the box answered No | present | none |
+| armed, the wrong password | present | none |
+| armed, the right password, Yes | gone | the vault and the saved fleet, as stated |
+
+### The unlock screen
+
+`src/gui/fleet_unlock_dialog.py, in FleetUnlockDialog` is one screen, and it is
+reached two ways: `main.py, in main` raises it when the splash closes on a
+locked launch, and the Unlock the fleet now button raises the same screen at any
+time.
+
+| On screen | What it is |
+| --- | --- |
+| The saved fleet is sealed. | the headline |
+| the Console's own locked-launch sentence | the detail, from `src/gui/main_tabs/main_window_surface.py, FLEET_LOCKED_TEXT` |
+| Password | the one row, hidden as it is typed |
+| a red line, empty at rest | the refusal, from `src/gui/main_tabs/main_window_surface.py, FLEET_UNLOCK_REFUSED_TEXT` |
+| Not now | leaves the fleet sealed; the Escape key and the window X do the same |
+| Unlock the fleet | hands the password to `src/gui/main_window.py, in unlock_fleet` |
+
+Unlock the fleet is dead while the row is empty, on both builds.
+`src/gui/main_tabs/fleet_unlock_surface.py, in takes_press` is the one reading
+behind it.
+
+The four Fleet Lock controls are on the Qt page. The drawn build replaces
+`in _setup_ui` with one web view and holds no row of its own, so
+`src/gui/settings_dialog.py, in _fleet_lock_drawn` answers False there and a
+Save on that page touches no lock and puts no line on the Console. Measured both
+ways: the page that drew the group refused a half-filled pair with one line, and
+the page that drew none added no line and asked no question.
+
+Measured on the built screen, against a sealed fleet of two bots and one wire:
+
+| The password | The answer | On screen | Bots loaded | Files changed |
+| --- | --- | --- | --- | --- |
+| nothing typed | the button is dead | nothing | none | none |
+| wrong | `refused` | the refusal line | none | none |
+| right | `opened` | nothing | both | the fleet is open to every reader |
+
+### Both builds draw the unlock from one declaration
+
+`src/gui/main_tabs/fleet_unlock_surface.py, in build_view_model` serves the
+whole screen as one payload, `src/core/desktop_bridge.py` registers it under
+`fleet_unlock.state`, and `src/gui/web/fleet_unlock.js` draws it.
+
+Handed the real payload, the drawn build found all 21 declared fields, reported
+0 faults, and drew 15 nodes: the same headline, the same detail sentence, the
+same refusal line, the same two button labels, and the password row as a hidden
+input. The control: a payload with one field removed and the hidden row flipped
+to plain reported both faults by name and drew the row as plain text, so the
+clean reading is a reading.
+
+### What the arm with no password reads
+
+A launch with no password set reads the same through the files before this
+section and the files after it. Measured over six saved-file shapes — no file,
+an empty file, one bot, two bots and a wire, nested lots and tranches, and
+unicode with floats and nulls — `in latch_on`, `in launch_classification`,
+`in probe`, `in has_saved_state` and `in load_state` all answered alike. The
+control: one wire rate moved from 25.0 to 26.0 and the same comparison named the
+difference.
+
+`src/core/encryption.py, in vault_phrase` also reads the same both ways, over
+six usernames against three held-key states plus six seal-and-open round trips.
+`in username_phrase` now names the branch that build takes with no key held, and
+it is what `src/gui/settings_dialog.py, in _username_phrase` asks while a key is
+held, which is the one moment the two answers differ. The control: one username
+moved and the comparison named it.
+
+### One defect found in the same files
+
+`src/gui/settings_dialog.py, in _clear_fleet_lock` first asked
+`src/core/encryption.py, in vault_phrase` for the Username phrase while the key
+was held. That call answers the master key phrase, so the clear resealed the
+vault under the phrase it was already under and reported success, and the stored
+secrets then opened under nothing. `in username_phrase` answers the same whether
+a key is held or not, and the clear asks it instead.
+
+## 2026-10-28 - #305 - the AI note builds its journal when it is written
+
+The journal switch still writes one line for each answer. The window no longer
+holds a trade journal from launch, so no launch makes the journal folder or
+reads the day files. `src/gui/main_window.py, in MainWindow._on_ai_feedback`
+builds the journal at the moment an answer arrives with the switch on, writes
+the note, and lets the journal go.
+
+`src/gui/main_window.py` — `MainWindow._on_ai_feedback`, the note as it is written now
+
+```python
+if ai_cfg.get("log_feedback"):
+    try:
+        from ..trading.reconciliation import TradeJournal
+
+        TradeJournal().record_from_trade(
+            bot_id="AI_MONITOR",
+            symbol="SYSTEM",
+            action="AI_FEEDBACK",
+            side="neutral",
+            price=0.0,
+            quantity=0.0,
+            reason=feedback[:500],
+        )
+```
+
+Driven in a redirected home, on the tree before this change and on this tree:
+
+```
+switch on    one Console line    one journal line holding the note
+switch off   one Console line    no journal line
+window build, before   journal and recovery folders made
+window build, now      no folder made
+```
+
+
+## 2026-10-28 - #1374 - the React page draws the Fleet Lock group from the declaration the Qt page reads
+
+The React Settings page now draws the same Fleet Lock group as the Qt page: the
+state line, Password, Confirm Password, Unlock the fleet now and Clear the lock.
+A password can now be set, changed, cleared and given back on either build.
+
+### The drawn build now holds the four controls
+
+The reading in the Fleet Lock section above stands as written. This is the
+reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The four Fleet Lock controls are on the Qt page. The drawn build replaces `in _setup_ui` with one web view and holds no row of its own, so `src/gui/settings_dialog.py, in _fleet_lock_drawn` answers False there and a Save on that page touches no lock and puts no line on the Console." | Both pages draw the four controls. `src/gui/react_settings_dialog.py, in SettingsDialogReact._build_holders` gives the drawn build one holder for each control, so `in _fleet_lock_drawn` answers True on both builds and a Save on either page reaches `in _settle_fleet_lock` |
+
+### One declaration, two builds
+
+`src/gui/main_tabs/settings_dialog_surface.py, FLEET_LOCK_CONTROLS` names each
+control and every field it is drawn with. The Qt build reads it in
+`src/gui/settings_dialog.py, in _create_fleet_lock_group`, and the React page
+draws the rows, the presses and the group from the same entries.
+
+```python
+FLEET_LOCK_CONTROLS: tuple[dict, ...] = (
+    {
+        "name": FLEET_LOCK_PHRASE_NAME,
+        "kind": LINE,
+        "label": FLEET_LOCK_PHRASE_LABEL,
+        "echo": HIDDEN_ECHO,
+        "placeholder": FLEET_LOCK_PHRASE_PLACEHOLDER_ABSENT,
+        "description": FLEET_LOCK_PHRASE_DESCRIPTION,
+    },
+    ...
+    {
+        "name": FLEET_LOCK_CLEAR_NAME,
+        "kind": PRESS,
+        "text": FLEET_LOCK_CLEAR_BUTTON_TEXT,
+        "checkable": True,
+        "danger": True,
+        "description": FLEET_LOCK_CLEAR_DESCRIPTION,
+    },
+)
+```
+
+Each description reaches its control through `src/gui/tooltips.py, in
+set_description` on both builds, in `src/gui/settings_dialog.py, in
+_describe_fleet_lock`.
+
+Read off both built pages with no password set, every field matched: the label,
+the hidden row, the placeholder, the description, whether the control takes a
+press, whether Clear the lock stays pressed in and draws in the danger colour,
+and the state line.
+
+```
+Password             hidden on both    the same label, placeholder and description
+Confirm Password     hidden on both    the same label, placeholder and description
+Unlock the fleet now dead on both      no key file on disk
+Clear the lock       dead on both      stays pressed in, danger, on both
+```
+
+### A field cut from the declaration, reported by both builds
+
+`src/gui/main_tabs/settings_dialog_surface.py, in fleet_lock_faults` names every
+field a control lacks. The Qt dialog and the React host each log one error line
+per fault, and `src/gui/web/settings_dialog.js, in checkFleetLock` reports the
+same fault from the page's own audit.
+
+Measured with the `echo` field cut from the Password entry of a copy of the
+declaration:
+
+| | Qt build | React build |
+| --- | --- | --- |
+| the fault named | `lock_phrase echo missing` | `lock_phrase echo missing`, and the page's own audit names it too |
+| the Password row | drawn as plain text | drawn as plain text |
+| with the field in place | 0 faults | 0 faults |
+
+### Set, refused, opened, changed and cleared on the React page
+
+Driven on the React page in a redirected home, against a saved fleet of two
+bots and one stored venue key:
+
+| step | what happened |
+| --- | --- |
+| both rows typed on the page, Save pressed | the box `This password becomes the only way into your lot book` asked once; answered Yes, the key file was written, the latch went on and the stored venue key moved under the master key |
+| a locked launch, the wrong password | `refused`, the Console's refusal line, no file changed, no bot loaded |
+| the right password | `opened`, both bots loaded, the fleet start ran once |
+| a new password typed twice, Save | the box `The new password becomes the only way in`; the key file was rewritten, the old password no longer opened the key and the new one opened the same key |
+| Clear the lock pressed in, the password typed, Save | the line above the rows showed the demolition and Confirm Password went dead; the box asked, the key file was removed, the latch went off and the venue key opened under the Username again |
+
+The control: the same steps on the page before this change found no Password
+row, wrote no key file and left the latch off.
+
+### The way back after Not now, on the React page
+
+After Not now the fleet stays sealed with no bot loaded. On both builds the way
+back is Settings, User tab, Unlock the fleet now. Measured on the React page:
+the button was live while the key file was on disk and no key was held, its
+press raised the unlock screen, the right password loaded both bots, and the
+button then went dead.
+
+### The arm with no password, on both builds
+
+A Save with both rows empty and no password set reads the same through the files
+before this section and the files after it, on the Qt page and on the React
+page: the same stored settings, no box, no key file, one Console line. The
+control: one Username moved before Save, and the comparison named the box and
+the Console line that moved.
+
+The Product Manual PDF rebuild is owed for this page.
+
+## 2026-10-28 - #665 - a new bot's twelve weights start at zero
+
+A new bot now starts with all twelve indicator weights at zero, so its vote reads
+neutral until Save on this window hands it the figures the TA Indicators page
+holds. A bot already saved keeps the figures it votes at, and the twelve sliders
+still open at the published figures.
+
+### One declaration of a new bot's twelve
+
+The one place a new bot's figures are written is `src/trading/ta_engine.py, in
+new_bot_weights`. The Qt wizard and the React wizard both put it in the new
+bot's own config through the same reader in the wizard surface.
+
+```python
+NEW_BOT_WEIGHT = 0.0
+
+
+def new_bot_weights() -> dict[str, float]:
+    """The twelve weights a new bot votes at, ``NEW_BOT_WEIGHT`` under each name."""
+    return dict.fromkeys(DEFAULT_WEIGHTS, NEW_BOT_WEIGHT)
+```
+
+`src/gui/main_tabs/bot_wizard_surface.py, in with_new_bot_weights`
+
+```python
+if config.get("mode") == SCRUMMING_MODE:
+    from ...trading.ta_engine import new_bot_weights
+
+    config["own_ta_weights"] = new_bot_weights()
+return config
+```
+
+### The bot's own weights, and the page's
+
+A bot holds its own twelve in its config and votes at them in place of this
+page's figures. A record saved before holds none, so a saved bot votes at this
+page's figures exactly as it did. Save hands every bot this page's figures and
+empties its own twelve, so a restart keeps the page's figures.
+
+`src/trading/scrumming_bot.py, in ScrummingBot.__init__`
+
+```python
+own_weights = config.own_ta_weights
+if isinstance(own_weights, dict) and own_weights:
+    ta_weights = weights_from_settings(own_weights)
+...
+self._ta_weights = ta_weights
+self._voting_engine = VotingEngine(weights=ta_weights)
+```
+
+A stored value that is not a mapping is left out with a warning, and the bot votes
+at the stored figures.
+
+`src/trading/scrumming_bot.py, in ScrummingBot.set_ta_weights`
+
+```python
+self._ta_weights = dict(weights) if weights else None
+self._voting_engine.set_weights(self._ta_weights)
+self.config.own_ta_weights = {}
+```
+
+```
+moment            new bot                        saved bot
+create            its own twelve at zero         -
+first vote        NEUTRAL at 0.0                 this page's figures
+restart           its own twelve at zero         this page's figures
+Save              this page's figures            this page's figures
+restart after     this page's figures            this page's figures
+```
+
+The Paper Trader and Simulator wizards write no weights, and their runs vote as
+before.
+
+### Driven on both trees
+
+Each tree ran in its own redirected home, the earlier one checked out from git at
+the commit this change starts from. Three stores were read: none written, the
+twelve published figures written, and two figures moved. A new bot came through
+each live wizard and the calls the create path makes. A saved bot came through
+the restore path after the launch handed it the store.
+
+```
+store       new bot, before              new bot, after             saved bot, two trees
+none        published, BULLISH 0.102     twelve zeros, NEUTRAL 0.0  published, 0 differences
+published   published, BULLISH 0.102     twelve zeros, NEUTRAL 0.0  published, 0 differences
+two moved   the store's, BULLISH 0.0988  twelve zeros, NEUTRAL 0.0  the store's, 0 differences
+```
+
+Moving one digit on one side of the saved-bot comparison reports two
+differences, both naming the moved MACD weight, so a zero here can report a
+change. A new bot's record keeps its zeros across a restart. After Save its
+record holds none, and a restart reads the store's figures.
+
+### Where four earlier entries now read differently
+
+They stand as written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "A bot reads the group when it is built, so a weight changed here applies to the next bot created and to every bot on the next launch." | A saved bot still does. A new bot starts at twelve zeros of its own and takes this page's figures at the next Save |
+| "The figures are unchanged for that reason." | The published figures are still unchanged. The zero sits in a new bot's own twelve, so no bot already on disk changes |
+| "The detonation check and the initial-entry check each build a fresh voting engine, so the twelve figures reach neither." | The detonation check votes at the bot's own twelve. The initial-entry check still builds its own engine at the published figures |
+| "Detonation cannot fire in any case: its confidence bar starts at 0.50" | The bar starts at 0.00, so a reading the vote reaches can fire it |
+
+The Product Manual PDF rebuild is owed for this page.
+
+## 2026-10-28 - #1374 - a sealed fleet makes no new bot
+
+While the saved fleet is sealed, New Bot and Adopt make no bot. The box they show
+names the Unlock the fleet now button on the User tab as the way to unlock
+first. It takes that name from `FLEET_LOCK_UNLOCK_BUTTON_TEXT` in
+`src/gui/main_tabs/settings_dialog_surface.py`, so the box and the button cannot
+disagree. The words and the measurement are on [the Console page](console.md).
+
+### Where an earlier sentence now reads differently
+
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
+
+## 2026-10-29 - A venue a running bot trades on is kept
+
+Remove Selected keeps a venue while a bot on it still trades. The line under
+the Add form names each bot to stop, and the status log carries the same
+words. The press writes nothing: the stored entry, its sealed tokens and its
+recorded check all stay. Once every bot on the venue is idle or stopped,
+Remove Selected drops the entry as it did before.
+
+A bot is on a venue when its own venue id is that venue's id. One stored entry
+serves every sector a venue trades, so a bot under any sector counts. Idle and
+stopped are the two states with no trading loop. Starting, running, paused,
+error and cooldown each keep a loop, and each keeps the venue.
+
+### The guard both builds call
+
+The Qt dialog runs `SettingsDialog._remove_exchange` on the press. The React
+dialog inherits that method and reaches it through `ACTION_HANDLERS`, so one
+method serves both builds.
+
+`src/gui/settings_dialog.py` — `_remove_exchange`, before any write
+
+```python
+refusal = remove_refusal(eid, self._window_fleet())
+if refusal:
+    self._set_feedback(refusal, "warning")
+    if self._status_log:
+        self._status_log.log(refusal, "warning")
+    return
+self._sm.remove_exchange(eid)
+```
+
+The fleet is the one the window that opened the dialog runs. A fleet that
+raises while it is read keeps the venue too, and the line says its bots could
+not be read.
+
+`src/gui/main_tabs/settings_dialog_surface.py` — `remove_refusal`
+
+```python
+reader = getattr(fleet, "list_bots_by_exchange", None)
+if reader is None:
+    return ""
+name = str(exchange_id).capitalize()
+try:
+    statuses = [dict(one) for one in reader(exchange_id) or ()]
+except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+    return REMOVE_UNREAD_FORMAT.format(
+        name=name, error=f"{type(exc).__name__}: {exc}"
+    )
+blocking = [
+    REMOVE_BLOCKER_FORMAT.format(
+        symbol=one.get("symbol", ""),
+        bot_id=one.get("bot_id", ""),
+        state=one.get("state", ""),
+    )
+    for one in statuses
+    if str(one.get("state", "")) not in NOT_RUNNING_STATES
+]
+```
+
+`list_bots_by_exchange` also fills each venue tab's bot table, where only the
+active sector's bots are kept. The guard counts the bots of every sector.
+
+`NOT_RUNNING_STATES` in `src/gui/main_tabs/main_window_surface.py` holds idle
+and stopped, the two states the main window already reads as not running.
+
+The Qt-free model of the same press, `SettingsDialogModel.remove_exchange`,
+calls the same guard. Nothing in the running program presses the model.
+
+### Remove Selected on a venue a bot trades on
+
+Driven on both builds and on the Qt-free model, before and after the change,
+in one run. The venue is Binance, holding a stand-in credential in a redirected
+home, and every outbound connection was refused. The bots are stand-ins that
+ask the venue for one price on each tick.
+
+| Bots on the venue | Before | After |
+| --- | --- | --- |
+| one running | removed, and the bot kept calling the venue on the connector it holds: 12 calls at the press, 23 after 0.15 s more | refused, the bot named, nothing written |
+| one running, one paused, one stopped | removed | refused, the running and the paused bot named, the stopped bot not named |
+| one in cooldown after five failed calls | removed | refused, the bot named in cooldown |
+| none | removed | removed, every reading the same |
+| one stopped and one idle | removed | removed, every reading the same |
+| one running on another venue | removed | removed, every reading the same |
+
+Both builds and the model gave the same answer in every row. In the three rows
+that still remove, seven readings were compared on each side and 0 differed.
+Changing one reading on one side made the same comparison report 1 difference,
+so a zero there can report a change.
+
+The line the React page drew for the second row, read off the page:
+
+```
+Binance cannot be removed while a bot trades on it. Stop each bot first: STANDA/USD (bot u172b000, running), STANDB/USD (bot u172b001, paused).
+```
+
+### What a stopped bot does on its next Start
+
+Once every bot on a venue is stopped, Remove Selected drops the entry. A
+stopped bot on that venue then meets its Start path with no entry to read.
+Driven on the real main window methods with the entry removed:
+
+| Start path | With the venue's entry removed |
+| --- | --- |
+| a ccxt venue, `_connect_exchange_for_bot` | refused: `Exchange binance not found in settings. Add it in Settings first.` |
+| Robinhood crypto, `_connect_written_crypto_for_bot` | Settings opens to ask for the venue, then refused: `No API credentials for Robinhood. Add them in Settings. No connector was built.` |
+| a broker venue with no session open, `_open_broker_session` | refused: `no API credentials are stored` |
+| a broker venue with a session already open, `_open_broker_session` | the open session is reused and the store is not read |
+
+### Where earlier sentences on Remove now read differently
+
+They stand as written, and these are the readings that replace them.
+
+| written above | what it reads now |
+| --- | --- |
+| "Remove Selected drops the highlighted entry." | Remove Selected drops the highlighted entry once every bot on that venue is idle or stopped. While one is not, it keeps the entry and names each such bot |
+| "\| `_remove_exchange` \| Drops the selected entry \|" | `_remove_exchange` drops the selected entry only where `remove_refusal` answers no words |
+| "`_remove_exchange` drops the stored entry and its recorded check, and the line returns to grey." | It does so only while no bot on the venue still trades |
+| "Nothing on this path can see a bot. The dialog is handed the settings manager and the status log, and nothing else." | The dialog reads the fleet of the window that opened it, through `_window_fleet` |
+| "\| Refused \| False \|", "\| Warned about the bot \| False \|" and "\| Silently allowed \| True \|" | The press is refused and the refusal names the bot. Nothing is allowed in silence |
+
+The Product Manual PDF is not rebuilt with this section, and its rebuild is
+owed for this page.
+
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF is not rebuilt with this section, and its rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
+
+## 2026-10-29 - A stored venue no sector lists stays removable
+
+Three venue ids are listed under no sector and offered on no tab: Fidelity, TD
+Ameritrade's id and the second Interactive Brokers id. An entry stored for one of
+them still draws on the Exchanges page, so Remove Selected can delete it. It draws
+in every sector, after that sector's own venues, in the warning colour.
+
+```python
+# src/gui/main_tabs/settings_dialog_surface.py, in dialog_venue_states
+    for entry in stored or ():
+        named = entry.get(EXCHANGE_ID_KEY, "") if isinstance(entry, dict) else ""
+        venue = str(named or "").strip().lower()
+        if venue and not acs.venue_classes(venue):
+            held[venue] = VENUE_STATE_NOT_OFFERED
+```
+
+A press on that row binds it for Remove Selected and offers nothing else. The key
+and secret rows hide, Add and Test Connection refuse the press, and the feedback
+row reads `NOT_OFFERED_PROMPT`.
+
+```python
+# src/gui/main_tabs/settings_dialog_surface.py, in credential_form
+    listed = bool(acs.venue_classes(venue_id)) if bound else True
+```
+
+Read with the home redirected and no venue contacted, in both builds, with one
+stored entry each for the three ids:
+
+| Reading | Before | Now |
+| ------- | ------ | --- |
+| Sectors drawing the Fidelity entry | Stocks, Crypto, Commodities, Indices | all six |
+| Sectors drawing the other two entries | none | all six |
+| Add on the Fidelity row | takes a press | refused |
+| Key and secret rows on the Fidelity row | drawn | hidden |
+| Remove Selected on the Fidelity row | deletes it | deletes it, in all six sectors |
+| A venue press on the React build | raised `AttributeError` | binds the row |
+
+On the React build every venue press raised `AttributeError`, because the API
+Secret field and the passphrase box took no `setVisible`. Every page control now
+takes it.
+
+```python
+# src/gui/react_settings_dialog.py, in _Held.setVisible
+    def setVisible(self, shown: Any) -> None:
+        """Show or hide the control and redraw."""
+        self._owner.set_visible(self._name, bool(shown))
+```
+
+The Product Manual PDF is not rebuilt with this section, and its rebuild is owed
+for this page.
 
 Back to [the subsystem index](README.md).

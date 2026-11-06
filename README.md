@@ -329,6 +329,25 @@ _GATE_ORDER_SCRUM: tuple[str, ...] = (
 )
 ```
 
+##### The first buy reads three agreeing indicators
+
+**Current reading.** The entry above places the first buy in the lower extent of
+the band. The first buy also reads the vote, at the twelve published weights.
+Before this change one bearish indicator was enough. Now the bearish vote must
+top what two indicators reach on that same vote, which is 0.1966 with all twelve
+voting. A bot whose own twelve weights are all zero still buys on the direction
+alone. Every new bot starts that way.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_initial_entry`
+
+```python
+if not three_agree(
+    summary.consensus_confidence,
+    summary.signals,
+    self._voting_engine.indicator_weights,
+):
+```
+
 ### 2 - The Phantom Bot
 
 While the Harvest-Fold method housed with the Scrumming Bot addresses several persistent and nagging questions around any given investment position (Should I buy more? Should I sell some? When? How much?), it does have the weakness of operating on a single timeframe. The Phantom Bot is another feature intended to optimize trade execution position. In this specific case, it allows a single Scrumming Bot to be inhibited by a higher timeframe signal with the intention of capturing alignments or disagreements so that trades are not being executed prematurely. The design intention here is that, for example, a 5m TF bot can be inhibited by a 15m, 30m or 1hr signal while maintaining a volatility watch on its primary TF. The intention is to build out this feature so that it obviates or reduces the need for multi-screen monitoring of individual assets.
@@ -429,6 +448,21 @@ tightening = detect_landing_strip_v2(
 
 Issue #432 carries it.
 
+**Current reading, when a strip sets the side.** A detected strip still names
+a side, but it sets the side of the vote only when three indicators agree. The
+vote must top what the two heaviest voters reach at full confidence, at the bot's
+weights on that tick. A bot with every weight at zero has no line, so its strip
+sets the side as before. Live, the Market Inspector scan, Paper and the Simulator
+all call the one function below.
+
+`src/trading/ta_engine.py` — `vote_sides`
+
+```python
+strip = band.landing_strip_side if band is not None and band.landing_strip else ""
+if strip and not three_agree(confidence, signals):
+    strip = ""
+```
+
 ### 4 - Bollinger Band Travel Detection
 
 Allowing a strategy to “see” where it is in relation to local width of the Bollinger Band is another aspect of treating the immediate market as a region on a map through which a stack of tokens is traveling. Along the route, we are able to offload surplus at the peaks and pick up additional supplies in the next valley. This is used in combination with Minimum Opposing Trade Distance. The complete question then becomes “Has the market traveled 70% (default), is current price X% distant from the most recent trade event, and is Target Delta not zero? When combining these gates with the (Technical Analysis) Indicator Voting Panel and Landing Strip Detection, you have a full market structure detection suite that is able to incrementally adjust a position’s size and generate recurring profits or growth with each market cycle.
@@ -509,6 +543,51 @@ Bollinger, band proximity, landing strip, M top, spring and W bottom. Neither
 the RSI module nor the Stochastic RSI module takes a band argument. Today the
 band context re-weights the vote after the fact. It does not re-read the
 oscillator.
+
+**Current reading, how far the skew relaxes the floor.** The skew now relaxes
+the floor no further than the vote's own two-indicator line. The line is the
+confidence the two heaviest voters reach at full confidence, with every other
+voter at none, at the bot's weights on that tick. An eased floor stays above the
+line and never rises above 0.25. At equal weights the line is 0.1667, and at the
+published weights it is 0.1966. Where two indicators already reach 0.25,
+through voters that abstain or uneven weights, the favours ease nothing.
+
+`src/trading/ta_engine.py` — `two_indicator_ceiling`
+
+```python
+heaviest = sorted(
+    (sig for sig in signals if not sig.abstained),
+    key=lambda sig: sig.weight,
+    reverse=True,
+)[:2]
+tally = [
+    (
+        replace(sig, direction=SignalDirection.BULLISH, confidence=1.0)
+        if any(sig is one for one in heaviest)
+        else replace(sig, direction=SignalDirection.NEUTRAL, confidence=0.0)
+    )
+    for sig in signals
+]
+return VotingEngine._aggregate(tally, "").consensus_confidence
+```
+
+**Current reading, the line at the plain floor.** The line now holds at every
+floor, the plain 0.25 included, so a floor can rise over 0.25. Where two
+indicators already reach 0.25, through voters that abstain or weights that lean
+on two, the floor sits just above what they reach. At equal weights that starts
+when four of the twelve abstain. At the published weights it starts when the
+three lightest abstain. A bot with every weight at zero reads a line of 0.0, so
+its floor does not move.
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+denominator = 1.0 + skew
+if denominator <= 0.0:
+    return math.inf
+eased = floor if math.isnan(denominator) else floor / denominator
+return three_indicator_floor(eased, signals)
+```
 
 ### 6 - Market Inspector
 
@@ -617,82 +696,300 @@ Inspector is an intention.
 
 These elements were implemented as part of an effort to boost accumulation and scrumming performance in longer term bearish or bullish conditions that might not latch all logic gates to trigger a fold or scrum despite the Target Delta not being zero. This piece adds a factor to the bot that makes it more aggressively evaluate subsequent candles and will increase its likelihood of executing the re-zeroing action. This allows for trades to be executed in the hypothetical ‘dead zone’ between Minimum Opposing Trade Distance and the lower or upper Bollinger Band extent if the candle structure begins to float or cruise within it for too long.
 
-**Not built.** Neither index exists in code today. No aggression factor shortens
-the wait between candles, and the bot has no term that widens its willingness to
-fire inside the dead zone between the Minimum Opposing Trade Distance and the
-band extreme.
+**Built, and switched off on every bot.** Hunger is a count of the candles that
+pass while the position is off target and nothing fills. Satiety sets the count
+back to zero. The count becomes a skew on the TA confidence floor, so after a
+long idle stretch a weaker vote clears the floor.
 
-**The build this specifies.** The engine already carries a skew term that
-relaxes the confidence floor, and hunger is that term driven by time rather than
-by band position. A counter grows while the target delta is non-zero and nothing
-fires, and it resets to zero on a fill. That reset is satiety. Two new config
-fields set the rate and the ceiling, and the counter joins the skew the floor
-already reads, so no new gate and no new call site are needed.
+Each bot carries its own two figures. The gain is zero on every bot, so no bot
+trades differently today. No screen sets the gain, and no measurement sets its
+figure.
 
-*Proposed, not present, in `src/trading/container/config.py`:*
+Now: the gain is the 0.20 ceiling over the pace typed in each live Scrumming bot's Hunger Pace box, and none until its Hunger box is ticked (`src/trading/container/config.py, in BotConfig.hunger_gain_per_candle`).
+
+`src/trading/container/config.py` — `BotConfig`
 
 ```python
-hunger_gain_per_candle: float = 0.0
-hunger_skew_max: float = 0.20
+    # Floor skew each idle candle off target adds; 0.0 is off.
+    hunger_gain_per_candle: float = 0.0
+    # The most hunger_gain_per_candle may add to the floor skew.
+    hunger_skew_max: float = 0.20
 ```
 
-*Proposed, not present, in `ScrummingBot.tick`:*
+The tick adds one when the newest candle of the bot's TA timeframe carries a
+newer timestamp, the rule the circuit breaker uses for its cooldown. A hard
+circuit-breaker trip stops the count. A fill sets it to zero, and so does a tick
+inside the at-target dust band. The count lives in memory, so a restart starts it
+again at zero.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._count_hunger_candle`
 
 ```python
-if territory != "at_target" and not fired_this_tick:
-    self._hunger_candles += 1
-else:
-    self._hunger_candles = 0
-hunger_skew = min(
-    float(self.config.hunger_skew_max),
-    self._hunger_candles * float(self.config.hunger_gain_per_candle),
+        if not math.isfinite(stamp) or stamp <= self._hunger_candle_ts:
+            return
+        anchored = self._hunger_candle_ts > 0.0
+        self._hunger_candle_ts = stamp
+        if not anchored:
+            return
+        before = self._hunger_floor_skew()
+        self._hunger_candles += 1
+```
+
+Every fill the bot books reaches its clock figures once, so satiety sits there.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._write_clock_figures`
+
+```python
+    def _write_clock_figures(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Run ``_sate_hunger`` for ``fill``, then write the mixin's clock figures."""
+        self._sate_hunger(f"a {fill.type} fill")
+        super()._write_clock_figures(fill, order_id, filled, rests)
+```
+
+The skew is the count times the gain, held at the ceiling. It joins the favours
+the floor already divides by, so the floor is 0.25 divided by one plus their sum.
+At the 0.20 ceiling alone the floor is 0.2083.
+
+`src/trading/scrumming_bot.py` — `_hunger_skew`
+
+```python
+def _hunger_skew(idle_candles: int, gain_per_candle: object, skew_max: object) -> float:
+    """Return ``idle_candles`` times ``gain_per_candle``, capped at ``skew_max``.
+
+    ``gain_per_candle`` and ``skew_max`` must be finite and above zero, else it is 0.0.
+    """
+    gain = as_finite_float(gain_per_candle)
+    ceiling = as_finite_float(skew_max)
+    if gain is None or ceiling is None or gain <= 0.0 or ceiling <= 0.0:
+        return 0.0
+    return min(ceiling, idle_candles * gain)
+```
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+        _ta_conf_skew = position_boost + bb_confidence_boost
+        if hunger_skew:
+            _ta_conf_skew += hunger_skew
+        if _bb_priority_arm:
+            _ta_conf_skew += _BB_PRIORITY_SKEW
+        _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
+```
+
+A lower floor changes three decisions and leaves a fourth alone. It releases a
+fold that every other gate passes and the TA confidence alone holds. That
+happens at the lower band while the delta is still inside the interval, where
+the deep-fold override does not reach. It lets a DIST sale through sooner. It
+refuses the hedge top-up more often, because that buy waits for a vote that is
+not bullish. It changes no scrum, because the ripe-harvest override already
+passes the TA gate wherever the band lets a scrum through. The band detect lines
+do not move, so hunger opens no trade short of them.
+
+The bot log names hunger while it acts. A HUNGER line gives the count and the
+floor it sets alone, and a SATIETY line names the fill or the return to target
+that ended it.
+
+**Current reading, the DIST sale.** The sentence above that hunger lets a DIST
+sale through sooner holds for the vote alone. A DIST sale now also waits for a
+price. Each fold that buys more units than its scrum sold queues those extra
+units beside the price it paid. They sell only at that price raised by the
+Minimum Opposing Trade Distance, or higher. Hunger can pass the vote sooner, and
+it does not move that price.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_distribute`
+
+```python
+clearing = dist_sets_clearing(self._dist_sets, price, otd_pct)
+if not clearing:
+    self._hold_dist_sets(price, otd_pct)
+    return
+```
+
+**Current reading, what hunger reaches and when it counts.** Three statements
+in the readings above were wrong. "It changes no scrum" fails when the lower
+band sits at or under zero. The ripe-harvest override does not reach there, so
+the vote decides that scrum, and hunger can pass it. "Hunger opens no trade short
+of them" failed through the DIST sale, which has no band gate. The first reading
+counts "the candles that pass while the position is off target and nothing
+fills". That count ran inside the interval and while the Minimum Opposing Trade
+Distance blocked, and his entry names neither.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`, where the ripe-harvest
+override needs a lower band above zero
+
+```python
+if (
+    bb_result is not None
+    and bb_result.upper > 0
+    and bb_result.lower > 0
+    and ticker.last > 0
+):
+    if delta > 0 and not below_interval and bb_pos >= _bb_upper_dt:
+        _ripe_scrum = True
+```
+
+Hunger now reaches the scrum and fold chains only. The DIST sale and the hedge
+top-up read the same favours without hunger. So hunger no longer passes a DIST
+sale, and it no longer holds a hedge top-up. Both chains keep the band detect
+lines, and no override lifts them, so hunger now opens no trade short of those
+lines.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+_ta_conf_skew = _favour_skew(
+    position_boost,
+    bb_confidence_boost,
+    hunger_skew,
+    priority_arm=_bb_priority_arm,
 )
-_ta_conf_skew = position_boost + bb_confidence_boost + hunger_skew
+_eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew, summary.signals)
+_floor_no_hunger = _skewed_confidence_floor(
+    _favour_skew(
+        position_boost, bb_confidence_boost, 0.0, priority_arm=_bb_priority_arm
+    ),
+    summary.signals,
+)
 ```
 
-The default gain of zero keeps present behaviour exactly, so the feature ships
-switched off and the operator turns it on per bot. Issue #433 carries the build.
+The count follows his entry. A new candle adds one only in the dead zone: the
+delta at the interval or past it, the opposing trade distance clear on its side,
+and the price still inside the band on that side. A candle inside the interval,
+short of the distance, or past the band adds nothing. It does not end the count
+either; a fill or a return to target still does that.
+
+`src/trading/scrumming_bot.py` — `_in_hunger_zone`
+
+```python
+if not distance_clear or band is None:
+    return False
+if delta > 0:
+    return price < band.upper
+if delta < 0:
+    return price > band.lower
+return False
+```
+
+No favour, hunger among them, now eases the floor to a level two indicators can
+reach. The floor stays above what the two heaviest voters reach at full
+confidence, at the bot's weights on that tick, and never rises above 0.25. At
+the published weights two indicators reach 0.1966, so the 0.20 ceiling alone
+still gives 0.2083.
+
+Now: the floor stays just above what two indicators reach at every skew, no skew included, so it rises over 0.25 wherever two indicators reach more (`src/trading/scrumming_bot.py, in _skewed_confidence_floor`).
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+if denominator <= 1.0:
+    return floor / denominator
+past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
+return min(floor, max(floor / denominator, past_two))
+```
 
 ### 9 - Accumulation Shadows
 
 The Accumulation Shadow was invented as a means of taking maximum advantage of long term and bearish conditions. It allows for a Scrumming to create a Shadow of itself that focuses on accumulating a smaller chunk of the target asset during a bearish regime. The shadow is allowed to accumulate downward but does not scrum. It was a bullish regime to be dedicated and then detonates thereby claiming all of its profits at once. Shadows operate in parallel with their parent bots and will be listed as Shadow Tranches once they are fully implemented.
 
-**Not built.** The Accumulation Shadow has no code. No shadow bot, shadow
-tranche or shadow regime exists today.
+Now: built, and off on every bot until its Accumulation Shadow box is ticked; a bearish fold's extra units then wait on a Shadow Tranche for a bullish regime (`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._tick_shadow`).
 
-Three functions collapse or remove a tranche, and none of them knows a shadow
-kind. One merges two rungs, one removes an aged row, and one discards a queue.
-Despawn removes a tranche; it does not delist one. The entry's own wording,
-"once they are fully implemented", matches the code.
+**Built, and switched off on every bot.** A shadow is a tranche kind, not a
+second bot. The switch is one tick box on a live Scrumming bot's Settings tab.
+Paper and the Simulator open no shadow, so their tabs do not draw the box
+(`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_shadow_row`).
 
-`src/trading/stack_math.py` — `_apply_merge_rule`
+The regime is a vote on 100 candles of the bot's Detonation Timeframe, read at
+most once an hour. A vote that leans bearish reads bearish, because that reading
+only marks a row and places no order. A vote reads bullish only when three
+indicators agree, because that reading sells.
 
-```python
-def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
-    """Combine adjacent tranches whose prices are within MERGE_THRESHOLD.
-
-    A merged Tranche keeps the higher `price` and the summed `size`, and the
-    survivors are re-indexed from 0.
-    """
-```
-
-**The build this specifies.** A shadow is a tranche kind, not a second bot. It
-accumulates downward, never sells, and exits in one move when the regime turns.
-The tranche dict gains a kind key, the three collapse functions skip a row that
-carries it, and the exit reuses the detonation executor that already sells a
-surplus and reseeds the lots.
-
-*Proposed, not present, in `src/trading/scrumming/fold_tranches.py`:*
+`src/trading/scrumming/shadow.py` — `regime_of`
 
 ```python
-def _despawn_aged_tranches(self, now: Optional[float] = None) -> dict:
-    for t in list(self._fold_tranches):
-        if t.get("kind") == "shadow":
-            continue
+def regime_of(summary: Any) -> str:
+    direction = summary.consensus_direction
+    if direction == SignalDirection.BEARISH:
+        return REGIME_BEARISH
+    if direction == SignalDirection.BULLISH and three_agree(
+        summary.consensus_confidence, summary.signals
+    ):
+        return REGIME_BULLISH
+    return REGIME_NONE
 ```
 
-A row with no kind key behaves exactly as it does today, so the change is
-invisible until a shadow is spawned. Issue #433 carries the build.
+A sale in a bearish regime marks its fold tranche with a kind key. The marked
+tranche is still a fold tranche. It buys back on the same chain, at the same
+Minimum Opposing Trade Distance. A merge, a despawn and a clear all skip it, so
+it survives a long regime. A row with no kind key behaves as it did.
+
+`src/trading/scrumming/fold_tranches.py` — `_despawn_aged_tranches`
+
+```python
+for _t in self._fold_tranches or []:
+    if is_shadow(_t):
+        report["shadow_kept"] = report.get("shadow_kept", 0) + 1
+        _fold_keep.append(_t)
+        continue
+```
+
+The fold gives the parent every unit its sale sold. The units past those move to
+a Shadow Tranche, off the parent's lots and holdings. No scrum, DIST sale or
+stack rung can sell them, and they grow no target. Each later fold in the regime
+adds a row at its own lower price. No setting sizes a row, because the fold
+measures it from the sale's own dollars.
+
+`src/trading/scrumming/sizing.py` — `shadow_take_units`
+
+```python
+take = math.fsum(
+    bought * float(one.get(SHADOW_SALE_USD_KEY, 0.0) or 0.0) / spent
+    - units_at_scrum(one) * share
+    for one in marked
+)
+extra = bought - math.fsum(units_at_scrum(one) for one in eligible) * share
+return max(0.0, min(take, extra))
+```
+
+A Shadow Tranche holds no wire credit. A credit may land on a marked fold
+tranche and is spent inside it. The units it buys stay with the parent, under
+the growth cap. The exit routes nothing down a wire
+(`src/trading/scrumming/sizing.py, in plan_fold_consumption`).
+
+A bullish regime sends every row at or over its floor through the detonation
+executor, in one order. The floor is the row's buy price plus the Minimum
+Opposing Trade Distance, and a row under it waits. The sale takes only what a
+row stands above its cost. The units left are worth what the row paid, and they
+join the lots at the fill price under the cycle growth cap
+(`src/trading/scrumming/execution.py, in _execute_detonation`).
+
+A worked cycle, with room under the growth cap:
+
+```
+sale    1 unit at $100.00, fee 0.60%            $99.40 queued
+fold    $99.40 at $95.00 buys 1.046316 units    the parent takes 1.000000
+                                                the row takes 0.046316, cost $4.40
+exit    bullish regime at $130.00               floor $96.52
+        sells 0.012470 units                    $1.62 of profit
+        keeps 0.033846 units                    worth $4.40, joins the lots
+```
+
+The whole cycle ends with more units than it began with, and profit in dollars.
+
+Only a fold on the chain feeds a shadow. A Manual Fire or cartridge buy takes
+what the delta names and leaves no units past its tranche. A stack rung sale
+queues no fold tranche, so on a Stack Mode bot only a cartridge sale can mark a
+row (`src/trading/scrumming_bot.py, in ScrummingBot._book_stack_spend`).
+
+A self-destruct or an
+expiry close returns every row to the lots first, so that exit sells them
+(`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._return_shadows_to_lots`).
+
+The bot log names each step: SHADOW REGIME, SHADOW OPENED, SHADOW ACCUMULATED,
+SHADOW HELD, SHADOW DETONATION and SHADOW DETONATED. The Stack Tranches tab lists
+each row with SHADOW in its Mode column, and the fill reads SHADOW_DETONATION
+(`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._book_shadow_detonation`).
 
 ### 10 - Charge Up Permission Gate
 
@@ -735,7 +1032,9 @@ build.
 
 The term tranche emerged in Acervator as the concept of placing soft boundaries around where an opposing trade 1) can initially happen in terms of price level, 2) denote the amount of the position expected to be transacted once the price thresholds are met or exceeded, 3) allows wire credits to be fed into Fold Tranches (Buys) and Extractor Tranche profits to be distributed across Stack Tranches (Scrums / Sells) for additional accumulation and profit optimization. For the sake of clarity, Fold Tranches spawn after a Scrum (Sell) occurs; Stack Tranches spawn after a Fold (Buy) occurs; and Extractor Tranches spawn when an Extractor Bot finds a favorable Alternate Currency entry on its chosen timeframe and these tranches remain until the acquired Alternate Currency stack is sold by either the Extractor Bot (Sibling) or its corresponding Scrumming Bot (Parent). All Tranches will persist under a bot’s Details > Tranches Tab.
 
-**Functional.** Three of the four tranche kinds run. Fold Tranches spawn on a
+Now: Shadow Tranches are listed on the bot's Stack Tranches tab, each with SHADOW in its Mode column (`src/gui/main_tabs/stack_tranches_tab_surface.py, in compose_shadow_rows`).
+
+**Functional.** All four tranche kinds run. Fold Tranches spawn on a
 scrum and hold the price of the sale that made them. Stack Tranches spawn on a
 fold and are priced as a ladder above the buy. A three-unit scrum at 100 with a
 one percent split and linear spacing returns rungs at 101, 102 and 103 carrying
@@ -773,7 +1072,7 @@ it differently and disagree on the same id.
 """
 ```
 
-Shadow Tranches do not exist; entry 9 gives the measurement and the proposal.
+Shadow Tranches hold a bearish fold's extra units; entry 9 gives the build.
 
 The queue sorts the fold tranches by their reference price, highest first, and
 drops any row whose reference or unit count is not a finite number. Wire credits
@@ -871,6 +1170,22 @@ if require_tier_alignment and not {1, 2} <= _lead:
 ```
 
 Issue #433 carries the build.
+
+**Current reading, what a trade needs from the vote today.** The tiers are still
+not built. What a trade the vote decides needs today is three agreeing
+indicators: the vote must top what the two heaviest voters reach at full
+confidence. That holds at every floor, where a landing strip sets the side, and
+on a bot's first buy. A bot with every weight at zero is outside the rule and
+trades as it did.
+
+`src/trading/ta_engine.py` — `three_agree`
+
+```python
+held = [sig.weight for sig in signals] if weights is None else list(weights)
+if not any(weight > 0.0 for weight in held):
+    return True
+return confidence > two_indicator_ceiling(signals)
+```
 
 ### 13 - Initial-Purchase-Price Floor on Folds
 
@@ -1173,7 +1488,7 @@ it.
 
 - **Scrum/Fold cycle** — harvest the excess above target, buy back cheaper
 - **Profit folding** — each fold permanently raises the target, compounding growth
-- **Hunger and Satiety dual index** — a delta-driven aggression scalar
+- **Hunger and Satiety dual index** — idle candles off target lower the TA confidence floor until a fill
 - **Provenance fold queue** — per-tranche independent fold execution
 - **BB midline gate** — scrum only above the midline, fold only below it
 - **Bollinger Band bullseye** — rapid-fire execution when price touches the band exactly
@@ -1219,6 +1534,8 @@ built from the same pages. `tools/build_product_manual.py` reads the manual's
 own table in [`docs/manual/README.md`](docs/manual/README.md) and renders the
 27 pages that table names. The book runs to 346 printed pages, and it refuses
 any page under `docs/manual/` the table does not name.
+
+Now: the table names 24 pages, the book runs to 1,262 printed pages, and the pages for Parts 4, 5, 7 and 8 live in [`docs/reference/`](docs/reference/README.md), outside the book (`tools/build_product_manual.py, in read_manifest`).
 
 ### Part 3 — System Architecture and Features Catalogue
 
@@ -1343,27 +1660,27 @@ any page under `docs/manual/` the table does not name.
 
 ### Part 4 — Live and Supporting Evidence
 
-**[The Year-to-Date Record and Exchange Test Coverage](docs/manual/13-live-evidence.md)**
+**[The Year-to-Date Record and Exchange Test Coverage](docs/reference/13-live-evidence.md)**
 
-- [The venue holds the authority](docs/manual/13-live-evidence.md#the-venue-holds-the-authority)
-- [Readers of the record](docs/manual/13-live-evidence.md#readers-of-the-record)
-- [The connectors](docs/manual/13-live-evidence.md#the-connectors)
-- [What the exchange tests exercise](docs/manual/13-live-evidence.md#what-the-exchange-tests-exercise)
-- [How a test stands in for a venue](docs/manual/13-live-evidence.md#how-a-test-stands-in-for-a-venue)
-- [The four refusals around an exchange call](docs/manual/13-live-evidence.md#the-four-refusals-around-an-exchange-call)
-- [The simulation battery](docs/manual/13-live-evidence.md#the-simulation-battery)
-- [Where a run carries less than it reads](docs/manual/13-live-evidence.md#where-a-run-carries-less-than-it-reads)
+- [The venue holds the authority](docs/reference/13-live-evidence.md#the-venue-holds-the-authority)
+- [Readers of the record](docs/reference/13-live-evidence.md#readers-of-the-record)
+- [The connectors](docs/reference/13-live-evidence.md#the-connectors)
+- [What the exchange tests exercise](docs/reference/13-live-evidence.md#what-the-exchange-tests-exercise)
+- [How a test stands in for a venue](docs/reference/13-live-evidence.md#how-a-test-stands-in-for-a-venue)
+- [The four refusals around an exchange call](docs/reference/13-live-evidence.md#the-four-refusals-around-an-exchange-call)
+- [The simulation battery](docs/reference/13-live-evidence.md#the-simulation-battery)
+- [Where a run carries less than it reads](docs/reference/13-live-evidence.md#where-a-run-carries-less-than-it-reads)
 
 ### Part 5 — The HOP Protocol and the Rules Registry
 
-**[Conceptual Hopscotch](docs/manual/11-hop-protocol-and-rules-registry.md)**
+**[Conceptual Hopscotch](docs/reference/11-hop-protocol-and-rules-registry.md)**
 
-- [The handoff file](docs/manual/11-hop-protocol-and-rules-registry.md#the-handoff-file)
-- [What the drift check measures](docs/manual/11-hop-protocol-and-rules-registry.md#what-the-drift-check-measures)
-- [The rules registry](docs/manual/11-hop-protocol-and-rules-registry.md#the-rules-registry)
-- [Version one of the protocol](docs/manual/11-hop-protocol-and-rules-registry.md#version-one-of-the-protocol)
-- [Version two of the protocol](docs/manual/11-hop-protocol-and-rules-registry.md#version-two-of-the-protocol)
-- [Related parts](docs/manual/11-hop-protocol-and-rules-registry.md#related-parts)
+- [The handoff file](docs/reference/11-hop-protocol-and-rules-registry.md#the-handoff-file)
+- [What the drift check measures](docs/reference/11-hop-protocol-and-rules-registry.md#what-the-drift-check-measures)
+- [The rules registry](docs/reference/11-hop-protocol-and-rules-registry.md#the-rules-registry)
+- [Version one of the protocol](docs/reference/11-hop-protocol-and-rules-registry.md#version-one-of-the-protocol)
+- [Version two of the protocol](docs/reference/11-hop-protocol-and-rules-registry.md#version-two-of-the-protocol)
+- [Related parts](docs/reference/11-hop-protocol-and-rules-registry.md#related-parts)
 
 ### Part 6 — ADR Index and Glossary
 
@@ -1375,19 +1692,19 @@ any page under `docs/manual/` the table does not name.
 
 ### Part 7 — Recent Updates and Version Tracking
 
-**[Version Tracking](docs/manual/09-updates-and-versioning.md)**
+**[Version Tracking](docs/reference/09-updates-and-versioning.md)**
 
-- [Recent updates](docs/manual/09-updates-and-versioning.md#recent-updates)
-- [Where the number comes from](docs/manual/09-updates-and-versioning.md#where-the-number-comes-from)
-- [What the string says](docs/manual/09-updates-and-versioning.md#what-the-string-says)
-- [The six readers](docs/manual/09-updates-and-versioning.md#the-six-readers)
-- [What a frozen bundle carries](docs/manual/09-updates-and-versioning.md#what-a-frozen-bundle-carries)
-- [A version that moves while the suite runs](docs/manual/09-updates-and-versioning.md#a-version-that-moves-while-the-suite-runs)
-- [The release gate](docs/manual/09-updates-and-versioning.md#the-release-gate)
+- [Recent updates](docs/reference/09-updates-and-versioning.md#recent-updates)
+- [Where the number comes from](docs/reference/09-updates-and-versioning.md#where-the-number-comes-from)
+- [What the string says](docs/reference/09-updates-and-versioning.md#what-the-string-says)
+- [The six readers](docs/reference/09-updates-and-versioning.md#the-six-readers)
+- [What a frozen bundle carries](docs/reference/09-updates-and-versioning.md#what-a-frozen-bundle-carries)
+- [A version that moves while the suite runs](docs/reference/09-updates-and-versioning.md#a-version-that-moves-while-the-suite-runs)
+- [The release gate](docs/reference/09-updates-and-versioning.md#the-release-gate)
 
 ### Part 8 — The Development Chronicle
 
-**[The Development Chronicle](docs/manual/14-development-chronicle.md)**
+**[The Development Chronicle](docs/reference/14-development-chronicle.md)**
 
 The page carries its own title and nothing under it. The author removed its 571
 lines on 6 September 2026, in commit `c324126`. Its nineteen sections were:
@@ -1558,7 +1875,7 @@ request.
 
 This software is for educational and research purposes. Simulated results —
 including the 738-sim, 96.9%, +$78.0B figures in
-[Part 4](docs/manual/13-live-evidence.md#the-simulation-battery) — do not
+[Part 4](docs/reference/13-live-evidence.md#the-simulation-battery) — do not
 guarantee live trading performance. You are solely responsible for any trading
 decision made using this software. See [`DISCLAIMER.md`](DISCLAIMER.md).
 

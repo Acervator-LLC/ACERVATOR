@@ -65,6 +65,9 @@ SEPARATOR_STYLE = f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
 
 SEPARATOR_TEXT = "|"
 
+#: The name a screen reader announces for the Qt strip.
+ACCESSIBLE_NAME = "Spendable Profits"
+
 SPENDABLE_TOOLTIP = (
     "Cash balance pulled from the exchange, across the bots sharing one wallet."
 )

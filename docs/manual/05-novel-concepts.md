@@ -14,6 +14,8 @@ At the core of Acervator is what might not first appear as a multi-faceted conce
 
 Acervator addresses ‘fundamental market unpredictability’ by allowing volatility to “orbit” around a set point we call the Target Balance. This element is what performs the first mental trick. It forces the trader to say and establish that “my position is worth X and I will support X with an equal amount of liquidity” i.e. a Target Balance of $50 is set and a total mental position of $100 is established. Trades will be executed to maintain the truth of the Target Balance always being X. After the initial entry is executed and filled, which Acervator will only do in the lower extent of the Bollinger Band on the chosen timeframe, the Scrumming Bot will persistently shave off and “Fold” back in Y% of profits through repeating Harvest-Fold operations that continue until the bot is deactivated or the market suffers a catastrophic collapse which can and do happen so don’t not leave it unmonitored. It should also be noted that the term ‘harvest’ came to replace ‘scrum’ for the sake of clarity but they may be used interchangeably throughout this text. Essentially a Scrum or Harvest is a sale of a position’s increased value over the Target Balance. The amount that the Scrumming Bot harvests or folds is pinned to the Target Delta or the amount of variation (%delta) from the most recent trade event. Much of the finer details of trade execution can be tuned by the user as expected for any professional application but the primary point here is that the amount of profit folded back is capped by the Maximum Target Growth Per Cycle setting while the ability of Acervator to prevent inverted (profit losing: buying higher than sold / selling lower than bought) trades we also have the Minimum Opposing Trade Distance rule which dictates the next trade must be Z distance from the most recent trade event. In addition, sells are not allowed to occur or be pushed below the Bollinger Band midline while buys are not allowed to occur or be pushed above the midline. As a result of just these few component features, we already have multiple soft, non-TA or non-traditional rules protecting the investor before we even start optimizing the trades themselves (pushing them as close to volatility extents as possible) via Technical Analysis and other inventions.
 
+Now: a buy-back waits for this distance alone, wired or not, because a wire takes only the profit a sale leaves past the dollars that buy back its units and the room the growth cap leaves (`src/trading/scrumming/sizing.py, in sale_surplus_usd`).
+
 The harvest-fold method itself was manually executed and tested on a multiple cryptocurrency pairs throughout 2023~2026 but it has always been the aspiration to automate it and have it executed at a high rate of frequency with the operating theory that this approach to investment, being a hybrid a HODL and active trading, creates frontline area of support for whatever markets in which it participates long term. It does this by maintaining and, utilizing as directed, all earned profits. It turns any user into an active participant and liquidity provider.
 
 After entering the space full time in 2017, I immediately began to parse and breakdown how price charts were being interpreted. This also allowed me to perform ever deeper introspections on my own response to how my mind was responding to the value of my portfolio fluctuating. I did myself absolutely no psychological favors in this pursuit but, as you will see, I had plenty of reasons to take this reckless approach. By this point, my undiagnosed and untreated military injuries had worn me down to the point where I realized I was running out of time to continue working as normal. I had, by then, been walking a torsioned pelvis for 17 years that had seized in place and, by 2020, would be causing enough pain to induce panic attacks. I could have joined the pill-mill club but I declined. In combination with the pain, the forced TA self-training, physical job, and broken marriage, I also assembled an entire GPU-based mining farm…alone. I had some business partners but their participation was basically nonexistent. The VA was providing no support and would not until 2022. The Navy and Pentagon had spit in my face by sending me PDBR paperwork that they had no intention of ever honoring no matter what I wrote down. My family more or less remained ignorant of all my turmoil while I kept the paychecks coming. So really the story of Acervator’s and Harvest-Fold is one of betrayal to a degree that allowed me to see through things more clearly than would otherwise have been possible. It has been invented out of necessity and it is my intuition that Acervator can become that necessary tool for other people as well.
@@ -82,6 +84,21 @@ ok = ctx.hyst_ok_scrum_side if self.side == "scrum" else ctx.hyst_ok_fold_side
 if ok:
     return GateResult(passed=True)
 eff_pct = ctx.scrumming_interval_pct + ctx.trading_fee_pct
+```
+
+**Current reading.** The distance never sits under two fees, the round trip a
+scrum and its fold pay between them. Where the interval and the band extension
+together sit under one fee, the distance is two fees. At or above one fee, it is
+the sum above. The fee is the larger of the Trading Fee setting and the highest
+fee the venue has reported on this bot's fills.
+
+`src/trading/otd_math.py` — `minimum_opposing_trade_distance_pct`
+
+```python
+interval, fee, extension = terms
+if interval + extension < fee:
+    return clamped_otd_pct(ROUND_TRIP_FEES * fee)
+return clamped_otd_pct(interval + fee + extension)
 ```
 
 #### The midline rule and the growth cap
@@ -231,6 +248,31 @@ are described in [Part 6, the Trading tab](06-trading-tab.md).
 
 Which gate each override covers is on the gate table in
 [Part 7, Indicators](07-indicators.md).
+
+#### The first buy reads three agreeing indicators
+
+**Current reading.** The entry above places the first buy in the lower extent of
+the band. The first buy also reads the vote, at the twelve published weights.
+Before this change one bearish indicator was enough. Now the bearish vote must
+top what two indicators reach on that same vote, which is 0.1966 with all twelve
+voting. A bot whose own twelve weights are all zero still buys on the direction
+alone. Every new bot starts that way.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_initial_entry`
+
+```python
+if not three_agree(
+    summary.consensus_confidence,
+    summary.signals,
+    self._voting_engine.indicator_weights,
+):
+```
+
+Driven on a stand-in exchange, against the code before this change taken from
+git. One MACD reading at 0.1 gave a bearish vote of 0.0103. It bought before and
+it waits now. Two agreeing indicators read 0.1966 and wait now. Three read 0.2821
+and buy on both. A bot with every weight at zero bought on the one and on the
+two, before and after.
 
 ## 2 - The Phantom Bot
 
@@ -736,6 +778,24 @@ Configured timeframes:        6h, 1d     6h, 1d     6h, 1d
 Set aside, one runs:          6h         6h         6h
 ```
 
+**The phantom's own gate reading.** On each pass of its loop, the phantom now runs
+the bot's two gate chains over the candles it read, at the bot's own settings, and
+keeps the gate states. This is the gate chain read on the higher timeframe, beside
+the bot's own read. It decides no trade. The Market Inspector draws both readings
+in [the Phantom Bot HTF Signals zone](08-tabs/market-inspector.md).
+
+`src/trading/ata_gate_scan.py` — `timeframe_gates`
+
+```python
+held = settings if settings is not None else scan_settings(symbol)
+return scan_gates(
+    symbol, timeframe, candles, summary, band_reading(candles, held), None, held
+)
+```
+
+The six gates that read the position do not run at the phantom read. No timeframe
+above the phantom's is weighed there.
+
 ## 3 - The Landing Strip
 
 Perhaps the earliest assumption that hit me the most and really presented the catalyzing challenge to creating all of my alternate trading methods, is that you cannot predict what the market will do and after only a short while of actively trading I asked the questions: “But what if I don’t have to?” “What if I decide that I do not have to speculate at all?” I do not remember exactly when I first used the term but I think it was when I was trading A34 and A27 some years ago while participating in a Telegram group with some psytrance friends and associations called the Better Bitcoin Bureau. The name changed a few times but this is the one I recall.
@@ -818,6 +878,26 @@ src/trading/container/config.py, in BotConfig   bb_landing_strip_candles: int = 
 src/trading/scrumming_bot.py                    the call passes the four constants
 ```
 
+**Current reading, when a strip sets the side.** A detected strip still names
+a side, but it sets the side of the vote only when three indicators agree. The
+vote must top what the two heaviest voters reach at full confidence, at the bot's
+weights on that tick. A bot with every weight at zero has no line, so its strip
+sets the side as before. Live, the Market Inspector scan, Paper and the Simulator
+all call the one function below.
+
+`src/trading/ta_engine.py` — `vote_sides`
+
+```python
+strip = band.landing_strip_side if band is not None and band.landing_strip else ""
+if strip and not three_agree(confidence, signals):
+    strip = ""
+```
+
+Driven on a stand-in exchange at a lower strip, with the twelve published
+weights. Two agreeing indicators read 0.1966 and the fold waited. Three read
+0.2821 and the fold went through. The code before this change, taken from git,
+folded on both.
+
 ## 4 - Bollinger Band Travel Detection
 
 Allowing a strategy to “see” where it is in relation to local width of the Bollinger Band is another aspect of treating the immediate market as a region on a map through which a stack of tokens is traveling. Along the route, we are able to offload surplus at the peaks and pick up additional supplies in the next valley. This is used in combination with Minimum Opposing Trade Distance. The complete question then becomes “Has the market traveled 70% (default), is current price X% distant from the most recent trade event, and is Target Delta not zero? When combining these gates with the (Technical Analysis) Indicator Voting Panel and Landing Strip Detection, you have a full market structure detection suite that is able to incrementally adjust a position’s size and generate recurring profits or growth with each market cycle.
@@ -851,6 +931,43 @@ labels carry no travel light.
 
 ```python
 trend_override = abs(delta) >= _interval_usd * 2.0 or band_travel_triggered
+```
+
+**The clause above saying travel is no gate of its own is overtaken.** It is not
+edited and not removed. It read:
+
+> Travel is no gate of its own: the ten scrum labels carry no travel light.
+
+The labels still carry no travel light. Travel is now a term inside Minimum
+Opposing Trade Distance, which is the combination the entry above names.
+`src/trading/otd_math.py`, in `band_extension_pct`, turns `band_travel_pct` and
+the band span into a percentage of the band midline, and
+`minimum_opposing_trade_distance_pct` adds that percentage to the interval and
+the fee. Zero keeps the term absent.
+
+```python
+span = float(upper) - float(lower)
+price = float(reference_price)
+travel = float(travel_pct)
+if travel <= 0.0 or span <= 0.0 or price <= 0.0:
+    return BAND_EXTENSION_ABSENT_PCT
+return span * (travel / 100.0) / price * 100.0
+```
+
+**Current reading.** The extension still adds to the interval and the fee. Where
+the interval and the extension together sit under one fee, the distance is two
+fees, so a narrow band cannot pull it under the round trip.
+
+`src/trading/otd_math.py` — `DistanceSettings.distance_pct`
+
+```python
+return minimum_opposing_trade_distance_pct(
+    self.interval_pct,
+    self.fee_pct,
+    band_extension_pct(
+        band_upper, band_lower, self.band_travel_pct, reference_price
+    ),
+)
 ```
 
 ## 5 - Position-Aware Technical Analysis
@@ -898,6 +1015,51 @@ Bollinger, band proximity, landing strip, M top, spring and W bottom. Neither
 the RSI module nor the Stochastic RSI module takes a band argument. Today the
 band context re-weights the vote after the fact. It does not re-read the
 oscillator.
+
+**Current reading, how far the skew relaxes the floor.** The skew now relaxes
+the floor no further than the vote's own two-indicator line. The line is the
+confidence the two heaviest voters reach at full confidence, with every other
+voter at none, at the bot's weights on that tick. An eased floor stays above the
+line and never rises above 0.25. At equal weights the line is 0.1667, and at the
+published weights it is 0.1966. Where two indicators already reach 0.25,
+through voters that abstain or uneven weights, the favours ease nothing.
+
+`src/trading/ta_engine.py` — `two_indicator_ceiling`
+
+```python
+heaviest = sorted(
+    (sig for sig in signals if not sig.abstained),
+    key=lambda sig: sig.weight,
+    reverse=True,
+)[:2]
+tally = [
+    (
+        replace(sig, direction=SignalDirection.BULLISH, confidence=1.0)
+        if any(sig is one for one in heaviest)
+        else replace(sig, direction=SignalDirection.NEUTRAL, confidence=0.0)
+    )
+    for sig in signals
+]
+return VotingEngine._aggregate(tally, "").consensus_confidence
+```
+
+**Current reading, the line at the plain floor.** The line now holds at every
+floor, the plain 0.25 included, so a floor can rise over 0.25. Where two
+indicators already reach 0.25, through voters that abstain or weights that lean
+on two, the floor sits just above what they reach. At equal weights that starts
+when four of the twelve abstain. At the published weights it starts when the
+three lightest abstain. A bot with every weight at zero reads a line of 0.0, so
+its floor does not move.
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+denominator = 1.0 + skew
+if denominator <= 0.0:
+    return math.inf
+eased = floor if math.isnan(denominator) else floor / denominator
+return three_indicator_floor(eased, signals)
+```
 
 ## 6 - Market Inspector
 
@@ -976,6 +1138,8 @@ src/gui/market_inspector.py                           dict(self._connectors_gett
 
 The Bot Swarm, which is how I presented the concept to Claude, is my version of a capital reinforcement network. At the Exchange level (swarms cannot be connected across multi-API boundaries) profit from individual bots can be routed to others with such outputs being termed Wire Credits since they are sent and received along Smart Wires which connect the bots. Each such wire can have its own flow rate. The network nodes are designed to protect a given bot from excessive outflows which would cripple its own growth capacity. The other piece of this is that Wire Credits are Provenance tracked which allows outflows to eventually start sending profits back to the originating bot with the over-arcing philosophy being long-term investment with accumulation and position strengthening rather than just sitting around waiting for a good outcome that might not arrive.
 
+Now: only a fold spends wire credits, under the Maximum Target Growth Per Cycle, and a tranche whose own sale dollars are spent or sold ends and returns its credit to the pool for a later tranche (`src/trading/scrumming/wire_routing.py, in _return_wire_credits_to_pool`).
+
 In combination with the Market Inspector, the Bot Swarm can receive and deploy groups of pre-configured and pre-connected bot clusters that immediately begin participating in the market. This layer, along with future portfolio-level algorithms, will enable the fully automated and persistent execution of complex trading strategies from a single terminal window.
 
 **Functional.** The wire manager holds the topology and one ledger for each bot.
@@ -1039,86 +1203,306 @@ and the scrum routing sends a share of each sale's proceeds along the same
 wires. No mechanism funds a new bot out of a parent's mature profit. Deploying
 a pre-connected cluster from the Market Inspector is an intention.
 
+Now: the scrum routing sends each wire its share of a sale's surplus alone, the Scrum Fold Ratio's share of what the sale leaves past the dollars that buy back every unit it sold, less the room the growth cap leaves, and a detonation sends nothing (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
+
 ## 8 - Hunger and Satiety Indices
 
 These elements were implemented as part of an effort to boost accumulation and scrumming performance in longer term bearish or bullish conditions that might not latch all logic gates to trigger a fold or scrum despite the Target Delta not being zero. This piece adds a factor to the bot that makes it more aggressively evaluate subsequent candles and will increase its likelihood of executing the re-zeroing action. This allows for trades to be executed in the hypothetical ‘dead zone’ between Minimum Opposing Trade Distance and the lower or upper Bollinger Band extent if the candle structure begins to float or cruise within it for too long.
 
-**Not built.** Neither index exists in code today. No aggression factor shortens
-the wait between candles, and the bot has no term that widens its willingness to
-fire inside the dead zone between the Minimum Opposing Trade Distance and the
-band extreme.
+**Built, and switched off on every bot.** Hunger is a count of the candles that
+pass while the position is off target and nothing fills. Satiety sets the count
+back to zero. The count becomes a skew on the TA confidence floor, so after a
+long idle stretch a weaker vote clears the floor.
 
-**The build this specifies.** The engine already carries a skew term that
-relaxes the confidence floor, and hunger is that term driven by time rather than
-by band position. A counter grows while the target delta is non-zero and nothing
-fires, and it resets to zero on a fill. That reset is satiety. Two new config
-fields set the rate and the ceiling, and the counter joins the skew the floor
-already reads, so no new gate and no new call site are needed.
+Each bot carries its own two figures. The gain is zero on every bot, so no bot
+trades differently today. No screen sets the gain, and no measurement sets its
+figure.
 
-*Proposed, not present, in `src/trading/container/config.py`:*
+Now: the gain is the 0.20 ceiling over the pace typed in each live Scrumming bot's Hunger Pace box, and none until its Hunger box is ticked (`src/trading/container/config.py, in BotConfig.hunger_gain_per_candle`).
+
+`src/trading/container/config.py` — `BotConfig`
 
 ```python
-hunger_gain_per_candle: float = 0.0
-hunger_skew_max: float = 0.20
+    # Floor skew each idle candle off target adds; 0.0 is off.
+    hunger_gain_per_candle: float = 0.0
+    # The most hunger_gain_per_candle may add to the floor skew.
+    hunger_skew_max: float = 0.20
 ```
 
-*Proposed, not present, in `ScrummingBot.tick`:*
+The tick adds one when the newest candle of the bot's TA timeframe carries a
+newer timestamp, the rule the circuit breaker uses for its cooldown. A hard
+circuit-breaker trip stops the count. A fill sets it to zero, and so does a tick
+inside the at-target dust band. The count lives in memory, so a restart starts it
+again at zero.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._count_hunger_candle`
 
 ```python
-if territory != "at_target" and not fired_this_tick:
-    self._hunger_candles += 1
-else:
-    self._hunger_candles = 0
-hunger_skew = min(
-    float(self.config.hunger_skew_max),
-    self._hunger_candles * float(self.config.hunger_gain_per_candle),
+        if not math.isfinite(stamp) or stamp <= self._hunger_candle_ts:
+            return
+        anchored = self._hunger_candle_ts > 0.0
+        self._hunger_candle_ts = stamp
+        if not anchored:
+            return
+        before = self._hunger_floor_skew()
+        self._hunger_candles += 1
+```
+
+Every fill the bot books reaches its clock figures once, so satiety sits there.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._write_clock_figures`
+
+```python
+    def _write_clock_figures(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Run ``_sate_hunger`` for ``fill``, then write the mixin's clock figures."""
+        self._sate_hunger(f"a {fill.type} fill")
+        super()._write_clock_figures(fill, order_id, filled, rests)
+```
+
+The skew is the count times the gain, held at the ceiling. It joins the favours
+the floor already divides by, so the floor is 0.25 divided by one plus their sum.
+At the 0.20 ceiling alone the floor is 0.2083.
+
+`src/trading/scrumming_bot.py` — `_hunger_skew`
+
+```python
+def _hunger_skew(idle_candles: int, gain_per_candle: object, skew_max: object) -> float:
+    """Return ``idle_candles`` times ``gain_per_candle``, capped at ``skew_max``.
+
+    ``gain_per_candle`` and ``skew_max`` must be finite and above zero, else it is 0.0.
+    """
+    gain = as_finite_float(gain_per_candle)
+    ceiling = as_finite_float(skew_max)
+    if gain is None or ceiling is None or gain <= 0.0 or ceiling <= 0.0:
+        return 0.0
+    return min(ceiling, idle_candles * gain)
+```
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+        _ta_conf_skew = position_boost + bb_confidence_boost
+        if hunger_skew:
+            _ta_conf_skew += hunger_skew
+        if _bb_priority_arm:
+            _ta_conf_skew += _BB_PRIORITY_SKEW
+        _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew)
+```
+
+A lower floor changes three decisions and leaves a fourth alone. It releases a
+fold that every other gate passes and the TA confidence alone holds. That
+happens at the lower band while the delta is still inside the interval, where
+the deep-fold override does not reach. It lets a DIST sale through sooner. It
+refuses the hedge top-up more often, because that buy waits for a vote that is
+not bullish. It changes no scrum, because the ripe-harvest override already
+passes the TA gate wherever the band lets a scrum through. The band detect lines
+do not move, so hunger opens no trade short of them.
+
+The bot log names hunger while it acts. A HUNGER line gives the count and the
+floor it sets alone, and a SATIETY line names the fill or the return to target
+that ended it.
+
+**Current reading, the DIST sale.** The sentence above that hunger lets a DIST
+sale through sooner holds for the vote alone. A DIST sale now also waits for a
+price. Each fold that buys more units than its scrum sold queues those extra
+units beside the price it paid. They sell only at that price raised by the
+Minimum Opposing Trade Distance, or higher. Hunger can pass the vote sooner, and
+it does not move that price.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_distribute`
+
+```python
+clearing = dist_sets_clearing(self._dist_sets, price, otd_pct)
+if not clearing:
+    self._hold_dist_sets(price, otd_pct)
+    return
+```
+
+**Current reading, what hunger reaches and when it counts.** Three statements
+in the readings above were wrong. "It changes no scrum" fails when the lower
+band sits at or under zero. The ripe-harvest override does not reach there, so
+the vote decides that scrum, and hunger can pass it. "Hunger opens no trade short
+of them" failed through the DIST sale, which has no band gate. The first reading
+counts "the candles that pass while the position is off target and nothing
+fills". That count ran inside the interval and while the Minimum Opposing Trade
+Distance blocked, and his entry names neither.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`, where the ripe-harvest
+override needs a lower band above zero
+
+```python
+if (
+    bb_result is not None
+    and bb_result.upper > 0
+    and bb_result.lower > 0
+    and ticker.last > 0
+):
+    if delta > 0 and not below_interval and bb_pos >= _bb_upper_dt:
+        _ripe_scrum = True
+```
+
+Hunger now reaches the scrum and fold chains only. The DIST sale and the hedge
+top-up read the same favours without hunger. So hunger no longer passes a DIST
+sale, and it no longer holds a hedge top-up. Both chains keep the band detect
+lines, and no override lifts them, so hunger now opens no trade short of those
+lines.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+_ta_conf_skew = _favour_skew(
+    position_boost,
+    bb_confidence_boost,
+    hunger_skew,
+    priority_arm=_bb_priority_arm,
 )
-_ta_conf_skew = position_boost + bb_confidence_boost + hunger_skew
+_eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew, summary.signals)
+_floor_no_hunger = _skewed_confidence_floor(
+    _favour_skew(
+        position_boost, bb_confidence_boost, 0.0, priority_arm=_bb_priority_arm
+    ),
+    summary.signals,
+)
 ```
 
-The default gain of zero keeps present behaviour exactly, so the feature ships
-switched off and the operator turns it on per bot. Issue #433 carries the build.
+The count follows his entry. A new candle adds one only in the dead zone: the
+delta at the interval or past it, the opposing trade distance clear on its side,
+and the price still inside the band on that side. A candle inside the interval,
+short of the distance, or past the band adds nothing. It does not end the count
+either; a fill or a return to target still does that.
+
+`src/trading/scrumming_bot.py` — `_in_hunger_zone`
+
+```python
+if not distance_clear or band is None:
+    return False
+if delta > 0:
+    return price < band.upper
+if delta < 0:
+    return price > band.lower
+return False
+```
+
+No favour, hunger among them, now eases the floor to a level two indicators can
+reach. The floor stays above what the two heaviest voters reach at full
+confidence, at the bot's weights on that tick, and never rises above 0.25. At
+the published weights two indicators reach 0.1966, so the 0.20 ceiling alone
+still gives 0.2083.
+
+Now: the floor stays just above what two indicators reach at every skew, no skew included, so it rises over 0.25 wherever two indicators reach more (`src/trading/scrumming_bot.py, in _skewed_confidence_floor`).
+
+`src/trading/scrumming_bot.py` — `_skewed_confidence_floor`
+
+```python
+if denominator <= 1.0:
+    return floor / denominator
+past_two = math.nextafter(two_indicator_ceiling(signals), math.inf)
+return min(floor, max(floor / denominator, past_two))
+```
 
 ## 9 - Accumulation Shadows
 
 The Accumulation Shadow was invented as a means of taking maximum advantage of long term and bearish conditions. It allows for a Scrumming to create a Shadow of itself that focuses on accumulating a smaller chunk of the target asset during a bearish regime. The shadow is allowed to accumulate downward but does not scrum. It was a bullish regime to be dedicated and then detonates thereby claiming all of its profits at once. Shadows operate in parallel with their parent bots and will be listed as Shadow Tranches once they are fully implemented.
 
-**Not built.** The Accumulation Shadow has no code. No shadow bot, shadow
-tranche or shadow regime exists today.
+Now: built, and off on every bot until its Accumulation Shadow box is ticked; a bearish fold's extra units then wait on a Shadow Tranche for a bullish regime (`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._tick_shadow`).
 
-Three functions collapse or remove a tranche, and none of them knows a shadow
-kind. One merges two rungs, one removes an aged row, and one discards a queue.
-Despawn removes a tranche; it does not delist one. The entry's own wording,
-"once they are fully implemented", matches the code.
+**Built, and switched off on every bot.** A shadow is a tranche kind, not a
+second bot. The switch is one tick box on a live Scrumming bot's Settings tab.
+Paper and the Simulator open no shadow, so their tabs do not draw the box
+(`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_shadow_row`).
 
-`src/trading/stack_math.py` — `_apply_merge_rule`
+The regime is a vote on 100 candles of the bot's Detonation Timeframe, read at
+most once an hour. A vote that leans bearish reads bearish, because that reading
+only marks a row and places no order. A vote reads bullish only when three
+indicators agree, because that reading sells.
 
-```python
-def _apply_merge_rule(tranches: list[Tranche]) -> list[Tranche]:
-    """Combine adjacent tranches whose prices are within MERGE_THRESHOLD.
-
-    A merged Tranche keeps the higher `price` and the summed `size`, and the
-    survivors are re-indexed from 0.
-    """
-```
-
-**The build this specifies.** A shadow is a tranche kind, not a second bot. It
-accumulates downward, never sells, and exits in one move when the regime turns.
-The tranche dict gains a kind key, the three collapse functions skip a row that
-carries it, and the exit reuses the detonation executor that already sells a
-surplus and reseeds the lots.
-
-*Proposed, not present, in `src/trading/scrumming/fold_tranches.py`:*
+`src/trading/scrumming/shadow.py` — `regime_of`
 
 ```python
-def _despawn_aged_tranches(self, now: Optional[float] = None) -> dict:
-    for t in list(self._fold_tranches):
-        if t.get("kind") == "shadow":
-            continue
+def regime_of(summary: Any) -> str:
+    direction = summary.consensus_direction
+    if direction == SignalDirection.BEARISH:
+        return REGIME_BEARISH
+    if direction == SignalDirection.BULLISH and three_agree(
+        summary.consensus_confidence, summary.signals
+    ):
+        return REGIME_BULLISH
+    return REGIME_NONE
 ```
 
-A row with no kind key behaves exactly as it does today, so the change is
-invisible until a shadow is spawned. Issue #433 carries the build.
+A sale in a bearish regime marks its fold tranche with a kind key. The marked
+tranche is still a fold tranche. It buys back on the same chain, at the same
+Minimum Opposing Trade Distance. A merge, a despawn and a clear all skip it, so
+it survives a long regime. A row with no kind key behaves as it did.
+
+`src/trading/scrumming/fold_tranches.py` — `_despawn_aged_tranches`
+
+```python
+for _t in self._fold_tranches or []:
+    if is_shadow(_t):
+        report["shadow_kept"] = report.get("shadow_kept", 0) + 1
+        _fold_keep.append(_t)
+        continue
+```
+
+The fold gives the parent every unit its sale sold. The units past those move to
+a Shadow Tranche, off the parent's lots and holdings. No scrum, DIST sale or
+stack rung can sell them, and they grow no target. Each later fold in the regime
+adds a row at its own lower price. No setting sizes a row, because the fold
+measures it from the sale's own dollars.
+
+`src/trading/scrumming/sizing.py` — `shadow_take_units`
+
+```python
+take = math.fsum(
+    bought * float(one.get(SHADOW_SALE_USD_KEY, 0.0) or 0.0) / spent
+    - units_at_scrum(one) * share
+    for one in marked
+)
+extra = bought - math.fsum(units_at_scrum(one) for one in eligible) * share
+return max(0.0, min(take, extra))
+```
+
+A Shadow Tranche holds no wire credit. A credit may land on a marked fold
+tranche and is spent inside it. The units it buys stay with the parent, under
+the growth cap. The exit routes nothing down a wire
+(`src/trading/scrumming/sizing.py, in plan_fold_consumption`).
+
+A bullish regime sends every row at or over its floor through the detonation
+executor, in one order. The floor is the row's buy price plus the Minimum
+Opposing Trade Distance, and a row under it waits. The sale takes only what a
+row stands above its cost. The units left are worth what the row paid, and they
+join the lots at the fill price under the cycle growth cap
+(`src/trading/scrumming/execution.py, in _execute_detonation`).
+
+A worked cycle, with room under the growth cap:
+
+```
+sale    1 unit at $100.00, fee 0.60%            $99.40 queued
+fold    $99.40 at $95.00 buys 1.046316 units    the parent takes 1.000000
+                                                the row takes 0.046316, cost $4.40
+exit    bullish regime at $130.00               floor $96.52
+        sells 0.012470 units                    $1.62 of profit
+        keeps 0.033846 units                    worth $4.40, joins the lots
+```
+
+The whole cycle ends with more units than it began with, and profit in dollars.
+
+Only a fold on the chain feeds a shadow. A Manual Fire or cartridge buy takes
+what the delta names and leaves no units past its tranche. A stack rung sale
+queues no fold tranche, so on a Stack Mode bot only a cartridge sale can mark a
+row (`src/trading/scrumming_bot.py, in ScrummingBot._book_stack_spend`).
+
+A self-destruct or an
+expiry close returns every row to the lots first, so that exit sells them
+(`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._return_shadows_to_lots`).
+
+The bot log names each step: SHADOW REGIME, SHADOW OPENED, SHADOW ACCUMULATED,
+SHADOW HELD, SHADOW DETONATION and SHADOW DETONATED. The Stack Tranches tab lists
+each row with SHADOW in its Mode column, and the fill reads SHADOW_DETONATION
+(`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._book_shadow_detonation`).
 
 ## 10 - Charge Up Permission Gate
 
@@ -1161,7 +1545,9 @@ build.
 
 The term tranche emerged in Acervator as the concept of placing soft boundaries around where an opposing trade 1) can initially happen in terms of price level, 2) denote the amount of the position expected to be transacted once the price thresholds are met or exceeded, 3) allows wire credits to be fed into Fold Tranches (Buys) and Extractor Tranche profits to be distributed across Stack Tranches (Scrums / Sells) for additional accumulation and profit optimization. For the sake of clarity, Fold Tranches spawn after a Scrum (Sell) occurs; Stack Tranches spawn after a Fold (Buy) occurs; and Extractor Tranches spawn when an Extractor Bot finds a favorable Alternate Currency entry on its chosen timeframe and these tranches remain until the acquired Alternate Currency stack is sold by either the Extractor Bot (Sibling) or its corresponding Scrumming Bot (Parent). All Tranches will persist under a bot’s Details > Tranches Tab.
 
-**Functional.** Three of the four tranche kinds run. Fold Tranches spawn on a
+Now: Shadow Tranches are listed on the bot's Stack Tranches tab, each with SHADOW in its Mode column (`src/gui/main_tabs/stack_tranches_tab_surface.py, in compose_shadow_rows`).
+
+**Functional.** All four tranche kinds run. Fold Tranches spawn on a
 scrum and hold the price of the sale that made them. Stack Tranches spawn on a
 fold and are priced as a ladder above the buy. A three-unit scrum at 100 with a
 one percent split and linear spacing returns rungs at 101, 102 and 103 carrying
@@ -1199,7 +1585,7 @@ it differently and disagree on the same id.
 """
 ```
 
-Shadow Tranches do not exist; entry 9 gives the measurement and the proposal.
+Shadow Tranches hold a bearish fold's extra units; entry 9 gives the build.
 
 The queue sorts the fold tranches by their reference price, highest first, and
 drops any row whose reference or unit count is not a finite number. Wire credits
@@ -1422,6 +1808,406 @@ opens the window at its full content width with a whole tranche row inside it.
 The screen clamp in `dialog_open_size_px` stays, because the operator cannot
 drag back a window wider than the display.
 
+### Every tranche names the opposing event that produced it
+
+A fold tranche holds the tokens the scrum that made it sold. A scrum stack holds
+the base currency the fold that made it spent. Each record now carries the
+identity of that event and the two amounts the event produced, so the amount on
+the record can be read against the amount the event supplied.
+
+`src/trading/scrumming/sizing.py`, in `fold_tranche_records`, is the one place a
+fold tranche is built. It takes the sale's own figures as its whole budget and
+hands them out across the lots the sale consumed, so a record carrying an amount
+the sale did not produce cannot be written there.
+
+```python
+def fold_tranche_records(
+    lots: list,
+    fill_price: float,
+    sold_units: float,
+    proceeds_usd: float,
+    event_id: str,
+    created_ts: float,
+) -> tuple[list, float]:
+```
+
+Three sites called their own copy of that loop before: the scrum phase, the
+distribution phase and the operator's Manual Fire. All three now call this one
+function. The second value it returns is the units a sale sold that no lot
+covered, and each site writes a FOLD ALIGNMENT SHORT line naming that figure.
+
+`src/trading/scrumming_bot.py`, in `_open_stack_from_scrum`, is the one place a
+stack tranche is built, and it writes the same three fields from the fold fill
+that spawned the ladder.
+
+The Units cell on the Fold Tranches row reads the tranche's units against the
+units its event sold, and its mouse-over names the event and both amounts.
+`src/gui/main_tabs/fold_tranches_tab_surface.py`, in `units_cell`, is the one
+declaration of that cell, and the Live, Paper and Simulator tables each call it.
+
+The Stack-Tranche Cycle Health box gains a row reading the standing size against
+what the events that produced it acquired, from
+`src/gui/main_tabs/stack_tranches_tab_surface.py`, in
+`compose_event_alignment_row`. The row draws red while the standing size passes
+what was produced.
+
+### Marked units above held units, and what produces it
+
+Driven on hand-built tranches with no venue reached, three scrums in a row at one
+price read 0.60, 2.20 and 5.40 times the holding. Every tranche's units equalled
+the units its own sale sold on all three. The ratio first passed one on the
+second scrum.
+
+A bot that scrums three times without folding holds the units of three sales in
+its queue and only the remainder in its position, so the ratio climbs on every
+scrum and falls on every fold. The same six-event sequence read 2.20, 0.60 and
+0.00 on the three folds that followed.
+
+So a ratio above one is not by itself a tranche whose amount no event produced.
+The reading that separates the two is the amount on the record against the amount
+its event supplied, which is what the row now states.
+
+### A split against an unknown venue minimum is refused
+
+A Stack ladder divides one fold's acquired tokens across spaced prices, and every
+piece must reach the smallest order size the venue published. Where the venue
+published no size rule the floor is unknown, and the split is refused rather than
+sized against a guess.
+
+`src/trading/stack_math.py`, in `split_scrum_into_tranches`, refuses a minimum
+that is not a positive finite number, and `src/trading/scrumming_bot.py`, in
+`_open_stack_from_scrum`, passes the venue's own figure through unmasked so an
+absent rule arrives as the absence it is. The scrum still sells as one undivided
+order; only the split is refused.
+
+**The signature in the code block at the head of this entry is overtaken.** It is
+not edited and not removed. It read:
+
+```python
+    min_order_size: float = 0.0,
+```
+
+The parameter now defaults to `None`, and both `None` and zero are refused:
+
+```python
+    min_order_size: Optional[float] = None,
+```
+
+Driven on a hand-built ladder of one unit over four rungs: a floor of 0.20 gives
+four pieces of 0.250000, a floor of 0.40 gives two of 0.500000, and both have
+every piece at or above the floor. A floor of 2.00 against one unit is refused.
+No floor at all is refused. In every arm that is not refused the pieces sum to
+the units the fold acquired.
+
+`src/trading/stack_math.py`, in `_apply_min_order_size`, reads the smallest piece
+the ladder actually holds rather than a count of pieces. Two rungs that merge
+leave the ladder with pieces of unequal size, and a count can fit while a piece
+sits under the floor. On a merged ladder of one unit the same arm read pieces of
+0.500000, 0.250000 and 0.250000 against a floor of 0.300000 before, and three
+pieces of 0.333333 after.
+
+### The merge distance is one declaration both tranche types read
+
+Two tranches within a tenth of a percent of each other in price combine.
+`src/trading/stack_math.py`, in `within_merge_distance`, is the one declaration
+of that distance, and `MERGE_THRESHOLD` beside it holds the figure.
+
+The Stack ladder read that distance already, inside its own build.
+`src/trading/scrumming/sizing.py`, in
+`merge_fold_tranches_within_distance`, now reads the same declaration for the
+fold queue. The survivor keeps the lower reference price, which is the stricter
+fold threshold, sums the cash and the units, takes the units-weighted original
+cost and names both events.
+
+```python
+def within_merge_distance(lower_price: float, higher_price: float) -> bool:
+```
+
+`src/trading/scrumming/fold_tranches.py`, in
+`_combine_fold_tranches_within_distance`, runs it on the standing queue each time
+a sale queues a tranche, and lowers the opened counter by what it combined so the
+panel's reconciliation still balances.
+
+`src/trading/stack_math.py`, in `merge_into_standing_rungs`, moves a new rung
+into a standing rung inside the same distance. A standing rung holding a venue
+order is never a candidate, since combining it would need that order cancelled.
+
+Driven in one run on both types: a pair 0.05 percent apart combined and a pair
+0.5 percent apart did not. On the fold pair the survivor's cash and units were
+the sums of both, and its original cost was the units-weighted figure.
+
+**Current reading.** A rung that a fold or a distribution opens carries the buy
+price of that fold as its floor reference. A new rung combines only with a
+standing rung holding the same floor reference, so no combine loses a floor. In
+Internal mode an activated rung with a floor reference is not spent while the
+price sits under that buy price raised by the Minimum Opposing Trade Distance. It
+stays activated, and the bot log names the price it waits for. A fold whose own
+ladder opens adds nothing to the distribution sale, because that ladder already
+offers its extra units.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot._rung_under_floor`
+
+```python
+floor_ref = rung_floor_ref(rung)
+if floor_ref <= 0.0:
+    return False
+try:
+    floor = opposing_sale_price(floor_ref, self.opposing_trade_distance_pct())
+```
+
+### What this changes for a queue that is already aligned
+
+Three sales at prices a percent apart, driven through the real queueing path,
+produced the same three tranches before and after, to the digit. Sweeping the
+fold gate over 120,001 prices from $40.000 to $160.000 in steps of $0.001 gave
+356,457 admitted rows, 3,352,311.201596 admitted units and $537,573,705.000000
+of planned spend on both readings, and the same digest over every price.
+
+Three sales at one price produced three tranches before and one after. The cash
+and the units the gate admits and plans over the same swept domain are identical
+on both readings; the row count falls from 352,323 to 117,441 because one record
+stands where three stood.
+
+A queue that already exceeds its holding is not changed by any of this. What
+happens to an excess that already stands is the operator's decision.
+
+### The standing excess is retired on load
+
+**The decision above has been taken.** The operator's ruling: drop the standing
+tranches whose amount no sale produced, keep the aligned ones, and bring the
+marked total back under the held total.
+
+`src/trading/scrumming/fold_tranches.py`, in `retire_unaligned_tranches`, is the
+sweep. `src/trading/scrumming/state_io.py`, in `import_scrumming_state`, is the
+one caller. It runs once per bot, as that bot's state is restored, and after the
+parked wire credit has landed on the records. Every record queued after it is
+handed out of one sale's own figures, so the standing set is the only set that
+can hold an amount no sale produced, and that set does not grow.
+
+No standing tranche carries the identity of the event that produced it, because
+the field did not exist when the tranche was queued. The sweep does not read it.
+One relation holds across every record the creation path makes: a record's
+dollars, less the wired-in dollars the record itself records, equal its units
+times the price its sale filled at, less the trading fee.
+
+```
+sale dollars / (units x sale rate)  =  1 - trading fee / 100
+```
+
+Now: a record that a wired sale queues carries the share the wire took, and the relation reads its dollars against units times price less the fee and that share, so the sweep keeps it (`src/trading/scrumming/sizing.py, in unproduced_fold_amount`).
+
+`src/trading/scrumming/sizing.py`, in `unproduced_fold_amount`, reads that and
+answers why no sale produced a record's amount, or nothing where one could.
+`tranche_wire_usd` beside it takes off the wired-in dollars first, because wire
+money reaches a tranche with no units behind it.
+
+The window carries one merge distance of slack at each edge, the distance at
+which `src/trading/stack_math.py`, in `within_merge_distance`, already calls two
+prices one price. For a bot at a 0.6 per cent fee a record is kept from 0.99301
+to 1.00100 of price times units.
+
+A record with no price, with no lot behind its units, or with no readable figure
+is retired at every fee. A drop counts as discarded and never as closed, so the
+panel's opened less closed less discarded still equals what stands, and the
+dropped record's price, its units, its dollars and the reason it went are written
+to the bot log.
+
+**Where the sweep spares a record.** A Trading Fee % lowered by more than a
+tenth of a point moves every record the earlier sales queued below the window at
+once. `src/trading/scrumming/sizing.py`, in `unaligned_fold_tranches`, spares a
+record the fee window condemns where another standing record shares its implied
+fee, and where no record passed the window at all. Records agreeing on one fee
+are sales at one fee, which is what a changed setting leaves standing, and the
+log names the fee and how many were spared.
+
+`src/trading/stack_math.py`, in `unproduced_stack_amount`, is the stack side. A
+stored rung carries no figure of the fold event that acquired its units, because
+`split_scrum_into_tranches` spreads one fold's tokens over spaced rungs and the
+alignment is at their sum. Size and price are all a single stored rung can be
+tested against, and a rung holding a resting venue order is kept whatever it
+reads, because dropping the record would strand that order on the book.
+
+Driven on constructed records in a redirected home, with no venue reached. On a
+queue holding one aligned record beside one carrying a quarter of its sale's
+dollars, the tree before this work kept both and the tree after kept the aligned
+one and retired the other. Over a swept domain of 120 records a sale produced,
+both trees left the same 120 records with the same digest, the same
+$468,656,385.72274005 and the same 27,528.615 units. Moving one of those records
+by one digit changed the digest and left all 120 standing. A bot whose fee
+setting read 0.00 per cent against five records queued at 0.6 per cent retired
+none of them and wrote the refusal.
+
+### The marked total is brought under the held total on load
+
+The sweep above retires the records whose own figures no sale produced. The
+operator's second ruling covers what is left: keep the aligned tranches up to
+the held total and retire the oldest beyond it, so the units the queue marks
+never exceed the units the bot holds.
+
+**This is not a limit on how many tranches stand.** Many may stand on either
+side, in any number. Only their sum is bounded.
+
+`src/trading/scrumming/fold_tranches.py`, in `retire_tranches_above_held`, is
+the sweep. `src/trading/scrumming/state_io.py`, in `import_scrumming_state`, is
+the one caller, and it runs this sweep straight after the alignment sweep and
+before the fold queue's dollar total is re-derived. So it judges only what the
+alignment sweep left standing, and the re-derive reads the queue it leaves.
+
+```mermaid
+flowchart TD
+    A[a bot's state is restored] --> B[parked wire credit lands on the records]
+    B --> C[retire_unaligned_tranches<br/>drops what no sale produced]
+    C --> D[retire_tranches_above_held<br/>drops the oldest beyond the held total]
+    D --> E[the fold queue's dollar total is re-derived]
+```
+
+**Which figure is the held total.** `import_scrumming_state` does not restore
+`_current_holdings`; the exchange supplies that on the next tick, and it still
+reads zero while the sweep runs. `src/trading/scrumming/fold_tranches.py`, in
+`_held_units_now`, therefore sums the units of this bot's restored lots, the
+same figure the restore drift warning in `import_scrumming_state` already sums.
+A lot holding no readable units figure is counted beside the total, never added
+as zero.
+
+**A held total of zero or less refuses the whole sweep** and every tranche is
+kept. A bot whose lots were never saved would otherwise lose the lot. The
+refusal is written to the bot log and names the figure it read.
+
+**Which field dates a record.** `src/trading/scrumming/sizing.py` declares
+`FOLD_AGE_KEY` as `created_ts`, written by `fold_tranche_records`, and
+`STACK_AGE_KEY` as `opened_ts`, written by `split_scrum_into_tranches`. The age
+sweep and this one read the same two names.
+`src/trading/scrumming/sizing.py`, in `tranches_beyond_held_total`, sorts the
+standing records oldest first on that field and drops from the front while the
+remainder still marks more than the held total, so the newest records are the
+ones that stay. A record whose stamp is not a positive finite number sorts as
+the oldest and is counted, and the log line states how many records the ordering
+could not place.
+
+One sale stamps every record it queues with one `created_ts`, so a tie is the
+normal case. A tie keeps the queue's own order, which is the order those records
+were written in.
+
+**A queue that equals its held total exactly is left alone.** Two things make
+that hold. `tranches_beyond_held_total` sums the marked units with `math.fsum`,
+which is exactly rounded, so the order the records are added in cannot push the
+total above the held figure; a running total of seven equal parts of ten
+thousand units reads 1.82 trillionths above it, which is near three times the
+real excess of 0.68 trillionths. And
+`src/trading/scrumming/sizing.py`, in `units_dust_at`, reads `UNITS_DUST`
+against the held figure and takes the larger of the absolute figure and that
+share of it, because one bit of a figure above ten thousand units is already
+wider than the absolute dust.
+
+Measured at thirteen scales from a thousandth of a unit to a billion units, and
+at four part counts each: of 52 such queues the running total and the absolute
+dust dropped a record from 10, and the exact sum with the scaled dust dropped
+none. A queue genuinely above its held total still loses its oldest records at
+every one of those scales.
+
+**The two queues are measured separately and never added together.** A fold
+tranche's units left the position when the scrum sold them; a stack rung's units
+are still in it, because `split_scrum_into_tranches` places a sell for each
+rung. One total across both is not a quantity. Each queue is measured against
+the one held total on its own.
+
+A rung holding a resting venue order is kept whatever the arithmetic says,
+exactly as the alignment sweep and `src/trading/scrumming_bot.py`, in
+`clear_stack_tranches`, keep it, and its units are charged against the held
+total first. Where those kept rungs alone still mark more than the bot holds,
+the log line says so rather than claiming the invariant.
+
+**What this costs.** Every record dropped here is units the bot sold and will
+now never buy back at that price. The operator chose this with that consequence
+stated. Each drop is written to the bot log with its price, its units, its
+dollars, its age in days and the reason it went, and counts as discarded and
+never as closed, so opened less closed less discarded still equals what stands.
+No order is placed or cancelled, and holdings, cost basis and target balance are
+unchanged.
+
+**Only a pending rung marks units.** The clause above that says a stack rung's
+units are still in the position holds for a pending rung only. It is not edited
+and not removed. A rung reads pending until its sell fills or ends unfilled. A
+filled rung's units left the position when the sell filled. A cancelled rung's
+sell never reaches the book. Neither has units left to deliver.
+
+So the sweep measures the stack queue on its pending rungs alone, and it retires
+only pending rungs. A filled or cancelled rung stays in the queue, and the log
+line counts how many stood outside the stack total. The sell for each rung, and
+the `opened_ts` stamp the ordering reads, come from `_open_stack_from_scrum`; the
+ladder arithmetic the clause names places nothing.
+
+```
+src/trading/stack_math.py, in rung_is_pending                          the one reading of a pending rung
+src/trading/stack_math.py, in _rung_is_order_free                      reads rung_is_pending
+src/trading/scrumming/fold_tranches.py, in retire_tranches_above_held  measures and retires those rungs only
+src/trading/scrumming_bot.py, in _open_stack_from_scrum                places each rung's sell, writes opened_ts
+```
+
+`src/trading/stack_math.py` — `rung_is_pending`
+
+```python
+def rung_is_pending(record: dict) -> bool:
+    """Does `record` read `pending` as its `status`; a filled or cancelled rung
+    marks no units."""
+    return str(record.get(STACK_STATUS_KEY, "")) == STACK_STATUS_PENDING
+```
+
+**What a dropped rung costs.** The paragraph above says every record dropped here
+is units the bot sold and will never buy back at that price. That holds for a fold
+tranche. A dropped rung is units the bot holds and will not sell at that rung's
+price, and the log line states both.
+
+Driven on constructed records in a redirected home, with no venue reached and no
+order placed. Two pending rungs of 4 units, inside 10 units held, stood beside a
+filled rung of 6 and a cancelled rung of 6. The tree before this work read 20
+marked units and dropped both pending rungs and the filled one. This tree reads
+8 and keeps all four. Fourteen status readings ran, each at 3 and at 30 units
+against 10 held. The tree before this work counted all fourteen. This tree
+counts only the three pending readings, and still retires a pending rung of 30
+that holds no venue order. Over 600 bots holding only pending rungs, both trees
+left the same queues and dropped the same 1,130 rungs. Lowering one digit of one
+lot on one side only made 227 of the 600 differ.
+
+```
+at 100 units held, pending rungs inside the holding   pending rungs lost
+                                                       before    after
+60 pending in 6 rungs, 30 filled in 3, newer               0        0
+60 pending in 6 rungs, 60 filled in 6, newer               2        0
+60 pending in 6 rungs, 60 cancelled in 6, newer            2        0
+90 pending in 9 rungs, 90 filled in 9, newer               8        0
+100 pending in 10 rungs, 10 filled in 1, newer             1        0
+60 pending in 6 rungs, 200 filled in 20, newer             6        0
+60 pending in 6 rungs, 60 filled in 6, older               0        0
+```
+
+Where the filled rungs were the older ones, or the pending rungs held venue
+orders, the tree before this work dropped 2 filled records instead. This tree
+drops none.
+
+**What the screen reads afterwards.** The allotment row described under *How the
+ratio cell picks its colour* draws its figure through
+`src/gui/live_settings/fold_tokens.py`, in `compose_units_marked_row`, on the Qt
+panel and through `src/gui/main_tabs/fold_tokens_surface.py`, in
+`compose_units_marked_row`, on the Electron page. After a load that sweep ran
+on, that row reads at or below `1.00x` and draws no red, unless a resting venue
+order pinned a rung or no held total was readable.
+
+Driven on constructed records in a redirected home, with no venue reached and no
+order placed. Three fold records of 30 units each against 40 units held kept the
+newest and retired the two older ones; the tree before this work kept all three.
+Over 400 bots whose held figure sat just above their marked total, both trees
+left the same queues with the same digest on all 400 and dropped nothing.
+Lowering one digit of that held figure left 4 of the 400 digests matching and
+dropped 945 records. Over 1,200 pseudo-random bots, 645 stood above their held
+total on the tree before this work and 62 after it, and those 62 are exactly the
+bots whose remaining excess sits in rungs holding a resting venue order, each
+reported as such. The counter reconciliation held on all 1,200. Blinding the
+date stamp on all three records of the first reading made the sweep report three
+records it could not place.
+
+The Product Manual PDF rebuild is owed for this page.
+
 ## 12 - Technical Analysis Indicator Confidence Tiers
 
 Most TA systems stack indicators additively. The Tier-4 suite organizes signals into four confidence tiers with cumulative weighting: Tier-1 (structural, highest weight), Tier-2 (confirmation, medium weight), Tier-3 (momentum), Tier-4 (context). Entries require Tier-1 + Tier-2 alignment; Tier-3/4 scale confidence but cannot override. This tier system arose out of queries with Claude Code while it was roleplaying as a TA Archetype and is only one such example where most of the other such contributions deal with bug fixes.
@@ -1473,6 +2259,11 @@ DEFAULT_WEIGHTS = {
 }
 ```
 
+Since 2026-10-28 a new bot starts with all twelve at 0.0, written by
+`src/trading/ta_engine.py, in new_bot_weights`, and votes neutral until Save on
+the Settings window hands it the TA Indicators figures. The published figures
+above are unchanged, and a saved bot votes as it did.
+
 **The build this specifies.** A tier is a second map beside the weights, and the
 veto is one test in the aggregator. The signal record grows one field, and it
 has to go last: the record is built positionally in this tree, so inserting a
@@ -1507,9 +2298,27 @@ if require_tier_alignment and not {1, 2} <= _lead:
 
 Issue #433 carries the build.
 
+**Current reading, what a trade needs from the vote today.** The tiers are still
+not built. What a trade the vote decides needs today is three agreeing
+indicators: the vote must top what the two heaviest voters reach at full
+confidence. That holds at every floor, where a landing strip sets the side, and
+on a bot's first buy. A bot with every weight at zero is outside the rule and
+trades as it did.
+
+`src/trading/ta_engine.py` — `three_agree`
+
+```python
+held = [sig.weight for sig in signals] if weights is None else list(weights)
+if not any(weight > 0.0 for weight in held):
+    return True
+return confidence > two_indicator_ceiling(signals)
+```
+
 ## 13 - Initial-Purchase-Price Floor on Folds
 
 This rule asserts that a subsequent Fold occurring after a Scrum MUST be less than sell. This, of course, is asserted by Bollinger Band Travel, Minimum Opposing Trade Distance, Target Balance Not Zero, etc.
+
+Now: every fold path, the cartridge included, pays a tranche back only at or under its own sale price less the distance, wired or not (`src/trading/scrumming/sizing.py, in tranche_rebuy_price`).
 
 **Functional.** The floor runs, and it lives on the tranche. Every fold tranche
 stores the price of the scrum that spawned it. The row is released only when
@@ -1552,6 +2361,22 @@ where the two rates differ. `src/trading/scrumming/sizing.py`, in
 units it sold; the fold executor and `fold_surplus_usd` both read it, so the
 units a fold is measured against and the surplus it books cannot disagree.
 
+**Current reading.** The function above no longer turns a row's dollars back into
+units. It reads the row's own units, the units its scrum sold, so a fold's extra
+is the units it bought less the units its scrum sold. The sell fee no longer
+counts as extra, and a cycle that ends with fewer units books no gain. The blend
+rate is now read only by the checks that hold a row's dollars against its sale,
+and by the top-up that writes it.
+
+`src/trading/scrumming/sizing.py` — `units_at_scrum`
+
+```python
+units = as_finite_float(record.get("units", 0.0))
+if units is None or units <= 0.0:
+    return 0.0
+return units
+```
+
 **Design intention.** The same distance is held in three places so the rule
 cannot be true for the bot and false for a row. The bot-wide hysteresis gate
 holds it, the per-tranche filter above holds it, and each new ladder rung is
@@ -1588,6 +2413,126 @@ _patent_only_eligible = sum(
 One gap sits in the same path, and the function names it in its own docstring.
 The fold gate wraps the distance call and falls back to a distance of zero when
 a config value is not a number. At that fallback the rule is not active.
+
+**Current reading.** No path falls back to a distance of zero. A distance
+setting that holds no number refuses the scrum and the fold, and the bot log
+names the setting.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+try:
+    _distance = self.opposing_distance_settings()
+except DistanceSettingUnreadable as _unread:
+    self._refuse_unreadable_distance(_unread, "SCRUM AND FOLD", ticker.last)
+```
+
+### Where a tranche's rebuy guide is placed
+
+The owner states the rule for where a tranche sits:
+
+> Placement of Tranches must first be a function of Minimum Opposing Trade
+> Distance + Trading Fee + BB Extension (if present...).
+
+The guide is measured from the price the tranche's scrum sold at, the `ref` on
+the stored row, and never from the price first paid. A row shows both: the Sell
+ref column holds the first and the Original cost column holds the second. A
+guide above the cost basis is normal, because a bot that sold high can buy back
+above its own cost and still gain units.
+
+`src/trading/otd_math.py` — the guide, from the sell reference
+
+```python
+def fold_rebuy_price(sell_ref_price: float, otd_pct: float) -> float:
+    return float(sell_ref_price) * fold_rebuy_factor_from_pct(otd_pct)
+```
+
+Two of the three terms reach the guide. The opposing trade distance is
+`scrumming_interval_pct` and the trading fee is `trading_fee_pct`, both declared
+in `src/trading/container/config.py`, and
+`minimum_opposing_trade_distance_pct_from_config` is the one place that reads
+either. Moving the declared interval from 1.0 to 7.3 moves the guide on a
+hundred-dollar sell reference from $98.40 to $92.10; moving the declared fee
+from 0.6 to 2.9 moves it to $96.10.
+
+**Current reading.** The fee move reads differently. At a fee of 2.9 % the
+1.0 % interval sits under one fee, so the distance is two fees, 5.80 %, and the
+guide reads $94.20. The interval move keeps its figure, since 7.3 % sits above
+the 0.6 % fee.
+
+```
+interval 1.0 %   fee 2.9 %   distance 5.80 %   guide $94.20
+interval 7.3 %   fee 0.6 %   distance 7.90 %   guide $92.10
+```
+
+The band extension is the third term and no caller supplies it yet.
+`band_extension_pct` states it as a share of the reference price, taking the
+band's own span the way `src/trading/indicators/bb_proximity.py`, in
+`detect_bb_proximity`, takes it. Moving the declared `bb_tolerance_pct` from 1.0
+to 4.7 moves that term from 0.200% to 0.940%, and a distance holding it would
+read 2.540% in place of 1.600%. A band makes the distance differ per tranche,
+and `src/trading/scrumming/sizing.py`, in `eligible_fold_tranches`, takes one
+factor for the whole queue, so wiring the term reaches that function,
+`src/trading/scrumming/tick_phases.py`, `src/paper/paper_run.py` and
+`src/simulator/back_test.py`.
+
+Now: every tranche reads one distance, the bot's distance settings at the tick's band, the same for a wired tranche as for an unwired one (`src/trading/scrumming/sizing.py, in tranche_rebuy_price`).
+
+### A guide above the price it is measured from cannot be produced
+
+An earlier reading of the factor trusted its caller to clamp the percentage
+first. Its own docstring said so:
+
+> Convert an already-clamped OTD percentage to a FOLD rebuy factor.
+
+The current reading is that the factor clamps its own argument, so a negative
+percentage cannot lift it above 1.0 and the guide cannot read above the price it
+is measured from.
+
+`src/trading/otd_math.py` — the clamp inside the factor
+
+```python
+def fold_rebuy_factor_from_pct(otd_pct: float) -> float:
+    return 1.0 - (clamped_otd_pct(otd_pct) / 100.0)
+```
+
+Swept from -5.0% to 60.0% in steps of 0.001%, 5,000 of the 65,001 percentages
+produced a guide above its own reference before the clamp moved and none produce
+one now. The worst was 1.05 times the reference at -5.0%. The configured path
+never reached that domain: over 251,001 interval and fee pairs from -2.0 to 3.0
+in steps of 0.01, the guide ratio stayed between 0.94 and 1.00 both before and
+after.
+
+The Fold Tranches page model held the percentage and the factor as two numbers a
+host could set apart. Asked for a percentage of 1.60 and a factor of 1.04, the
+row drew a guide of $104.00000000 against a sell reference of $100.00000000. The
+model now derives the factor from the percentage and the same request draws
+$98.40000000.
+
+### What the row's percentage means
+
+The Status cell states the move the live price must still make to reach the
+guide, so the figure carries a minus while the price sits above it. With a
+hundred-dollar sell reference and a distance of 1.60%, a price of $110 reads
+`Need price ≤ OTD (-10.55%)` and a price of $90 reads
+`Price-OK (+9.33% vs OTD)`. The earlier reading stated where the price sat
+rather than the move it must make, so the same two prices read `+11.79%` and
+`-8.54%`.
+
+`src/gui/main_tabs/fold_tranches_tab_surface.py` — the signed move
+
+```python
+def status_move_pct(price: float, threshold: float) -> float:
+    return (threshold - price) / price * 100.0
+```
+
+The Min rebuy tooltip names both prices the guide sits between: *A guide, not a
+trigger: sell ref $100.00000000 less 1.60% is $98.40000000. A fold-back still
+needs TA.* The Live, Paper and Simulator panels and both React pages draw
+`min_rebuy_cell` and `status_cell` from this one module, so no screen can carry
+a different figure.
+
+Now: each row's guide and status read the bot's one distance, so a wired tranche shows the same buy-back price an unwired one does (`src/gui/main_tabs/fold_tranches_tab_surface.py, in fold_distance_pct`).
 
 ## 14 - Position Ceiling and Detonation
 
@@ -1707,6 +2652,30 @@ the Min Confidence box.
 DETONATION_CONFIDENCE_MIN_DEFAULT: float = 0.75
 ```
 
+### The detonation vote and its bar, 2026-10-28
+
+Two readings in section 14 above carry wording this change moved. They stand as
+written, and these are the readings that replaced them.
+
+| written above | what it reads now |
+| --- | --- |
+| "`conf_min = float(getattr(self.config, "detonation_confidence_min", 0.75))`" | The fallback reads `DETONATION_CONFIDENCE_MIN_DEFAULT`, and the vote the bar is compared against reads the bot's own twelve weights |
+| "a bullish consensus at or above the confidence minimum on the detonation timeframe" | Unchanged, and the minimum can now be set from 0.00 to 1.00, so a reading the vote reaches can fire it |
+
+`src/trading/scrumming_bot.py, in ScrummingBot._check_detonation_trigger`
+
+```python
+engine = VotingEngine(weights=self._ta_weights)
+```
+
+The Product Manual PDF rebuild is owed for this page.
+
+The sentence above stands as written. This is the reading that replaced it.
+
+| written above | what it reads now |
+| --- | --- |
+| "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this page |
+
 ## 15 - Proof of Accumulation (PoA)
 
 This is another one of the larger and more distinguishing features of the platform. At this point, it is a design proposal for a blockchain that provides certified trade performance between competitors without revealing their specific strategy tunings within Acervator or their identity. When this blockchain is initiated, ZERO tokens for it will exist in the world. I intend it to be, much like A15 to 1) have a fixed supply, 2) mean something through its generation and acquisition. Tokens are only created through the PoA tournaments and defeating Token Beasts or inflicting the most damage to them in a colosseum format. Additional functions would allow PoA tokens to be socketed into the platform to change its appearance and identify a user as a victor.
@@ -1756,6 +2725,21 @@ build-out.
 
 ```python
 MAX_SUPPLY_WEI = TOTAL_SUPPLY_CAP * (10**TOKEN_DECIMALS)
+```
+
+Read on the current tree, no session builds the chain. The main window no
+longer installs the testnet bridge at launch, so the bridge and the eleven
+competition parts it installs stay unbuilt, and its 250 ms timer never starts.
+The competition package stays on disk while Proof of Accumulation is paused.
+
+`src/gui/main_window.py` — `MainWindow._setup_ui`, the first two build steps
+
+```python
+            main_layout = self._timed_build_step(
+                "header strip", self._build_header_strip
+            )
+
+            self._main_tabs = _main_tab_book_class()()
 ```
 
 The trophy generator draws the trophy as vector art and letters SOLVE ET COAGULA

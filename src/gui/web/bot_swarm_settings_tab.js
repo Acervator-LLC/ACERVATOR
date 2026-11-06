@@ -124,6 +124,7 @@
   var SHOWN = "shown";
   var TITLE = "title";
   var HEADERS = "headers";
+  var HEADER_TOOLTIPS = "header_tooltips";
   var ROWS = "rows";
   var COUNT = "count";
   var DIRECTION_COLOURS = "direction_colours";
@@ -544,6 +545,10 @@
 
   function headers(name) {
     return listField(tableBag(name), HEADERS).slice();
+  }
+
+  function headerTooltips(name) {
+    return listField(tableBag(name), HEADER_TOOLTIPS).slice();
   }
 
   function tableRows(name) {
@@ -1076,6 +1081,7 @@
     headProps[COLUMN_ATTR] = text(props.at);
     headProps[KEY_ATTR] = text(props.name);
     headProps[ARIA_LABEL] = label(props.name);
+    headProps.title = label(headerTooltips(props.table)[props.at]);
     return element(HEAD_CELL_TAG, headProps, text(props.name));
   }
 

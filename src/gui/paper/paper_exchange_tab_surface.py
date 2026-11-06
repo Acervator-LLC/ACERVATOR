@@ -73,6 +73,7 @@ def build_view_model(model: live.ExchangeTabModel) -> dict:
         "privacy_focusable": live.PRIVACY_FOCUSABLE,
         "header_stretch": model.header_stretch,
         "add_bot_label": live.ADD_BOT_LABEL,
+        "add_bot_tooltip": live.ADD_BOT_TOOLTIP,
         "add_bot_accent": live.ADD_BOT_ACCENT,
         "new_bot_asks": list(model.new_bot_asks),
         "bot_wizard_module": live.BOT_WIZARD_MODULE,
@@ -89,6 +90,7 @@ def build_view_model(model: live.ExchangeTabModel) -> dict:
         "extractor_section_style": live.EXTRACTOR_SECTION_STYLE,
         "extractor_section_visible": model.extractor_section_visible,
         "command_buttons": [list(pair) for pair in live.COMMAND_BUTTONS],
+        "command_tooltips": dict(live.COMMAND_TOOLTIPS),
         "danger_command_label": live.DANGER_COMMAND_LABEL,
         "fleet_commands": {
             key: list(pair) for key, pair in live.FLEET_COMMANDS.items()

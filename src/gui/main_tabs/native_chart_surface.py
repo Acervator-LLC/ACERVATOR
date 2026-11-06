@@ -425,6 +425,7 @@ TOOLBAR_MARGINS = (4, 2, 4, 2)
 INDICATOR_ROW_SPACING_PX = 6
 LEGEND_SPACING_PX = 12
 TIMEFRAME_LABEL = "TF:"
+TIMEFRAME_TOOLTIP = "The candle length this chart draws. It refetches on a change."
 TIMEFRAME_COMBO_MAX_WIDTH_PX = 90
 CHART_PANEL_MIN_HEIGHT_PX = 250
 #: The accessible name of the scroll area the chart sits in on the Qt panel.
@@ -467,6 +468,24 @@ INDICATOR_TOGGLES = (
     ("zscore_point", "ZPt", "chart_zone_scrum"),
     ("bbullseye", "BBull", "chart_zone_fold"),
 )
+
+#: The description each ``INDICATOR_TOGGLES`` box carries, keyed by its overlay key.
+INDICATOR_TOOLTIPS = {
+    "bb": "Bollinger Bands (20, 2σ) with cloud fill",
+    "vortex": "Vortex Indicator (VI+ / VI-, period 14, sub-pane)",
+    "macd": "MACD line and signal, 12/26/9, sub-pane",
+    "stochrsi": "Stochastic RSI (14/14), 0..1 oscillator, sub-pane",
+    "ichimoku": "Ichimoku Cloud: Tenkan, Kijun, Span A, Span B, shift +26",
+    "volume": "Volume bars (bottom strip)",
+    "slingshot": "Slingshot marks — a diamond at a squeeze release, a circle at a snapback. It starts off.",
+    "adx": "ADX (14) with +DI and -DI, 0..100, 20 and 25 ruled, sub-pane",
+    "supertrend": "Supertrend (10, 3.0): the ATR stop under price while bullish, over it while bearish",
+    "zscore": "Z-Score (50) of the close against its mean, VWMA-smoothed over 3, ±2 ruled, sub-pane",
+    "ker": "Kaufman Efficiency Ratio (10), 0..1, sub-pane",
+    "rsi": "Wilder RSI (14), 0..100, 30 and 70 ruled, sub-pane",
+    "zscore_point": "Z-Score algo point — the resistance and support prices the reversals project. It starts off.",
+    "bbullseye": "BB Bullseye zones — shaded ±0.5% and ±0.2% envelopes on the Bollinger bands. It starts off.",
+}
 
 #: The two hermetic characters a fill is marked with, one definition the Charts
 #: painter and the Simulator's playback both read.

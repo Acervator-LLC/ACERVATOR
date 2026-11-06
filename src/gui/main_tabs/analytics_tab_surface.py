@@ -37,8 +37,9 @@ from ..design_system import (
     TEXT_PLACEHOLDER,
     WARNING,
 )
+from . import retired_surfaces
 
-METHOD = "analytics.tab"
+METHOD = retired_surfaces.ANALYTICS_TAB_METHOD
 
 TAB_ACCESSIBLE_NAME = "Analytics Tab"
 

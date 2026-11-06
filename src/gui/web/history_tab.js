@@ -50,7 +50,6 @@
   var KEY = "key";
   var LABEL = "label";
   var OPTIONS = "options";
-  var ROWS = "rows";
   var STYLE_SHEET = "style_sheet";
   var TEXT = "text";
   var TOOLTIP = "tooltip";
@@ -171,6 +170,7 @@
         "select",
         {
           id: "history-" + combo[KEY],
+          title: combo[TOOLTIP],
           value: combo[VALUE],
           onChange: function (event) {
             props.onFilter(combo[KEY], event.target.value);

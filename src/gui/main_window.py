@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -21,6 +22,19 @@ from .main_tabs.main_window_surface import (
     BAR_TAB_ORDER,
     CHARTS_TAB,
     CONSOLE_TAB,
+    FLEET_LOCKED_SEQUENCE_LOG,
+    FLEET_LOCKED_TEXT,
+    FLEET_SEALED_CREATE_ACTION,
+    FLEET_SEALED_CREATE_RESULT,
+    FLEET_SEALED_CREATE_TEXT,
+    FLEET_SEALED_CREATE_TITLE,
+    FLEET_SEALED_CREATE_USAGE,
+    FLEET_UNLOCK_NO_READER_TEXT,
+    FLEET_UNLOCK_NO_START_TEXT,
+    FLEET_UNLOCK_REFUSED_TEXT,
+    FLEET_UNLOCK_SEALED_TEXT,
+    FLEET_UNLOCK_WIRES_FORMAT,
+    FLEET_UNLOCKED_FORMAT,
     HISTORY_TAB,
     INSPECTOR_TAB,
     ISOLATED_TABS,
@@ -29,15 +43,19 @@ from .main_tabs.main_window_surface import (
     SIM_TAB,
     STATUS_TAB,
     SWARM_TAB,
+    TAB_TOOLTIPS,
     UNBUILT_TABS,
     about_text,
     api_pill_tooltip,
     header_strip_reads_paper,
     header_strip_reads_sim,
 )
+from .main_tabs import main_window_surface as window_surface
 from .main_tabs.trading_tab_surface import (
     PLACEHOLDER_TAB_TITLE,
+    PLACEHOLDER_TAB_TOOLTIP,
     exchange_display_name,
+    venue_tab_tooltip,
 )
 
 
@@ -153,6 +171,7 @@ try:
     from .widgets.spendable_profits import SpendableProfitsWidget
     from .widgets.status_log import StatusLog
     from .widgets.trade_charts_tab import TradeChartsTab
+    from .tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -245,11 +264,11 @@ if _HAS_QT:
         QMainWindow,
     ):
 
-        # Annotated, not assigned: the dashboard tick reads `hasattr` on the first pass.
-        _last_equity_snap: float
-
         # Annotated only: `_drain_signals` reads it by `getattr`, default False.
         _console_paused: bool
+
+        # Annotated only: `fleet_locked` reads it by `getattr`, default False.
+        _fleet_locked: bool
 
         #: One API Interaction Log entry, crossed to the GUI thread for `_on_api_event`.
         apiEntryLogged = Signal(object)  # noqa: N815 - Qt signal name
@@ -257,6 +276,7 @@ if _HAS_QT:
         def __init__(self, bot_manager=None, settings_manager=None, parent=None):
             super().__init__(parent)
             self.setWindowTitle("Acervator v" + __version__ + "")
+            self.setAccessibleName(window_surface.WINDOW_ACCESSIBLE_NAME)
             self.setMinimumSize(window_min_w_px(), WINDOW_MIN_H_PX)
             self._bot_manager = bot_manager
             self._settings = settings_manager
@@ -282,19 +302,9 @@ if _HAS_QT:
                 self._buy_confirmation_broker = None
 
             from ..trading.risk_manager import RiskManager
-            from ..trading.analytics_engine import AnalyticsEngine
-            from ..trading.reconciliation import (
-                TradeJournal,
-                ReconciliationEngine,
-                CrashRecovery,
-            )
             from ..core.notifications import get_notification_manager
 
             self._risk_manager = RiskManager(bot_manager)
-            self._analytics = AnalyticsEngine()
-            self._journal = TradeJournal()
-            self._recon_engine = ReconciliationEngine()
-            self._crash_recovery = CrashRecovery()
             self._notif_manager = get_notification_manager()
 
             self._bus.subscribe("bot.log", self._on_bot_log)
@@ -415,24 +425,6 @@ if _HAS_QT:
                 "header strip", self._build_header_strip
             )
 
-            def _install_testnet_bridge() -> None:
-                """Install ``SharedTestnetBridge`` on this window, clearing both handles on failure."""
-                try:
-                    from .shared_testnet import SharedTestnetBridge
-
-                    SharedTestnetBridge.install_on(self)
-                except Exception as _e:
-                    import traceback as _tb
-
-                    logging.getLogger("acervator").warning(
-                        f"SharedTestnetBridge install failed: {_e}\n"
-                        f"{_tb.format_exc()}"
-                    )
-                    self._local_testnet = None
-                    self._testnet_bridge = None
-
-            self._timed_build_step("testnet bridge", _install_testnet_bridge)
-
             self._main_tabs = _main_tab_book_class()()
             self._main_tabs.setMovable(True)
 
@@ -459,11 +451,19 @@ if _HAS_QT:
             )
 
             self._reorder_main_tabs(list(BAR_TAB_ORDER))
+            self._describe_main_tabs()
 
             self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
 
             main_layout.addWidget(self._main_tabs, 1)
             self._apply_asset_class()
+
+        def _describe_main_tabs(self) -> None:
+            """Give each main tab the ``TAB_TOOLTIPS`` sentence its label names."""
+            for at in range(self._main_tabs.count()):
+                label = self._main_tabs.tabText(at)
+                if label in TAB_TOOLTIPS:
+                    set_description(self._main_tabs, TAB_TOOLTIPS[label], at)
 
         def _reorder_main_tabs(self, desired: list[str]) -> None:
             """Move each label in ``desired`` to the next slot; unlisted tabs stay put.
@@ -754,8 +754,8 @@ if _HAS_QT:
                 f"color: {ds.CARD_METRIC_LABEL}; font-size: 10px; padding: 0 8px; "
                 "font-family: Consolas;"
             )
-            self._api_load_label.setToolTip(
-                api_pill_tooltip(get_load_monitor().safety_pct)
+            set_description(
+                self._api_load_label, api_pill_tooltip(get_load_monitor().safety_pct)
             )
             status.addPermanentWidget(self._api_load_label)
 
@@ -814,7 +814,10 @@ if _HAS_QT:
         )
 
         def _pump_currency_rates(self) -> None:
-            """Refresh CurrencyRateMonitor and push its snapshot to the voting panel."""
+            """Refresh CurrencyRateMonitor and push its snapshot to the voting panel.
+
+            With no connector and ``fleet_locked`` True the rates come through ``_public_feed``.
+            """
             try:
                 from ..exchange.currency_rate_monitor import get_currency_monitor
 
@@ -824,12 +827,39 @@ if _HAS_QT:
                 connectors = getattr(self, "_exchange_connectors", {}) or {}
                 if connectors:
                     self._schedule_async(mon.refresh_from_connectors(connectors))
+                elif self.fleet_locked():
+                    self._schedule_async(mon.refresh_from_feed(self._public_feed()))
                 if hasattr(self, "_indicator_panel"):
                     self._indicator_panel.update_currency_rates(mon.snapshot())
                     self._publish_votes()
                 self._currency_pump_fault.note_success()
             except Exception as exc:
                 self._currency_pump_fault.note_failure(exc)
+
+        def _public_feed(self):
+            """The one keyless ``LiveFeedSource`` a locked window reads the rate strip through."""
+            held = getattr(self, "_locked_feed", None)
+            if held is None:
+                from ..paper.live_feed_source import LiveFeedSource
+
+                held = LiveFeedSource()
+                self._locked_feed = held
+            return held
+
+        def _feed_locked_price_screens(self) -> None:
+            """Feed the Charts ATA-SMP list and the rate strip while ``fleet_locked`` holds no bot.
+
+            ``fetch_chart_data`` reads with no connector, so ``ChartDataFetcher`` takes its keyless route.
+            """
+            try:
+                self._charts_tab.update_charts([], bot_manager=self._bot_manager)
+                self._schedule_coalesced(
+                    "_pending_chart_fetch", self._charts_tab.fetch_chart_data({})
+                )
+                self._chart_fetch_fault.note_success()
+            except Exception as chart_fetch_exc:
+                self._chart_fetch_fault.note_failure(chart_fetch_exc)
+            self._pump_currency_rates()
 
         def _pump_market_pairs_scout(self) -> None:
             """Refresh MarketPairsScout for connected exchanges, one at a time."""
@@ -897,7 +927,7 @@ if _HAS_QT:
                 pill = api_pill(worst, mon.safety_pct)
                 self._api_load_label.setText(pill["text"])
                 self._api_load_label.setStyleSheet(pill["style"])
-                self._api_load_label.setToolTip(api_pill_tooltip(mon.safety_pct))
+                set_description(self._api_load_label, api_pill_tooltip(mon.safety_pct))
             except Exception as _pill_exc:
                 # Logged at debug: the 2 s dashboard tick would flood a warning stream.
                 logger.debug(
@@ -1096,31 +1126,23 @@ if _HAS_QT:
         def _apply_abbreviation_tooltips(self) -> None:
             """Set a tooltip on each QLabel, QPushButton and QGroupBox lacking one."""
             for label in self.findChildren(QLabel):
-                text = label.text()
-                if not text or label.toolTip():
-                    continue
-                for abbrev, explanation in self._abbreviation_tooltips.items():
-                    if abbrev in text:
-                        label.setToolTip(explanation)
-                        break
-
+                self._describe_abbreviation(label, label.text())
             for btn in self.findChildren(QPushButton):
-                text = btn.text()
-                if not text or btn.toolTip():
-                    continue
-                for abbrev, explanation in self._abbreviation_tooltips.items():
-                    if abbrev in text:
-                        btn.setToolTip(explanation)
-                        break
-
+                self._describe_abbreviation(btn, btn.text())
             for gb in self.findChildren(QGroupBox):
-                text = gb.title()
-                if not text or gb.toolTip():
-                    continue
-                for abbrev, explanation in self._abbreviation_tooltips.items():
-                    if abbrev in text:
-                        gb.setToolTip(explanation)
-                        break
+                self._describe_abbreviation(gb, gb.title())
+
+        def _describe_abbreviation(self, widget, text: str) -> None:
+            """Describe ``widget`` by the first abbreviation ``text`` holds as a whole word.
+
+            A widget already carrying a description, or holding no text, is left alone.
+            """
+            if not text or widget.toolTip():
+                return
+            for abbrev, explanation in self._abbreviation_tooltips.items():
+                if re.search(r"(?<!\w)" + re.escape(abbrev) + r"(?!\w)", text):
+                    set_description(widget, explanation)
+                    return
 
         def _cross_api_event(self, entry: dict) -> None:
             """The `APIInteractionLog` listener: emit `apiEntryLogged`, which Qt
@@ -1497,6 +1519,9 @@ if _HAS_QT:
                         )
                         self._dash_empty_warned = True
 
+                if self.fleet_locked():
+                    self._feed_locked_price_screens()
+
                 if self._bot_manager:
                     try:
                         all_bot_statuses = self._bot_manager.list_bots()
@@ -1641,17 +1666,6 @@ if _HAS_QT:
                                     alert.message,
                                 )
 
-                    if self._analytics and hasattr(self, "_last_equity_snap"):
-                        if time.time() - self._last_equity_snap >= 10:
-                            self._analytics.snapshot_equity(self._bot_manager)
-                            self._last_equity_snap = time.time()
-                    elif self._analytics:
-                        self._analytics.snapshot_equity(self._bot_manager)
-                        self._last_equity_snap = time.time()
-
-                    if self._crash_recovery:
-                        self._crash_recovery.save_snapshot(self._bot_manager)
-
                     if self._notif_manager and agg:
                         self._notif_manager.check_pnl_milestone(
                             agg.get("total_realised_pnl", 0)
@@ -1661,14 +1675,8 @@ if _HAS_QT:
                         self._last_tab_refresh = 0
                     if time.time() - self._last_tab_refresh >= 4:
                         self._last_tab_refresh = time.time()
-                        if self._analytics_tab:
-                            self._analytics_tab.refresh(self._analytics)
                         if self._risk_tab:
                             self._risk_tab.refresh(self._risk_manager)
-                        if self._journal_tab:
-                            self._journal_tab.refresh(
-                                self._journal, self._recon_engine, self._crash_recovery
-                            )
                         if self._alerts_tab:
                             self._alerts_tab.refresh(self._notif_manager)
 
@@ -1741,11 +1749,11 @@ if _HAS_QT:
             """Every trading layer this exchange's tab belongs on.
 
             ``trading_tab_surface.exchange_layers`` reads the sector map, and a
-            venue it answers no layer for keeps the crypto layer.
+            venue it answers no layer for sits on none.
             """
             from .main_tabs.trading_tab_surface import exchange_layers
 
-            return exchange_layers(exchange_id) or ("crypto",)
+            return exchange_layers(exchange_id)
 
         def add_exchange_tab(self, exchange_id: str, display_name: str) -> None:
             """Seat one exchange tab on every layer the sector map serves it under."""
@@ -1789,7 +1797,11 @@ if _HAS_QT:
                     status_log=self._status_log,
                     on_bot_selected=self._on_bot_row_selected,
                 )
-                target_widget.addTab(tab, display_name)
+                set_description(
+                    target_widget,
+                    venue_tab_tooltip(display_name),
+                    target_widget.addTab(tab, display_name),
+                )
                 target_tabs[exchange_id] = tab
                 if target_tabs is self._exchange_tabs:
                     self._exchange_tabs[exchange_id] = tab
@@ -2204,6 +2216,8 @@ if _HAS_QT:
                     self, "Adopt topology", "Bot manager not available."
                 )
                 return
+            if self._refuse_while_sealed():
+                return
 
             new_bots = [
                 b for b in proposal.get("bots", []) if not b.get("existing_bot_id")
@@ -2574,7 +2588,12 @@ if _HAS_QT:
                 ev_tab.setItem(row, 1, QTableWidgetItem(_bid_short))
                 ev_tab.setItem(row, 2, QTableWidgetItem(str(consec)))
                 ev_tab.setItem(row, 3, QTableWidgetItem(str(err)))
-            tabs.addTab(ev_tab, f"Recent events ({len(events)})")
+            for column, words in enumerate(
+                window_surface.ERROR_LOG_EVENT_COLUMN_TOOLTIPS
+            ):
+                set_description(ev_tab.horizontalHeaderItem(column), words)
+            events_at = tabs.addTab(ev_tab, f"Recent events ({len(events)})")
+            set_description(tabs, window_surface.ERROR_LOG_EVENTS_TOOLTIP, events_at)
 
             snap = QTableWidget()
             snap.setColumnCount(5)
@@ -2612,16 +2631,17 @@ if _HAS_QT:
                 snap.setItem(row, 2, QTableWidgetItem(str(_tot)))
                 snap.setItem(row, 3, QTableWidgetItem(str(_con)))
                 snap.setItem(row, 4, QTableWidgetItem(_last))
-            tabs.addTab(snap, f"Per-bot snapshot ({len(_bots)})")
+            for column, words in enumerate(
+                window_surface.ERROR_LOG_SNAPSHOT_COLUMN_TOOLTIPS
+            ):
+                set_description(snap.horizontalHeaderItem(column), words)
+            snap_at = tabs.addTab(snap, f"Per-bot snapshot ({len(_bots)})")
+            set_description(tabs, window_surface.ERROR_LOG_SNAPSHOT_TOOLTIP, snap_at)
 
             btns = QHBoxLayout()
             btns.addStretch(1)
             btn_reset = QPushButton("Reset all errors")
-            btn_reset.setToolTip(
-                "Clear the rolling event buffer AND zero every "
-                "bot's total_errors, consecutive_errors, and "
-                "last_error snapshot. Cannot be undone."
-            )
+            set_description(btn_reset, window_surface.ERROR_LOG_RESET_TOOLTIP)
 
             def _reset_all_errors():
                 self._error_log_buffer.clear()
@@ -2663,6 +2683,7 @@ if _HAS_QT:
             btn_reset.clicked.connect(_reset_all_errors)
             btns.addWidget(btn_reset)
             btn_close = QPushButton("Close")
+            set_description(btn_close, window_surface.ERROR_LOG_CLOSE_TOOLTIP)
             btn_close.clicked.connect(dlg.accept)
             btns.addWidget(btn_close)
             v.addLayout(btns)
@@ -2816,9 +2837,9 @@ if _HAS_QT:
                 ai_cfg = self._settings.get("ai_monitor", {}) if self._settings else {}
                 if ai_cfg.get("log_feedback"):
                     try:
-                        # _journal is reconciliation.TradeJournal, so the note
-                        # goes in through record_from_trade as a JournalEntry.
-                        self._journal.record_from_trade(
+                        from ..trading.reconciliation import TradeJournal
+
+                        TradeJournal().record_from_trade(
                             bot_id="AI_MONITOR",
                             symbol="SYSTEM",
                             action="AI_FEEDBACK",
@@ -3757,7 +3778,7 @@ if _HAS_QT:
 
             Buy on a filled buy, sell on a filled sell, rifle on
             SCRUM/FOLD/DIST, coins on profit above zero and drip on FOLD.
-            ``fill_fields`` finds the fill at either level the emitters use.
+            ``fill_fields`` reads the fill in the one shape ``SettledFill`` declares.
             """
             try:
                 from ..core.sound_engine import get_sound_engine
@@ -3987,6 +4008,101 @@ if _HAS_QT:
             elif command == "adjust_stack":
                 self._on_bot_clicked(bot_id)
 
+        def fleet_locked(self) -> bool:
+            """True while a sealed saved fleet is waiting for ``unlock_fleet``."""
+            return bool(getattr(self, "_fleet_locked", False))
+
+        def _refuse_while_sealed(self, exchange_id: str = "") -> bool:
+            """Show ``FLEET_SEALED_CREATE_TEXT`` and answer True while
+            ``launch_classification`` reads ``LAUNCH_LOCKED``."""
+            from ..core.state_manager import LAUNCH_LOCKED
+
+            state_mgr = getattr(self._bot_manager, "_state_manager", None)
+            if state_mgr is None or state_mgr.launch_classification() != LAUNCH_LOCKED:
+                return False
+            QMessageBox.warning(
+                self, FLEET_SEALED_CREATE_TITLE, FLEET_SEALED_CREATE_TEXT
+            )
+            self._status_log.log(FLEET_SEALED_CREATE_TEXT, "warning")
+            from ..exchange.api_logger import get_api_log
+
+            get_api_log().record(
+                exchange=exchange_id or "app",
+                action=FLEET_SEALED_CREATE_ACTION,
+                reason=FLEET_SEALED_CREATE_TEXT,
+                result=FLEET_SEALED_CREATE_RESULT,
+                level="warning",
+                data_usage=FLEET_SEALED_CREATE_USAGE,
+            )
+            return True
+
+        def set_fleet_start_callback(self, callback) -> None:
+            """Hold what ``unlock_fleet`` runs once the fleet is in the process.
+
+            ``main.py`` registers the same instance-guard gate the splash
+            callback runs, so an unlock mid-session reaches
+            ``run_fleet_sequence`` with no restart.
+            """
+            self._fleet_start_callback = callback
+
+        def hold_fleet_for_unlock(self, reason: str = "") -> None:
+            """Latch this window locked and put ``FLEET_LOCKED_TEXT`` in the Console.
+
+            ``main.py`` calls it on a launch whose saved fleet is sealed, after
+            every screen is already built, so the window draws unchanged and
+            ``run_fleet_sequence`` starts nothing until ``unlock_fleet`` runs.
+            """
+            self._fleet_locked = True
+            self._status_log.log(FLEET_LOCKED_TEXT, "warning")
+            logger.info("%s (%s)", FLEET_LOCKED_TEXT, reason or "sealed")
+
+        def unlock_fleet(self, password: str) -> bool:
+            """Open the sealed saved fleet with *password* and load it into this session.
+
+            Answers False and leaves ``fleet_locked`` True where *password*
+            does not open the master key, or the key does not open the payload;
+            on True the saved bots and wires are in ``_bot_manager`` and the
+            callback ``set_fleet_start_callback`` holds has run.
+            """
+            state_mgr = getattr(self._bot_manager, "_state_manager", None)
+            if state_mgr is None:
+                self._status_log.log(FLEET_UNLOCK_NO_READER_TEXT, "error")
+                return False
+            if not state_mgr.unlock(str(password)):
+                self._status_log.log(FLEET_UNLOCK_REFUSED_TEXT, "error")
+                return False
+
+            saved = state_mgr.load_state()
+            from ..core.state_manager import fleet_sealed
+
+            if fleet_sealed(saved):
+                from ..core.encryption import hold_master_key
+
+                hold_master_key(None)
+                self._status_log.log(FLEET_UNLOCK_SEALED_TEXT, "error")
+                return False
+            restored = self._bot_manager.restore_bots_from_state(saved)
+            self._fleet_locked = False
+            self._status_log.log(
+                FLEET_UNLOCKED_FORMAT.format(bots=len(restored)), "success"
+            )
+            try:
+                wires = self._bot_manager.restore_smart_wires_from_state(saved)
+            except Exception as exc:
+                logger.warning("Smart Wire restore after unlock raised: %s", exc)
+                wires = 0
+            if wires:
+                self._status_log.log(
+                    FLEET_UNLOCK_WIRES_FORMAT.format(wires=wires), "info"
+                )
+
+            callback = getattr(self, "_fleet_start_callback", None)
+            if callback is None:
+                self._status_log.log(FLEET_UNLOCK_NO_START_TEXT, "warning")
+                return True
+            callback()
+            return True
+
         def run_fleet_sequence(self, command: str = "start") -> int:
             """Move every eligible bot through ``_on_bot_command`` one at a
             time, with the Start All progress window open, waiting for each to
@@ -3994,9 +4110,14 @@ if _HAS_QT:
 
             This is the sequence the application runs at launch: ``main.py``
             calls it after the instance consent gate, and the command bar's
-            Start All and Restart All call the same method. Answers how many
-            bots it took as eligible.
+            Start All and Restart All call the same method. A True
+            ``fleet_locked`` takes no bot as eligible. Answers how many bots it
+            took as eligible.
             """
+            if self.fleet_locked():
+                logger.warning(FLEET_LOCKED_SEQUENCE_LOG, command)
+                self._status_log.log(FLEET_LOCKED_TEXT, "warning")
+                return 0
             if not self._bot_manager:
                 return 0
             wanted = FLEET_SEQUENCE_STATES.get(command)
@@ -4316,7 +4437,11 @@ if _HAS_QT:
                     self._status_log.log(f"Exchange tab removed: {eid}", "warning")
                 ph = held.get("placeholder")
                 if ph is not None and not store and bar.indexOf(ph) < 0:
-                    bar.addTab(ph, PLACEHOLDER_TAB_TITLE)
+                    set_description(
+                        bar,
+                        PLACEHOLDER_TAB_TOOLTIP,
+                        bar.addTab(ph, PLACEHOLDER_TAB_TITLE),
+                    )
             if dropped:
                 self._push_live_tab({})
             return dropped
@@ -4536,6 +4661,8 @@ if _HAS_QT:
             defaults_override: Optional[dict] = None,
         ) -> None:
             """Open the Bot Creation Wizard; ``defaults_override`` merges in."""
+            if self._refuse_while_sealed(exchange_id):
+                return
             self._status_log.log(f"Creating new bot for {exchange_id}...")
             from ..exchange.api_logger import get_api_log
 

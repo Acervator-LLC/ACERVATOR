@@ -27,6 +27,7 @@ try:
 
     from .fitted_label import FittedLabel
     from .privacy_dot import PrivacyDot
+    from ..tooltips import set_description
 
     _HAS_QT = True
 except ImportError:
@@ -46,6 +47,7 @@ if _HAS_QT:
 
         def __init__(self, label: str, value: str = "---", parent=None):
             super().__init__(parent)
+            self.setAccessibleName(str(label))
             self._setup_ui(label, value)
 
         def _setup_ui(self, label: str, value: str) -> None:
@@ -142,7 +144,7 @@ if _HAS_QT:
                 if tooltip_suffix:
                     base = self.toolTip() or ""
                     if tooltip_suffix not in base:
-                        self.setToolTip((base + "\n\n" + tooltip_suffix).strip())
+                        set_description(self, (base + "\n\n" + tooltip_suffix).strip())
             else:
                 self.unsetCursor()
 

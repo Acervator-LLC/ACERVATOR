@@ -9,8 +9,13 @@ from __future__ import annotations
 
 import logging
 import math
+import time
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
+from ...core.emit_contracts import FILL_BUY, SettledFill
+from ...exchange.base import OrderSide, Trade
+from ..bot_container import FILL_DUST_UNITS
 from .sizing import priced_usd
 
 logger = logging.getLogger("acervator.scrumming")
@@ -22,6 +27,26 @@ UNREALISED_NO_READING = 0.0
 # the walk finished without counting every window.
 TRADE_COUNT_NO_READING = 0
 YTD_USD_NO_READING = 0.0
+
+
+@dataclass
+class YtdTally:
+    """One whole ``sync_ytd_trade_count`` walk's tally, which ``_join_ytd_tally`` adds
+    each later booked piece to.
+    """
+
+    seen_ids: set
+    order_keys: set
+    usd: list
+    order_units: dict
+    quote_to_usd: float
+
+
+def unread_units(units: float, filled: float, held: float) -> float:
+    """The part of a ``units`` piece, ending at ``filled`` units of its order, past the
+    ``held`` units of that order a reading already counts.
+    """
+    return max(0.0, min(float(units), float(filled) - float(held)))
 
 
 class ReconciliationEngineMixin:
@@ -41,6 +66,7 @@ class ReconciliationEngineMixin:
     _get_ticker: Callable[..., Any]
     _main_lots: list[dict]
     _quote_to_usd: float
+    _reconcile_resting_orders: Callable[..., Any]
     _refresh_quote_to_usd: Callable[..., Any]
     bot_id: Any
     config: Any
@@ -59,6 +85,18 @@ class ReconciliationEngineMixin:
     # Why the last fill-fired venue read refused, empty while the stored
     # reading is the one that read landed. The bot tables draw the mark.
     _venue_units_refusal: str = ""
+
+    # The last whole YTD walk's tally, None until one lands or after a short walk.
+    _ytd_tally: Optional[YtdTally] = None
+
+    # Pieces booked since the walk last read the fill history, each a Trade.
+    _fills_since_walk: tuple = ()
+
+    # True while the last walk wrote average entry and cost basis from the fill history.
+    _basis_from_history: bool = False
+
+    # The walk's open orders on config.symbol, order id to "buy" or "sell".
+    _open_order_sides: Optional[dict] = None
 
     EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC = 300.0
 
@@ -148,13 +186,16 @@ class ReconciliationEngineMixin:
             _trades = await self.fetch_fill_history()
             if _trades is None:
                 return False
+            self._fills_since_walk = ()
             _complete = bool(getattr(self._fill_history, "complete", False))
             self.stats.fill_history_complete = _complete
             _asset_base = self.config.symbol.split("/")[0]
             _ph = compute_position_health(_trades, _asset_base)
 
             if _complete:
-                self.stats.realized_pnl_exchange = float(_ph.realized_pnl_usd)
+                self.stats.realized_pnl_exchange = self.stats.realised_pnl = float(
+                    _ph.realized_pnl_usd
+                )
                 self.stats.fees_paid_exchange = float(_ph.fees_paid_total)
             else:
                 logger.warning(
@@ -185,10 +226,12 @@ class ReconciliationEngineMixin:
                     self.stats.cost_basis_total_exchange = float(
                         _ph.cost_basis_total_usd
                     )
+                self._basis_from_history = _complete
             else:
                 self.stats.avg_entry_exchange = float(_venue.avg_entry_price)
                 self.stats.cost_basis_total_exchange = float(_venue.cost_basis_usd)
                 self.stats.unrealised_pnl = float(_venue.unrealized_pnl_usd)
+                self._basis_from_history = False
                 self._log_basis_check(_venue.cost_basis_usd, _ph)
             try:
                 await self.sync_ytd_trade_count()
@@ -238,6 +281,12 @@ class ReconciliationEngineMixin:
                         )
                         self.stats.active_buy_orders = int(_buys)
                         self.stats.active_sell_orders = int(_sells)
+                        self._open_order_sides = {
+                            str(o.id): ("buy" if o.side == _OS.BUY else "sell")
+                            for o in _open
+                            if getattr(o, "id", None)
+                            and getattr(o, "side", None) in (_OS.BUY, _OS.SELL)
+                        }
             except Exception as _oo_exc:
                 logger.debug(
                     "Bot %s open-orders refresh failed (non-fatal): %s",
@@ -379,12 +428,14 @@ class ReconciliationEngineMixin:
         order_keys: set,
         scrum_fold_usd: list,
         quote_to_usd: float,
+        order_units: Optional[dict] = None,
     ) -> bool:
         """Count one ``_ytd_fill_row`` into the walk's running figures; False when already counted.
 
         A fill key already in ``seen_ids`` is the same fill read twice and
         changes nothing. Otherwise the fill joins ``seen_ids``, its order key
-        joins ``order_keys``, and ``amount * price * quote_to_usd`` is added to
+        joins ``order_keys``, its amount joins that key in ``order_units``, and
+        ``amount * price * quote_to_usd`` is added to
         index 0 of ``scrum_fold_usd`` for a sale and index 1 for a buy. A
         replayed row and a freshly read one take this one path, so the dollar
         figures depend on the order of the fills and not on which windows were
@@ -397,6 +448,10 @@ class ReconciliationEngineMixin:
         order_keys.add(_order_key)
         try:
             _usd = float(_amount or 0) * float(_price or 0) * quote_to_usd
+            if order_units is not None:
+                order_units[_order_key] = order_units.get(_order_key, 0.0) + float(
+                    _amount or 0
+                )
             _side_str = str(getattr(_side, "value", _side) or "").lower()
             if "sell" in _side_str:
                 scrum_fold_usd[0] += _usd
@@ -547,11 +602,17 @@ class ReconciliationEngineMixin:
         _every_window_whole = True
         _requests = 0
         _scrum_fold_usd = [0.0, 0.0]
+        _order_units: dict = {}
         _qrate = float(getattr(self, "_quote_to_usd", 1.0) or 1.0)
         for _segment in _replayed:
             for _row in _segment["rows"]:
                 self._ytd_tally_fill(
-                    _row, _seen_ids, _order_keys, _scrum_fold_usd, _qrate
+                    _row,
+                    _seen_ids,
+                    _order_keys,
+                    _scrum_fold_usd,
+                    _qrate,
+                    _order_units,
                 )
         _read: list = []
         try:
@@ -568,7 +629,12 @@ class ReconciliationEngineMixin:
                     )
                     _rows.append(_row)
                     if self._ytd_tally_fill(
-                        _row, _seen_ids, _order_keys, _scrum_fold_usd, _qrate
+                        _row,
+                        _seen_ids,
+                        _order_keys,
+                        _scrum_fold_usd,
+                        _qrate,
+                        _order_units,
                     ):
                         _new += 1
                 logger.debug(
@@ -645,12 +711,20 @@ class ReconciliationEngineMixin:
             self.stats.total_trades = TRADE_COUNT_NO_READING
             self.stats.ytd_scrummed_usd = YTD_USD_NO_READING
             self.stats.ytd_folded_usd = YTD_USD_NO_READING
+            self._ytd_tally = None
             return None
         self.stats.exchange_trade_count = _order_count
         self.stats.exchange_fill_count = _fill_count
         self.stats.total_trades = _order_count
         self.stats.ytd_scrummed_usd = _ytd_scrum_usd
         self.stats.ytd_folded_usd = _ytd_fold_usd
+        self._ytd_tally = YtdTally(
+            seen_ids=_seen_ids,
+            order_keys=_order_keys,
+            usd=_scrum_fold_usd,
+            order_units=_order_units,
+            quote_to_usd=_qrate,
+        )
         self._ytd_settled_segments = self._ytd_settled_cache(
             _replayed, _read, _settle_horizon
         )
@@ -689,6 +763,14 @@ class ReconciliationEngineMixin:
                 self.bot_id,
             )
             return
+        try:
+            await self._reconcile_resting_orders()
+        except Exception as _rest_exc:
+            logger.warning(
+                "Bot %s held-order reconcile before the bootstrap raised: %s",
+                self.bot_id,
+                _rest_exc,
+            )
         try:
             symbol = self.config.symbol
             target_asset = self.config.target_asset
@@ -860,18 +942,20 @@ class ReconciliationEngineMixin:
         return self._audited_venue_units
 
     def _record_venue_units_after_fill(self, units_delta: float) -> float:
-        """Move ``_audited_venue_units`` by the units one fill settled, positive
-        for a buy and negative for a sale, and return it.
+        """Move ``_audited_venue_units`` by the units one settled fill moved,
+        positive for units in and negative for units out, and return it.
 
-        A fill leaves the sibling totals
-        ``_claimable_exchange_units`` subtracts untouched, so a delta that is
-        not finite is refused and no venue is read.
+        A delta that is not finite, or a positive delta while
+        ``_audited_venue_units`` holds no reading, leaves it as it was, and no
+        venue is read.
         """
         try:
             _delta = float(units_delta)
         except (TypeError, ValueError):
             return self._audited_venue_units
         if not math.isfinite(_delta):
+            return self._audited_venue_units
+        if _delta > 0.0 and self._audited_venue_units <= 0.0:
             return self._audited_venue_units
         return self._store_audited_venue_units(self._audited_venue_units + _delta)
 
@@ -1078,15 +1162,228 @@ class ReconciliationEngineMixin:
         )
         return False
 
+    def _write_clock_figures(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Price ``stats.position_value`` at ``fill``, then call ``_join_walk_readings``."""
+        price = float(fill.price)
+        if math.isfinite(price) and price > 0.0:
+            self.stats.position_value = priced_usd(
+                self._current_holdings, price, float(self._quote_to_usd or 1.0)
+            )
+        self._join_walk_readings(fill, order_id, filled, rests)
+
+    def _join_walk_readings(
+        self, fill: SettledFill, order_id: str, filled: float, rests: bool
+    ) -> None:
+        """Add ``fill`` to each reading the exchange walk holds for ``config.symbol``."""
+        if fill.symbol != self.config.symbol:
+            return
+        self._join_ytd_tally(fill, order_id, filled)
+        self._join_fill_history(fill, order_id, filled)
+        self._join_open_orders(fill, order_id, rests)
+
+    def _join_ytd_tally(self, fill: SettledFill, order_id: str, filled: float) -> None:
+        """Tally the part of ``fill`` ``_ytd_tally`` lacks, and write that tally's trade
+        count and YTD dollars.
+        """
+        tally = self._ytd_tally
+        if tally is None:
+            return
+        fill_key = ("piece", len(tally.seen_ids))
+        order_key = ("order", order_id) if order_id else fill_key
+        units = unread_units(fill.amount, filled, tally.order_units.get(order_key, 0.0))
+        if units > FILL_DUST_UNITS:
+            self._ytd_tally_fill(
+                (fill_key, order_key, units, fill.price, fill.side),
+                tally.seen_ids,
+                tally.order_keys,
+                tally.usd,
+                tally.quote_to_usd,
+                tally.order_units,
+            )
+        self.stats.exchange_trade_count = len(tally.order_keys)
+        self.stats.total_trades = len(tally.order_keys)
+        self.stats.ytd_scrummed_usd, self.stats.ytd_folded_usd = tally.usd
+
+    def _join_fill_history(
+        self, fill: SettledFill, order_id: str, filled: float
+    ) -> None:
+        """Add the part of ``fill`` the fill history lacks to ``_fills_since_walk``, and
+        recompute realised, fees and basis from both.
+        """
+        from ...exchange.position_health import compute_position_health
+
+        history = self._fill_history
+        if history is None or not history.complete:
+            return
+        held = [*history.trades, *self._fills_since_walk]
+        order_key = ("order", order_id)
+        held_units = sum(
+            float(t.amount)
+            for t in held
+            if order_id and self._venue_order_key(t, None) == order_key
+        )
+        units = unread_units(fill.amount, filled, held_units)
+        if units > FILL_DUST_UNITS:
+            rate = float(self._quote_to_usd or 0.0)
+            fee = (
+                float(fill.fee_usd) / rate
+                if fill.fee_usd is not None and rate > 0.0
+                else 0.0
+            )
+            piece = Trade(
+                id="",
+                symbol=self.config.symbol,
+                side=OrderSide.BUY if fill.side == FILL_BUY else OrderSide.SELL,
+                amount=units,
+                price=float(fill.price),
+                fee=fee * units / float(fill.amount),
+                timestamp=time.time(),
+                raw={"order": order_id},
+            )
+            self._fills_since_walk = (*self._fills_since_walk, piece)
+            held.append(piece)
+        health = compute_position_health(held, self.config.symbol.split("/")[0])
+        self.stats.realized_pnl_exchange = float(health.realized_pnl_usd)
+        self.stats.realised_pnl = float(health.realized_pnl_usd)
+        self.stats.fees_paid_exchange = float(health.fees_paid_total)
+        if self._basis_from_history:
+            self.stats.avg_entry_exchange = float(health.avg_entry)
+            self.stats.cost_basis_total_exchange = float(health.cost_basis_total_usd)
+
+    def _join_open_orders(self, fill: SettledFill, order_id: str, rests: bool) -> None:
+        """Move ``stats.active_buy_orders`` or ``active_sell_orders`` by one where ``fill``
+        opens or closes an order.
+        """
+        sides = self._open_order_sides
+        if sides is None or not order_id or (order_id in sides) == rests:
+            return
+        if rests:
+            side = sides[order_id] = fill.side.lower()
+            step = 1
+        else:
+            side = sides.pop(order_id)
+            step = -1
+        if side == "buy":
+            self.stats.active_buy_orders = max(
+                0, int(self.stats.active_buy_orders) + step
+            )
+        else:
+            self.stats.active_sell_orders = max(
+                0, int(self.stats.active_sell_orders) + step
+            )
+
+    def _emit_reconcile_refused(self, reason: str, why: str) -> None:
+        """Write one ``RECONCILE REFUSED`` line naming ``why`` to ``bot.log``."""
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"RECONCILE REFUSED ({reason}): {why}. No lot was rescaled and "
+                f"no holdings were reset. Retrying next interval."
+            ),
+        )
+
+    def _lot_book_total(self) -> float | None:
+        """The ``_main_lots`` total ``_reconcile_holdings`` compares, or None.
+
+        None where ``_reconcilable_lot_book`` refuses a lot or the sum is not
+        finite; ``BotContainer.get_status`` serves it as ``lot_book_units``.
+        """
+        _lot_each, _why = self._reconcilable_lot_book()
+        if _lot_each is None:
+            return None
+        _total = sum(_lot_each)
+        return _total if math.isfinite(_total) else None
+
+    def _adopt_drift_down(
+        self,
+        exchange_units: float,
+        lot_each: list[float],
+        scalar_units: float,
+        reason: str,
+    ) -> None:
+        """Set ``_current_holdings`` and the ``_main_lots`` total to ``exchange_units``.
+
+        A lot book above it scales every lot by the ratio; one below it books
+        the gap through ``_book_reconciliation_lot`` under the
+        ``_claimable_exchange_units`` ceiling at ``stats.current_price``.
+        """
+        _asset = self.config.target_asset
+        _lots_before = sum(lot_each)
+        _short_why = ""
+        if _lots_before > exchange_units:
+            _ratio = exchange_units / _lots_before
+            for _lot, _units in zip(self._main_lots, lot_each, strict=True):
+                _lot["units"] = _units * _ratio
+            self._main_lots = [l for l in self._main_lots if l["units"] > 1e-12]
+        elif exchange_units - _lots_before > 1e-9:
+            _claimable, _sib_units = self._claimable_exchange_units(exchange_units)
+            _adopt = min(exchange_units, _claimable)
+            _basis = float(
+                getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
+            )
+            _written = (
+                self._book_reconciliation_lot(_adopt, _lots_before, _basis)
+                if _adopt - _lots_before > 1e-9
+                else None
+            )
+            if _adopt - _lots_before > 1e-9 and _written is None:
+                _short_why = (
+                    f"no usable price to book it at (stats.current_price "
+                    f"{_basis:.8f})"
+                )
+            elif exchange_units - _adopt > 1e-9:
+                _short_why = (
+                    f"sibling bots hold {_sib_units:.8f} {_asset} on this exchange"
+                )
+        self._current_holdings = exchange_units
+        _lots_after = sum(
+            float(_lot.get("units", 0.0) or 0.0) for _lot in self._main_lots
+        )
+        _message = (
+            f"DRIFT DOWN ({reason}): adopted the exchange balance of "
+            f"{exchange_units:.8f} {_asset}. Lots {_lots_before:.8f} -> "
+            f"{_lots_after:.8f}, holdings {scalar_units:.8f} -> "
+            f"{exchange_units:.8f}."
+        )
+        if _short_why:
+            _message += (
+                f" The lot book stays {exchange_units - _lots_after:.8f} short: "
+                f"{_short_why}. Retrying next cycle."
+            )
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=_message)
+        logger.info(
+            "Bot %s drift DOWN (%s): lots %.8f -> %.8f, holdings %.8f -> %.8f%s",
+            self.bot_id,
+            reason,
+            _lots_before,
+            _lots_after,
+            scalar_units,
+            exchange_units,
+            f"; lot book short: {_short_why}" if _short_why else "",
+        )
+
     async def _reconcile_holdings(self, reason: str = "periodic") -> bool:
-        """Compare ``_current_holdings`` and ``_main_lots`` against the venue.
+        """Compare ``_current_holdings`` and the ``_main_lots`` total against the
+        venue, and on drift down ``_adopt_drift_down`` sets both to the venue.
 
         ``reason`` tags every log line with ``periodic`` or ``post_failure``,
         and the return is True once the comparison completes, False when the
         balance fetch raises, when ``Balance.absent`` marks the currency
-        missing from the response, or when ``_reconcilable_units`` refuses an
-        input.
+        missing from the response, or when ``_reconcilable_lot_book`` or
+        ``_reconcilable_units`` refuses an input.
         """
+        try:
+            await self._reconcile_resting_orders()
+        except Exception as _rest_exc:
+            logger.warning(
+                "Bot %s held-order reconcile before the %s audit raised: %s",
+                self.bot_id,
+                reason,
+                _rest_exc,
+            )
         try:
             balance = await self._get_balance(self.config.target_asset)
 
@@ -1095,6 +1392,11 @@ class ReconciliationEngineMixin:
         except Exception as exc:
             logger.debug(
                 "Bot %s reconcile fetch failed (%s): %s", self.bot_id, reason, exc
+            )
+            self._emit_reconcile_refused(
+                reason,
+                f"the {self.config.target_asset} balance could not be read "
+                f"({type(exc).__name__}: {exc})",
             )
             return False
 
@@ -1140,6 +1442,7 @@ class ReconciliationEngineMixin:
                 reason,
                 _why,
             )
+            self._emit_reconcile_refused(reason, str(_why))
             return False
         exchange_units, _scalar_units, _lot_units = _readings
         self._record_audited_venue_units(exchange_units)
@@ -1155,8 +1458,14 @@ class ReconciliationEngineMixin:
 
         _TOLERANCE_PCT = 0.5
         _tolerance_units = abs(internal_units) * _TOLERANCE_PCT / 100.0
+        _drift_down = exchange_units <= internal_units
+        _widest_units = (
+            max(abs(exchange_units - _lot_units), abs(exchange_units - _scalar_units))
+            if _drift_down
+            else abs(drift_units)
+        )
 
-        if abs(drift_units) <= _tolerance_units:
+        if _widest_units <= _tolerance_units or (_drift_down and _widest_units <= 1e-9):
             logger.debug(
                 "Bot %s reconcile (%s) aligned: internal=%.6f exchange=%.6f "
                 "drift=%.4f (%.3f%%)",
@@ -1190,13 +1499,8 @@ class ReconciliationEngineMixin:
             drift_pct,
         )
 
-        if exchange_units < internal_units - 1e-9:
-            if internal_units > 0 and self._main_lots:
-                _ratio = exchange_units / internal_units
-                for _lot, _units in zip(self._main_lots, _lot_each, strict=True):
-                    _lot["units"] = _units * _ratio
-                self._main_lots = [l for l in self._main_lots if l["units"] > 1e-12]
-            self._current_holdings = exchange_units
+        if _drift_down:
+            self._adopt_drift_down(exchange_units, _lot_each, _scalar_units, reason)
         else:
 
             _surplus = max(0.0, exchange_units - internal_units)

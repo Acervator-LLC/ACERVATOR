@@ -519,7 +519,6 @@ def read_field(answered: Any, key: str, label: str = "") -> str:
     return held
 
 
-# ── X ────────────────────────────────────────────────────────────────
 X_AUTHORIZE_URL = "https://x.com/i/oauth2/authorize"
 X_EXCHANGE_URL = "https://api.x.com/2/oauth2/token"
 
@@ -566,7 +565,6 @@ def sign_in_x(typed: dict, session: SignInSession) -> dict:
     }
 
 
-# ── Instagram ────────────────────────────────────────────────────────
 INSTAGRAM_AUTHORIZE_URL = "https://www.instagram.com/oauth/authorize"
 INSTAGRAM_EXCHANGE_URL = "https://api.instagram.com/oauth/access_token"
 INSTAGRAM_LONG_LIVED_URL = "https://graph.instagram.com/access_token"
@@ -624,7 +622,6 @@ def sign_in_instagram(typed: dict, session: SignInSession) -> dict:
     }
 
 
-# ── LinkedIn ─────────────────────────────────────────────────────────
 LINKEDIN_AUTHORIZE_URL = "https://www.linkedin.com/oauth/native-pkce/authorization"
 LINKEDIN_EXCHANGE_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 
@@ -667,7 +664,6 @@ def sign_in_linkedin(typed: dict, session: SignInSession) -> dict:
     return {"linkedin-access-token": read_field(answered, "access_token")}
 
 
-# ── TikTok ───────────────────────────────────────────────────────────
 TIKTOK_AUTHORIZE_URL = "https://www.tiktok.com/v2/auth/authorize/"
 TIKTOK_EXCHANGE_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 
@@ -714,7 +710,6 @@ def sign_in_tiktok(typed: dict, session: SignInSession) -> dict:
     }
 
 
-# ── Facebook ─────────────────────────────────────────────────────────
 FACEBOOK_GRAPH_VERSION = "v25.0"
 FACEBOOK_AUTHORIZE_URL = "https://www.facebook.com/{version}/dialog/oauth"
 FACEBOOK_EXCHANGE_URL = "https://graph.facebook.com/{version}/oauth/access_token"
@@ -777,7 +772,6 @@ def sign_in_facebook(typed: dict, session: SignInSession) -> dict:
     }
 
 
-# ── Threads ──────────────────────────────────────────────────────────
 THREADS_AUTHORIZE_URL = "https://threads.com/oauth/authorize"
 THREADS_EXCHANGE_URL = "https://graph.threads.com/oauth/access_token"
 THREADS_LONG_LIVED_URL = "https://graph.threads.net/access_token"
@@ -835,7 +829,6 @@ def sign_in_threads(typed: dict, session: SignInSession) -> dict:
     }
 
 
-# ── Reddit ───────────────────────────────────────────────────────────
 REDDIT_AUTHORIZE_URL = "https://www.reddit.com/api/v1/authorize"
 REDDIT_EXCHANGE_URL = "https://www.reddit.com/api/v1/access_token"
 
