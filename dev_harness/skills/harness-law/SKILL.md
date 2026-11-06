@@ -123,6 +123,10 @@ So: always run an adversarial pass. Always mutate each positive control
 to prove it fails when blinded, and restore the file byte-identical
 afterwards.
 
+An adversarial pass is a named tool on the real program. A private script
+is never one, and no step follows the gate unless he asks. See
+`canonized-code-testing` and `ocir` C154.
+
 ## Positive controls
 
 A measurement is not a finding until its instrument has a positive
