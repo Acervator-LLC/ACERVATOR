@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-06 against `1c1a6405`. **Every claim here names one command that
+Written 2026-11-06 against `5d44590b`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -169,12 +169,12 @@ copies and `dev_harness/hooks/settings_hooks.json` their wiring.
 ## THE QUEUE
 
 ```bash
-gh issue list --state open --limit 200          # 32 open when written
+gh issue list --state open --limit 200          # 34 open when written
 ```
 
 | To clear | Excluded, and why |
 |---|---|
-| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1643, #1656, #1657 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540; his research, #1633 |
+| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540 |
 
 Read the body before dispatching, and grep the symbols a row names in the same
 call: a row's status can be stale, and a scan that calls a row built has been
@@ -184,7 +184,12 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
-- **#1656, then #1657, first.** Prove the merged repairs from the canon, then correct
+- **#1633, Sigil-based Vernacular Condensate, first.** The resume point is the
+  newest comment on the issue headed "Unit closed". It names the last closed Unit,
+  and the next Unit in the body's Build order is the work. Each Unit closes in one
+  pull request and changes no application file. `gh issue view 1633 --comments`
+  shows it.
+- **#1656, then #1657, next.** Prove the merged repairs from the canon, then correct
   the public text that reported private readings.
 - **#1643, what the manual rewrites found.** Next, in order: row 66, the breaker
   window he ruled for; his ruling in Decision 2, a hard trip cancels the bot's
