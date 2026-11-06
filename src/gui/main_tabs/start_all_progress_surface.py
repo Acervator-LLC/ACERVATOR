@@ -3,8 +3,8 @@
 Holds every word, colour, size and delay ``StartAllProgressDialog`` paints,
 and the state it owns: the headline, the bot lines listed, which button is
 enabled and the calls each progress event makes. ``handle_progress`` answers
-``BEGIN``, ``BOT_STARTING``, ``BOT_STARTED``, ``BOT_TIMEOUT``, ``DONE`` and
-``CANCELLED``; any other phase changes nothing. The desktop bridge registers
+``BEGIN``, ``BOT_STARTING``, ``BOT_STARTED``, ``BOT_HELD``, ``BOT_TIMEOUT``, ``DONE``
+and ``CANCELLED``; any other phase changes nothing. The desktop bridge registers
 ``view_model`` as the handler for ``METHOD``, and ``view_model`` answers
 without loading Qt.
 """
@@ -142,13 +142,14 @@ ACTIONS = {
 BEGIN = "begin"
 BOT_STARTING = "bot_starting"
 BOT_STARTED = "bot_started"
+BOT_HELD = "bot_held"
 BOT_TIMEOUT = "bot_timeout"
 DONE = "done"
 CANCELLED = "cancelled"
 
-PHASES = (BEGIN, BOT_STARTING, BOT_STARTED, BOT_TIMEOUT, DONE, CANCELLED)
+PHASES = (BEGIN, BOT_STARTING, BOT_STARTED, BOT_HELD, BOT_TIMEOUT, DONE, CANCELLED)
 
-EVENT_FIELDS = ("phase", "total", "started", "bot_id")
+EVENT_FIELDS = ("phase", "total", "started", "bot_id", "reason")
 
 HEADLINE_NO_BOTS = "No bots to auto-start."
 HEADLINE_BEGIN = "Auto-starting {total} bots (0/{total} verified)"
@@ -163,6 +164,7 @@ HEADLINE_CANCEL_FAILED = "Cancel FAILED — bots may still be starting"
 
 ITEM_BOT_STARTING = "⏳ {bot_id} (starting...)"
 ITEM_BOT_STARTED = "✓ {bot_id}"
+ITEM_BOT_HELD = "⚠ {bot_id} (held: {reason})"
 ITEM_BOT_TIMEOUT = "⚠ {bot_id} (start verify timed out — may still come up)"
 
 NO_BOTS_CLOSE_DELAY_MS = 800
@@ -203,7 +205,7 @@ def rgb(hex_color: str) -> tuple[int, int, int]:
 
 
 def progress_fields(data: Any) -> Optional[tuple]:
-    """The four fields one progress event carries, or None when it fails.
+    """The ``EVENT_FIELDS`` one progress event carries, or None when it fails.
 
     A missing field falls back to its default and a ``bot_id`` of None reads
     as the empty string; an unreadable event is logged and dropped, never
@@ -214,10 +216,11 @@ def progress_fields(data: Any) -> Optional[tuple]:
         total = int(data.get("total", 0))
         started = int(data.get("started", 0))
         bot_id = str(data.get("bot_id", "") or "")
+        reason = str(data.get("reason", "") or "")
     except (AttributeError, TypeError, ValueError) as exc:
         logger.exception(EVENT_DROPPED_LOG, type(exc).__name__, exc)
         return None
-    return (phase, total, started, bot_id)
+    return (phase, total, started, bot_id, reason)
 
 
 def unsubscribe(unsubscriber: Any) -> None:
@@ -330,12 +333,13 @@ class StartAllProgressModel:
         self.scroll_to_bottom()
 
     def handle_progress(
-        self, phase: str, total: int, started: int, bot_id: str
+        self, phase: str, total: int, started: int, bot_id: str, reason: str = ""
     ) -> None:
         """Advance the dialog through one progress event.
 
         ``BEGIN`` with a ``total`` of zero writes ``HEADLINE_NO_BOTS``, enables
         Close and asks to be dismissed; ``BOT_TIMEOUT`` marks only the line.
+        ``BOT_HELD`` writes ``reason`` on the line.
         """
         if phase == BEGIN:
             if total == 0:
@@ -360,6 +364,12 @@ class StartAllProgressModel:
             if bot_id:
                 self.replace_last_matching(
                     bot_id, ITEM_BOT_STARTED.format(bot_id=bot_id)
+                )
+        elif phase == BOT_HELD:
+            self.set_headline(HEADLINE_BOT_STARTED.format(total=total, started=started))
+            if bot_id:
+                self.replace_last_matching(
+                    bot_id, ITEM_BOT_HELD.format(bot_id=bot_id, reason=reason)
                 )
         elif phase == BOT_TIMEOUT:
             if bot_id:

@@ -3754,6 +3754,16 @@ if _HAS_QT:
                 )
                 return False, msg
 
+        async def _restart_bot(self, bot, sound) -> None:
+            """``bot.restart``, then the restarted line once ``bot`` reads RUNNING."""
+            await bot.restart()
+            await asyncio.sleep(0)
+            if bot.state.value != "running" or bot.order_hold_reason():
+                return
+            self._status_log.log(f"✓ Bot {bot.bot_id} restarted.", "success")
+            self._spool.notify(f"Bot {bot.bot_id} RESTARTED", "success")
+            sound.play_state_change()
+
         def _on_bot_fire(self, bot_id: str) -> None:
             """Call `force_fire(bot_id, aggressive=True)` and play the fire sound."""
             if not self._bot_manager:
@@ -3831,7 +3841,7 @@ if _HAS_QT:
 
             hottest = None
             for s in statuses:
-                if s.get("mode") != "scrumming":
+                if s.get("mode") != "scrumming" or s.get("hold_reason"):
                     continue
                 if s.get("state") not in ("running", "paused"):
                     continue
@@ -3989,16 +3999,11 @@ if _HAS_QT:
 
                 safe_process_events("legacy processEvents site")
                 try:
-                    self._schedule_async(bot.stop())
                     success, msg = self._connect_exchange_for_bot(bot)
                     if success:
-                        self._schedule_async(bot.start())
-                        if bot.order_hold_reason():
-                            return
-                        self._status_log.log(f"✓ Bot {bot_id} restarted.", "success")
-                        self._spool.notify(f"Bot {bot_id} RESTARTED", "success")
-                        sound.play_state_change()
+                        self._schedule_async(self._restart_bot(bot, sound))
                     else:
+                        self._schedule_async(bot.stop())
                         self._status_log.log(
                             f"Cannot restart bot {bot_id}: {msg}", "error"
                         )
@@ -4130,7 +4135,8 @@ if _HAS_QT:
         def run_fleet_sequence(self, command: str = "start") -> int:
             """Move every eligible bot through ``_on_bot_command`` one at a
             time, with the Start All progress window open, waiting for each to
-            read running before the next.
+            answer ``start_settled`` before the next, and listing a held bot
+            with its hold.
 
             This is the sequence the application runs at launch: ``main.py``
             calls it after the instance consent gate, and the command bar's
@@ -4214,13 +4220,15 @@ if _HAS_QT:
                             started=idx,
                         )
                         return
-                    if bot.state.value == "running":
+                    if bot.start_settled():
+                        hold = bot.order_hold_reason()
                         bus.emit(
                             FLEET_SEQUENCE_TOPIC,
-                            phase="bot_started",
+                            phase="bot_held" if hold else "bot_started",
                             total=total,
                             started=idx + 1,
                             bot_id=bot.bot_id,
+                            reason=hold,
                         )
                     elif elapsed >= FLEET_SEQUENCE_VERIFY_TIMEOUT_S:
                         bus.emit(

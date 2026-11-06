@@ -760,12 +760,43 @@ def despawn_threshold_days(config) -> int:
 #: Candidate windows the Fold Tranches panel offers when the timer is OFF.
 DESPAWN_PREVIEW_WINDOWS: tuple[int, ...] = (7, 14, 30, 60)
 
+#: The seconds of a tranche's age a hard hold covered, which its despawn age leaves out.
+TRANCHE_HELD_SECONDS_KEY = "held_seconds"
 
-def _despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[float]:
+#: What every line and box that refuses a press during a hold says last.
+PRESS_AGAIN = "Nothing is kept, so press it again after Reset All Breakers"
+
+#: What ``BotContainer.order_refusal`` answers for a hard trip that came and went.
+HOLD_PASSED = "a hard breaker trip landed while this order waited"
+
+#: What ``ScrummingBot.tick_stop_reason`` answers once ``pause`` or ``stop`` has run.
+TICK_STOPPED = "the bot is paused or stopped, so this tick sends nothing"
+
+#: What ``BotManager.force_fire`` answers for a bot no tick will run.
+FIRE_NEEDS_A_TICK = (
+    "no tick would fire it, so nothing is kept. Press it again after Start"
+)
+
+#: What a line says of a send that came back None with no ``OrderWatch.refusal``.
+NO_ORDER_BACK = "exchange returned no order"
+
+
+@dataclass
+class OrderWatch:
+    """One decision's reads of ``BotContainer.order_refusal``: ``trips`` as it began,
+    ``press`` true for an operator's press, ``refusal`` why ``guarded_place_order``
+    stopped its newest send."""
+
+    trips: int = 0
+    press: bool = False
+    refusal: str = ""
+
+
+def despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[float]:
     """Return one tranche's age in seconds, or None when it has no usable timestamp.
 
     `as_finite_float` refuses a stored bool and a non-positive stamp reads as
-    unset, matching `ScrummingBot._tranche_age_seconds`.
+    unset. The age leaves out `TRANCHE_HELD_SECONDS_KEY`.
 
     Args:
       tranche: one fold or stack tranche record.
@@ -780,7 +811,7 @@ def _despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[fl
     _ts = as_finite_float(tranche.get(field))
     if _ts is None or _ts <= 0:
         return None
-    return now - _ts
+    return now - _ts - (as_finite_float(tranche.get(TRANCHE_HELD_SECONDS_KEY)) or 0.0)
 
 
 def _despawn_preview_fold(fold: list, cutoff: float, now: float, report: dict) -> None:
@@ -791,7 +822,7 @@ def _despawn_preview_fold(fold: list, cutoff: float, now: float, report: dict) -
     for _t in fold:
         if is_shadow(_t):
             continue
-        _age = _despawn_age_seconds(_t, "created_ts", now)
+        _age = despawn_age_seconds(_t, "created_ts", now)
         if _age is None:
             report["ageless_kept"] += 1
             continue
@@ -815,7 +846,7 @@ def _despawn_preview_stack(
     `stack_kept_live_order`, never as removable.
     """
     for _t in stack:
-        _age = _despawn_age_seconds(_t, "opened_ts", now)
+        _age = despawn_age_seconds(_t, "opened_ts", now)
         if _age is None:
             report["ageless_kept"] += 1
         elif _age < cutoff:

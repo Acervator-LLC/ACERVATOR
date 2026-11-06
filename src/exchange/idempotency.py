@@ -4,7 +4,9 @@
 same ``TradeIntent`` sends the held ``coid``, which a venue will not open twice.
 ``decision_purpose`` names a decision, whose resend keeps the ``coid`` at any size or
 price, and ``IdempotencyLayer.end_retry`` drops it once an order comes back for that
-intent. ``BotContainer.guarded_place_order`` calls both.
+intent. ``IdempotencyLayer.withdraw_send`` takes back a send that never left, so
+``unanswered_sends`` reads only sends that may be at the venue.
+``BotContainer.guarded_place_order`` calls all three.
 """
 
 from __future__ import annotations
@@ -144,6 +146,22 @@ class IdempotencyLayer:
             )
             self._enforce_size_limit()
             return coid
+
+    def withdraw_send(
+        self, intent: TradeIntent, price_read: float, units: float
+    ) -> None:
+        """Undo the ``derive_coid`` of a send that never left: its size leaves
+        ``UnansweredSend.sizes``, and a ``coid`` left with no size leaves with it."""
+        size = (float(units), price_read)
+        with self._lock:
+            fp = intent.fingerprint(self.session_nonce)
+            held = self._unanswered.get(fp)
+            if held is None:
+                return
+            if size in held.sizes:
+                held.sizes.remove(size)
+            if not held.sizes:
+                del self._unanswered[fp]
 
     def holds(self, intent: TradeIntent) -> bool:
         """True where ``derive_coid`` answers a held ``coid`` for ``intent``."""

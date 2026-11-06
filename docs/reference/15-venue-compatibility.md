@@ -924,7 +924,7 @@ the venue's published step. `src/trading/bot_container.py, in guarded_place_orde
 the one site every live order passes, so a recorded `amount_increment` floors
 the amount. That same method refuses a size stepping under a recorded
 `min_amount`, and refuses an amount that floors to nothing. The sized amount
-reaches `exchange.place_order`, and `min_cost` is measured on it.
+reaches `exchange.send_order`, and `min_cost` is measured on it.
 
 Driven on a bare host with the home redirected, every socket but loopback
 refused, and an exchange stand-in that raises on every order call, an amount of
@@ -2727,8 +2727,14 @@ submission, so the equities contract cannot carry a Robinhood crypto order.
 
 ```python
 # src/trading/bot_container.py, in guarded_place_order, at the submitting call
-            order = await self.exchange.place_order(
-                symbol, side, order_type, amount, price, client_order_id=_coid
+            order = await self.exchange.send_order(
+                symbol,
+                side,
+                order_type,
+                amount,
+                price,
+                client_order_id=_coid,
+                hold_reason=partial(self.order_refusal, _watch),
             )
 ```
 
@@ -9411,7 +9417,7 @@ assertions, 184 passed, 0 failed**, each count carrying its own control.
 | 8 | its gate decisions log under it | built | six real decisions written through `src/core/logging_engine.py, in log_gate_decision` and read back off disk, one file per sector, each row naming its own venue and sector |
 
 `src/stocks/broker_base.py` and `src/stocks/broker_exchange.py` take no change.
-E*TRADE's preview-then-place pair lives inside `place_order`, and
+E*TRADE previews in `prepare_order` and places in `place_order`, and
 `BrokerBase.SECTORS_SERVED` is left empty on purpose: `broker_serves_sector`
 routes a bot off it, and a narrowed set would send a forex or a futures bot down
 the crypto path and then the ccxt one, which carries no etrade.

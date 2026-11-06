@@ -142,7 +142,6 @@ class StateSerializerMixin:
                 getattr(self, "_cb_hard_tripped_at", 0.0) or 0.0
             ),
             "cb_hard_trip_pct": float(getattr(self, "_cb_hard_trip_pct", 0.0) or 0.0),
-            "cb_hard_candle_ts": float(getattr(self, "_cb_hard_candle_ts", 0.0) or 0.0),
             "cb_soft_active_side": getattr(self, "_cb_soft_active_side", None),
             "cb_soft_cooldown_remaining": admitted_counter(
                 getattr(self, "_cb_soft_cooldown_remaining", 0),
@@ -150,7 +149,6 @@ class StateSerializerMixin:
                 self.bot_id,
             ),
             "cb_soft_trip_pct": float(getattr(self, "_cb_soft_trip_pct", 0.0) or 0.0),
-            "cb_soft_candle_ts": float(getattr(self, "_cb_soft_candle_ts", 0.0) or 0.0),
             "fold_queue_usd": float(self._fold_queue_usd),
             "dist_accumulator": dist_units(self._dist_sets),
             "dist_sets": [dict(one) for one in self._dist_sets],
@@ -442,7 +440,6 @@ class StateSerializerMixin:
         try:
             self._cb_hard_tripped_at = float(data.get("cb_hard_tripped_at", 0.0) or 0.0)
             self._cb_hard_trip_pct = float(data.get("cb_hard_trip_pct", 0.0) or 0.0)
-            self._cb_hard_candle_ts = float(data.get("cb_hard_candle_ts", 0.0) or 0.0)
         except (TypeError, ValueError) as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s",
@@ -459,7 +456,6 @@ class StateSerializerMixin:
                 self.bot_id,
             )
             self._cb_soft_trip_pct = float(data.get("cb_soft_trip_pct", 0.0) or 0.0)
-            self._cb_soft_candle_ts = float(data.get("cb_soft_candle_ts", 0.0) or 0.0)
         except (TypeError, ValueError) as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s",
