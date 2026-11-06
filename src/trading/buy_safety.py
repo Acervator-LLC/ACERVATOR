@@ -21,6 +21,7 @@ async def verify_buy_safe_or_refuse(
     expected_units: float,
     *,
     path: str,
+    refuse_absent: bool = False,
 ) -> tuple[Optional[float], str]:
     """Verify a buy against fresh exchange state, refusing under doubt.
 
@@ -29,6 +30,8 @@ async def verify_buy_safe_or_refuse(
         target_asset: base asset being bought.
         expected_units: the caller's own record of units held.
         path: caller identifier carried in the refusal message.
+        refuse_absent: refuse a read whose ``Balance.absent`` is True, in place of
+            taking its zero as an empty position.
 
     Returns:
         ``(verified_units, refuse_reason)``. A non-empty ``refuse_reason``
@@ -46,7 +49,12 @@ async def verify_buy_safe_or_refuse(
         # not become 0, or a bad response passes the check.
         _t = getattr(_fresh_bal, "total", None)
         _f = getattr(_fresh_bal, "free", None)
-        if _t is not None and float(_t or 0) > 0:
+        if refuse_absent and getattr(_fresh_bal, "absent", False):
+            _refuse_reason = (
+                f"exchange omitted {target_asset} from its balance reply, so the "
+                f"position is unknown, not zero"
+            )
+        elif _t is not None and float(_t or 0) > 0:
             _fresh_units = float(_t)
         elif _f is not None and float(_f or 0) > 0:
             _fresh_units = float(_f)

@@ -913,12 +913,15 @@ class ReconciliationEngineMixin:
             per_lot.append(_units)
         return per_lot, None
 
-    def _claimable_exchange_units(self, exchange_units: float) -> tuple[float, float]:
+    def _claimable_exchange_units(
+        self, exchange_units: float, exchange_id: str | None = None
+    ) -> tuple[float, float]:
         """``(claimable, sibling_tracked)`` for this asset.
 
         ``claimable`` is ``exchange_units`` less
-        ``sum_sibling_tracked_units``; an unreadable total becomes
-        ``inf``, which drives ``claimable`` negative and claims nothing.
+        ``sum_sibling_tracked_units`` for ``exchange_id``, every venue at None; an
+        unreadable total becomes ``inf``, which drives ``claimable`` negative and
+        claims nothing.
         """
         _sib_units = 0.0
         _mgr = getattr(self, "_bot_manager", None)
@@ -928,7 +931,7 @@ class ReconciliationEngineMixin:
                     0.0,
                     float(
                         _mgr.sum_sibling_tracked_units(
-                            self.bot_id, self.config.target_asset
+                            self.bot_id, self.config.target_asset, exchange_id
                         )
                     ),
                 )

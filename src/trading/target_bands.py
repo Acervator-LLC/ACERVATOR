@@ -25,6 +25,9 @@ MANUAL_FIRE_REFUSE_PCT = 0.01
 #: Floor for both bands, in quote currency.
 BAND_FLOOR_USD = 0.01
 
+#: The share of target under which a position reads as empty.
+EMPTY_POSITION_SHARE = 0.01
+
 #: The three answers ``target_territory`` returns, named once for its readers.
 TERRITORY_SCRUM = "scrum"
 TERRITORY_FOLD = "fold"
@@ -39,6 +42,12 @@ def at_target_dust_band(target_balance: float) -> float:
 def manual_fire_dust_band(target_balance: float) -> float:
     """The band inside which Manual Fire refuses: 1% of target, min $0.01."""
     return max(float(target_balance) * MANUAL_FIRE_REFUSE_PCT, BAND_FLOOR_USD)
+
+
+def empty_position(position_value: float, target_balance: float) -> bool:
+    """True under ``EMPTY_POSITION_SHARE`` of ``target_balance``, the test
+    ``ScrummingBot.tick`` and ``_shows_past_trading`` share."""
+    return position_value < target_balance * EMPTY_POSITION_SHARE
 
 
 def target_delta(position_value: float, target_balance: float) -> float:
