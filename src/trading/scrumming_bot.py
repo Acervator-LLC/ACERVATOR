@@ -109,6 +109,7 @@ from .scrumming.execution import SettledFillFee, venue_fee_record
 from .scrumming.shadow import REGIME_NONE, regime_of
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
+from .scrumming.tick_phases import ENTRY_NO_FILL_EXIT
 from .scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
     _STRONG_TREND_MIN_BULL_CANDLES,
@@ -3251,7 +3252,7 @@ class ScrummingBot(
 
         # Within the dust band of target the tick returns; manual fire bypasses it.
         _dust_band_usd = at_target_dust_band(self._target_balance)
-        if current_value >= self._target_balance - _dust_band_usd:
+        if not self._first_buy_made and await self._book_reaches_target(symbol):
             self._first_buy_made = True
         if (
             not self._manual_fire_pending
@@ -3403,7 +3404,8 @@ class ScrummingBot(
         if empty_position(current_value, self._target_balance):
             _entry_exit = await self._tick_initial_entry(ticker, symbol, current_value)
             if _entry_exit:
-                self.stats.position_value = current_value
+                if ticker.last > 0 and _entry_exit != ENTRY_NO_FILL_EXIT:
+                    self.stats.position_value = current_value
                 self._emit_gate_decision_at_quiet_tick(_entry_exit)
             return
 

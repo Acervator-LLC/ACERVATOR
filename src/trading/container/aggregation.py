@@ -295,28 +295,6 @@ class FleetAggregationMixin:
                 continue
         return total
 
-    def sum_sibling_resting_buy_units(
-        self, bot_id: str, target_asset: str, exchange_id: str
-    ) -> float:
-        """Sum the unbooked units of every other bot's ``_resting_orders`` buys of
-        ``target_asset`` on ``exchange_id``, a figure only the holdings audit reads."""
-        target_norm = (target_asset or "").upper()
-        total = 0.0
-        for other_id, other_bot in self._bots.items():
-            if other_id == bot_id:
-                continue
-            config = other_bot.config
-            if (config.target_asset or "").upper() != target_norm:
-                continue
-            if config.exchange_id != exchange_id:
-                continue
-            for record in getattr(other_bot, "_resting_orders", None) or []:
-                if record.get("side") == "buy":
-                    asked = float(record.get("asked", 0.0) or 0.0)
-                    booked = float(record.get("booked", 0.0) or 0.0)
-                    total += max(0.0, asked - booked)
-        return total
-
     def _one_sibling_claim(
         self,
         other_bot: Any,

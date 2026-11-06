@@ -56,10 +56,12 @@ from .sizing import (
     EXCESS_SALE,
     FRACTIONAL_UNITS,
     SIDE_BUY,
+    WHOLE_UNITS,
     fold_cap_remaining_usd,
     fold_decision,
     fold_spend_usd,
     fold_tranche_records,
+    market_unit_rule,
     opposing_event_id,
     priced_usd,
     repeated_fold_decision,
@@ -84,6 +86,9 @@ logger = logging.getLogger("acervator.scrumming")
 
 #: The voters ``three_agree`` asks for, which ``_third_indicator_text`` counts against.
 AGREEING_VOTERS = 3
+
+#: The ``_tick_initial_entry`` exit of a tick whose order may have reached the venue.
+ENTRY_NO_FILL_EXIT = "initial-entry(no-fill)"
 
 
 @dataclass(frozen=True)
@@ -113,6 +118,7 @@ class TickPhaseMixin:
     _below_min_scrum_log_ts: float
     _book_shadow_take: Callable[..., None]
     _bound_new_fold_tranches: Callable[..., Any]
+    _asset_class: Callable[..., str]
     _bus: Any
     _cartridge_last_smart_pct: float
     _cb_last_candle_ts: float
@@ -204,6 +210,7 @@ class TickPhaseMixin:
     _verify_buy_safe_or_refuse: Callable[..., Any]
     _voting_engine: VotingEngine
     bot_id: Any
+    opposing_distance_settings: Callable[..., Any]
     config: Any
     exchange: Any
     note_scrum_retention_usd: Callable[..., None]
@@ -1089,6 +1096,39 @@ class TickPhaseMixin:
         self._first_buy_held_exit = ""
         return FirstBuyRead(summary=summary, bb_pos=_init_bb_pos, dist_down=_dist_down)
 
+    async def _book_reaches_target(self, symbol: str) -> bool:
+        """True while a weight sits above zero and ``_main_lots`` at cost reach target less
+        the largest of the dust band, one size step and the fee share."""
+        if not any(weight > 0.0 for weight in self._voting_engine.indicator_weights):
+            return False
+        units = sum(float(lot.get("units", 0.0) or 0.0) for lot in self._main_lots)
+        if units <= 0.0:
+            return False
+        cost_usd = sum(
+            float(lot.get("units", 0.0) or 0.0)
+            * float(lot.get("initial_buy_price", 0.0) or 0.0)
+            for lot in self._main_lots
+        ) * float(self._quote_to_usd or 1.0)
+        rules = await self._get_market_rules(symbol)
+        step = as_finite_float(getattr(rules, "amount_increment", None)) or 0.0
+        if WHOLE_UNITS == market_unit_rule(
+            rules,
+            self._asset_class(symbol),
+            self.config.exchange_id,
+            time.time(),
+            SIDE_BUY,
+        ):
+            step = max(step, 1.0)
+        try:
+            fee_pct = self.opposing_distance_settings().fee_pct
+        except DistanceSettingUnreadable:
+            fee_pct = 0.0
+        step_usd = step * cost_usd / units
+        fee_usd = self._target_balance * fee_pct / 100.0
+        reach_usd = max(at_target_dust_band(self._target_balance), step_usd, fee_usd)
+        least_usd = self._target_balance - reach_usd
+        return cost_usd >= least_usd or math.isclose(cost_usd, least_usd)
+
     def _first_buy_line_is_new(self, tick_exit: str, price: float) -> bool:
         """``_refusal_is_new`` for ``tick_exit``, or one line a stretch where no candle
         or no price gives that hold a figure to read."""
@@ -1110,7 +1150,8 @@ class TickPhaseMixin:
         read = await self._first_buy_read(ticker, symbol)
         if not read.refusal:
             return True
-        self.stats.position_value = current_value
+        if ticker.last and ticker.last > 0:
+            self.stats.position_value = current_value
         self._last_gate_state.update(fold_armed=False, fold_blockers=[read.tick_exit])
         if self._first_buy_line_is_new(read.tick_exit, ticker.last):
             self._bus.emit("bot.log", bot_id=self.bot_id, message=read.refusal)
@@ -1360,7 +1401,7 @@ class TickPhaseMixin:
                     f"still pass."
                 ),
             )
-        return "initial-entry(no-fill)"
+        return ENTRY_NO_FILL_EXIT
 
     async def _book_entry_fill(
         self,

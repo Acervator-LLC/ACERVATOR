@@ -331,12 +331,14 @@ _GATE_ORDER_SCRUM: tuple[str, ...] = (
 
 ##### The first buy reads three agreeing indicators
 
-A bot has made its first buy once a tick reads its position at target or above,
-by the dust band the tick parks in. This is a saved fact about the bot, and no
-fill sets it, so it holds however the coins reached the book. A bot that made its
-first buy and lost the position does not owe another. A saved record with no such
-field reads as made when it shows a fill of this bot's, a tranche, or a holding
-of 1% of target or more.
+A bot has made its first buy once a tick reads its own lots, at what they cost,
+at target. The read allows the largest of the dust band, one size step and the
+trading fee's share of target, so the price after the fill cannot matter, and a
+whole buy reads made on any market. It needs a weight above zero. This is a saved
+fact about the bot, and no fill sets it, so it holds however the coins reached
+the book. A bot that made its first buy and lost the position does not owe
+another. A saved record with no such field reads as made when it shows a fill of
+this bot's, a tranche, or a holding of 1% of target or more.
 
 While a bot owes a first buy, its Max Cartridge rebalance, its hedge top-up and
 its fold wait for one read. Price must sit in the lowest 30% of the band, past
@@ -344,9 +346,11 @@ the Detect distance or within the Fire Threshold of the lower band. The bot's ow
 vote must then be bearish and top what two indicators reach on that same vote.
 
 A new bot holds twelve zeros, so it has no vote. It makes no first buy until you
-press Save on the TA Indicators page, and its line in the log says so. A new bot
-that finds its whole target at the venue reads as made at its first worked tick.
-One that finds less also waits, and then the rebalance buys the rest.
+press Save on the TA Indicators page, and its line in the log says so. Twelve
+zeros never read as made, whatever the bot holds. After Save, a bot that finds
+its whole target at the venue reads as made at its next worked tick. One that
+finds less waits, and then the rebalance buys the rest. A bot saved as made keeps
+that reading.
 
 When the read clears, the rebalance fires as it does at any other time: a market
 order sized at the Target Delta and clipped to the wallet. A first buy clipped to
@@ -364,7 +368,7 @@ trade distance.
 Both routes refuse a buy while the venue holds more of the coin than the book
 shows, past other bots on that venue and by more than 1% of target, or omits the
 coin from its balance reply. The holdings audit books those coins on its own
-count, and leaves a fill another bot's resting order has not booked to that bot.
+count.
 
 `src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_read`
 
