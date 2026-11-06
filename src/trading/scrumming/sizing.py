@@ -3236,6 +3236,12 @@ HEDGE_BUY = "hedge_buy"
 DETONATION_SALE = "detonation_sale"
 DIST_SALE = "dist_sale"
 
+#: What ``_execute_manual_rebalance`` answers: an order went out or may have, a gate
+#: refused it, or the wallet left it nothing it may spend.
+REBALANCE_SENT = "sent"
+REBALANCE_REFUSED = "refused"
+REBALANCE_UNFUNDED = "unfunded"
+
 FOLD_DECISION_PREFIX = "fold:"
 SHADOW_EXIT_PREFIX = "shadow_exit:"
 

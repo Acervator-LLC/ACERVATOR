@@ -88,7 +88,7 @@ class TradeIntent:
 
 @dataclass
 class UnansweredSend:
-    """A ``coid`` the venue has not answered: ``intent`` as first sent, ``issued_at`` its
+    """A ``coid`` the venue has not answered: ``intent`` as last sent, ``issued_at`` its
     first send, and ``sizes`` each ``(amount, price read)`` it went out at."""
 
     coid: str
@@ -123,6 +123,7 @@ class IdempotencyLayer:
             held = self._unanswered.get(fp)
             if held is not None:
                 held.sizes.append(size)
+                held.intent = intent
                 logger.info(
                     "Idempotency: reusing coid=%s for retry of "
                     "%s %s %.8f@%s (issued %.1fs ago)",
@@ -176,6 +177,14 @@ class IdempotencyLayer:
         return [
             held.intent.decision for held in self.unanswered_sends(bot_id, symbol, side)
         ]
+
+    def unanswered_buy_units(self, bot_id: str, symbol: str) -> float:
+        """The units the ``unanswered_sends`` buys of ``bot_id`` on ``symbol`` may have
+        put at the venue, the largest of ``UnansweredSend.sizes`` per ``coid``."""
+        return sum(
+            max(size for size, _price in held.sizes)
+            for held in self.unanswered_sends(bot_id, symbol, "buy")
+        )
 
     def _enforce_size_limit(self) -> None:
         if len(self._unanswered) <= self.max_entries:
