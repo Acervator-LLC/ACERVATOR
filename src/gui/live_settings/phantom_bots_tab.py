@@ -369,13 +369,7 @@ class PhantomBotsTabMixin:
         A refused pick leaves the box on the timeframe it already held, so the
         box and ``PhantomBotsTabModel.timeframe_current`` agree on both builds.
         """
-        picked = self._phantom_timeframe.currentData()
-        refused = surface.timeframe_refusal(
-            picked,
-            self._phantom_tf_parent,
-            self._phantom_tf_allowed,
-            self._phantom_tf_exchange,
-        )
+        refused = self._take_phantom_timeframe(self._phantom_timeframe.currentData())
         self._phantom_tf_refusal.setText(refused)
         if refused:
             self._phantom_timeframe.blockSignals(True)
@@ -383,6 +377,21 @@ class PhantomBotsTabMixin:
                 max(0, self._phantom_timeframe.findData(self._phantom_tf_current))
             )
             self._phantom_timeframe.blockSignals(False)
-            return
+
+    def _take_phantom_timeframe(self, picked: Any) -> str:
+        """Mark ``picked`` changed and answer empty, or answer why it is refused.
+
+        ``_phantom_tf_chosen`` and ``BotLiveSettingsReactDialog.take_phantom_step``
+        both run this, so one refusal rule reads the pick on both builds.
+        """
+        refused = surface.timeframe_refusal(
+            picked,
+            self._phantom_tf_parent,
+            self._phantom_tf_allowed,
+            self._phantom_tf_exchange,
+        )
+        if refused:
+            return refused
         self._phantom_tf_current = picked
         self._mark_changed("phantom_timeframes", [picked])
+        return refused

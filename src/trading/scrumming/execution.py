@@ -15,7 +15,8 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType
-from ..container.config import target_growth_pct
+from ...exchange.idempotency import decision_purpose, get_idempotency_layer
+from ..container.config import NO_ORDER_BACK, OrderWatch, target_growth_pct
 from ..otd_math import (
     ROUND_TRIP_FEES,
     DistanceSettings,
@@ -25,23 +26,56 @@ from ..otd_math import (
 from ..stack_math import is_shadow
 from ..target_bands import manual_fire_dust_band
 from ..ta_engine import VotingSummary
-from ..wallet_reservations import get_wallet_reservations, wallet_key
+from ..wallet_reservations import (
+    get_wallet_reservations,
+    wallet_currency,
+    wallet_key,
+)
 from .shadow import SHADOW_BOOKER
 from .sizing import (
+    BELOW_MINIMUM_AMOUNT,
+    BELOW_ONE_UNIT,
+    DETONATION_SALE,
+    EXCESS_SALE,
     FRACTIONAL_UNITS,
+    REBALANCE_REFUSED,
+    REBALANCE_SENT,
+    REBALANCE_UNFUNDED,
+    SHORTFALL_BUY,
+    SIDE_BUY,
+    SIDE_SELL,
+    SLIPPAGE_TOLERANCE_PCT,
+    answer_fits_plan,
+    answer_is_send,
+    contracts_for_units,
+    decision_tranche_events,
     discharge_gain_usd,
     fold_tranche_records,
     fold_units,
     held_wire_usd,
+    lost_fold_tranches,
+    market_unit_rule,
+    narrower_shadow_exit,
     opposing_event_id,
+    order_spent_credit,
     priced_usd,
+    queued_by,
     rebalance_held_usd,
     routed_share_pct,
     sale_proceeds_usd,
+    scale_wire_credits,
     scrum_units,
+    shadow_exit_decision,
+    sized_order,
+    spend_leaving_held_usd,
     spend_less_unsettled_usd,
+    standing_fold_decision,
+    standing_shadow_exit,
     target_delta_usd,
+    tranche_event_names,
     tranche_rebuy_price,
+    units_at_scrum,
+    units_for_contracts,
     wallet_capped_spend_usd,
 )
 
@@ -49,6 +83,16 @@ logger = logging.getLogger("acervator.scrumming")
 
 # A fraction of the price a refusal was taken at, not a percent.
 REFUSAL_HOLD_MOVE_FRACTION: float = 0.001
+
+#: The ``_execute_buy`` paths spending the dollars their own tranche holds.
+OWN_TRANCHE_PATHS = ("fold_rebuy", "manual_tranche_fire")
+
+#: The buy paths held to the venue's coin count, which refuse an omitted coin and
+#: answer ``_unbooked_coin_refusal``.
+BOOK_COMPARED_PATHS = ("cartridge_fold", "zero_balance_initial_entry")
+
+#: The booker of an order a repeated decision got back that no plan sized.
+EARLIER_ORDER_BOOKER = "_book_earlier_order"
 
 
 @dataclass(frozen=True)
@@ -166,17 +210,20 @@ class ExecutionEngineMixin:
     _announce_fill: Callable[..., None]
     _apply_fold_target_growth: Callable[..., Any]
     _apply_scrum_fold_pct: Callable[..., None]
+    _asset_class: Callable[..., str]
     _bound_new_fold_tranches: Callable[..., Any]
     _bus: Any
     _cb_last_candle_ts: float
     _combine_fold_tranches_within_distance: Callable[..., Any]
     _count_trade_volume: Callable[..., float]
     _crr: Callable[..., Any]
+    _claimable_exchange_units: Callable[..., tuple]
     _current_holdings: float
     _emit_gate_decision_at_fire: Callable[..., None]
     _emit_trade_notification: Callable[..., None]
     _emit_voting_panel_snapshot_at_fire: Callable[..., None]
     _fold_discharge_order: Callable[..., list[dict]]
+    _fold_piece_laddered: bool
     _fold_preview_unreadable_refs: int
     _fold_preview_unreadable_units: int
     _fold_queue_usd: float
@@ -196,6 +243,7 @@ class ExecutionEngineMixin:
     _main_lots: list[dict]
     _manual_fire_pending: bool
     _mark_shadow_rows: Callable[..., int]
+    _market_rules_cache: dict
     _open_stack_from_scrum: Callable[..., Any]
     _order_asked_units: Callable[..., float]
     _preview_fold_growth: Callable[..., Any]
@@ -207,6 +255,7 @@ class ExecutionEngineMixin:
     _refresh_quote_to_usd: Callable[..., Any]
     _reset_opposing_hysteresis_after_fill: Callable[..., None]
     _resting_order_for: Callable[..., Any]
+    _resting_orders: list[dict]
     _return_wire_credits_to_pool: Callable[..., float]
     _route_scrum_proceeds_via_wires: Callable[..., Any]
     _run_booker: Callable[..., Any]
@@ -226,6 +275,7 @@ class ExecutionEngineMixin:
     exchange: Any
     guarded_place_order: Callable[..., Any]
     note_scrum_retention_usd: Callable[..., None]
+    order_watch: Callable[..., OrderWatch]
     refresh_priced_figures_after_fill: Callable[..., Any]
     reset_swos_cycle: Callable[..., None]
     stats: Any
@@ -705,6 +755,177 @@ class ExecutionEngineMixin:
         """The Minimum Opposing Trade Distance at ``band``, a percentage, read through ``opposing_distance_settings``."""
         return self.opposing_distance_settings().distance_at_band(band)
 
+    def _unanswered_decisions(self, side: str) -> list:
+        """The decisions ``get_idempotency_layer`` holds an unanswered id for on this
+        bot, ``config.symbol`` and ``side``."""
+        return get_idempotency_layer().unanswered_decisions(
+            self.bot_id, self.config.symbol, side
+        )
+
+    def _unanswered_sends(self, side: str) -> list:
+        """The sends ``get_idempotency_layer`` holds an unanswered id for on this bot,
+        ``config.symbol`` and ``side``."""
+        return get_idempotency_layer().unanswered_sends(
+            self.bot_id, self.config.symbol, side
+        )
+
+    def _answers_this_send(
+        self,
+        order: Any,
+        decision: str,
+        answered: tuple,
+        cost: float,
+        sources: Optional[list],
+        booking: Optional[dict],
+    ) -> bool:
+        """True where ``answered``, the ``(asked, sent, filled, price)`` of a repeat of
+        ``decision``, is this send's own order: ``answer_is_send``, or a plan of only the
+        decision's tranches that ``answer_fits_plan`` passes."""
+        asked, sent, filled, price = answered
+        queued = sources or []
+        if answer_is_send(
+            asked, sent, filled > 0 or self._last_settled_order is not order
+        ):
+            return True
+        return len(lost_fold_tranches(decision, queued)) == len(
+            queued
+        ) and answer_fits_plan(
+            asked,
+            filled,
+            price,
+            cost,
+            math.fsum(
+                units_at_scrum(one) for one in (booking or {}).get("eligible") or queued
+            ),
+            SLIPPAGE_TOLERANCE_PCT,
+        )
+
+    def _lost_buy(self, decision: str) -> Any:
+        """The ``_unanswered_sends`` buy ``decision`` names, None where it stands answered."""
+        for send in self._unanswered_sends(SIDE_BUY):
+            if send.intent.decision == decision:
+                return send
+        return None
+
+    def _wallet_currency(self) -> str:
+        """``wallet_currency`` of ``config.symbol`` and ``config.base_currency``."""
+        return wallet_currency(self.config.symbol, self.config.base_currency)
+
+    def _earlier_order_booking(self, send: Any, price: float) -> dict:
+        """The ``_pay_queue_by_units`` keywords for the earlier order ``send`` names, at
+        ``price``: a fold pays the tranches it named, and a shortfall buy keeps the floor
+        and pays tranches queued before it."""
+        paid_events = decision_tranche_events(send.intent.decision)
+        floor = None
+        if not paid_events:
+            try:
+                held = self.opposing_distance_settings()
+                floor = [held.interval_pct, held.fee_pct, held.band_travel_pct]
+            except DistanceSettingUnreadable:
+                floor = None
+        return {
+            "price": float(price),
+            "fee_pct": self._fee_pct_read(),
+            "floor_distance": floor,
+            "queued_before": None if paid_events else send.issued_at,
+            "paid_events": paid_events,
+        }
+
+    def _held_for_other_bots(self) -> Optional[float]:
+        """What ``sum_sibling_held_usd`` of the attached ``_bot_manager`` answers for
+        this wallet, 0.0 with no fleet to ask and None where it cannot read a bot."""
+        reader = getattr(
+            getattr(self, "_bot_manager", None), "sum_sibling_held_usd", None
+        )
+        if not callable(reader):
+            return 0.0
+        held = reader(self.bot_id, self.config.exchange_id, self._wallet_currency())
+        return None if held is None else float(held)
+
+    def resting_tranche_usd(self) -> float:
+        """The unfilled dollars of this bot's ``_resting_orders`` buys that pay its
+        ``_fold_tranches``, which the venue already moved out of the free balance."""
+        total = 0.0
+        for record in self._resting_orders:
+            context = record.get("context") or {}
+            if record.get("side") == "buy" and (
+                record.get("booker") == "_book_manual_purchase"
+                or context.get("path") in OWN_TRANCHE_PATHS
+            ):
+                rules = self._market_rules_cache.get(record.get("symbol"))
+                asked = float(record.get("asked", 0.0) or 0.0)
+                unfilled = asked - float(record.get("booked", 0.0) or 0.0)
+                total += float(record.get("price", 0.0) or 0.0) * units_for_contracts(
+                    unfilled, getattr(rules, "contract_size", None)
+                )
+        return total
+
+    async def _spends_held_dollars(self, cost: float, price: float) -> bool:
+        """True where ``cost`` does not fit the free balance less other bots' in-flight
+        orders, ``_held_for_other_bots`` and this bot's wire credits, and its whole queue
+        while another bot holds dollars, after a refusal line ``_refusal_is_new`` admits.
+        """
+        held = self._held_for_other_bots()
+        own_usd = float(getattr(self, "_pending_wire_credits", 0.0) or 0.0)
+        own_usd += math.fsum(
+            float(t.get("usd", 0.0) or 0.0) if held != 0.0 else held_wire_usd(t)
+            for t in self._fold_tranches
+        )
+        _quote = self._wallet_currency()
+        _wallet = wallet_key(self.config.exchange_id, _quote)
+        _reservations = get_wallet_reservations()
+        if held == 0.0 and own_usd <= 0.0 and _reservations.reserved(_wallet) <= 0.0:
+            return False
+        free_usd: Optional[float] = None
+        if held is not None:
+            try:
+                _bal = await self._get_balance(_quote)
+                free_usd = float(getattr(_bal, "free", 0) or 0)
+            except Exception as _bal_exc:
+                logger.warning(
+                    "Bot %s could not read its %s balance against what other bots "
+                    "hold: %s",
+                    self.bot_id,
+                    _quote,
+                    _bal_exc,
+                )
+        _qrate = float(self._quote_to_usd or 1.0)
+        if free_usd is not None:
+            try:
+                _fee_pct = self.opposing_distance_settings().fee_pct
+            except DistanceSettingUnreadable:
+                _fee_pct = 0.0
+            _left_usd = (
+                _reservations.available(_wallet, free_usd * _qrate)
+                - (float(held) + own_usd) * _qrate
+            )
+            if spend_leaving_held_usd(cost, _left_usd, _fee_pct) >= cost:
+                return False
+        if self._refusal_is_new("buy_held_for_others", price):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"BUY REFUSED (held dollars): ${cost:.4f} does not fit "
+                    f"the {_quote} free balance "
+                    f"({'unread' if free_usd is None else f'${free_usd * _qrate:.4f}'}) "
+                    f"less other bots' in-flight orders, what their queued buy-backs "
+                    f"and wire credits hold "
+                    f"({'unread' if held is None else f'${float(held) * _qrate:.4f}'}) "
+                    f"and the ${own_usd * _qrate:.4f} this bot's own queue and "
+                    f"credits wait on."
+                ),
+            )
+        return True
+
+    def _fee_pct_read(self) -> Optional[float]:
+        """The ``fee_pct`` of ``opposing_distance_settings``, None where a setting holds
+        no number."""
+        try:
+            return self.opposing_distance_settings().fee_pct
+        except DistanceSettingUnreadable:
+            return None
+
     def _pivot_distance_text(self) -> str:
         """``opposing_trade_distance_pct`` as a pivot line prints it, or the ``DistanceSettingUnreadable`` it raised."""
         try:
@@ -803,10 +1024,41 @@ class ExecutionEngineMixin:
         )
         return _net
 
+    def _under_venue_minimum(self, units: float, price: float, rules: Any) -> bool:
+        """True where a buy of ``units`` at ``price`` sits under the minimum ``rules``
+        publish, which ``guarded_place_order`` or the venue refuses."""
+        if rules is None:
+            return False
+        rule = market_unit_rule(
+            rules,
+            self._asset_class(self.config.symbol),
+            self.config.exchange_id,
+            time.time(),
+            SIDE_BUY,
+        )
+        contracts = contracts_for_units(units, rules.contract_size)
+        if sized_order(contracts, rule, rules).refusal in (
+            BELOW_MINIMUM_AMOUNT,
+            BELOW_ONE_UNIT,
+        ):
+            return True
+        return rules.min_cost is not None and units * price < rules.min_cost
+
+    def _refused_no_order(self, tag: str, role: str, watch: OrderWatch) -> None:
+        """Write ``tag``'s line and ``role``'s ``REFUSED`` trade line for a send that
+        came back None, naming ``OrderWatch.refusal``, else ``NO_ORDER_BACK``."""
+        reason = watch.refusal or NO_ORDER_BACK
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=f"{tag}: {reason}.")
+        self._emit_trade_notification(role, "REFUSED", reason)
+
     async def _execute_manual_rebalance(
-        self, ticker, caller_intent: str = "manual_button"
-    ) -> None:
-        """Move holdings back to ``_target_balance`` with one market order.
+        self,
+        ticker,
+        caller_intent: str = "manual_button",
+        on_order: Optional[Callable[[], None]] = None,
+    ) -> str:
+        """Move holdings back to ``_target_balance`` with one market order, and answer
+        ``REBALANCE_SENT``, ``REBALANCE_REFUSED`` or ``REBALANCE_UNFUNDED``.
 
         ``caller_intent`` picks the trade labels and the
         ``operator_initiated`` flag out of ``_INTENT_MAP`` and raises
@@ -814,7 +1066,7 @@ class ExecutionEngineMixin:
         ``manual_fire_dust_band`` is a logged no-op. Every intent, the Manual
         Fire button included, reads the venue's own ``target_asset`` balance
         before the size is decided and refuses a position the venue disputes
-        by more than that band.
+        by more than that band. ``on_order`` runs once an order comes back.
         """
 
         _INTENT_MAP = {
@@ -830,21 +1082,26 @@ class ExecutionEngineMixin:
         _scrum_label, _fold_label, _operator_initiated = _INTENT_MAP[caller_intent]
 
         self._manual_fire_pending = False
+        # The hold rate-limits a repeating tick; one deliberate press always answers.
+        _announce_every_refusal = caller_intent == "manual_button"
 
         _held = self._resting_order_for("_book_manual_sale", "_book_manual_purchase")
         if _held is not None:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"MANUAL FIRE HELD: order {_held['order_id']} from an earlier "
-                    f"fire still rests at the venue with "
-                    f"{float(_held['asked']) - float(_held['booked']):.8f} units "
-                    f"unfilled. Its fill is booked when the venue reports it, and "
-                    f"no second order is sent while it rests."
-                ),
-            )
-            return
+            if _announce_every_refusal or self._refusal_is_new(
+                "manual_resting", ticker.last
+            ):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"MANUAL FIRE HELD: order {_held['order_id']} from an earlier "
+                        f"fire still rests at the venue with "
+                        f"{float(_held['asked']) - float(_held['booked']):.8f} units "
+                        f"unfilled. Its fill is booked when the venue reports it, and "
+                        f"no second order is sent while it rests."
+                    ),
+                )
+            return REBALANCE_REFUSED
 
         price = ticker.last
         if not price or price <= 0:
@@ -853,7 +1110,7 @@ class ExecutionEngineMixin:
                 bot_id=self.bot_id,
                 message="MANUAL FIRE: no valid price; aborting.",
             )
-            return
+            return REBALANCE_REFUSED
 
         try:
             await self._refresh_quote_to_usd()
@@ -882,8 +1139,6 @@ class ExecutionEngineMixin:
         _refusal_subject = (
             "manual fire" if caller_intent == "manual_button" else "autonomous fire"
         )
-        # The hold rate-limits a repeating tick; one deliberate press always answers.
-        _announce_every_refusal = caller_intent == "manual_button"
 
         try:
             _xbal = await self._get_balance(self.config.target_asset)
@@ -905,7 +1160,7 @@ class ExecutionEngineMixin:
                         f"path, so an unverified position is not traded."
                     ),
                 )
-            return
+            return REBALANCE_REFUSED
         if _absent:
             if _announce_every_refusal or self._refusal_is_new(
                 "manual_balance_omitted", price
@@ -919,7 +1174,7 @@ class ExecutionEngineMixin:
                         f"response, so the position cannot be verified."
                     ),
                 )
-            return
+            return REBALANCE_REFUSED
         _venue_units = _xunits
         _xvalue = _xunits * price * _qrate
         if abs(_xvalue - current_value) > dust:
@@ -948,7 +1203,7 @@ class ExecutionEngineMixin:
                     _xunits,
                     self.config.target_asset,
                 )
-            return
+            return REBALANCE_REFUSED
         if caller_intent != "manual_button":
             if delta_usd < 0:
                 _growth = float(target_growth_pct(self.config) or 0.0)
@@ -956,7 +1211,7 @@ class ExecutionEngineMixin:
                 _prospective = _xvalue + abs(delta_usd)
                 if _prospective > _ceiling + dust:
                     if not self._refusal_is_new("manual_ceiling", price):
-                        return
+                        return REBALANCE_REFUSED
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -975,19 +1230,20 @@ class ExecutionEngineMixin:
                         _prospective,
                         _ceiling,
                     )
-                    return
+                    return REBALANCE_REFUSED
 
         if abs(delta_usd) <= dust:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"MANUAL FIRE: already within dust band "
-                    f"(|delta|=${abs(delta_usd):.4f} <= "
-                    f"${dust:.2f}). No-op."
-                ),
-            )
-            return
+            if _announce_every_refusal or self._refusal_is_new("manual_dust", price):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"MANUAL FIRE: already within dust band "
+                        f"(|delta|=${abs(delta_usd):.4f} <= "
+                        f"${dust:.2f}). No-op."
+                    ),
+                )
+            return REBALANCE_REFUSED
 
         if delta_usd > 0:
             _denom_sc = price * _qrate
@@ -1003,7 +1259,7 @@ class ExecutionEngineMixin:
                     bot_id=self.bot_id,
                     message="MANUAL FIRE: computed zero sell amount; abort.",
                 )
-                return
+                return REBALANCE_REFUSED
 
             self._bus.emit(
                 "bot.log",
@@ -1016,22 +1272,26 @@ class ExecutionEngineMixin:
                 ),
             )
 
+            _watch = self.order_watch()
             order = await self.guarded_place_order(
                 symbol=self.config.symbol,
                 side=OrderSide.SELL,
                 order_type=OrderType.MARKET,
                 amount=sell_amount,
                 price=None,
+                purpose=decision_purpose(EXCESS_SALE),
+                watch=_watch,
             )
 
             if order is None:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message="MANUAL FIRE SCRUM: exchange returned no order.",
-                )
-                return
+                if _announce_every_refusal or self._refusal_is_new(
+                    "manual_no_order", price
+                ):
+                    self._refused_no_order("MANUAL FIRE SCRUM", _scrum_label, _watch)
+                return REBALANCE_REFUSED
 
+            if on_order is not None:
+                on_order()
             fill_amount, fill_price, _fill_is_real = await self._settled_fill(
                 order, self.config.symbol, sell_amount, price
             )
@@ -1060,7 +1320,7 @@ class ExecutionEngineMixin:
                         f"Aborting post-fill accounting; check exchange for actual state."
                     ),
                 )
-                return
+                return REBALANCE_SENT
             await self._book_manual_sale(
                 fill_amount,
                 fill_price,
@@ -1072,7 +1332,7 @@ class ExecutionEngineMixin:
 
         else:
             if await self._refuses_stacked_buy(price, _announce_every_refusal):
-                return
+                return REBALANCE_REFUSED
 
             _floor: Optional[DistanceSettings] = None
             _unpaid: list[dict] = []
@@ -1098,7 +1358,7 @@ class ExecutionEngineMixin:
                         _distance_ok = price <= _best_rebuy
                 except (TypeError, ValueError, OverflowError) as _otd_exc:
                     if not self._refusal_is_new("manual_distance_unreadable", price):
-                        return
+                        return REBALANCE_REFUSED
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -1116,7 +1376,7 @@ class ExecutionEngineMixin:
                         self.bot_id,
                         _otd_exc,
                     )
-                    return
+                    return REBALANCE_REFUSED
                 _unread_tail = ""
                 if _unreadable_refs:
                     _unread_tail = (
@@ -1151,7 +1411,7 @@ class ExecutionEngineMixin:
                     )
                 if not _distance_ok:
                     if not self._refusal_is_new("manual_opposing_distance", price):
-                        return
+                        return REBALANCE_REFUSED
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -1161,7 +1421,8 @@ class ExecutionEngineMixin:
                             f"{len(self._fold_tranches)} queued tranche(s) is "
                             f"eligible. The highest rebuy any of them allows "
                             f"is ${_best_rebuy:.8f} (its sale price less the "
-                            f"distance), so price must fall "
+                            f"distance, or lower where its own dollars need it to "
+                            f"restore its units), so price must fall "
                             f"${price - _best_rebuy:.8f} further. Gates are "
                             f"bypassed on this path, so it will not rebuy "
                             f"above what it sold at. Intended BUY of "
@@ -1177,7 +1438,7 @@ class ExecutionEngineMixin:
                         len(self._fold_tranches),
                         _unreadable_refs,
                     )
-                    return
+                    return REBALANCE_REFUSED
             elif caller_intent != "manual_button":
                 try:
                     _floor = self.opposing_distance_settings()
@@ -1250,21 +1511,7 @@ class ExecutionEngineMixin:
                     len(self._fold_tranches),
                 )
             buy_usd_target = -delta_usd + _growth_preview
-            if _growth_preview > 1e-9:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"MANUAL FIRE FOLD: sizing against the "
-                        f"POST-growth target — base deficit "
-                        f"${-delta_usd:.4f} + prospective compound "
-                        f"growth ${_growth_preview:.4f} = "
-                        f"${buy_usd_target:.4f}. Without this the "
-                        f"fold would land ${_growth_preview:.4f} "
-                        f"short and could not compound."
-                    ),
-                )
-            quote_currency = self.config.symbol.split("/")[-1]
+            quote_currency = self._wallet_currency()
             quote_free = 0.0
             _bal_err = None
             try:
@@ -1279,6 +1526,21 @@ class ExecutionEngineMixin:
                         quote_free = float(getattr(b, "free", 0) or 0)
                 except Exception as exc2:
                     _bal_err = exc2
+            _others_hold = self._held_for_other_bots()
+            if _others_hold is None:
+                if _announce_every_refusal or self._refusal_is_new(
+                    "manual_held_unread", price
+                ):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"MANUAL FIRE FOLD: what other bots' queued buy-backs and "
+                            f"wire credits hold of {quote_currency} could not be read, "
+                            f"so nothing is spent. Cannot rebalance."
+                        ),
+                    )
+                return REBALANCE_UNFUNDED
             _wallet_key = wallet_key(self.config.exchange_id, quote_currency)
             _reservations = get_wallet_reservations()
             _wallet_free = quote_free * _qrate
@@ -1286,6 +1548,7 @@ class ExecutionEngineMixin:
             _held_by_others = _reservations.reserved(_wallet_key)
             # A sale the venue has not settled has not returned its cash, so its
             # dollars are held back before the buy is sized against the wallet.
+            _fold_rules = None
             try:
                 _fold_rules = await self._get_market_rules(self.config.symbol)
                 _settlement = getattr(_fold_rules, "settlement_days", None)
@@ -1306,43 +1569,77 @@ class ExecutionEngineMixin:
             buy_usd = spend_less_unsettled_usd(
                 wallet_capped_spend_usd(buy_usd_target, usd_balance),
                 usd_balance,
-                _unsettled + _held_back,
+                (_unsettled + _held_back) * _qrate,
             )
-            if buy_usd <= 0:
-                err_tail = f" (fetch error: {_bal_err})" if _bal_err else ""
-                unsettled_tail = (
-                    f", of which ${_unsettled:.4f} is cash the venue has not "
-                    f"settled at {_settlement} day(s)"
-                    if _unsettled > 1e-9
-                    else ""
-                ) + (
-                    f", of which ${_held_back:.4f} is held for tranches above "
-                    f"their own floor and for wire credits"
-                    if _held_back > 1e-9
-                    else ""
-                )
-                held_tail = (
-                    f", of which ${_held_by_others:.4f} is reserved by "
-                    f"other bots' in-flight orders"
-                    if _held_by_others > 1e-9
-                    else ""
-                ) + unsettled_tail
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"MANUAL FIRE FOLD: delta=-${buy_usd_target:.4f} "
-                        f"but {quote_currency} free=${quote_free:.4f} "
-                        f"(~${_wallet_free:.4f} USD{held_tail}; "
-                        f"spendable ${usd_balance:.4f})"
-                        f"{err_tail}. Cannot rebalance."
-                    ),
-                )
-                return
+            _left_usd = usd_balance - (_unsettled + _held_back + _others_hold) * _qrate
+            if _others_hold > 0.0:
+                buy_usd = spend_leaving_held_usd(buy_usd, _left_usd, _fee or 0.0)
             denom = price * _qrate
             buy_amount = (
                 fold_units(buy_usd, denom, FRACTIONAL_UNITS) if denom > 0 else 0.0
             )
+            _under_minimum = not _announce_every_refusal and self._under_venue_minimum(
+                buy_amount, price, _fold_rules
+            )
+            if buy_usd <= 0 or _under_minimum:
+                if _announce_every_refusal or self._refusal_is_new(
+                    "manual_wallet_short", price
+                ):
+                    err_tail = f" (fetch error: {_bal_err})" if _bal_err else ""
+                    unsettled_tail = (
+                        f", of which ${_unsettled * _qrate:.4f} is cash the venue has "
+                        f"not settled at {_settlement} day(s)"
+                        if _unsettled > 1e-9
+                        else ""
+                    ) + (
+                        f", of which ${_held_back * _qrate:.4f} is held for tranches "
+                        f"above their own floor and for wire credits"
+                        if _held_back > 1e-9
+                        else ""
+                    )
+                    unsettled_tail += (
+                        f", of which ${_others_hold * _qrate:.4f} is held by other "
+                        f"bots' queued buy-backs and wire credits"
+                        if _others_hold > 1e-9
+                        else ""
+                    )
+                    held_tail = (
+                        f", of which ${_held_by_others:.4f} is reserved by "
+                        f"other bots' in-flight orders"
+                        if _held_by_others > 1e-9
+                        else ""
+                    ) + unsettled_tail
+                    minimum_tail = (
+                        f"; ${buy_usd:.4f} sits under the venue's minimum"
+                        if buy_usd > 0
+                        else ""
+                    )
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"MANUAL FIRE FOLD: delta=-${buy_usd_target:.4f} "
+                            f"but {quote_currency} free={quote_free:.4f} "
+                            f"(~${_wallet_free:.4f} USD{held_tail}; "
+                            f"spendable ${max(0.0, _left_usd):.4f}{minimum_tail})"
+                            f"{err_tail}. Cannot rebalance."
+                        ),
+                    )
+                return REBALANCE_UNFUNDED
+            if _growth_preview > 1e-9:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"MANUAL FIRE FOLD: sizing against the "
+                        f"POST-growth target — base deficit "
+                        f"${-delta_usd:.4f} + prospective compound "
+                        f"growth ${_growth_preview:.4f} = "
+                        f"${buy_usd_target:.4f}. Without this the "
+                        f"fold would land ${_growth_preview:.4f} "
+                        f"short and could not compound."
+                    ),
+                )
             clipped = buy_usd < buy_usd_target
             self._bus.emit(
                 "bot.log",
@@ -1356,7 +1653,15 @@ class ExecutionEngineMixin:
                 ),
             )
 
+            _decision = (
+                standing_fold_decision(
+                    self._unanswered_decisions(SIDE_BUY), self._fold_tranches
+                )
+                or SHORTFALL_BUY
+            )
+            _lost = self._lost_buy(_decision)
             _reservations.reserve(_wallet_key, buy_usd)
+            _watch = self.order_watch()
             try:
                 order = await self.guarded_place_order(
                     symbol=self.config.symbol,
@@ -1364,18 +1669,21 @@ class ExecutionEngineMixin:
                     order_type=OrderType.MARKET,
                     amount=buy_amount,
                     price=None,
+                    purpose=decision_purpose(_decision),
+                    watch=_watch,
                 )
             finally:
                 _reservations.release(_wallet_key, buy_usd)
 
             if order is None:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message="MANUAL FIRE FOLD: exchange returned no order.",
-                )
-                return
+                if _announce_every_refusal or self._refusal_is_new(
+                    "manual_no_order", price
+                ):
+                    self._refused_no_order("MANUAL FIRE FOLD", _fold_label, _watch)
+                return REBALANCE_REFUSED
 
+            if on_order is not None:
+                on_order()
             fill_amount, fill_price, _fill_is_real = await self._settled_fill(
                 order, self.config.symbol, buy_amount, price
             )
@@ -1390,6 +1698,25 @@ class ExecutionEngineMixin:
                 ),
                 "fee_pct": _fee,
             }
+            _asked = self._order_asked_units(
+                self._last_settled_order or order, buy_amount
+            )
+            if (
+                _lost is not None
+                and not answer_is_send(_asked, _lost.intent.amount, True)
+                and not answer_fits_plan(
+                    _asked,
+                    fill_amount,
+                    fill_price or price,
+                    buy_usd / _qrate,
+                    0.0,
+                    SLIPPAGE_TOLERANCE_PCT,
+                )
+            ):
+                _keep_floor = _manual_purchase["floor_distance"]
+                _manual_purchase.update(self._earlier_order_booking(_lost, price))
+                if _keep_floor is None:
+                    _manual_purchase["floor_distance"] = None
             self._hold_resting_order(
                 order,
                 "_book_manual_purchase",
@@ -1410,7 +1737,7 @@ class ExecutionEngineMixin:
                         f"Aborting post-fill accounting; check exchange for actual state."
                     ),
                 )
-                return
+                return REBALANCE_SENT
             await self._book_manual_purchase(
                 fill_amount,
                 fill_price,
@@ -1419,6 +1746,7 @@ class ExecutionEngineMixin:
                 venue_units=_venue_units,
                 **_manual_purchase,
             )
+        return REBALANCE_SENT
 
     async def _book_manual_sale(
         self,
@@ -1583,112 +1911,60 @@ class ExecutionEngineMixin:
         venue_units: Optional[float] = None,
         floor_distance: Optional[list] = None,
         fee_pct: Optional[float] = None,
+        queued_before: Optional[float] = None,
+        paid_events: Optional[list] = None,
     ) -> None:
         """Book one settled piece of a Manual Fire or cartridge buy against the
         queued tranches, and announce it.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``. With
-        ``floor_distance``, a tranche whose ``tranche_rebuy_price`` sits under
-        ``fill_price`` stays unpaid. A tranche pays its units from its own sale
-        dollars, and one that ends returns its wire credit to the pool.
+        ``floor_distance``, ``_pay_queue_by_units`` leaves unpaid a tranche whose
+        ``tranche_rebuy_price`` sits under ``fill_price``, and it reads ``queued_before``
+        and ``paid_events``.
         """
         fill_amount = units
         if fill_price <= 0:
             fill_price = price
         _floor = DistanceSettings(*floor_distance) if floor_distance else None
 
-        _manual_fold_accum_profit = 0.0
-        if self._fold_tranches:
-            remaining = fill_amount
-            consumed = []
-            for t in self._fold_discharge_order():
-                if remaining <= 1e-12:
-                    break
-                if _floor is not None and fill_price > tranche_rebuy_price(t, _floor):
-                    continue
-                # _fold_discharge_order yields finite units.
-                t_units = float(t.get("units", 0.0) or 0.0)
-                take = min(t_units, remaining)
-                if take <= 1e-12:
-                    continue
-                _manual_fold_accum_profit += discharge_gain_usd(
-                    t, take, fill_price, fee_pct
-                )
-                self._main_lots.append(
-                    {
-                        "units": take,
-                        "initial_buy_price": t.get("initial_buy_price", fill_price),
-                        "operator_initiated": operator_initiated,
-                    }
-                )
-                _credit = held_wire_usd(t)
-                _t_usd = float(t.get("usd", 0.0) or 0.0)
-                t["units"] = t_units - take
-                if t_units > 0:
-                    t["usd"] = _credit + (_t_usd - _credit) * (t["units"] / t_units)
-                remaining -= take
-                if t["units"] <= 1e-12:
-                    consumed.append(t)
-
-            for t in consumed:
-                self._return_wire_credits_to_pool(t)
-                self._fold_tranches.remove(t)
-            if consumed:
-                try:
-                    self._tranches_closed_lifetime = int(
-                        getattr(self, "_tranches_closed_lifetime", 0) or 0
-                    ) + len(consumed)
-                except Exception as _sup:
-                    logger.debug(
-                        "suppressed in %s: %s: %s",
-                        "_book_manual_purchase",
-                        type(_sup).__name__,
-                        _sup,
-                    )
-
-            if remaining > 1e-12:
-                self._main_lots.append(
-                    {
-                        "units": remaining,
-                        "initial_buy_price": fill_price,
-                        "operator_initiated": operator_initiated,
-                    }
-                )
-
-            self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
-
-            if _floor is None:
-                msg = (
-                    f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
-                    f"${fill_price:.8f}. Discharged "
-                    f"{len(consumed)} tranche(s) bypassing price-floor "
-                    f"gates (operator override)."
-                )
-            else:
-                _held_above = sum(
-                    1
-                    for t in self._fold_tranches
-                    if fill_price > tranche_rebuy_price(t, _floor)
-                )
-                msg = (
-                    f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
-                    f"${fill_price:.8f}. Discharged {len(consumed)} tranche(s), "
-                    f"each at or under its own sale price less the distance; "
-                    f"{_held_above} above that stay queued unpaid."
-                )
-        else:
-            self._main_lots.append(
-                {
-                    "units": fill_amount,
-                    "initial_buy_price": fill_price,
-                    "operator_initiated": operator_initiated,
-                }
-            )
+        _had_queue = bool(self._fold_tranches)
+        _lots_before = len(self._main_lots)
+        _gain_usd, _discharged = self._pay_queue_by_units(
+            fill_amount,
+            fill_price,
+            _floor,
+            fee_pct,
+            operator_initiated,
+            queued_before,
+            paid_events,
+        )
+        for _lot in self._main_lots[_lots_before:]:
+            _lot["read_price"] = price
+        if not _had_queue:
             msg = (
                 f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
                 f"${fill_price:.8f}. No tranches queued; "
                 f"opened new lot (operator_initiated)."
+            )
+        elif _floor is None:
+            msg = (
+                f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
+                f"${fill_price:.8f}. Discharged "
+                f"{_discharged} tranche(s) bypassing price-floor "
+                f"gates (operator override)."
+            )
+        else:
+            _held_above = sum(
+                1
+                for t in self._fold_tranches
+                if fill_price > tranche_rebuy_price(t, _floor)
+            )
+            msg = (
+                f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
+                f"${fill_price:.8f}. Discharged {_discharged} tranche(s), "
+                f"each at or under its own sale price less the distance; "
+                f"{_held_above} above that stay queued unpaid."
             )
 
         self._current_holdings += fill_amount
@@ -1697,10 +1973,167 @@ class ExecutionEngineMixin:
         else:
             self._record_venue_units_after_fill(fill_amount)
         self._count_trade_volume(fill_amount, fill_price)
-
-        _growth_applied = self._apply_fold_target_growth(
-            _manual_fold_accum_profit, source=str(label)
+        self._report_fold_by_units(
+            fill_amount, fill_price, price, label, operator_initiated, _gain_usd, msg
         )
+
+    async def _book_earlier_order(
+        self,
+        units: float,
+        fill_price: float,
+        _asked: float,
+        _first: bool,
+        *,
+        price: float,
+        fee_pct: Optional[float] = None,
+        floor_distance: Optional[list] = None,
+        queued_before: Optional[float] = None,
+        paid_events: Optional[list] = None,
+    ) -> None:
+        """Book one settled piece of the earlier order a repeated decision's send got
+        back, which no plan sized: ``_pay_queue_by_units`` pays the queue and the rest
+        joins ``_main_lots``. ``_book_purchase`` already added its units.
+        """
+        fill_amount = float(units)
+        if fill_price <= 0:
+            fill_price = price
+        self._fold_piece_laddered = False
+        _gain_usd, _discharged = self._pay_queue_by_units(
+            fill_amount,
+            fill_price,
+            DistanceSettings(*floor_distance) if floor_distance else None,
+            fee_pct,
+            False,
+            queued_before,
+            paid_events,
+        )
+        self._report_fold_by_units(
+            fill_amount,
+            fill_price,
+            price,
+            "FOLD",
+            False,
+            _gain_usd,
+            (
+                f"EARLIER ORDER BOOKED: the venue answered this repeat with an earlier "
+                f"order, {fill_amount:.6f} @ ${fill_price:.8f}. Its units paid "
+                f"{_discharged} queued tranche(s) whole and the rest joined the lots, "
+                f"so no second order went out."
+            ),
+        )
+
+    def _pay_queue_by_units(
+        self,
+        fill_amount: float,
+        fill_price: float,
+        floor: Optional[DistanceSettings],
+        fee_pct: Optional[float],
+        operator_initiated: bool,
+        queued_before: Optional[float] = None,
+        paid_events: Optional[list] = None,
+    ) -> tuple[float, int]:
+        """Take ``fill_amount`` units off the queue in ``_fold_discharge_order``, each a
+        lot at its tranche's ``initial_buy_price`` and the rest one at ``fill_price``, and
+        answer the ``discharge_gain_usd`` and how many tranches ended.
+
+        With ``floor``, a tranche whose ``tranche_rebuy_price`` sits under ``fill_price``
+        stays unpaid. A tranche pays its units from its own sale dollars, and one that
+        ends returns its wire credit to the pool. A tranche ``queued_by`` refuses at
+        ``queued_before`` stays unpaid, and ``paid_events`` holds the pay to the tranches
+        naming them, whose credit the units take a share of where ``order_spent_credit``
+        reads it spent.
+        """
+        if not self._fold_tranches:
+            self._main_lots.append(
+                {
+                    "units": fill_amount,
+                    "initial_buy_price": fill_price,
+                    "operator_initiated": operator_initiated,
+                }
+            )
+            return 0.0, 0
+        gain_usd = 0.0
+        remaining = fill_amount
+        consumed = []
+        named = set(paid_events or ())
+        credit_spent = order_spent_credit(
+            fill_amount * fill_price,
+            [t for t in self._fold_tranches if tranche_event_names(t) & named],
+        )
+        for t in self._fold_discharge_order():
+            if remaining <= 1e-12:
+                break
+            if floor is not None and fill_price > tranche_rebuy_price(t, floor):
+                continue
+            if queued_before is not None and not queued_by(t, queued_before):
+                continue
+            if named and not tranche_event_names(t) & named:
+                continue
+            # _fold_discharge_order yields finite units.
+            t_units = float(t.get("units", 0.0) or 0.0)
+            take = min(t_units, remaining)
+            if take <= 1e-12:
+                continue
+            gain_usd += discharge_gain_usd(t, take, fill_price, fee_pct)
+            self._main_lots.append(
+                {
+                    "units": take,
+                    "initial_buy_price": t.get("initial_buy_price", fill_price),
+                    "operator_initiated": operator_initiated,
+                }
+            )
+            _credit = 0.0 if credit_spent else held_wire_usd(t)
+            _t_usd = float(t.get("usd", 0.0) or 0.0)
+            t["units"] = t_units - take
+            if t_units > 0:
+                t["usd"] = _credit + (_t_usd - _credit) * (t["units"] / t_units)
+                if credit_spent:
+                    scale_wire_credits(t, t["units"] / t_units)
+            remaining -= take
+            if t["units"] <= 1e-12:
+                consumed.append(t)
+
+        for t in consumed:
+            self._return_wire_credits_to_pool(t)
+            self._fold_tranches.remove(t)
+        if consumed:
+            try:
+                self._tranches_closed_lifetime = int(
+                    getattr(self, "_tranches_closed_lifetime", 0) or 0
+                ) + len(consumed)
+            except Exception as _sup:
+                logger.debug(
+                    "suppressed in %s: %s: %s",
+                    "_pay_queue_by_units",
+                    type(_sup).__name__,
+                    _sup,
+                )
+
+        if remaining > 1e-12:
+            self._main_lots.append(
+                {
+                    "units": remaining,
+                    "initial_buy_price": fill_price,
+                    "operator_initiated": operator_initiated,
+                }
+            )
+
+        self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
+        return gain_usd, len(consumed)
+
+    def _report_fold_by_units(
+        self,
+        fill_amount: float,
+        fill_price: float,
+        price: float,
+        label: str,
+        operator_initiated: bool,
+        gain_usd: float,
+        msg: str,
+    ) -> None:
+        """Apply ``gain_usd`` as target growth, log ``msg``, and report and announce one
+        settled piece of a buy ``_pay_queue_by_units`` paid."""
+        _growth_applied = self._apply_fold_target_growth(gain_usd, source=str(label))
 
         self._bus.emit(
             "bot.log",
@@ -1758,6 +2191,21 @@ class ExecutionEngineMixin:
             fee=self._fill_fee_fields(fill_price),
         )
 
+    def _route_unfoldable_proceeds(
+        self, units: float, fill_price: float, label: str
+    ) -> float:
+        """Send each wire its share of a sale that queues no buy-back: every dollar
+        ``_settled_sale_proceeds`` leaves is surplus to
+        ``_route_scrum_proceeds_via_wires``. Answers the USD routed."""
+        proceeds = self._settled_sale_proceeds(units, fill_price, label=label.upper())
+        return self._route_scrum_proceeds_via_wires(
+            scrum_usd=proceeds,
+            sold_units=units,
+            sell_fill=fill_price,
+            label=label,
+            surplus_usd=proceeds,
+        )
+
     async def _execute_detonation(
         self, ticker, shadow_rows: Optional[list] = None
     ) -> bool:
@@ -1787,6 +2235,22 @@ class ExecutionEngineMixin:
             sell_amount, _booking = self._shadow_exit_plan(shadow_rows, price)
             if sell_amount <= 0:
                 return False
+            _lost_exit = standing_shadow_exit(
+                self._unanswered_decisions(SIDE_SELL), shadow_rows
+            )
+            if narrower_shadow_exit(_lost_exit, shadow_rows, self._shadow_tranches):
+                if self._refusal_is_new("shadow_lost_order", price):
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"SHADOW HELD (lost order): {len(shadow_rows)} row(s) clear "
+                            f"at ${price:.8f}, and an earlier exit named more rows and "
+                            f"has no answer from the venue. Nothing is sent until those "
+                            f"rows clear together."
+                        ),
+                    )
+                return False
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
@@ -1798,7 +2262,11 @@ class ExecutionEngineMixin:
                 ),
             )
             return await self._sell_detonation(
-                sell_amount, price, SHADOW_BOOKER, _booking
+                sell_amount,
+                price,
+                SHADOW_BOOKER,
+                _booking,
+                decision=_lost_exit or shadow_exit_decision(shadow_rows),
             )
 
         venue_units, refusal = await self._venue_claimable_units()
@@ -1866,27 +2334,30 @@ class ExecutionEngineMixin:
         booker: str,
         booking: dict,
         first_piece: Optional[dict] = None,
+        decision: str = DETONATION_SALE,
     ) -> bool:
-        """Send one market sale of ``sell_amount`` and book its fill through ``booker``
-        with ``booking``, plus ``first_piece`` for the piece settled here.
+        """Send one market sale of ``sell_amount`` under ``decision`` and book its fill
+        through ``booker`` with ``booking``, plus ``first_piece`` for the piece settled
+        here.
 
         False is a venue that returned no order; True is a sent order, a filled or
-        unreported one alike.
+        unreported one alike. A repeated ``decision`` books an earlier order as its
+        share of ``sell_amount``.
         """
+        _repeats = decision in self._unanswered_decisions(SIDE_SELL)
+        _watch = self.order_watch()
         order = await self.guarded_place_order(
             symbol=self.config.symbol,
             side=OrderSide.SELL,
             order_type=OrderType.MARKET,
             amount=sell_amount,
             price=None,
+            purpose=decision_purpose(decision),
+            watch=_watch,
         )
 
         if order is None:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message="DETONATION: exchange returned no order.",
-            )
+            self._refused_no_order("DETONATION", "DETONATION", _watch)
             return False
 
         fill_amount, fill_price, _ = await self._settled_fill(
@@ -1907,11 +2378,12 @@ class ExecutionEngineMixin:
                 ),
             )
             return True
+        _asked = self._order_asked_units(self._last_settled_order or order, sell_amount)
         await self._run_booker(
             booker,
             fill_amount,
             fill_price or price,
-            self._order_asked_units(self._last_settled_order or order, sell_amount),
+            max(_asked, sell_amount) if _repeats else _asked,
             True,
             {**booking, **(first_piece or {})},
         )
@@ -1927,8 +2399,9 @@ class ExecutionEngineMixin:
         excess_usd: float,
         venue_units: Optional[float] = None,
     ) -> None:
-        """Book one settled piece of a detonation: reset ``_target_balance`` to the
-        anchor, clear the fold queue and reseed ``_main_lots``.
+        """Book one settled piece of a detonation: send each wire its share of the
+        proceeds, reset ``_target_balance`` to the anchor, clear the fold queue and
+        reseed ``_main_lots``.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which takes ``units`` off ``_current_holdings``.
@@ -1942,6 +2415,9 @@ class ExecutionEngineMixin:
         self._current_holdings = max(0.0, held_before - fill_amount)
         self._record_venue_units_after_fill(-fill_amount)
 
+        _kept_usd = fill_usd - self._route_unfoldable_proceeds(
+            fill_amount, fill_price, "detonation"
+        )
         try:
             self._bus.emit(
                 "pnl.event",
@@ -1952,7 +2428,7 @@ class ExecutionEngineMixin:
                     "symbol": self.config.symbol,
                     "units": float(fill_amount),
                     "fill_price": float(fill_price),
-                    "usd_captured": float(fill_usd) * float(self._quote_to_usd or 1.0),
+                    "usd_captured": float(_kept_usd) * float(self._quote_to_usd or 1.0),
                     "operator_initiated": False,
                     "manual_kind": "DETONATION",
                 },
@@ -2025,7 +2501,7 @@ class ExecutionEngineMixin:
             side=FILL_SELL,
             units=fill_amount,
             price=fill_price,
-            usd=fill_usd,
+            usd=_kept_usd,
             profit=excess_usd,
             operator_initiated=False,
             fee=self._fill_fee_fields(fill_price),
@@ -2040,6 +2516,7 @@ class ExecutionEngineMixin:
         label: str = "SCRUM",
         booker: str = "",
         booking: Optional[dict] = None,
+        decision: str = "",
     ) -> Optional[float]:
         """Place a market sell and return the fill price, or None when refused.
 
@@ -2052,7 +2529,8 @@ class ExecutionEngineMixin:
         figure is left on ``_last_sell_filled_units`` for the callers that take
         the same units off ``_main_lots``. Both venue-fee records are cleared on
         entry and written by ``_settled_fill`` off whichever order object
-        settled.
+        settled. ``decision`` names the order, so a retry keeps its id at any
+        size or price.
         """
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
@@ -2071,7 +2549,7 @@ class ExecutionEngineMixin:
                 scrum_size=float(amount),
                 summary=summary,
             )
-            if _n > 0:
+            if _n:
                 return None
 
         if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side > 0:
@@ -2303,15 +2781,21 @@ class ExecutionEngineMixin:
                 "SCRUM", "SENT", f"{amount:.6f} @ ${price:.8f}"
             )
 
+            _watch = self.order_watch()
             order = await self.guarded_place_order(
                 symbol=self.config.symbol,
                 side=OrderSide.SELL,
                 order_type=ot,
                 amount=amount,
                 price=exec_price,
+                purpose=decision_purpose(decision),
+                watch=_watch,
             )
 
             if order is None:
+                self._emit_trade_notification(
+                    "SCRUM", "REFUSED", _watch.refusal or NO_ORDER_BACK
+                )
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
@@ -2464,16 +2948,45 @@ class ExecutionEngineMixin:
             )
         return True
 
+    def _unbooked_coin_refusal(
+        self, held: float, booked: float, *, path: str, price: float
+    ) -> str:
+        """The refusal for ``path`` while ``held`` units beyond siblings top ``booked`` by more
+        than ``manual_fire_dust_band``, or an empty string.
+
+        An unreadable sibling total counts as none, and a refusal leaves the
+        ``_reconcile_holdings`` count alone.
+        """
+        claimable, siblings = self._claimable_exchange_units(
+            held, self.config.exchange_id
+        )
+        if not math.isfinite(siblings):
+            claimable = held
+        booked = max(booked, self._current_holdings)
+        unbooked = claimable - booked
+        if priced_usd(
+            unbooked, price, float(self._quote_to_usd or 1.0)
+        ) <= manual_fire_dust_band(self._target_balance):
+            return ""
+        return (
+            f"FAIL-CLOSED — buy REFUSED. Path={path}. The exchange holds {claimable:.8f} "
+            f"{self.config.target_asset} past other bots and this bot's book shows "
+            f"{booked:.8f}. No buy goes on top of coins the book does not show; the next "
+            f"holdings audit reads them first."
+        )
+
     async def _verify_buy_safe_or_refuse(
         self,
         *,
         path: str,
+        price: float,
     ) -> tuple[Optional[float], str]:
         """Check the position through ``verify_buy_safe_or_refuse``.
 
         Returns ``(verified_units, refuse_reason)`` for ``path``, with the
         expected units summed from ``_main_lots``, and a non-empty
-        ``refuse_reason`` obliges the caller to refuse the buy.
+        ``refuse_reason`` obliges the caller to refuse the buy. A path in
+        ``BOOK_COMPARED_PATHS`` also answers ``_unbooked_coin_refusal`` at ``price``.
         """
         from ..buy_safety import verify_buy_safe_or_refuse
 
@@ -2485,10 +2998,16 @@ class ExecutionEngineMixin:
             self.config.target_asset,
             expected_units,
             path=path,
+            refuse_absent=path in BOOK_COMPARED_PATHS,
         )
         if verified is None:
             return verified, refusal
-        return max(0.0, verified - self._shadow_held_units()), refusal
+        held = max(0.0, verified - self._shadow_held_units())
+        if path in BOOK_COMPARED_PATHS:
+            refusal = self._unbooked_coin_refusal(
+                held, expected_units, path=path, price=price
+            )
+        return held, refusal
 
     async def _execute_buy(
         self,
@@ -2499,6 +3018,8 @@ class ExecutionEngineMixin:
         booker: str = "",
         booking: Optional[dict] = None,
         sources: Optional[list] = None,
+        decision: str = "",
+        watch: Optional[OrderWatch] = None,
     ) -> Optional[float]:
         """Place a market buy and return the fill price, or None when refused.
 
@@ -2510,10 +3031,15 @@ class ExecutionEngineMixin:
         the venue never bought. A venue reporting no filled amount leaves both
         figures untouched and answers None, which every caller already reads as
         no buy. The figure is left on ``_last_buy_filled_units`` for the
-        callers that add the same units to ``_main_lots``.
+        callers that add the same units to ``_main_lots``. ``decision`` names the
+        order, so a retry keeps its id at any size or price, and an answer to it that
+        ``_answers_this_send`` refuses books through ``_book_earlier_order``. A path
+        outside ``OWN_TRANCHE_PATHS`` reads ``cost`` in USD and refuses through
+        ``_spends_held_dollars``, and one inside reads it in the quote currency.
         """
         self._last_fill_venue_fee = None
         self._last_buy_filled_units = 0.0
+        _watch = watch or self.order_watch()
 
         try:
             _ctx = dict(trace_context or {})
@@ -2629,7 +3155,7 @@ class ExecutionEngineMixin:
         _per_cycle_growth_budget = _anchor * (_cap_pct / 100.0)
 
         _fresh_units, _refuse_reason_msg = await self._verify_buy_safe_or_refuse(
-            path=_path
+            path=_path, price=price
         )
         if _refuse_reason_msg:
             if self._refusal_is_new("buy_safety", price):
@@ -2642,10 +3168,18 @@ class ExecutionEngineMixin:
         _qrate_buy = float(self._quote_to_usd or 1.0)
         _ceiling_units = sum(float(lot.get("units", 0) or 0) for lot in self._main_lots)
         _current_position_usd = _ceiling_units * price * _qrate_buy
-        _projected_position_usd = _current_position_usd + cost
+        _own_tranche = _path in OWN_TRANCHE_PATHS
+        _projected_position_usd = _current_position_usd + (
+            cost * _qrate_buy if _own_tranche else cost
+        )
+        _in_flight_usd = (
+            0.0
+            if _own_tranche
+            else cost * (1.0 + (self._fee_pct_read() or 0.0) / 100.0)
+        )
 
         _target_delta_usd = float(self._target_balance) - _current_position_usd
-        _slippage_tol_pct = 0.5
+        _slippage_tol_pct = SLIPPAGE_TOLERANCE_PCT
         if _path == "zero_balance_initial_entry":
             _path_budget = float(self._target_balance)
         elif _path in ("fold_rebuy", "manual_tranche_fire"):
@@ -2711,7 +3245,7 @@ class ExecutionEngineMixin:
 
         try:
             amount = fold_units(cost, price, FRACTIONAL_UNITS)
-            if _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
+            if not _own_tranche and _qrate_buy > 0 and abs(_qrate_buy - 1.0) > 1e-9:
                 amount = amount / _qrate_buy
 
             from ...core.execution_discipline import verify_book_spread as _vbs
@@ -2747,36 +3281,50 @@ class ExecutionEngineMixin:
             elif vh_status == "adjusted":
                 self.stats.verify_adjusted += 1
 
-            if self._invisible:
-                ot = OrderType.MARKET
-                exec_price = None
-            else:
-                ot = OrderType.LIMIT
-                # The limit price is the figure this bot decided. verify_hit's
-                # draw models a fill and never prices or sizes a live order.
-                exec_price = float(price)
+            if not _own_tranche and await self._spends_held_dollars(cost, price):
+                return None
+            _wallet = wallet_key(self.config.exchange_id, self._wallet_currency())
+            _reservations = get_wallet_reservations()
+            _reservations.reserve(_wallet, _in_flight_usd)
+            try:
+                if self._invisible:
+                    ot = OrderType.MARKET
+                    exec_price = None
+                else:
+                    ot = OrderType.LIMIT
+                    # The limit price is the figure this bot decided. verify_hit's
+                    # draw models a fill and never prices or sizes a live order.
+                    exec_price = float(price)
 
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=f"BUY signal: {amount:.6f} @ ${price:.8f} "
-                f"(VH:{vh_status}, confidence="
-                f"{summary.consensus_confidence:.2f}, "
-                f"{'MARKET' if self._invisible else 'LIMIT'})",
-            )
-            self._emit_trade_notification(
-                "FOLD", "SENT", f"{amount:.6f} @ ${price:.8f}"
-            )
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"BUY signal: {amount:.6f} @ ${price:.8f} "
+                    f"(VH:{vh_status}, confidence="
+                    f"{summary.consensus_confidence:.2f}, "
+                    f"{'MARKET' if self._invisible else 'LIMIT'})",
+                )
+                self._emit_trade_notification(
+                    "FOLD", "SENT", f"{amount:.6f} @ ${price:.8f}"
+                )
 
-            order = await self.guarded_place_order(
-                symbol=self.config.symbol,
-                side=OrderSide.BUY,
-                order_type=ot,
-                amount=amount,
-                price=exec_price,
-            )
+                _lost = self._lost_buy(decision)
+                order = await self.guarded_place_order(
+                    symbol=self.config.symbol,
+                    side=OrderSide.BUY,
+                    order_type=ot,
+                    amount=amount,
+                    price=exec_price,
+                    purpose=decision_purpose(decision),
+                    watch=_watch,
+                )
+            finally:
+                _reservations.release(_wallet, _in_flight_usd)
 
             if order is None:
+                self._emit_trade_notification(
+                    "FOLD", "REFUSED", _watch.refusal or NO_ORDER_BACK
+                )
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
@@ -2810,6 +3358,21 @@ class ExecutionEngineMixin:
                 order, self.config.symbol, amount, price, label="FOLD"
             )
             asked = self._order_asked_units(self._last_settled_order or order, amount)
+            if (
+                _lost is not None
+                and _own_tranche
+                and not self._answers_this_send(
+                    order,
+                    decision,
+                    (asked, _lost.intent.amount, filled_units, actual_fill or price),
+                    cost,
+                    sources,
+                    booking,
+                )
+            ):
+                booker = EARLIER_ORDER_BOOKER
+                booking = self._earlier_order_booking(_lost, price)
+                sources = None
             self._hold_resting_order(
                 order,
                 "_book_purchase_fill",

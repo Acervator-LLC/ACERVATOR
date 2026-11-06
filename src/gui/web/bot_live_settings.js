@@ -33,6 +33,8 @@
   var FORM_VERTICAL_SPACING_PX = "form_vertical_spacing_px";
   var HEADER_LABEL = "header_label";
   var HEADER_STYLE = "header_style";
+  var HOLD_LABEL = "hold_label";
+  var HOLD_STYLE = "hold_style";
   var INSTALLED_BY_HOST = "installed_by_host";
   var INSTALLED_BY_WINDOW = "installed_by_window";
   var MINIMUM_H_PX = "minimum_h_px";
@@ -77,6 +79,9 @@
   var APPLY_TOOLTIP = "apply_tooltip";
   var CLOSE_TOOLTIP = "close_tooltip";
   var TAB_TOOLTIPS = "tab_tooltips";
+  var PRESS_BOX = "press_box";
+  var PRESS_ANSWERED = "press_box.answered";
+  var PRESS_TYPED = "press_box.typed";
 
   var DECLARED_FIELDS = [
     "accepted", ACTIONS, "age_days_format", "age_hours_format",
@@ -95,7 +100,7 @@
     FORM_FIELD_GROWTH, FORM_HORIZONTAL_SPACING_PX, FORM_MARGINS_PX,
     FORM_ROW_WRAP, FORM_VERTICAL_SPACING_PX, FORMS, "header_color",
     "header_format", HEADER_LABEL, HEADER_STYLE, "header_style_format",
-    INSTALLED_BY_HOST, INSTALLED_BY_WINDOW, "logged", "logger_name",
+    HOLD_LABEL, HOLD_STYLE, INSTALLED_BY_HOST, INSTALLED_BY_WINDOW, "logged", "logger_name",
     "method", MINIMUM_H_PX, MINIMUM_SIZE_PX, MINIMUM_W_PX,
     "mode_extractor", "mode_scrumming", "nav_needs_siblings", NAV_SHOWN,
     NAV_SHOWN_ABOVE_SIBLINGS, NAV_STYLE, NEXT_LABEL, NEXT_STEP,
@@ -140,7 +145,9 @@
   ];
 
   // Every Qt sheet this shell paints, named by the field it arrived in.
-  var SHEET_FIELDS = [HEADER_STYLE, STATE_STYLE, NAV_STYLE, APPLY_STYLE, CLOSE_STYLE, CHANGE_STYLE];
+  var SHEET_FIELDS = [
+    HEADER_STYLE, HOLD_STYLE, STATE_STYLE, NAV_STYLE, APPLY_STYLE, CLOSE_STYLE, CHANGE_STYLE
+  ];
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -230,6 +237,14 @@
   var APPLY_BUTTON_PART = "apply-button";
   var CLOSE_BUTTON_PART = "close-button";
   var CHANGE_LABEL_PART = "change-label";
+  var HOLD_LABEL_PART = "hold-label";
+  var PRESS_SHADE_PART = "press-box-shade";
+  var PRESS_BOX_PART = "press-box";
+  var PRESS_TITLE_PART = "press-box-title";
+  var PRESS_TEXT_PART = "press-box-text";
+  var PRESS_INPUT_PART = "press-box-input";
+  var PRESS_BUTTONS_PART = "press-box-buttons";
+  var PRESS_BUTTON_PART = "press-box-button";
 
   var STATUS_PAGE_PART = "status-page";
   var SETTINGS_PAGE_PART = "settings-page";
@@ -294,6 +309,9 @@
   var FILLS_ATTR = "data-fills";
   var ALSO_ATTR = "data-also";
   var COUNT_ATTR = "data-count";
+  var VALUE_ATTR = "data-value";
+  var DEFAULT_ATTR = "data-default";
+  var ICON_ATTR = "data-icon";
   var ARIA_LABEL = "aria-label";
   var ARIA_DISABLED = "aria-disabled";
 
@@ -1004,6 +1022,72 @@
     );
   }
 
+  // Why this bot sends no order, under the header. Drawn only during a hold.
+  function HoldLine(props) {
+    var lineProps = { className: WINDOW_CLASS, style: styleOf(props.model[HOLD_STYLE]) };
+    lineProps[PART_ATTR] = HOLD_LABEL_PART;
+    lineProps[SLOT_ATTR] = HOLD_LABEL;
+    return element(DIV_TAG, lineProps, text(props.model[HOLD_LABEL]));
+  }
+
+  // The question or the notice a press raised, with the words `PageBoxes` sent.
+  function PressBoxButton(props) {
+    var buttonProps = {
+      className: WINDOW_CLASS,
+      type: BUTTON_TYPE,
+      onClick: function () {
+        dispatch(PRESS_ANSWERED, { value: props.value });
+      }
+    };
+    buttonProps[PART_ATTR] = PRESS_BUTTON_PART;
+    buttonProps[VALUE_ATTR] = text(props.value);
+    buttonProps[DEFAULT_ATTR] = text(props.value === props.box.fallback);
+    return element(BUTTON_TAG, buttonProps, text(objectField(props.box, "words")[props.value]));
+  }
+
+  function PressBox(props) {
+    var box = props.box;
+    var boxProps = { className: WINDOW_CLASS };
+    boxProps[PART_ATTR] = PRESS_BOX_PART;
+    boxProps[ICON_ATTR] = text(box.icon);
+    var titleProps = { className: WINDOW_CLASS };
+    titleProps[PART_ATTR] = PRESS_TITLE_PART;
+    var textProps = { className: WINDOW_CLASS };
+    textProps[PART_ATTR] = PRESS_TEXT_PART;
+    var inputProps = {
+      className: WINDOW_CLASS,
+      type: "text",
+      autoFocus: true,
+      "aria-label": label(box.title),
+      onInput: function (event) {
+        dispatch(PRESS_TYPED, { typed: event.target.value });
+      }
+    };
+    inputProps[PART_ATTR] = PRESS_INPUT_PART;
+    var rowProps = { className: WINDOW_CLASS };
+    rowProps[PART_ATTR] = PRESS_BUTTONS_PART;
+    var shadeProps = { className: WINDOW_CLASS };
+    shadeProps[PART_ATTR] = PRESS_SHADE_PART;
+    return element(
+      DIV_TAG,
+      shadeProps,
+      element(
+        DIV_TAG,
+        boxProps,
+        element(DIV_TAG, titleProps, text(box.title)),
+        element(DIV_TAG, textProps, text(box.text)),
+        box.input === true ? element("input", inputProps) : null,
+        element(
+          DIV_TAG,
+          rowProps,
+          listField(box, "buttons").map(function (value) {
+            return element(PressBoxButton, { key: value, value: value, box: box });
+          })
+        )
+      )
+    );
+  }
+
   function Window(props) {
     var model = isPlainObject(props.model) ? props.model : {};
     var state = hooks().useState(currentTab(model));
@@ -1035,6 +1119,9 @@
       DIV_TAG,
       windowProps,
       element(HeaderRow, { key: HEADER_ROW_PART, model: model }),
+      model[HOLD_LABEL]
+        ? element(HoldLine, { key: HOLD_LABEL_PART, model: model })
+        : null,
       element(TabBar, { key: TAB_BAR_PART, model: model, at: at, onPick: setAt }),
       element(TabPages, { key: TAB_PAGES_PART, model: model, at: at }),
       element(FooterRow, { key: FOOTER_ROW_PART, model: model }),
@@ -1044,7 +1131,10 @@
         slot: CHANGE_LABEL,
         sheet: model[CHANGE_STYLE],
         words: model[CHANGE_LABEL]
-      })
+      }),
+      isPlainObject(model[PRESS_BOX])
+        ? element(PressBox, { key: PRESS_BOX_PART, box: model[PRESS_BOX] })
+        : null
     );
   }
 
@@ -1614,7 +1704,8 @@
     });
   }
 
-  function renderWindow(target, model) {
+  // The shell alone, for a host that fills each tab page itself.
+  function drawWindow(target, model) {
     var drawn = model;
     if (!isPlainObject(drawn)) {
       drawn = payload();
@@ -1622,8 +1713,12 @@
     var mark = String(drawnTabs(isPlainObject(drawn) ? drawn : {})) + String(
       isPlainObject(drawn) ? drawn[TITLE] : EMPTY
     );
-    var host = draw(target, element(Window, { key: mark, model: drawn }));
-    mountPages(target, drawn);
+    return draw(target, element(Window, { key: mark, model: drawn }));
+  }
+
+  function renderWindow(target, model) {
+    var host = drawWindow(target, model);
+    mountPages(target, isPlainObject(model) ? model : payload());
     return host;
   }
 
@@ -1706,6 +1801,7 @@
     faults: faults,
     loadError: loadError,
     isLoaded: isLoaded,
+    drawWindow: drawWindow,
     renderWindow: renderWindow,
     mountPages: mountPages,
     tabRequest: tabRequest,

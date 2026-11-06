@@ -3,7 +3,7 @@
 ``StartAllProgressDialog`` subscribes to ``start_all_progress_surface.TOPIC``
 and re-emits each event on ``_progress_signal`` for the GUI thread.
 ``_handle_progress_main_thread`` answers the phases begin, bot_starting,
-bot_started, bot_timeout, done and cancelled, and ``_on_cancel`` calls
+bot_started, bot_held, bot_timeout, done and cancelled, and ``_on_cancel`` calls
 ``cancel_start_all``. Every word, colour, size and delay it paints is read
 from ``start_all_progress_surface`` at the moment it paints it.
 """
@@ -87,7 +87,7 @@ class StartAllProgressDialog(QtWidgets.QDialog):
         layout.addLayout(button_row)
 
     # Signal carries (phase, total, started, bot_id)
-    _progress_signal = QtCore.Signal(str, int, int, str)
+    _progress_signal = QtCore.Signal(str, int, int, str, str)
 
     def _on_progress_event(self, event) -> None:
         """Read ``phase``, ``total``, ``started`` and ``bot_id`` off
@@ -99,13 +99,14 @@ class StartAllProgressDialog(QtWidgets.QDialog):
             total = int(data.get("total", 0))
             started = int(data.get("started", 0))
             bot_id = str(data.get("bot_id", "") or "")
-            self._progress_signal.emit(phase, total, started, bot_id)
+            reason = str(data.get("reason", "") or "")
+            self._progress_signal.emit(phase, total, started, bot_id, reason)
         except (AttributeError, TypeError, ValueError) as _pe_exc:
             logger.exception(surface.EVENT_DROPPED_LOG, type(_pe_exc).__name__, _pe_exc)
 
-    @QtCore.Slot(str, int, int, str)
+    @QtCore.Slot(str, int, int, str, str)
     def _handle_progress_main_thread(
-        self, phase: str, total: int, started: int, bot_id: str
+        self, phase: str, total: int, started: int, bot_id: str, reason: str
     ) -> None:
         if phase == surface.BEGIN:
             if total == 0:
@@ -132,6 +133,14 @@ class StartAllProgressDialog(QtWidgets.QDialog):
             if bot_id:
                 self._replace_last_matching(
                     bot_id, surface.ITEM_BOT_STARTED.format(bot_id=bot_id)
+                )
+        elif phase == surface.BOT_HELD:
+            self._headline.setText(
+                surface.HEADLINE_BOT_STARTED.format(total=total, started=started)
+            )
+            if bot_id:
+                self._replace_last_matching(
+                    bot_id, surface.ITEM_BOT_HELD.format(bot_id=bot_id, reason=reason)
                 )
         elif phase == surface.BOT_TIMEOUT:
             if bot_id:

@@ -215,6 +215,7 @@ class NotificationManager:
             event=AlertEvent.BOT_PAUSED_BY_RISK,
             channels=message_channels_for(AlertEvent.BOT_PAUSED_BY_RISK, SOUND_EXTRA),
             priority=AlertPriority.CRITICAL,
+            cooldown_seconds=0,
         ),
         AlertEvent.BUY_FILLED: AlertRule(
             event=AlertEvent.BUY_FILLED,

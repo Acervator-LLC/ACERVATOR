@@ -28,7 +28,9 @@ if TYPE_CHECKING:
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
 from ..exchange.base import OrderSide, OrderType
-from .target_bands import at_target_dust_band
+from ..exchange.ccxt_connector import order_stayed_home
+from ..exchange.idempotency import decision_purpose
+from .target_bands import at_target_dust_band, empty_position
 from .bot_container import (
     BotContainer,
     BotConfig,
@@ -54,6 +56,8 @@ from .ta_engine import (
 )
 from .container.config import (
     DETONATION_CONFIDENCE_MIN_DEFAULT,
+    PRESS_AGAIN,
+    TICK_STOPPED,
     ceiling_multiple,
     target_growth_pct,
 )
@@ -63,7 +67,7 @@ from .otd_math import (
     DistanceSettingUnreadable,
     opposing_sale_price,
 )
-from .stack_math import rung_floor_ref
+from .stack_math import LADDER_STOPPED, rung_floor_ref
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
@@ -105,25 +109,33 @@ from .scrumming import (
     WireRoutingMixin,
 )
 from .scrumming.execution import SettledFillFee, venue_fee_record
-from .scrumming.shadow import REGIME_NONE, regime_of
+from .scrumming.shadow import REGIME_NONE, regime_of, shadow_units
+from .scrumming.sizing import SELF_DESTRUCT_SALE
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
+from .scrumming.tick_phases import ENTRY_NO_FILL_EXIT
 from .scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
     _STRONG_TREND_MIN_BULL_CANDLES,
 )
 from .scrumming.sizing import (
     EVENT_ID_KEY,
+    HEDGE_BUY,
+    REBALANCE_UNFUNDED,
+    SIDE_BUY,
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
+    fold_decision,
     discharge_gain_usd,
     fold_size_taper,
     position_ceiling,
     priced_usd,
     rate_after_wire,
     ratio_to_ceiling,
+    repeated_fold_decision,
     scrumming_interval_usd,
+    stack_rung_decision,
     target_delta_pct,
     target_delta_usd,
     tranche_rebuy_price,
@@ -430,6 +442,7 @@ class ScrummingBot(
         self._last_summary: Optional[VotingSummary] = None
         # Newest candle the last _refresh_market_reading compute saw.
         self._reading_candle_stamp: float = 0.0
+        self._tick_candles: list = []
         self._last_bb: Optional[BBProximityResult] = None
         self._last_gate_state: dict = {
             "scrum_armed": False,
@@ -551,6 +564,8 @@ class ScrummingBot(
 
         self._last_trade_price: float = 0.0
         self._last_trade_side: Optional[str] = None
+        self._first_buy_made: bool = False
+        self._first_buy_held_exit: str = ""
 
         self._hyst_armed_fold_side: bool = False
         self._hyst_armed_scrum_side: bool = False
@@ -607,6 +622,7 @@ class ScrummingBot(
         self._cb_soft_tripped_at: float = 0.0
         self._cb_soft_trip_pct: float = 0.0
         self._cb_last_candle_ts: float = 0.0
+        self._cb_feed_out: bool = False
         self._cb_unreadable_named: tuple = ()
 
         self._hunger_candles: int = 0
@@ -1739,6 +1755,18 @@ class ScrummingBot(
           {"applied": True|False, "reason"?: str, ...}
 
         """
+        _watch = self.order_watch(press=True)
+        _hold = self.order_refusal(_watch)
+        if _hold:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"MANUAL TRANCHE FIRE REFUSED: {_hold}. Tranche unchanged. "
+                    f"{PRESS_AGAIN}."
+                ),
+            )
+            return {"applied": False, "reason": f"{_hold}. {PRESS_AGAIN}"}
         if not isinstance(tranche_index, int):
             try:
                 tranche_index = int(tranche_index)
@@ -1825,14 +1853,19 @@ class ScrummingBot(
                 EVENT_ID_KEY: str(tranche.get(EVENT_ID_KEY, "") or ""),
             },
             sources=[tranche],
+            decision=repeated_fold_decision([tranche], self._unanswered_sends(SIDE_BUY))
+            or fold_decision([tranche]),
+            watch=_watch,
         )
+        if _watch.refusal:
+            return {"applied": False, "reason": f"{_watch.refusal}. {PRESS_AGAIN}"}
         if fill_price is None or fill_price <= 0:
             return {
                 "applied": False,
                 "reason": (
                     "_execute_buy refused or failed (Smart "
                     "Ceiling / fail-closed buy safety / P0b guard, or "
-                    "exchange rejection); tranche unchanged"
+                    "exchange rejection); the activity log names the outcome"
                 ),
             }
         return {
@@ -1843,6 +1876,11 @@ class ScrummingBot(
             "units_returned": float(self._last_buy_filled_units or 0.0),
             "remaining_tranches": len(self._fold_tranches),
         }
+
+    def _audit_next_tick(self) -> None:
+        """Bring ``tick``'s periodic ``_reconcile_holdings`` to the next tick, ahead of
+        every decision that tick takes."""
+        self._reconcile_tick_counter = self._reconcile_interval
 
     async def _book_manual_tranche_fill(
         self,
@@ -2166,9 +2204,11 @@ class ScrummingBot(
 
         ``_reading_candle_stamp`` holds the newest candle the last compute saw.
         Candles with that stamp again give the same summary, so the compute is
-        skipped and the reading already on the panel stands.
+        skipped and the reading already on the panel stands. ``_tick_candles``
+        keeps the fetched candles for ``_tick_breaker_holds``.
         """
         ta_tf = self.config.ta_timeframe or "1h"
+        self._tick_candles = []
         try:
             raw = await self._get_ohlcv(symbol, timeframe=ta_tf, limit=100)
             candles = candles_from_raw(raw)
@@ -2180,6 +2220,7 @@ class ScrummingBot(
                 exc,
             )
             return False
+        self._tick_candles = candles
         if len(candles) < MIN_CANDLES_FOR_TA:
             return False
         self._last_bb = detect_bb_proximity(
@@ -2325,6 +2366,11 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
+        _watch = self.order_watch(press=True)
+        _hold = self.order_refusal(_watch)
+        if _hold:
+            return self._refuse_self_destruct(_hold)
+
         try:
             self._bus.emit(
                 "bot.log",
@@ -2374,7 +2420,7 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
-        units += self._return_shadows_to_lots("self-destruct")
+        units += shadow_units(self._shadow_tranches)
         if units <= 0:
             self._main_lots = []
             try:
@@ -2388,12 +2434,14 @@ class ScrummingBot(
                     type(_sup).__name__,
                     _sup,
                 )
+            for _cleared in self._fold_tranches:
+                self._return_wire_credits_to_pool(_cleared)
             self._fold_tranches = []
             self._fold_queue_usd = 0.0
             self._current_holdings = 0.0
             try:
                 if not keep_running:
-                    self.state = BotState.PAUSED
+                    await self.pause()
             except Exception as _sup:
                 logger.debug(
                     "suppressed in %s: %s: %s",
@@ -2430,6 +2478,7 @@ class ScrummingBot(
         try:
             ticker = await self._get_ticker(self.config.symbol)
             ref_price = float(ticker.last)
+            self.stats.current_price = ref_price
         except Exception:
             ref_price = float(self._last_trade_price or 0)
 
@@ -2465,8 +2514,15 @@ class ScrummingBot(
                 order_type=OrderType.MARKET,
                 amount=units,
                 price=None,
+                purpose=decision_purpose(SELF_DESTRUCT_SALE),
+                watch=_watch,
             )
         except Exception as exc:
+            _home = order_stayed_home(exc)
+            if not _home:
+                self._audit_next_tick()
+            if not _home and not keep_running:
+                await self.pause()
             try:
                 self._bus.emit(
                     "bot.log",
@@ -2474,7 +2530,13 @@ class ScrummingBot(
                     message=(
                         f"SELF-DESTRUCT FAILED: order raised "
                         f"{type(exc).__name__}: {exc}. State "
-                        f"NOT cleared — operator must investigate."
+                        f"NOT cleared — operator must investigate. "
+                        + (
+                            "Nothing was sold and the bot is left as it was."
+                            if _home
+                            else "The sale may be at the venue, so the bot stays "
+                            "paused until Start."
+                        )
                     ),
                 )
             except Exception as _sup:
@@ -2493,6 +2555,8 @@ class ScrummingBot(
             }
 
         if order is None:
+            if _watch.refusal:
+                return self._refuse_self_destruct(_watch.refusal)
             try:
                 self._bus.emit(
                     "bot.log",
@@ -2517,6 +2581,9 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
+        if not keep_running:
+            await self.pause()
+        self._return_shadows_to_lots("self-destruct")
         fill_amount, fill_price, _ = await self._settled_fill(
             order, self.config.symbol, units, ref_price, label="SELF-DESTRUCT"
         )
@@ -2533,8 +2600,8 @@ class ScrummingBot(
                         f"SELF-DESTRUCT SENT, NO FILL REPORTED: market-sell "
                         f"{units:.8f} {self.config.target_asset} was accepted and "
                         f"the exchange reported no filled amount. Nothing was "
-                        f"cleared, counted or paused; the sale is booked when the "
-                        f"exchange reports its fill."
+                        f"cleared or counted. Any fill books at the next worked "
+                        f"tick, and a paused bot works none until Start."
                     ),
                 )
             except Exception as _sup:
@@ -2546,7 +2613,8 @@ class ScrummingBot(
                 )
             return {
                 "ok": False,
-                "reason": "the exchange reported no filled amount; nothing changed",
+                "reason": "the exchange reported no filled amount; "
+                "any fill books at the next worked tick",
                 "sold_qty": 0.0,
                 "sold_usd": 0.0,
                 "fill_price": 0.0,
@@ -2560,6 +2628,33 @@ class ScrummingBot(
             **_destruct,
         )
 
+    def tick_stop_reason(self) -> str:
+        """``TICK_STOPPED`` while ``_pause_event`` is shut or ``_stop_event`` is set,
+        and empty while a tick may send."""
+        shut = self._stop_event.is_set() or not self._pause_event.is_set()
+        return TICK_STOPPED if shut else ""
+
+    def _refuse_self_destruct(self, hold: str) -> dict:
+        """Write one ``SELF-DESTRUCT FAILED`` line and one ``REFUSED`` trade line naming
+        ``hold``, and answer the result ``self_destruct`` returns for a refused press.
+        """
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"SELF-DESTRUCT FAILED: refused: {hold}. State NOT cleared. "
+                f"{PRESS_AGAIN}."
+            ),
+        )
+        self._emit_trade_notification("SELF_DESTRUCT", "REFUSED", hold)
+        return {
+            "ok": False,
+            "reason": f"{hold}. {PRESS_AGAIN}",
+            "sold_qty": 0.0,
+            "sold_usd": 0.0,
+            "fill_price": 0.0,
+        }
+
     async def _book_self_destruct(
         self,
         units: float,
@@ -2571,7 +2666,7 @@ class ScrummingBot(
         venue_units: Optional[float] = None,
     ) -> dict:
         """Book one settled piece of a self-destruct sale: lots off highest price first,
-        the fold queue cleared, the bot paused unless ``keep_running``.
+        the fold queue cleared; ``self_destruct`` pauses the bot and no piece does.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``.
@@ -2588,6 +2683,8 @@ class ScrummingBot(
             logger.debug(
                 "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
             )
+        for _cleared in self._fold_tranches:
+            self._return_wire_credits_to_pool(_cleared)
         self._fold_tranches = []
         self._fold_queue_usd = 0.0
         self._current_holdings = max(0.0, self._current_holdings - fill_amount)
@@ -2617,14 +2714,6 @@ class ScrummingBot(
             self.stats.total_scrummed_usd += fill_usd
             self.note_scrum_retention_usd(fill_usd)
             self._count_trade_volume(fill_amount, fill_price)
-        except Exception as _sup:
-            logger.debug(
-                "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
-            )
-
-        try:
-            if not keep_running:
-                self.state = BotState.PAUSED
         except Exception as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
@@ -2667,7 +2756,11 @@ class ScrummingBot(
                     f"SELF-DESTRUCT COMPLETE: sold {fill_amount:.8f} "
                     f"@ ${fill_price:.8f} = ${fill_usd:.2f}. "
                     f"Internal state cleared. Bot "
-                    + ("PAUSED" if not keep_running else "kept RUNNING")
+                    + (
+                        "kept RUNNING"
+                        if keep_running or self._pause_event.is_set()
+                        else "PAUSED"
+                    )
                     + "."
                     + (
                         f" {self._current_holdings:.8f} "
@@ -3072,6 +3165,8 @@ class ScrummingBot(
 
     async def tick(self) -> None:
         symbol = self.config.symbol
+        if self._cb_hard_tripped:
+            self.state = BotState.PAUSED
 
         try:
             await self._ensure_capital_reservation(
@@ -3088,7 +3183,10 @@ class ScrummingBot(
             _tick_sec = max(self.tick_interval, 0.1)
             _base_skip = max(1, int((self.config.scrum_read_rate_min * 60) / _tick_sec))
             self._tick_skip_search = _base_skip
-            if self._scrum_target_mode in ("track", "fire"):
+            if (
+                self._scrum_target_mode in ("track", "fire")
+                and not self._cb_hard_tripped
+            ):
                 self._tick_skip = max(1, _base_skip // 10)
             else:
                 self._tick_skip = _base_skip
@@ -3138,6 +3236,8 @@ class ScrummingBot(
         if not self._initialised:
             await self._tick_initialise(symbol)
             return
+
+        await self._start_phantom_set(symbol)
 
         try:
             await self._reconcile_resting_orders()
@@ -3190,6 +3290,9 @@ class ScrummingBot(
         _delta_early = target_delta_usd(current_value, self._target_balance)
         self._update_opposing_hysteresis_state(_delta_early, ticker.last)
 
+        if self._tick_breaker_holds(current_value):
+            return
+
         # Ahead of every early return below: a position at target leaves the tick
         # at the dust band, and a dated contract must still close.
         if await self._tick_expiry_close(ticker):
@@ -3200,6 +3303,8 @@ class ScrummingBot(
 
         # Within the dust band of target the tick returns; manual fire bypasses it.
         _dust_band_usd = at_target_dust_band(self._target_balance)
+        if not self._first_buy_made and await self._book_reaches_target(symbol):
+            self._first_buy_made = True
         if (
             not self._manual_fire_pending
             and abs(current_value - self._target_balance) <= _dust_band_usd
@@ -3331,20 +3436,29 @@ class ScrummingBot(
                             ),
                         )
                 else:
-                    await self._tick_cartridge_fire(
+                    if _direction == "FOLD" and not await self._first_buy_clears(
+                        ticker, symbol, current_value
+                    ):
+                        return
+                    _cartridge = await self._tick_cartridge_fire(
                         ticker,
                         _direction,
                         _cartridge_delta,
                         _cartridge_threshold,
                         _cartridge_pct,
                     )
-                    return
+                    if _cartridge != REBALANCE_UNFUNDED:
+                        return
 
         if await self._tick_detonation(ticker):
             return
 
-        if current_value < self._target_balance * 0.01:
-            await self._tick_initial_entry(ticker, symbol, current_value)
+        if empty_position(current_value, self._target_balance):
+            _entry_exit = await self._tick_initial_entry(ticker, symbol, current_value)
+            if _entry_exit:
+                if ticker.last > 0 and _entry_exit != ENTRY_NO_FILL_EXIT:
+                    self.stats.position_value = current_value
+                self._emit_gate_decision_at_quiet_tick(_entry_exit)
             return
 
         self.stats.position_value = current_value
@@ -3375,19 +3489,6 @@ class ScrummingBot(
             candles = candles_from_raw(raw_candles)
         except Exception:
             candles = []
-
-        try:
-            self._check_circuit_breakers(candles)
-        except Exception as _cb_exc:
-            logger.warning(
-                "Bot %s circuit breaker check raised %s: %s",
-                self.bot_id,
-                type(_cb_exc).__name__,
-                _cb_exc,
-            )
-        if self._cb_hard_tripped:
-            self._emit_gate_decision_at_quiet_tick("cb-hard-tripped")
-            return
 
         summary = None
         bb_result = None
@@ -4494,7 +4595,9 @@ class ScrummingBot(
         if not _scrum_chain_result.should_fire and not _fold_chain_result.should_fire:
             self._emit_gate_decision_at_quiet_tick(GATE_CHAIN_EXIT)
         if _fold_chain_result.should_fire:
-            if await self._tick_execute_fold(
+            if await self._first_buy_clears(
+                ticker, symbol, current_value
+            ) and await self._tick_execute_fold(
                 ticker, summary, delta, _distance, bb_result, _fold_chain_result
             ):
                 return
@@ -4639,7 +4742,9 @@ class ScrummingBot(
             _gap = _hedge_gap_usd
             if _gap / max(self._target_balance, 1e-9) >= 0.01:
                 _use = min(self._hedge_bal * 0.5, _gap)
-                if _use > 0.01:
+                if _use > 0.01 and await self._first_buy_clears(
+                    ticker, symbol, current_value
+                ):
                     hedge_fill = await self._execute_buy(
                         _use,
                         ticker.last,
@@ -4657,6 +4762,7 @@ class ScrummingBot(
                             "bb_pos": float(bb_pos),
                             "intended": float(ticker.last),
                         },
+                        decision=HEDGE_BUY,
                     )
                     if (hedge_fill is None or hedge_fill <= 0) and self._refusal_is_new(
                         "hedge_buy_refused", ticker.last
@@ -5091,10 +5197,17 @@ class ScrummingBot(
         holding the same figure.
 
         Returns:
-            The number of tranches created (>=1). Populates
+            The number of tranches created (>=1), or ``LADDER_STOPPED`` when
+            ``order_refusal`` stopped it with none. Populates
             ``self._stack_tranches`` and records ``origin`` on every tranche.
 
         """
+        _watch = self.order_watch()
+        _hold = self.order_refusal(_watch)
+        if _hold and not self._invisible:
+            self._report_held_order(_watch, "SELL", self.config.symbol, _hold)
+            return LADDER_STOPPED
+
         from .scrumming.sizing import (
             EVENT_ID_KEY,
             EVENT_UNITS_KEY,
@@ -5209,6 +5322,7 @@ class ScrummingBot(
                     f"into it. No order was placed for them."
                 ),
             )
+        _opened_rungs: list = []
         for entry in _fresh_rungs:
             t_index = entry["index"]
             t_size = entry["size"]
@@ -5221,10 +5335,13 @@ class ScrummingBot(
                         order_type=_order_type_for_visible,
                         amount=float(t_size),
                         price=float(t_price),
+                        watch=_watch,
                     )
                     if order is not None:
                         entry["order_id"] = getattr(order, "id", None)
                         entry["order_type_placed"] = _order_type_for_visible.value
+                    elif _watch.refusal:
+                        break
                     else:
                         entry["status"] = "cancelled"
                         entry["cancel_reason"] = "exchange returned no order"
@@ -5250,7 +5367,21 @@ class ScrummingBot(
                     )
             self._stack_tranches.append(entry)
             self._stack_created += 1
+            _opened_rungs.append(entry)
 
+        _unsent = len(_fresh_rungs) - len(_opened_rungs)
+        if _unsent:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK STOPPED: {_unsent} of {len(_fresh_rungs)} rung(s) not "
+                    f"sent: {_watch.refusal}. Their units stay in the "
+                    f"position."
+                ),
+            )
+            if not _opened_rungs:
+                return _combined_n or LADDER_STOPPED
         _mode_label = "VISIBLE" if _visible else "INVISIBLE"
         _agg_label = " (AGGRESSIVE/IOC)" if _visible and _aggressive else ""
         self._bus.emit(
@@ -5258,16 +5389,16 @@ class ScrummingBot(
             bot_id=self.bot_id,
             message=(
                 f"STACK OPENED [{_mode_label}{_agg_label}] "
-                f"({len(_fresh_rungs)} tranches) from {origin} @ "
+                f"({len(_opened_rungs)} tranches) from {origin} @ "
                 f"${scrum_price:.8f}, size {scrum_size:.6f}. "
                 f"Prices: "
-                f"{[f'${r[STACK_PRICE_KEY]:.8f}' for r in _fresh_rungs[:5]]}"
-                f"{'…' if len(_fresh_rungs) > 5 else ''}"
+                f"{[f'${r[STACK_PRICE_KEY]:.8f}' for r in _opened_rungs[:5]]}"
+                f"{'…' if len(_opened_rungs) > 5 else ''}"
             ),
         )
         # A rung combined into a standing one still took this sale's units, so
         # the caller must not fall through to an undivided market sell.
-        return len(_fresh_rungs) + _combined_n
+        return len(_opened_rungs) + _combined_n
 
     async def _reconcile_stack_tranches_visible(self) -> int:
         """Visible-mode Stack reconciliation, once per tick.
@@ -5506,6 +5637,7 @@ class ScrummingBot(
                     summary=_vote,
                     bypass_stack=True,
                     label="STACK",
+                    decision=stack_rung_decision(t),
                     booker="_book_stack_spend",
                     booking={
                         "rung_index": t.get("index"),
@@ -5667,6 +5799,7 @@ class ScrummingBot(
         self._release_capital_reservation()
         await self._phantom_mgr.stop_all(self.bot_id)
         self._phantom_mgr.remove_set(self.bot_id)
+        self._phantoms_started = False
         await super().stop()
 
     async def _spawn_stack_from_fold(
@@ -5732,7 +5865,7 @@ class ScrummingBot(
                     f"(size {float(fold_size):.6f}, path {path})."
                 ),
             )
-        return opened
+        return max(opened, 0)
 
     def open_extractor_tranches(self) -> list[dict]:
         """List the Extractor Tranches held against this bot's asset.

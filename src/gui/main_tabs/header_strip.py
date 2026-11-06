@@ -278,7 +278,7 @@ class HeaderStripMixin:
                 stack.setCurrentIndex(layer_page(key))
                 held = (getattr(self, "_class_layers", None) or {}).get(key) or {}
                 self._tab_widget = held.get("tabs")
-                self._exchange_tabs = held.get("exchange_tabs") or {}
+                self._exchange_tabs = held.get("exchange_tabs", {})
                 self._empty_placeholder = held.get("placeholder")
 
         self.setWindowTitle(window_title(key))

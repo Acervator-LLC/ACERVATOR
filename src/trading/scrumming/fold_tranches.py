@@ -12,7 +12,11 @@ import time
 from typing import Any, Callable, Optional
 
 from ..bot_container import as_finite_float, despawn_threshold_days
-from ..container.config import fold_ratio_pct
+from ..container.config import (
+    TRANCHE_HELD_SECONDS_KEY,
+    despawn_age_seconds,
+    fold_ratio_pct,
+)
 from ..otd_math import DistanceSettings
 from ..stack_math import (
     STACK_ORDER_ID_KEY,
@@ -34,9 +38,11 @@ from .sizing import (
     merge_fold_tranches_within_distance,
     merge_wire_credit_records,
     plan_fold_consumption,
+    scale_wire_credits,
     settle_fold_plan,
     tranche_sale_rate,
     tranche_sale_usd,
+    tranche_wire_usd,
     tranches_beyond_held_total,
     unaligned_fold_tranches,
 )
@@ -76,6 +82,7 @@ class FoldTrancheAccountingMixin:
     _tranches_malformed_dropped: int
     bot_id: Any
     config: Any
+    order_hold_reason: Callable[[], str]
     stats: Any
 
     def _fold_eligible_tranches(
@@ -225,7 +232,8 @@ class FoldTrancheAccountingMixin:
         ``ref`` it came in with, and is tagged ``fold_partial_spent``.
 
         The fold-back path in ``tick_phases`` adds what this removes to
-        ``_tranches_closed_lifetime``.
+        ``_tranches_closed_lifetime``. A source that left the queue returns
+        the wire credit the plan did not spend to the pool.
 
         Args:
           plan: ``(source tranche, usd taken, units taken)`` triples,
@@ -237,6 +245,14 @@ class FoldTrancheAccountingMixin:
         self._fold_tranches, removed, spent = settle_fold_plan(
             self._fold_tranches, plan
         )
+        for source, _usd, _units in plan:
+            if any(one is source for one in self._fold_tranches):
+                continue
+            recorded = tranche_wire_usd(source)
+            left = float(source.get("usd", 0.0) or 0.0)
+            if recorded > 0.0 and left > recorded:
+                scale_wire_credits(source, left / recorded)
+            self._return_wire_credits_to_pool(source)
         return removed, spent
 
     def _top_up_remnant_fold_tranches(
@@ -788,10 +804,27 @@ class FoldTrancheAccountingMixin:
           Age in seconds, which may be negative for a future-dated
           stamp, or None when there is no usable timestamp.
         """
-        _ts = as_finite_float(tranche.get(field))
-        if _ts is None or _ts <= 0:
-            return None
-        return now - _ts
+        return despawn_age_seconds(tranche, field, now)
+
+    def _credit_held_age(self, held_from: float, now: float) -> None:
+        """Add to each tranche's ``TRANCHE_HELD_SECONDS_KEY`` the seconds it stood through
+        from ``held_from`` to ``now``; a ``held_from`` of 0 adds nothing."""
+        _from = as_finite_float(held_from)
+        if _from is None or _from <= 0.0:
+            return
+        for _rows, _field in (
+            (self._fold_tranches, FOLD_AGE_KEY),
+            (self._stack_tranches, STACK_AGE_KEY),
+        ):
+            for _t in _rows or []:
+                _stamp = (
+                    as_finite_float(_t.get(_field)) if isinstance(_t, dict) else None
+                )
+                if _stamp is None or _stamp <= 0 or now <= max(_stamp, _from):
+                    continue
+                _t[TRANCHE_HELD_SECONDS_KEY] = (
+                    as_finite_float(_t.get(TRANCHE_HELD_SECONDS_KEY)) or 0.0
+                ) + (now - max(_stamp, _from))
 
     def _despawn_threshold_days(self) -> int:
         """This bot's despawn threshold in whole days; 0 means off.
@@ -803,7 +836,8 @@ class FoldTrancheAccountingMixin:
         return despawn_threshold_days(self.config)
 
     def _despawn_aged_tranches(self, now: Optional[float] = None) -> dict:
-        """Remove tranches older than ``config.tranche_despawn_days``.
+        """Remove tranches older than ``config.tranche_despawn_days``, and remove
+        nothing while ``order_hold_reason`` names a hold.
 
         Removing a fold tranche recomputes ``_fold_queue_usd``, the
         derived aggregate behind the tick's ``_fold_queue_usd == 0``
@@ -858,7 +892,7 @@ class FoldTrancheAccountingMixin:
             "ageless_kept": 0,
             "usd_removed": 0.0,
         }
-        if _days <= 0:
+        if _days <= 0 or self.order_hold_reason():
             return report
 
         _now = time.time() if now is None else as_finite_float(now)
@@ -1291,10 +1325,10 @@ class FoldTrancheAccountingMixin:
         _now = time.time()
 
         def _age_text(record: dict, field: str) -> str:
-            _age = self._tranche_age_seconds(record, field, _now)
-            if _age is None:
+            _stamp = as_finite_float(record.get(field))
+            if _stamp is None or _stamp <= 0:
                 return "no age"
-            return f"{_age / 86400.0:.2f} days old"
+            return f"{(_now - _stamp) / 86400.0:.2f} days old"
 
         _fold_detail = "; ".join(
             f"ref ${as_finite_float(_t.get('ref')) or 0.0:.8f}, "

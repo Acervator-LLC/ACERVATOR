@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 
 from . import design_system as ds
-from .color_alpha import rgba
 from .main_tabs.fold_tokens_surface import FOLD_COLUMN_TOOLTIPS
 from .live_settings.fold_tokens import (
     ARBITER_COLUMN_HEADER,
@@ -167,8 +166,6 @@ __all__ = [
 ]
 
 logger = logging.getLogger("acervator.gui")
-
-STATE_BACKGROUND_ALPHA = 34
 
 try:
     from PySide6.QtWidgets import (
@@ -348,24 +345,8 @@ if _HAS_QT:
             )
             hdr_row.addWidget(hdr)
 
-            state = bot.state.value
-            state_colors = {
-                "running": ds.SUCCESS,
-                "idle": ds.CARD_METRIC_LABEL,
-                "paused": ds.WARNING,
-                "error": ds.ERROR,
-                "stopped": ds.TEXT_MUTED,
-                "cooldown": ds.WARNING,
-            }
-            state_colour = state_colors.get(state, ds.TEXT_NEUTRAL)
-            state_lbl = QLabel(f"  {state.upper()}")
-            state_lbl.setStyleSheet(
-                f"font-size: 14px; font-weight: bold; "
-                f"color: {state_colour}; "
-                f"background: {rgba(state_colour, STATE_BACKGROUND_ALPHA)}; "
-                f"padding: 2px 8px; border-radius: 4px;"
-            )
-            hdr_row.addWidget(state_lbl)
+            self._state_lbl = QLabel("")
+            hdr_row.addWidget(self._state_lbl)
             hdr_row.addStretch()
 
             # Order follows BotManager._bots insertion order, wrapping at both ends.
@@ -398,6 +379,12 @@ if _HAS_QT:
             self._next_btn.setVisible(_can_nav)
 
             layout.addLayout(hdr_row)
+
+            self._hold_lbl = QLabel("")
+            self._hold_lbl.setStyleSheet(window_surface.HOLD_STYLE)
+            self._hold_lbl.setWordWrap(True)
+            layout.addWidget(self._hold_lbl)
+            self._show_hold()
 
             tabs = QTabWidget()
             self._tabs = tabs
@@ -535,6 +522,27 @@ if _HAS_QT:
             )
             self.resize(width, height)
             return width, height
+
+        def _message_boxes(self):
+            """The box class this window's presses ask through, ``QMessageBox`` here."""
+            from PySide6.QtWidgets import QMessageBox
+
+            return QMessageBox
+
+        def _text_prompts(self):
+            """The typed prompt class this window's presses ask through."""
+            from PySide6.QtWidgets import QInputDialog
+
+            return QInputDialog
+
+        def _show_hold(self) -> None:
+            """Write the badge and ``_hold_lbl``, the line hidden with no hold."""
+            state = window_surface.window_state(self._bot)
+            self._state_lbl.setText(window_surface.state_text(state))
+            self._state_lbl.setStyleSheet(window_surface.state_style(state))
+            words = window_surface.hold_text(self._bot)
+            self._hold_lbl.setText(words)
+            self._hold_lbl.setVisible(bool(words))
 
         def _sibling_bot_ids(self) -> list:
             """Return the ordered list of bot ids in the current

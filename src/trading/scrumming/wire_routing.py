@@ -9,15 +9,16 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any, TYPE_CHECKING
+from typing import Any, Optional, TYPE_CHECKING
 
 from ...core.event_bus import LINE_KIND_WIRE_FLOW
 from ..container.config import fold_ratio_pct
-from ..otd_math import DistanceSettingUnreadable, fold_rebuy_price
+from ..otd_math import DistanceSettingUnreadable
+from ..wallet_reservations import wallet_currency, wallet_key
 from .sizing import (
     fold_cap_remaining_usd,
     held_wire_usd,
-    sale_surplus_usd,
+    restored_sale_surplus_usd,
     tranche_wire_usd,
     wire_credit_entries,
 )
@@ -105,16 +106,29 @@ class WireRoutingMixin(_Host):
         """Attach a Smart Wire manager for cross-compounding."""
         self._smart_wire_mgr = manager
 
+    def _shares_wallet(self, other: Any) -> bool:
+        """True where ``other`` trades this bot's ``config.exchange_id`` and quote
+        currency, the one wallet a wire moves dollars inside."""
+        other_config = getattr(other, "config", None)
+        return wallet_key(
+            getattr(other_config, "exchange_id", ""),
+            wallet_currency(
+                getattr(other_config, "symbol", ""),
+                getattr(other_config, "base_currency", ""),
+            ),
+        ) == wallet_key(
+            self.config.exchange_id,
+            wallet_currency(self.config.symbol, self.config.base_currency),
+        )
+
     def _sale_surplus_usd(
         self, proceeds_usd: float, sold_units: float, sale_price: float
     ) -> float:
-        """``sale_surplus_usd`` of one sale, restored at the unbanded
+        """``restored_sale_surplus_usd`` of one sale at
         ``opposing_distance_settings``, under ``fold_cap_remaining_usd`` in
         quote units."""
         try:
-            restore_price = fold_rebuy_price(
-                sale_price, self.opposing_distance_settings().distance_pct()
-            )
+            distance = self.opposing_distance_settings()
         except DistanceSettingUnreadable:
             return 0.0
         quote = float(self._quote_to_usd or 1.0)
@@ -123,10 +137,11 @@ class WireRoutingMixin(_Host):
         cap_remaining = fold_cap_remaining_usd(
             self.cycle_growth_cap_usd, self._fold_cycle_cap_consumed
         )
-        return sale_surplus_usd(
+        return restored_sale_surplus_usd(
             proceeds_usd,
             sold_units,
-            restore_price,
+            sale_price,
+            distance,
             fold_ratio_pct(self.config),
             cap_remaining / quote,
         )
@@ -137,6 +152,7 @@ class WireRoutingMixin(_Host):
         sold_units: float,
         sell_fill: float,
         label: str = "scrum",
+        surplus_usd: Optional[float] = None,
     ) -> float:
         """Route pct% of the sale's `_sale_surplus_usd` to each outgoing
         wire's target via `apply_wire_income`. Each routed share is booked by
@@ -145,11 +161,13 @@ class WireRoutingMixin(_Host):
         entry for this bot together.
 
         Args:
-          scrum_usd:  the sale's proceeds (USD).
-          sold_units: the units the sale sold.
-          sell_fill:  the actual fill price (used in audit ref string).
-          label:      "scrum" / "manual_scrum" — appears in
-                      WireTransaction.wire_type and operator log.
+          scrum_usd:   the sale's proceeds (USD).
+          sold_units:  the units the sale sold.
+          sell_fill:   the actual fill price (used in audit ref string).
+          label:       "scrum" / "manual_scrum" / "detonation" — appears in
+                       WireTransaction.wire_type and operator log.
+          surplus_usd: the surplus of a sale that queues no buy-back, in place
+                       of `_sale_surplus_usd`.
 
         Returns the total USD routed. Caller subtracts this from local
         accounting so tranches/fold-queue reflect only the local share.
@@ -165,7 +183,11 @@ class WireRoutingMixin(_Host):
             _wires = _wire_mgr.get_outgoing_wires(self.bot_id)
             if not _wires:
                 return 0.0
-            _surplus = self._sale_surplus_usd(scrum_usd, sold_units, sell_fill)
+            _surplus = (
+                self._sale_surplus_usd(scrum_usd, sold_units, sell_fill)
+                if surplus_usd is None
+                else float(surplus_usd)
+            )
             if _surplus <= 0.0:
                 _held = _WIRE_HELD_FORMAT.format(
                     label=label.upper(), proceeds=scrum_usd, units=sold_units
@@ -227,6 +249,17 @@ class WireRoutingMixin(_Host):
                     if _tgt_bot is None:
                         continue
                     if not hasattr(_tgt_bot, "apply_wire_income"):
+                        continue
+                    if not self._shares_wallet(_tgt_bot):
+                        self._bus.emit(
+                            "bot.log",
+                            bot_id=self.bot_id,
+                            message=(
+                                f"WIRE HELD ({label.upper()}): {_tgt_id} trades "
+                                f"another wallet, so ${_routed:.4f} stays with this "
+                                f"bot."
+                            ),
+                        )
                         continue
                     _apply_result = _tgt_bot.apply_wire_income(
                         usd=_routed, source=self.bot_id, ref=f"{label}@{sell_fill:.8f}"

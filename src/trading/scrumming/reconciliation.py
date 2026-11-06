@@ -15,8 +15,16 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, SettledFill
 from ...exchange.base import OrderSide, Trade
+from ...exchange.idempotency import get_idempotency_layer
 from ..bot_container import FILL_DUST_UNITS
-from .sizing import priced_usd
+from .sizing import (
+    SAME_SIZE_REL,
+    SELF_DESTRUCT_SALE,
+    SIDE_BUY,
+    SIDE_SELL,
+    booked_at_audit,
+    priced_usd,
+)
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -59,6 +67,10 @@ class ReconciliationEngineMixin:
 
     # Supplied by ScrummingBot at runtime; annotations only, no attribute
     # is created.
+    _book_manual_purchase: Callable[..., Any]
+    _book_manual_sale: Callable[..., Any]
+    _book_self_destruct: Callable[..., Any]
+    _earlier_order_booking: Callable[..., dict]
     _bus: Any
     _current_holdings: float
     _fill_history: Any
@@ -68,6 +80,8 @@ class ReconciliationEngineMixin:
     _quote_to_usd: float
     _reconcile_resting_orders: Callable[..., Any]
     _refresh_quote_to_usd: Callable[..., Any]
+    _return_shadows_to_lots: Callable[..., float]
+    _shadow_held_units: Callable[..., float]
     bot_id: Any
     config: Any
     exchange: Any
@@ -903,12 +917,15 @@ class ReconciliationEngineMixin:
             per_lot.append(_units)
         return per_lot, None
 
-    def _claimable_exchange_units(self, exchange_units: float) -> tuple[float, float]:
+    def _claimable_exchange_units(
+        self, exchange_units: float, exchange_id: str | None = None
+    ) -> tuple[float, float]:
         """``(claimable, sibling_tracked)`` for this asset.
 
         ``claimable`` is ``exchange_units`` less
-        ``sum_sibling_tracked_units``; an unreadable total becomes
-        ``inf``, which drives ``claimable`` negative and claims nothing.
+        ``sum_sibling_tracked_units`` for ``exchange_id``, every venue at None; an
+        unreadable total becomes ``inf``, which drives ``claimable`` negative and
+        claims nothing.
         """
         _sib_units = 0.0
         _mgr = getattr(self, "_bot_manager", None)
@@ -918,7 +935,7 @@ class ReconciliationEngineMixin:
                     0.0,
                     float(
                         _mgr.sum_sibling_tracked_units(
-                            self.bot_id, self.config.target_asset
+                            self.bot_id, self.config.target_asset, exchange_id
                         )
                     ),
                 )
@@ -1297,6 +1314,86 @@ class ReconciliationEngineMixin:
         _total = sum(_lot_each)
         return _total if math.isfinite(_total) else None
 
+    async def _settle_lost_order(
+        self, side: str, units: float, exchange_units: float
+    ) -> bool:
+        """Book ``units`` the audit read past the book as the fill of the unanswered
+        decision on ``side`` sent at that size, and end it.
+
+        ``booked_at_audit`` names the decisions. ``_book_manual_purchase`` pays the queue
+        or ``_book_manual_sale`` queues a tranche at the price that send read, else
+        ``stats.current_price``. ``SELF_DESTRUCT_SALE`` sold the Shadow rows too, so it
+        matches with ``_shadow_held_units`` added and books through
+        ``_book_self_destruct``. True where one booked.
+        """
+        current = float(
+            getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
+        )
+        layer = get_idempotency_layer()
+        for send in layer.unanswered_sends(self.bot_id, self.config.symbol, side):
+            whole_sale = send.intent.decision == SELF_DESTRUCT_SALE
+            sent = units + self._shadow_held_units() if whole_sale else units
+            read = next(
+                (
+                    price
+                    for size, price in send.sizes
+                    if math.isclose(size, sent, rel_tol=SAME_SIZE_REL)
+                ),
+                None,
+            )
+            price = float(read or current)
+            if (
+                read is None
+                or not booked_at_audit(send.intent.decision)
+                or not math.isfinite(price)
+                or price <= 0.0
+            ):
+                continue
+            layer.end_retry(send.intent)
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"LOST ORDER BOOKED: the audit read {sent:.8f} "
+                    f"{self.config.target_asset} past the book, the size of a "
+                    f"{side} whose answer was lost, so it books at ${price:.8f}."
+                ),
+            )
+            if whole_sale:
+                self._return_shadows_to_lots("self-destruct")
+                await self._book_self_destruct(
+                    sent,
+                    price,
+                    sent,
+                    True,
+                    keep_running=False,
+                    venue_units=exchange_units + sent,
+                )
+            elif side == SIDE_BUY:
+                await self._book_manual_purchase(
+                    units,
+                    price,
+                    units,
+                    True,
+                    label="FOLD",
+                    operator_initiated=False,
+                    venue_units=exchange_units - units,
+                    **self._earlier_order_booking(send, price),
+                )
+            else:
+                await self._book_manual_sale(
+                    units,
+                    price,
+                    units,
+                    True,
+                    label="SCRUM",
+                    operator_initiated=False,
+                    price=price,
+                    venue_units=exchange_units + units,
+                )
+            return True
+        return False
+
     def _adopt_drift_down(
         self,
         exchange_units: float,
@@ -1370,11 +1467,13 @@ class ReconciliationEngineMixin:
         venue, and on drift down ``_adopt_drift_down`` sets both to the venue.
 
         ``reason`` tags every log line with ``periodic`` or ``post_failure``,
-        and the return is True once the comparison completes, False when the
-        balance fetch raises, when ``Balance.absent`` marks the currency
-        missing from the response, or when ``_reconcilable_lot_book`` or
-        ``_reconcilable_units`` refuses an input.
+        and the return is True once the comparison completes, False when a send of
+        this bot is in flight, when the balance fetch raises, when ``Balance.absent``
+        marks the currency missing from the response, or when
+        ``_reconcilable_lot_book`` or ``_reconcilable_units`` refuses an input.
         """
+        if get_idempotency_layer().sending(self.bot_id, self.config.symbol):
+            return False
         try:
             await self._reconcile_resting_orders()
         except Exception as _rest_exc:
@@ -1500,6 +1599,10 @@ class ReconciliationEngineMixin:
         )
 
         if _drift_down:
+            if await self._settle_lost_order(
+                SIDE_SELL, internal_units - exchange_units, exchange_units
+            ):
+                return True
             self._adopt_drift_down(exchange_units, _lot_each, _scalar_units, reason)
         else:
 
@@ -1513,6 +1616,10 @@ class ReconciliationEngineMixin:
                 _basis = float(
                     getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
                 )
+                if _gain > 1e-9 and await self._settle_lost_order(
+                    SIDE_BUY, _gain, exchange_units
+                ):
+                    return True
 
                 # _book_reconciliation_lot returns the units it wrote;
                 # both branches below read that, not _basis.

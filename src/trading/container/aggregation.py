@@ -10,8 +10,10 @@ import logging
 import math
 from typing import Any, Optional
 
+from ...exchange.idempotency import get_idempotency_layer
 from ..smart_wire import is_mature, mature_profit_usd
 from ..target_bands import ammo_units, fleet_ammo
+from ..wallet_reservations import wallet_currency
 from .config import (
     DOLLAR_PEGGED_CURRENCIES,
     UNREADABLE_TOTALS_KEY,
@@ -92,6 +94,15 @@ STATS_TOTALS = tuple(
         )
     )
 )
+
+
+def held_amount(figure: Any) -> Optional[float]:
+    """``figure`` as a finite float of zero or more, else None."""
+    try:
+        usd = float(figure)
+    except (TypeError, ValueError):
+        return None
+    return usd if math.isfinite(usd) and usd >= 0.0 else None
 
 
 def accrued_growth_usd(
@@ -187,6 +198,9 @@ class FleetAggregationMixin:
     #: seconds, and an unchanged list is not logged again.
     _last_unreadable_totals: Optional[list] = None
 
+    #: The unread bots ``sum_sibling_held_usd`` last logged, per asking bot.
+    _unread_holds_logged: Optional[dict] = None
+
     def _log_unreadable_totals(self, unreadable_totals: list) -> None:
         """Log the totals one pass could not sum whole, once per change.
 
@@ -242,9 +256,12 @@ class FleetAggregationMixin:
                 return True
         return False
 
-    def sum_sibling_tracked_units(self, bot_id: str, target_asset: str) -> float:
+    def sum_sibling_tracked_units(
+        self, bot_id: str, target_asset: str, exchange_id: Optional[str] = None
+    ) -> float:
         """Sum the ``_main_lots`` and ``_shadow_tranches`` units tracked by every
-        other bot with the same target_asset, excluding the caller.
+        other bot with the same target_asset, and the units of its unanswered buys, on
+        ``exchange_id`` alone where one is named, excluding the caller.
 
         Reconciliation in multi-base mode holds that this bot's
         ``_current_holdings`` never exceeds
@@ -258,6 +275,8 @@ class FleetAggregationMixin:
                 continue
             try:
                 if (other_bot.config.target_asset or "").upper() != target_norm:
+                    continue
+                if exchange_id not in (None, other_bot.config.exchange_id):
                     continue
             except Exception as _read_exc:
                 logger.warning(
@@ -275,6 +294,9 @@ class FleetAggregationMixin:
                 held = getattr(other_bot, "_shadow_tranches", []) or []
                 for lot in (*lots, *held):
                     total += float(lot.get("units", 0) or 0)
+                total += get_idempotency_layer().unanswered_buy_units(
+                    other_id, other_bot.config.symbol
+                )
             except Exception as _lot_exc:
                 # Units added before the raise stay in the running total.
                 logger.warning(
@@ -459,6 +481,73 @@ class FleetAggregationMixin:
                 currency_norm,
             )
             return None
+        return total
+
+    def _one_sibling_hold(self, other_bot: Any) -> Optional[float]:
+        """The dollars one other bot's ``_fold_tranches`` and
+        ``_pending_wire_credits`` hold, past the unfilled dollars of its resting tranche
+        buys, or None where one figure is no amount."""
+        rows = getattr(other_bot, "_fold_tranches", ()) or ()
+        resting = getattr(other_bot, "resting_tranche_usd", None)
+        queued = [held_amount(row.get("usd", 0.0)) for row in rows]
+        credit = held_amount(getattr(other_bot, "_pending_wire_credits", 0.0))
+        rested = held_amount(resting() if callable(resting) else 0.0)
+        if credit is None or rested is None or None in queued:
+            return None
+        return max(0.0, sum(queued) - rested) + credit
+
+    def sum_sibling_held_usd(
+        self,
+        bot_id: str,
+        exchange_id: str,
+        currency: str,
+    ) -> Optional[float]:
+        """Sum of what OTHER bots on ``exchange_id`` quoting ``currency`` hold in queued
+        fold tranches and parked wire credits, in that currency's units.
+
+        ``sum_sibling_base_currency_claims`` reads a bot's allocation, and this reads
+        the dollars its buy-backs wait on. Every run state counts. Returns ``None``,
+        never a partial sum, when one bot cannot be read, and a caller that gets
+        ``None`` must refuse to spend.
+        """
+        currency_norm = (currency or "").upper()
+        total = 0.0
+        unread: list[str] = []
+        for other_id, other_bot in self._bots.items():
+            if other_id == bot_id:
+                continue
+            try:
+                other_cfg = other_bot.config
+                same_exchange = other_cfg.exchange_id == exchange_id
+                other_wallet = wallet_currency(
+                    other_cfg.symbol, getattr(other_cfg, "base_currency", "")
+                )
+                if not same_exchange or other_wallet != currency_norm:
+                    continue
+                held = self._one_sibling_hold(other_bot)
+            except Exception as _read_exc:
+                unread.append(f"{other_id} ({_read_exc})")
+                continue
+            if held is None:
+                unread.append(f"{other_id} (a held figure is no amount)")
+                continue
+            total += held
+        logged = self._unread_holds_logged or {}
+        self._unread_holds_logged = logged
+        if unread:
+            named = "; ".join(unread)
+            if logged.get(bot_id) != named:
+                logged[bot_id] = named
+                logger.warning(
+                    "Could not read what %d of the other bots on %s hold of the %s "
+                    "wallet: %s. Returning no total, so nothing spends on a short one.",
+                    len(unread),
+                    exchange_id,
+                    currency_norm,
+                    named,
+                )
+            return None
+        logged.pop(bot_id, None)
         return total
 
     def _bot_position_usd(self, bot: Any, stats: Any, totals: FleetTotals) -> float:

@@ -605,7 +605,8 @@ Sim  Paper  Live  Charts  Inspector  Swarm  History  Status  Console
 
 One label sits beside the Indicator Voting Panel title. It holds the panel's
 empty state and nothing else. The shared function `no_data_text` builds that
-line, and the [Simulator page](simulator.md) shows it. The label is hidden
+line. The [Simulator page](simulator.md#the-indicator-voting-panel-on-this-tab)
+says what its own panel draws in that state. The label is hidden
 whenever the panel has values to draw.
 
 `PaperTraderTabQt` — the Qt clone draws the line
@@ -1132,6 +1133,8 @@ source, a target and a percentage. The moment a paper fold compounds its growth
 into the source's target balance, the wire's share of that same figure is
 credited to the other bot. The source keeps its own growth whole and the share is
 new money at the destination, which is how the live fold route behaves.
+
+Now: a paper fold sends no wire. A paper sale sends each wire its share of the sale's surplus, as a live sale does, and those dollars leave the source's cash for the target's. A share that parks leaves the source's cash at the sale and joins the target's when it lands (`src/paper/paper_run.py, in route_sale_surplus`).
 
 The share lands in the target's standing fold tranches, split evenly, the way
 wire credits land on a live bot. A paper balance opens on the target's first
@@ -3208,9 +3211,9 @@ answer. A sector name no layer carries draws page 0, which is the crypto layer.
 | a name no layer carries | 6 | 0 |
 
 The Simulator tab reads the same call and answered the same seven rows, figure
-for figure. The declaration itself and the Simulator's own reading are on the
-Simulator page under
-[Both tabs build their sector pages from one declared list](simulator.md).
+for figure. The declaration is `src/gui/main_tabs/asset_class_surface.py, in
+layered_classes`, and the Simulator page says what
+[a sector press does on its tab](simulator.md#the-asset-class-group-on-this-tab).
 
 ### What a failed tab build still does
 

@@ -107,6 +107,7 @@ STATE_COLORS = {
     "cooldown": ds.WARNING_STRONG,
     "stopped": ds.TEXT_MUTED,
     "starting": ds.STATE_STARTING,
+    "held": ds.ERROR,
 }
 
 DEFAULT_STATE_COLOR = ds.TEXT_HIGH
@@ -190,6 +191,11 @@ ACTIVE_STATES = ("running", "paused")
 UNKNOWN_STATE_TEXT = "UNKNOWN"
 MODE_TIP_FORMAT = "Mode: {mode}\nState: {state}"
 TOOLTIP_LINE_GAP = "\n"
+#: The ``BotContainer.get_status`` key naming why a bot sends no order.
+HOLD_REASON_KEY = "hold_reason"
+HELD_TIP_FORMAT = "HELD: {reason}.\n{tooltip}"
+#: What ``shown_state`` answers for a bot whose ``HOLD_REASON_KEY`` names a hold.
+STATE_HELD = "held"
 
 SKIP_LOG_FORMAT = (
     "BotStatusTable.update_bots received non-scrumming "
@@ -648,6 +654,24 @@ def mode_tooltip(mode: Any, state: Any) -> str:
     """The Symbol cell tooltip, which names the mode and the state in full."""
     shown = state.upper() if state else UNKNOWN_STATE_TEXT
     return MODE_TIP_FORMAT.format(mode=mode, state=shown)
+
+
+def hold_of(status: Any) -> str:
+    """Why a bot's orders are held, read off ``BotContainer.get_status``."""
+    return str(status.get(HOLD_REASON_KEY) or EMPTY_TEXT)
+
+
+def shown_state(status: Any) -> str:
+    """The state every screen draws for one bot: ``STATE_HELD`` during a hold."""
+    return STATE_HELD if hold_of(status) else status.get("state", EMPTY_TEXT)
+
+
+def held_tooltip(tooltip: Any, status: Any) -> str:
+    """``tooltip`` with the hold reason ahead of it, unchanged with no hold."""
+    hold = hold_of(status)
+    if not hold:
+        return str(tooltip)
+    return HELD_TIP_FORMAT.format(reason=hold, tooltip=tooltip)
 
 
 def base_asset_of(symbol: Any) -> str:
@@ -1628,7 +1652,10 @@ class BotStatusTableModel:
         """The Symbol cell: the state colour, the mode tooltip, and the chart link."""
         if not text:
             return cell(text)
-        found = cell(text, state_color(state), mode_tooltip(mode, state))
+        shown = shown_state(status) or state
+        found = cell(
+            text, state_color(shown), held_tooltip(mode_tooltip(mode, shown), status)
+        )
         try:
             url = chart_url(exchange_id, status.get("symbol", EMPTY_TEXT) or EMPTY_TEXT)
         except Exception as exc:
@@ -1681,7 +1708,7 @@ class BotStatusTableModel:
             "height": BUTTON_HEIGHT_PX,
             "focus_policy": FOCUS_POLICY,
             "style_sheet": FIRE_STYLES[path],
-            "tooltip": tip,
+            "tooltip": held_tooltip(tip, status),
             "path": path,
             "glow": glow,
             "glow_blur_radius": GLOW_BLUR_RADIUS if glow else 0,

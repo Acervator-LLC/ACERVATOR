@@ -593,6 +593,11 @@ class ExtractorBotTableModel:
         self.selected_row = target
         return DETAIL_PATH_SELECTED
 
+    def clear_selection(self) -> None:
+        """Take the highlight off, the way a Scrumming row press does on Qt."""
+        self.current_row = NO_ROW
+        self.selected_row = NO_ROW
+
     def _on_detail(self, bot_id: str) -> None:
         """Run one row's Detail button: select the row, then tell the tab.
 

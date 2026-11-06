@@ -393,6 +393,8 @@ class StateRestoreMixin:
                                 _emit_exc,
                             )
                         continue
+                elif hasattr(bot, "restore_first_buy_made"):
+                    bot.restore_first_buy_made()
 
             bot.state = BotState.IDLE
             bot._restored = True

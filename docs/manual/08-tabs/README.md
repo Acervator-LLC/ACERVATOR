@@ -48,7 +48,7 @@ rule_id="DOC012"   # a dated update that runs backwards
 | [history.md](history.md) | Venue trade history, grading, gate analysis | Live |
 | [console.md](console.md) | Python log tail and the emitter signal stream | Live |
 | [system-status.md](system-status.md) | Emitter Network and Watchdog, the two halves that run today | Skeleton tab — issue #34 |
-| [settings.md](settings.md) | The User page, the Exchanges page, and what each of the eleven pages persists | Live |
+| [settings.md](settings.md) | Every control on the nine Settings pages, and what each page stores | Live |
 | [alerts.md](alerts.md) | The two channel forms, the Event Routing table, the notification history | Both builds complete, the window opens neither |
 | [promotion-pipeline.md](promotion-pipeline.md) | How a strategy earns its way to real money | Four of four steps built |
 

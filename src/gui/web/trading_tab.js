@@ -221,6 +221,7 @@
   var EXCHANGE_PARAM = "exchange";
   var ACTIVITY_PAUSED_PARAM = "activity_paused";
   var API_PAUSED_PARAM = "api_paused";
+  var ADD_EXCHANGE_PARAM = "add_exchange";
   var LOG_API = "acervatorLog";
 
   var PART_ATTR = "data-part";
@@ -670,9 +671,11 @@
   }
 
   // `_add_exchange` ends in `_sync_exchange_tabs`, which re-reads the
-  // configured exchanges; the answer carries whatever was added.
+  // configured exchanges and pushes the tab back to this page.
   function addExchangeAsked() {
-    return askTrading({});
+    var params = {};
+    params[ADD_EXCHANGE_PARAM] = true;
+    return askTrading(params);
   }
 
   // Qt's toggle pauses the pane as well as flipping the caption.
@@ -1710,17 +1713,20 @@
     return host.mount(INDICATOR_MODULE, slot, model) ? slot : null;
   }
 
-  // The layers whose tab widget has an exchange page on show.
+  // The exchange page on show on the one layer the stack shows.
   function shownExchanges() {
     var model = held === null ? null : held.model;
+    var onShow = objectField(model, TRADING_STACK)[CURRENT_INDEX];
     return listField(model, LAYERS)
-      .filter(function (layer) {
-        return isPlainObject(layer) && layer[PLACEHOLDER_SHOWN] === false;
+      .filter(function (layer, at) {
+        return (
+          at === onShow && isPlainObject(layer) && layer[PLACEHOLDER_SHOWN] === false
+        );
       })
       .map(function (layer) {
         var tabs = objectField(layer, EXCHANGE_TABS);
         var one = text(layer[CURRENT_EXCHANGE]);
-        return { exchangeId: one, caption: text(tabs[one]) };
+        return { layerKey: text(layer[KEY]), exchangeId: one, caption: text(tabs[one]) };
       })
       .filter(function (one) {
         return one.exchangeId !== EMPTY;
@@ -1736,6 +1742,11 @@
         PART_ATTR +
         SELECT_IS +
         EXCHANGE_PANE_PART +
+        SELECT_CLOSE +
+        SELECT_OPEN +
+        LAYER_ATTR +
+        SELECT_IS +
+        shown.layerKey +
         SELECT_CLOSE +
         SELECT_OPEN +
         EXCHANGE_ATTR +

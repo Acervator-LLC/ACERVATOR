@@ -14,7 +14,7 @@ At the core of Acervator is what might not first appear as a multi-faceted conce
 
 Acervator addresses ‘fundamental market unpredictability’ by allowing volatility to “orbit” around a set point we call the Target Balance. This element is what performs the first mental trick. It forces the trader to say and establish that “my position is worth X and I will support X with an equal amount of liquidity” i.e. a Target Balance of $50 is set and a total mental position of $100 is established. Trades will be executed to maintain the truth of the Target Balance always being X. After the initial entry is executed and filled, which Acervator will only do in the lower extent of the Bollinger Band on the chosen timeframe, the Scrumming Bot will persistently shave off and “Fold” back in Y% of profits through repeating Harvest-Fold operations that continue until the bot is deactivated or the market suffers a catastrophic collapse which can and do happen so don’t not leave it unmonitored. It should also be noted that the term ‘harvest’ came to replace ‘scrum’ for the sake of clarity but they may be used interchangeably throughout this text. Essentially a Scrum or Harvest is a sale of a position’s increased value over the Target Balance. The amount that the Scrumming Bot harvests or folds is pinned to the Target Delta or the amount of variation (%delta) from the most recent trade event. Much of the finer details of trade execution can be tuned by the user as expected for any professional application but the primary point here is that the amount of profit folded back is capped by the Maximum Target Growth Per Cycle setting while the ability of Acervator to prevent inverted (profit losing: buying higher than sold / selling lower than bought) trades we also have the Minimum Opposing Trade Distance rule which dictates the next trade must be Z distance from the most recent trade event. In addition, sells are not allowed to occur or be pushed below the Bollinger Band midline while buys are not allowed to occur or be pushed above the midline. As a result of just these few component features, we already have multiple soft, non-TA or non-traditional rules protecting the investor before we even start optimizing the trades themselves (pushing them as close to volatility extents as possible) via Technical Analysis and other inventions.
 
-Now: a buy-back waits for this distance alone, wired or not, because a wire takes only the profit a sale leaves past the dollars that buy back its units and the room the growth cap leaves (`src/trading/scrumming/sizing.py, in sale_surplus_usd`).
+Now: a buy-back waits for this distance, wired or not, because a wire takes only the profit a sale leaves past the dollars that buy back its units and the room the growth cap leaves, and a tranche whose own dollars cannot restore its units at this distance waits until they can (`src/trading/scrumming/sizing.py, in tranche_rebuy_price`).
 
 The harvest-fold method itself was manually executed and tested on a multiple cryptocurrency pairs throughout 2023~2026 but it has always been the aspiration to automate it and have it executed at a high rate of frequency with the operating theory that this approach to investment, being a hybrid a HODL and active trading, creates frontline area of support for whatever markets in which it participates long term. It does this by maintaining and, utilizing as directed, all earned profits. It turns any user into an active participant and liquidity provider.
 
@@ -251,28 +251,107 @@ Which gate each override covers is on the gate table in
 
 #### The first buy reads three agreeing indicators
 
-**Current reading.** The entry above places the first buy in the lower extent of
-the band. The first buy also reads the vote, at the twelve published weights.
-Before this change one bearish indicator was enough. Now the bearish vote must
-top what two indicators reach on that same vote, which is 0.1966 with all twelve
-voting. A bot whose own twelve weights are all zero still buys on the direction
-alone. Every new bot starts that way.
+A bot has made its first buy once a tick reads its own lots at target, each at
+the ticker it was adopted at, the decision price of its buy, or else its cost.
+The read allows the largest of the dust band, one size step and the trading fee's
+share of target, so the price after the fill cannot matter, and a whole buy reads
+made on any market. It needs a weight above zero. This is a saved fact about the
+bot, and no fill sets it, so it holds however the coins reached the book. A bot
+that made its first buy and lost the position does not owe another. A saved
+record with no such field reads as made when it shows a fill of this bot's, a
+tranche, or, with a weight above zero, a holding of 1% of target or more.
 
-`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_initial_entry`
+While a bot owes a first buy, its Max Cartridge rebalance, its hedge top-up and
+its fold wait for one read. Price must sit in the lowest 30% of the band, past
+the Detect distance or within the Fire Threshold of the lower band. The bot's own
+vote must then be bearish and top what two indicators reach on that same vote.
+
+A new bot holds twelve zeros, so it has no vote. It makes no first buy until you
+press Save on the TA Indicators page, and its line in the log says so. Twelve
+zeros never read as made, whatever the bot holds. After Save, a bot that finds
+its whole target at the venue reads as made at its next worked tick. One that
+finds less waits, and then the rebalance buys the rest. A bot saved as made keeps
+that reading.
+
+When the read clears, the rebalance fires as it does at any other time: a market
+order sized at the Target Delta and clipped to the wallet. A first buy clipped to
+the wallet or part filled leaves the bot under target, so its next buy reads
+again. A press of Fire does not wait for the read.
+
+With Smart Cartridge off, a Max Cartridge Size of 0 or above 100 fires no
+rebalance buy. Under 1% of target, a bot takes the first entry, with the same
+read, and buys the whole target. Its wallet must hold that target after what the
+other bots claim, and in Order Book mode its order is a limit. A bot that has
+made its first buy and buys back here votes with its own weights, and at twelve
+zeros it waits for Save. Only a first buy's entry fill restarts the opposing
+trade distance.
+
+Both routes refuse a buy while the venue holds more of the coin than the book
+shows, past other bots on that venue and by more than 1% of target, or omits the
+coin from its balance reply. The holdings audit books those coins on its own
+count.
+
+The read:
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_read`
 
 ```python
-if not three_agree(
-    summary.consensus_confidence,
-    summary.signals,
-    self._voting_engine.indicator_weights,
-):
+summary = self._voting_engine.compute_all(
+    parsed, self.config.ta_timeframe, symbol=self.config.symbol
+)
 ```
 
-Driven on a stand-in exchange, against the code before this change taken from
-git. One MACD reading at 0.1 gave a bearish vote of 0.0103. It bought before and
-it waits now. Two agreeing indicators read 0.1966 and wait now. Three read 0.2821
-and buy on both. A bot with every weight at zero bought on the one and on the
-two, before and after.
+```python
+if not three_agree(summary.consensus_confidence, summary.signals):
+```
+
+The hold the rebalance, the hedge top-up and the fold ask:
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_clears`
+
+```python
+if self._first_buy_made:
+    return True
+read = await self._first_buy_read(ticker, symbol)
+if not read.refusal:
+    return True
+```
+
+The one write of the field:
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+if not self._first_buy_made and await self._book_reaches_target(symbol):
+    self._first_buy_made = True
+```
+
+```
+src/trading/scrumming/tick_phases.py, in TickPhaseMixin._book_reaches_target
+```
+
+The read of a saved record:
+
+`src/trading/scrumming/state_io.py` — `StateSerializerMixin.restore_first_buy_made`
+
+```python
+self._first_buy_made = (
+    saved if isinstance(saved, bool) else self._shows_past_trading()
+)
+```
+
+The venue compare:
+
+```
+src/trading/scrumming/execution.py, in ExecutionEngineMixin._unbooked_coin_refusal
+```
+
+Paper and the Simulator make no first buy. Each opens a bot at its target.
+
+```
+src/paper/paper_run.py, in opening_balance
+src/simulator/back_test.py, in opening_position
+```
 
 ## 2 - The Phantom Bot
 
@@ -1148,6 +1227,8 @@ moves the share along it. The outflow is capped so a funder keeps its own growth
 capacity: a ten dollar scrum profit against a hundred dollar target releases
 ninety percent, and a zero profit releases nothing.
 
+Now: a sale moves the share along a wire, and a fold moves nothing along it (`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires`).
+
 `src/trading/smart_wire.py` — `compute_safe_outflow_pct`
 
 ```python
@@ -1203,7 +1284,7 @@ and the scrum routing sends a share of each sale's proceeds along the same
 wires. No mechanism funds a new bot out of a parent's mature profit. Deploying
 a pre-connected cluster from the Market Inspector is an intention.
 
-Now: the scrum routing sends each wire its share of a sale's surplus alone, the Scrum Fold Ratio's share of what the sale leaves past the dollars that buy back every unit it sold, less the room the growth cap leaves, and a detonation sends nothing (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
+Now: the scrum routing sends each wire its share of a sale's surplus alone, the Scrum Fold Ratio's share of what the sale leaves past the dollars that buy back every unit it sold, less the room the growth cap leaves. A detonation sends each wire its percentage of the proceeds, because none of them can be folded back, and a fold sends nothing (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
 
 ## 8 - Hunger and Satiety Indices
 
@@ -1469,6 +1550,8 @@ A Shadow Tranche holds no wire credit. A credit may land on a marked fold
 tranche and is spent inside it. The units it buys stay with the parent, under
 the growth cap. The exit routes nothing down a wire
 (`src/trading/scrumming/sizing.py, in plan_fold_consumption`).
+
+Now: the exit sends each wire its percentage of the sale, as a detonation does, because none of it can be folded back (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._route_unfoldable_proceeds`).
 
 A bullish regime sends every row at or over its floor through the detonation
 executor, in one order. The floor is the row's buy price plus the Minimum
@@ -1994,7 +2077,7 @@ times the price its sale filled at, less the trading fee.
 sale dollars / (units x sale rate)  =  1 - trading fee / 100
 ```
 
-Now: a record that a wired sale queues carries the share the wire took, and the relation reads its dollars against units times price less the fee and that share, so the sweep keeps it (`src/trading/scrumming/sizing.py, in unproduced_fold_amount`).
+Now: a record that a wired sale queues carries the share the wire took, and the relation reads its dollars against units times price less the fee and that share. A record holding fewer dollars than that stays queued, because it waits until its dollars restore its units, so the sweep keeps both (`src/trading/scrumming/sizing.py, in unaligned_fold_tranches`).
 
 `src/trading/scrumming/sizing.py`, in `unproduced_fold_amount`, reads that and
 answers why no sale produced a record's amount, or nothing where one could.
@@ -2259,10 +2342,10 @@ DEFAULT_WEIGHTS = {
 }
 ```
 
-Since 2026-10-28 a new bot starts with all twelve at 0.0, written by
-`src/trading/ta_engine.py, in new_bot_weights`, and votes neutral until Save on
-the Settings window hands it the TA Indicators figures. The published figures
-above are unchanged, and a saved bot votes as it did.
+A new bot starts with all twelve at 0.0, written by
+`src/trading/ta_engine.py, in new_bot_weights`. It votes neutral and makes no
+first buy until Save on the Settings window hands it the TA Indicators figures.
+The published figures above are the start figures of those sliders.
 
 **The build this specifies.** A tier is a second map beside the weights, and the
 veto is one test in the aggregator. The signal record grows one field, and it
@@ -2302,14 +2385,16 @@ Issue #433 carries the build.
 not built. What a trade the vote decides needs today is three agreeing
 indicators: the vote must top what the two heaviest voters reach at full
 confidence. That holds at every floor, where a landing strip sets the side, and
-on a bot's first buy. A bot with every weight at zero is outside the rule and
-trades as it did.
+on a bot's first buy. A bot with every weight at zero is outside the rule on a
+later trade, except a buy back through the first entry. Neither that buy nor a
+first buy goes out at twelve zeros, because
+`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_read`
+refuses it before any vote.
 
 `src/trading/ta_engine.py` — `three_agree`
 
 ```python
-held = [sig.weight for sig in signals] if weights is None else list(weights)
-if not any(weight > 0.0 for weight in held):
+if not any(sig.weight > 0.0 for sig in signals):
     return True
 return confidence > two_indicator_ceiling(signals)
 ```
@@ -2532,7 +2617,7 @@ needs TA.* The Live, Paper and Simulator panels and both React pages draw
 `min_rebuy_cell` and `status_cell` from this one module, so no screen can carry
 a different figure.
 
-Now: each row's guide and status read the bot's one distance, so a wired tranche shows the same buy-back price an unwired one does (`src/gui/main_tabs/fold_tranches_tab_surface.py, in fold_distance_pct`).
+Now: each row's guide and status read the bot's one distance, so a wired tranche shows the same buy-back price an unwired one does, and a tranche short of dollars shows the lower price at which its own dollars restore its units (`src/gui/main_tabs/fold_tranches_tab_surface.py, in rebuy_guide`).
 
 ## 14 - Position Ceiling and Detonation
 

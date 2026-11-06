@@ -36,6 +36,7 @@ from ...trading.otd_math import (
     fold_rebuy_price,
     minimum_opposing_trade_distance_pct_from_config,
 )
+from ...trading.scrumming.sizing import tranche_restore_price
 from ..descriptions import FOLD_TRANCHES_TAB_DESCRIPTIONS
 
 METHOD = "fold_tranches_tab.state"
@@ -165,6 +166,11 @@ STATUS_ABOVE_REF_FORMAT = "Above ref ({delta:+.2f}%)"
 MIN_REBUY_TOOLTIP_FORMAT = (
     "A guide, not a trigger: sell ref ${ref:.8f} less "
     "{otd_pct:.2f}% is ${guide:.8f}. A fold-back still needs TA."
+)
+MIN_REBUY_SHORT_TOOLTIP_FORMAT = (
+    "A guide, not a trigger: sell ref ${ref:.8f} less {otd_pct:.2f}% is "
+    "${floor:.8f}, and this tranche's own dollars restore its units only at "
+    "${guide:.8f}. A fold-back still needs TA."
 )
 MIN_REBUY_UNREAD_TOOLTIP = (
     "No guide: a distance setting holds no number, so no fold fires. "
@@ -1125,7 +1131,7 @@ def despawn_preview(fold: Any, stack: Any, days: Any, now: Any) -> dict:
         "usd_removed": 0.0,
         "units_removed": 0.0,
     }
-    from ...trading.container.config import whole_despawn_days
+    from ...trading.container.config import despawn_age_seconds, whole_despawn_days
 
     whole_days = whole_despawn_days(days)
     report["threshold_days"] = whole_days
@@ -1136,7 +1142,7 @@ def despawn_preview(fold: Any, stack: Any, days: Any, now: Any) -> dict:
         return report
     cutoff = whole_days * SECONDS_PER_DAY
     for one in fold_rows:
-        age = record_age_s(one, CREATED_TS_KEY, read_now)
+        age = despawn_age_seconds(one, CREATED_TS_KEY, read_now)
         if age is None:
             report["ageless_kept"] += 1
             continue
@@ -1150,7 +1156,7 @@ def despawn_preview(fold: Any, stack: Any, days: Any, now: Any) -> dict:
         if units is not None:
             report["units_removed"] += units
     for one in stack_rows:
-        age = record_age_s(one, STACK_OPENED_TS_KEY, read_now)
+        age = despawn_age_seconds(one, STACK_OPENED_TS_KEY, read_now)
         if age is None:
             report["ageless_kept"] += 1
         elif age < cutoff:
@@ -1273,23 +1279,36 @@ def fold_distance_pct(bot: Any) -> Optional[float]:
         return None
 
 
-def min_rebuy_cell(ref: Optional[float], otd_pct: Optional[float]) -> list:
+def rebuy_guide(ref: float, otd_pct: float, restore: Optional[float]) -> float:
+    """``fold_rebuy_price`` of ``ref`` and ``otd_pct``, held down to ``restore``,
+    a tranche's ``tranche_restore_price``, where one is read."""
+    floor = fold_rebuy_price(ref, otd_pct)
+    return floor if restore is None else min(floor, restore)
+
+
+def min_rebuy_cell(
+    ref: Optional[float],
+    otd_pct: Optional[float],
+    restore: Optional[float] = None,
+) -> list:
     """The Min-rebuy cell and its tooltip, or an em dash and none.
 
     ``ref`` is the tranche's sell reference price and the guide is
-    ``fold_rebuy_price`` of it and ``otd_pct``.
+    ``rebuy_guide`` of it, ``otd_pct`` and ``restore``.
     """
     if otd_pct is None:
         return [NO_VALUE_TEXT, MIN_REBUY_UNREAD_TOOLTIP]
     if ref is not None and ref > 0 and otd_pct > 0:
-        return [
-            MIN_REBUY_FORMAT.format(price=fold_rebuy_price(ref, otd_pct)),
-            MIN_REBUY_TOOLTIP_FORMAT.format(
-                ref=ref,
-                otd_pct=otd_pct,
-                guide=fold_rebuy_price(ref, otd_pct),
-            ),
-        ]
+        guide = rebuy_guide(ref, otd_pct, restore)
+        floor = fold_rebuy_price(ref, otd_pct)
+        tooltip = (
+            MIN_REBUY_TOOLTIP_FORMAT.format(ref=ref, otd_pct=otd_pct, guide=guide)
+            if guide >= floor
+            else MIN_REBUY_SHORT_TOOLTIP_FORMAT.format(
+                ref=ref, otd_pct=otd_pct, floor=floor, guide=guide
+            )
+        )
+        return [MIN_REBUY_FORMAT.format(price=guide), tooltip]
     if ref is not None and ref > 0:
         return [MIN_REBUY_NO_OTD_FORMAT.format(price=ref), None]
     return [NO_VALUE_TEXT, None]
@@ -1304,16 +1323,21 @@ def status_move_pct(price: float, threshold: float) -> float:
     return (threshold - price) / price * 100.0
 
 
-def status_cell(price: float, ref: Optional[float], otd_pct: Optional[float]) -> list:
+def status_cell(
+    price: float,
+    ref: Optional[float],
+    otd_pct: Optional[float],
+    restore: Optional[float] = None,
+) -> list:
     """The Status cell, its colour and its tooltip.
 
     The percentage is ``status_move_pct`` of ``price`` against the
-    ``fold_rebuy_price`` guide.
+    ``rebuy_guide``.
     """
     if otd_pct is None:
         return [NO_VALUE_TEXT, NO_CELL_COLOR, None]
     if price > 0 and ref is not None and ref > 0 and otd_pct > 0:
-        threshold = fold_rebuy_price(ref, otd_pct)
+        threshold = rebuy_guide(ref, otd_pct, restore)
         delta = status_move_pct(price, threshold)
         if price <= threshold:
             return [
@@ -1361,6 +1385,7 @@ def fold_row_cells(
     stamp = finite_number(tranche.get(CREATED_TS_KEY))
     age = format_age(now - stamp) if stamp is not None and stamp > 0 else NO_VALUE_TEXT
     ref = finite_number(tranche.get(REF_KEY, 0))
+    restore = tranche_restore_price(tranche)
     return [
         QUEUE_NUMBER_FORMAT.format(number=queue_index + 1),
         age,
@@ -1368,8 +1393,8 @@ def fold_row_cells(
         usd_cell(tranche.get(USD_KEY, 0)),
         price_cell(tranche.get(REF_KEY, 0)),
         price_cell(tranche.get(INITIAL_BUY_PRICE_KEY, 0)),
-        min_rebuy_cell(ref, otd_pct)[0],
-        status_cell(price, ref, otd_pct)[0],
+        min_rebuy_cell(ref, otd_pct, restore)[0],
+        status_cell(price, ref, otd_pct, restore)[0],
         source_label(tranche),
         BLANK_LINE,
         ARBITER_NOT_APPLICABLE,
@@ -1380,7 +1405,7 @@ def fold_row_colors(tranche: dict, price: float, otd_pct: Optional[float]) -> li
     """The colour each cell of one fold row is drawn in."""
     colors: list = [FOLD_TRANCHE_FG_HEX] * COLUMN_COUNT
     ref = finite_number(tranche.get(REF_KEY, 0))
-    status = status_cell(price, ref, otd_pct)[1]
+    status = status_cell(price, ref, otd_pct, tranche_restore_price(tranche))[1]
     if status is not NO_CELL_COLOR:
         colors[7] = status
     if source_label(tranche) == SOURCE_MANUAL_SCRUM:
@@ -1995,9 +2020,10 @@ class FoldTranchesTabModel:
 
         days = despawn_threshold_days(self.bot.config)
         stack = list(getattr(self.bot, STACK_TRANCHES_ATTRIBUTE, []) or [])
-        armed = despawn_preview(tranches, stack, days, self.now)
+        held = bool(getattr(self.bot, "order_hold_reason", str)())
+        armed = despawn_preview(tranches, stack, 0 if held else days, self.now)
         windows = [
-            [one, despawn_preview(tranches, stack, one, self.now)]
+            [one, despawn_preview(tranches, stack, 0 if held else one, self.now)]
             for one in DESPAWN_PREVIEW_WINDOWS
         ]
         widest = windows[-1][1] if windows else armed

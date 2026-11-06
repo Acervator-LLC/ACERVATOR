@@ -357,6 +357,22 @@ class BrokerBase(ABC):
         del symbol
         raise NotImplementedError
 
+    async def prepare_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        quantity: float,
+        order_type: OrderType = OrderType.MARKET,
+        limit_price: float = 0,
+        stop_price: float = 0,
+        time_in_force: TimeInForce = TimeInForce.DAY,
+    ) -> dict:
+        """Run every wait ``place_order`` needs ahead of its send, and answer the extra
+        keywords it takes; this body waits for nothing and answers none."""
+        del symbol, side, quantity, order_type
+        del limit_price, stop_price, time_in_force
+        return {}
+
     @abstractmethod
     async def place_order(
         self,
