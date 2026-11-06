@@ -928,7 +928,9 @@ class ReconciliationEngineMixin:
                     0.0,
                     float(
                         _mgr.sum_sibling_tracked_units(
-                            self.bot_id, self.config.target_asset
+                            self.bot_id,
+                            self.config.target_asset,
+                            self.config.exchange_id,
                         )
                     ),
                 )
@@ -941,6 +943,36 @@ class ReconciliationEngineMixin:
                 )
                 _sib_units = float("inf")
         return (exchange_units - _sib_units, _sib_units)
+
+    def _adoptable_exchange_units(self, exchange_units: float) -> tuple[float, float]:
+        """``(adoptable, sibling_tracked)`` for an audit that books coins.
+
+        ``adoptable`` is ``exchange_units`` capped by ``_claimable_exchange_units``,
+        less the fills ``sum_sibling_resting_buy_units`` leaves to the bots that
+        ordered them; an unreadable total claims nothing.
+        """
+        _claimable, _sib_units = self._claimable_exchange_units(exchange_units)
+        _resting = 0.0
+        _mgr = getattr(self, "_bot_manager", None)
+        _reader = getattr(_mgr, "sum_sibling_resting_buy_units", None)
+        if callable(_reader):
+            try:
+                _resting = float(
+                    _reader(
+                        self.bot_id,
+                        self.config.target_asset,
+                        self.config.exchange_id,
+                    )
+                )
+            except Exception as _rest_exc:
+                logger.warning(
+                    "Bot %s adoptable units: sibling resting total unreadable "
+                    "(%s) — claiming nothing this pass.",
+                    self.bot_id,
+                    _rest_exc,
+                )
+                _resting = float("inf")
+        return min(exchange_units, _claimable - _resting), _sib_units
 
     def _store_audited_venue_units(self, claimable_units: float) -> float:
         """Assign ``_audited_venue_units`` from one claimable figure and return it.
@@ -1039,8 +1071,7 @@ class ReconciliationEngineMixin:
         """
         if book_units <= 0:
             return None
-        _claimable, _sib = self._claimable_exchange_units(exchange_units)
-        _adopt = min(exchange_units, _claimable)
+        _adopt, _sib = self._adoptable_exchange_units(exchange_units)
         _gain = self._book_reconciliation_lot(_adopt, book_units, price)
         if _gain is None:
             return None
@@ -1395,8 +1426,7 @@ class ReconciliationEngineMixin:
                 _lot["units"] = _units * _ratio
             self._main_lots = [l for l in self._main_lots if l["units"] > 1e-12]
         elif exchange_units - _lots_before > 1e-9:
-            _claimable, _sib_units = self._claimable_exchange_units(exchange_units)
-            _adopt = min(exchange_units, _claimable)
+            _adopt, _sib_units = self._adoptable_exchange_units(exchange_units)
             _basis = float(
                 getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
             )
@@ -1585,8 +1615,7 @@ class ReconciliationEngineMixin:
 
             _surplus = max(0.0, exchange_units - internal_units)
             if _surplus > 1e-9:
-                _claimable, _sib_units = self._claimable_exchange_units(exchange_units)
-                _adopt = min(exchange_units, _claimable)
+                _adopt, _sib_units = self._adoptable_exchange_units(exchange_units)
                 # Measured from _lot_units; internal_units is
                 # max(scalar, book) and would write a short lot.
                 _gain = _adopt - _lot_units

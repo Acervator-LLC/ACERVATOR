@@ -18,6 +18,7 @@ from ..container.config import (
     as_whole_count,
     ceiling_multiple,
 )
+from ..target_bands import empty_position
 from .distribution import dist_sets_from_saved, dist_units
 from .shadow import shadow_rows_from_saved
 from .target_ramp import RAMP_MODES, RAMP_SEARCH
@@ -27,16 +28,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("acervator.scrumming")
 
-#: ``BotStats`` fields that stay at zero until a bot has traded or held a position.
-TRADE_HISTORY_STATS = (
-    "total_trades",
+#: ``BotStats`` fields only this bot's own fills move.
+OWN_FILL_STATS = (
     "total_buys",
     "total_sells",
     "last_trade_time",
-    "exchange_trade_count",
     "total_scrummed_usd",
     "total_folded_usd",
-    "position_value",
 )
 
 
@@ -261,23 +259,44 @@ class StateSerializerMixin:
         logger.warning("Bot %s %s", self.bot_id, message)
         self._bus.emit("bot.log", bot_id=self.bot_id, message=message)
 
+    def _restored_position_usd(self) -> float:
+        """The larger of ``stats.position_value`` and ``_main_lots`` priced at each lot's
+        cost or ``stats.current_price``, whichever is higher, in USD."""
+        market = as_finite_float(self.stats.current_price) or 0.0
+        lots_usd = sum(
+            (as_finite_float(lot.get("units")) or 0.0)
+            * max(as_finite_float(lot.get("initial_buy_price")) or 0.0, market)
+            for lot in self._main_lots
+        ) * float(self._quote_to_usd or 1.0)
+        return max(lots_usd, as_finite_float(self.stats.position_value) or 0.0)
+
     def _shows_past_trading(self) -> bool:
-        """True when restored lots, tranches, counters or ``TRADE_HISTORY_STATS`` show a
-        holding or a trade."""
-        return any(
-            (
-                self._main_lots,
-                self._fold_tranches,
-                self._shadow_tranches,
-                self._stack_tranches,
-                self._last_trade_side,
-                self._last_trade_price > 0,
-                self._tranches_created_lifetime,
-                self._tranches_closed_lifetime,
-                self._scrum_sells_lifetime,
-                self._hedge_trades,
+        """True when restored tranches, counters or ``OWN_FILL_STATS`` show a trade of this
+        bot's, or ``_restored_position_usd`` passes ``empty_position``."""
+        return (
+            any(
+                (
+                    self._fold_tranches,
+                    self._shadow_tranches,
+                    self._stack_tranches,
+                    self._last_trade_side,
+                    self._last_trade_price > 0,
+                    self._tranches_created_lifetime,
+                    self._tranches_closed_lifetime,
+                    self._scrum_sells_lifetime,
+                    self._hedge_trades,
+                )
             )
-        ) or any(getattr(self.stats, name, 0) for name in TRADE_HISTORY_STATS)
+            or any(getattr(self.stats, name, 0) for name in OWN_FILL_STATS)
+            or not empty_position(self._restored_position_usd(), self._target_balance)
+        )
+
+    def restore_first_buy_made(self, saved: Any = None) -> None:
+        """Set ``_first_buy_made`` to a saved flag, or to ``_shows_past_trading`` on a
+        record that holds none."""
+        self._first_buy_made = (
+            saved if isinstance(saved, bool) else self._shows_past_trading()
+        )
 
     def import_scrumming_state(self, data: dict) -> None:
         """Restore compounding state from an ``export_scrumming_state`` dict.
@@ -583,10 +602,7 @@ class StateSerializerMixin:
         self._scrum_sells_lifetime = admitted_counter(
             data.get("scrum_sells_lifetime", 0), "scrum_sells_lifetime", self.bot_id
         )
-        _saved_made = data.get("first_buy_made")
-        self._first_buy_made = (
-            _saved_made if isinstance(_saved_made, bool) else self._shows_past_trading()
-        )
+        self.restore_first_buy_made(data.get("first_buy_made"))
 
         try:
             _saved_side = data.get("target_grow_last_side", None)

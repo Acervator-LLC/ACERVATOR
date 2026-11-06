@@ -78,7 +78,8 @@ REFUSAL_HOLD_MOVE_FRACTION: float = 0.001
 #: The ``_execute_buy`` paths spending the dollars their own tranche holds.
 OWN_TRANCHE_PATHS = ("fold_rebuy", "manual_tranche_fire")
 
-#: The buy paths ``_unbooked_coin_refusal`` holds to the venue's coin count.
+#: The buy paths held to the venue's coin count, which refuse an omitted coin and
+#: answer ``_unbooked_coin_refusal``.
 BOOK_COMPARED_PATHS = ("cartridge_fold", "zero_balance_initial_entry")
 
 #: The booker of an order a repeated decision got back that no plan sized.
@@ -206,7 +207,6 @@ class ExecutionEngineMixin:
     _combine_fold_tranches_within_distance: Callable[..., Any]
     _count_trade_volume: Callable[..., float]
     _crr: Callable[..., Any]
-    _audit_next_tick: Callable[..., None]
     _claimable_exchange_units: Callable[..., tuple]
     _current_holdings: float
     _emit_gate_decision_at_fire: Callable[..., None]
@@ -2863,8 +2863,8 @@ class ExecutionEngineMixin:
         """The refusal for ``path`` while ``held`` units beyond siblings top ``booked`` by more
         than ``manual_fire_dust_band``, or an empty string.
 
-        An unreadable sibling total counts as none, and a refusal brings the
-        audit that books the units to the next tick.
+        An unreadable sibling total counts as none, and a refusal leaves the
+        ``_reconcile_holdings`` count alone.
         """
         claimable, siblings = self._claimable_exchange_units(held)
         if not math.isfinite(siblings):
@@ -2875,12 +2875,11 @@ class ExecutionEngineMixin:
             unbooked, price, float(self._quote_to_usd or 1.0)
         ) <= manual_fire_dust_band(self._target_balance):
             return ""
-        self._audit_next_tick()
         return (
             f"FAIL-CLOSED — buy REFUSED. Path={path}. The exchange holds {claimable:.8f} "
             f"{self.config.target_asset} past other bots and this bot's book shows "
             f"{booked:.8f}. No buy goes on top of coins the book does not show; the next "
-            f"tick's audit reads them first."
+            f"holdings audit reads them first."
         )
 
     async def _verify_buy_safe_or_refuse(
@@ -2906,6 +2905,7 @@ class ExecutionEngineMixin:
             self.config.target_asset,
             expected_units,
             path=path,
+            refuse_absent=path in BOOK_COMPARED_PATHS,
         )
         if verified is None:
             return verified, refusal

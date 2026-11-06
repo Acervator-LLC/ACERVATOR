@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
 from ..exchange.base import OrderSide, OrderType
-from .target_bands import at_target_dust_band
+from .target_bands import at_target_dust_band, empty_position
 from .bot_container import (
     BotContainer,
     BotConfig,
@@ -558,6 +558,7 @@ class ScrummingBot(
         self._last_trade_price: float = 0.0
         self._last_trade_side: Optional[str] = None
         self._first_buy_made: bool = False
+        self._first_buy_held_exit: str = ""
 
         self._hyst_armed_fold_side: bool = False
         self._hyst_armed_scrum_side: bool = False
@@ -2799,10 +2800,7 @@ class ScrummingBot(
     def _write_clock_figures(
         self, fill: SettledFill, order_id: str, filled: float, rests: bool
     ) -> None:
-        """Set ``_first_buy_made`` on a buy, run ``_sate_hunger`` for ``fill``, then write
-        the mixin's clock figures."""
-        if fill.side == FILL_BUY:
-            self._first_buy_made = True
+        """Run ``_sate_hunger`` for ``fill``, then write the mixin's clock figures."""
         self._sate_hunger(f"a {fill.type} fill")
         super()._write_clock_figures(fill, order_id, filled, rests)
 
@@ -3253,6 +3251,8 @@ class ScrummingBot(
 
         # Within the dust band of target the tick returns; manual fire bypasses it.
         _dust_band_usd = at_target_dust_band(self._target_balance)
+        if current_value >= self._target_balance - _dust_band_usd:
+            self._first_buy_made = True
         if (
             not self._manual_fire_pending
             and abs(current_value - self._target_balance) <= _dust_band_usd
@@ -3400,13 +3400,14 @@ class ScrummingBot(
         if await self._tick_detonation(ticker):
             return
 
-        self.stats.position_value = current_value
-
-        if current_value < self._target_balance * 0.01:
+        if empty_position(current_value, self._target_balance):
             _entry_exit = await self._tick_initial_entry(ticker, symbol, current_value)
             if _entry_exit:
+                self.stats.position_value = current_value
                 self._emit_gate_decision_at_quiet_tick(_entry_exit)
             return
+
+        self.stats.position_value = current_value
 
         try:
             _distance = self.opposing_distance_settings()

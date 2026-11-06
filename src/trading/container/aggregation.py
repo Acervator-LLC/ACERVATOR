@@ -243,9 +243,11 @@ class FleetAggregationMixin:
                 return True
         return False
 
-    def sum_sibling_tracked_units(self, bot_id: str, target_asset: str) -> float:
+    def sum_sibling_tracked_units(
+        self, bot_id: str, target_asset: str, exchange_id: str
+    ) -> float:
         """Sum the ``_main_lots`` and ``_shadow_tranches`` units tracked by every
-        other bot with the same target_asset, excluding the caller.
+        other bot with the same target_asset on ``exchange_id``, excluding the caller.
 
         Reconciliation in multi-base mode holds that this bot's
         ``_current_holdings`` never exceeds
@@ -259,6 +261,8 @@ class FleetAggregationMixin:
                 continue
             try:
                 if (other_bot.config.target_asset or "").upper() != target_norm:
+                    continue
+                if other_bot.config.exchange_id != exchange_id:
                     continue
             except Exception as _read_exc:
                 logger.warning(
@@ -289,6 +293,28 @@ class FleetAggregationMixin:
                     target_norm or "coin",
                 )
                 continue
+        return total
+
+    def sum_sibling_resting_buy_units(
+        self, bot_id: str, target_asset: str, exchange_id: str
+    ) -> float:
+        """Sum the unbooked units of every other bot's ``_resting_orders`` buys of
+        ``target_asset`` on ``exchange_id``, a figure only the holdings audit reads."""
+        target_norm = (target_asset or "").upper()
+        total = 0.0
+        for other_id, other_bot in self._bots.items():
+            if other_id == bot_id:
+                continue
+            config = other_bot.config
+            if (config.target_asset or "").upper() != target_norm:
+                continue
+            if config.exchange_id != exchange_id:
+                continue
+            for record in getattr(other_bot, "_resting_orders", None) or []:
+                if record.get("side") == "buy":
+                    asked = float(record.get("asked", 0.0) or 0.0)
+                    booked = float(record.get("booked", 0.0) or 0.0)
+                    total += max(0.0, asked - booked)
         return total
 
     def _one_sibling_claim(

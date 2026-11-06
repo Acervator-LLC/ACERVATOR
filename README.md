@@ -331,10 +331,12 @@ _GATE_ORDER_SCRUM: tuple[str, ...] = (
 
 ##### The first buy reads three agreeing indicators
 
-A bot owes a first buy until its first buy fill books. This is a saved fact
-about the bot, not a share of its target. A bot that held a position and lost it
-does not owe one. A saved record with no such field reads as made when it shows a
-holding or a trade.
+A bot has made its first buy once a tick reads its position at target or above,
+by the dust band the tick parks in. This is a saved fact about the bot, and no
+fill sets it, so it holds however the coins reached the book. A bot that made its
+first buy and lost the position does not owe another. A saved record with no such
+field reads as made when it shows a fill of this bot's, a tranche, or a holding
+of 1% of target or more.
 
 While a bot owes a first buy, its Max Cartridge rebalance, its hedge top-up and
 its fold wait for one read. Price must sit in the lowest 30% of the band, past
@@ -343,21 +345,26 @@ vote must then be bearish and top what two indicators reach on that same vote.
 
 A new bot holds twelve zeros, so it has no vote. It makes no first buy until you
 press Save on the TA Indicators page, and its line in the log says so. A new bot
-that finds a leftover of its coin also waits, and then the rebalance buys the
-rest.
+that finds its whole target at the venue reads as made at its first worked tick.
+One that finds less also waits, and then the rebalance buys the rest.
 
 When the read clears, the rebalance fires as it does at any other time: a market
-order sized at the Target Delta and clipped to the wallet. A press of Fire does
-not wait for the read.
+order sized at the Target Delta and clipped to the wallet. A first buy clipped to
+the wallet or part filled leaves the bot under target, so its next buy reads
+again. A press of Fire does not wait for the read.
 
-A Max Cartridge Size of 0 or above 100 fires no rebalance. Under 1% of target, a
-bot takes the first entry, with the same read, and buys the whole target. Its
-wallet must hold that target after what the other bots claim, and in Order Book
-mode its order is a limit.
+With Smart Cartridge off, a Max Cartridge Size of 0 or above 100 fires no
+rebalance buy. Under 1% of target, a bot takes the first entry, with the same
+read, and buys the whole target. Its wallet must hold that target after what the
+other bots claim, and in Order Book mode its order is a limit. A bot that has
+made its first buy and buys back here votes with its own weights, and at twelve
+zeros it waits for Save. Only a first buy's entry fill restarts the opposing
+trade distance.
 
 Both routes refuse a buy while the venue holds more of the coin than the book
-shows, past other bots and by more than 1% of target. The next tick's audit books
-those coins.
+shows, past other bots on that venue and by more than 1% of target, or omits the
+coin from its balance reply. The holdings audit books those coins on its own
+count, and leaves a fill another bot's resting order has not booked to that bot.
 
 `src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_read`
 
@@ -1193,7 +1200,8 @@ not built. What a trade the vote decides needs today is three agreeing
 indicators: the vote must top what the two heaviest voters reach at full
 confidence. That holds at every floor, where a landing strip sets the side, and
 on a bot's first buy. A bot with every weight at zero is outside the rule on a
-later trade. It makes no first buy, because
+later trade, except a buy back through the first entry. Neither that buy nor a
+first buy goes out at twelve zeros, because
 `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_read`
 refuses it before any vote.
 

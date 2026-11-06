@@ -115,6 +115,7 @@ class TickPhaseMixin:
     _bound_new_fold_tranches: Callable[..., Any]
     _bus: Any
     _cartridge_last_smart_pct: float
+    _cb_last_candle_ts: float
     _check_detonation_trigger: Callable[..., Any]
     _combine_fold_tranches_within_distance: Callable[..., Any]
     _count_trade_volume: Callable[..., float]
@@ -133,6 +134,7 @@ class TickPhaseMixin:
     _execute_sell: Callable[..., Any]
     _expiry_close_sent_units: float
     _expiry_start_s: float
+    _first_buy_held_exit: str
     _first_buy_made: bool
     _fold_cycle_cap_consumed: float
     _fold_diag_last_blocker_set: str
@@ -154,6 +156,7 @@ class TickPhaseMixin:
     _initialised: Any
     _invisible: bool
     _land_pending_wire_credits: Callable[..., float]
+    _last_gate_state: dict
     _last_price: float
     _last_summary: Any
     _last_trade_price: float
@@ -341,7 +344,9 @@ class TickPhaseMixin:
                     ):
                         _sib_units = float(
                             _mgr.sum_sibling_tracked_units(
-                                self.bot_id, self.config.target_asset
+                                self.bot_id,
+                                self.config.target_asset,
+                                self.config.exchange_id,
                             )
                             or 0.0
                         )
@@ -642,6 +647,15 @@ class TickPhaseMixin:
         _cartridge_pct: float,
     ) -> None:
         """Fire the max-cartridge rebalance; the tick ends after this."""
+        if _direction == "FOLD":
+            _verified_units, _refuse_msg = await self._verify_buy_safe_or_refuse(
+                path="cartridge_fold", price=ticker.last
+            )
+            if _refuse_msg:
+                if self._refusal_is_new("buy_safety", ticker.last):
+                    self._bus.emit("bot.log", bot_id=self.bot_id, message=_refuse_msg)
+                    logger.warning("Bot %s %s", self.bot_id, _refuse_msg)
+                return
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -658,15 +672,6 @@ class TickPhaseMixin:
                 f"opposing-direction hysteresis."
             ),
         )
-        if _direction == "FOLD":
-            _verified_units, _refuse_msg = await self._verify_buy_safe_or_refuse(
-                path="cartridge_fold", price=ticker.last
-            )
-            if _refuse_msg:
-                if self._refusal_is_new("buy_safety", ticker.last):
-                    self._bus.emit("bot.log", bot_id=self.bot_id, message=_refuse_msg)
-                    logger.warning("Bot %s %s", self.bot_id, _refuse_msg)
-                return
         try:
             self._emit_trade_notification(
                 f"CARTRIDGE_{_direction}",
@@ -899,6 +904,10 @@ class TickPhaseMixin:
             fee=self._fill_fee_fields(fill_price),
         )
 
+    def _entry_buy_word(self) -> str:
+        """``first buy`` while one is owed, ``buy`` once ``_first_buy_made`` is set."""
+        return "buy" if self._first_buy_made else "first buy"
+
     async def _first_buy_standing(
         self, ticker: Any, symbol: str
     ) -> Optional[FirstBuyRead]:
@@ -906,8 +915,8 @@ class TickPhaseMixin:
         closes, or every ``indicator_weights`` figure at zero."""
         if not ticker.last or ticker.last <= 0:
             return FirstBuyRead(
-                "INITIAL ENTRY BLOCKED: the ticker holds no price, so no first buy "
-                "is read. Retrying next tick.",
+                f"INITIAL ENTRY BLOCKED: the ticker holds no price, so no "
+                f"{self._entry_buy_word()} is read. Retrying next tick.",
                 "initial-entry(no-price)",
                 standing=True,
             )
@@ -931,8 +940,8 @@ class TickPhaseMixin:
             return FirstBuyRead(
                 f"INITIAL ENTRY BLOCKED: TA=NEUTRAL (0%) — need BEARISH. All "
                 f"{len(weights)} TA Indicator weights on this bot are zero, so it "
-                f"has no vote and makes no first buy. Press Save on the TA "
-                f"Indicators page of Settings to give it your weights.",
+                f"has no vote and makes no {self._entry_buy_word()}. Press Save on "
+                f"the TA Indicators page of Settings to give it your weights.",
                 "initial-entry(no-weights)",
                 standing=True,
             )
@@ -962,14 +971,14 @@ class TickPhaseMixin:
             for sig in summary.signals
             if sig.abstained and sig.weight > 0.0
         ]
-        waits = "The first buy waits for a third to agree."
+        waits = f"The {self._entry_buy_word()} waits for a third to agree."
         if not abstained:
             return waits
         return f"{waits} {', '.join(abstained)} abstained on this tape."
 
     async def _first_buy_read(self, ticker: Any, symbol: str) -> FirstBuyRead:
-        """The band position and own vote a first buy clears, read by
-        ``_first_buy_clears`` and ``_tick_initial_entry`` alike."""
+        """The band position and own vote a buy clears, read by ``_first_buy_clears``
+        and ``_tick_initial_entry`` alike."""
         standing = await self._first_buy_standing(ticker, symbol)
         if standing is not None:
             return standing
@@ -979,7 +988,8 @@ class TickPhaseMixin:
                 return FirstBuyRead(
                     f"INITIAL ENTRY BLOCKED: {len(candles or [])} candles on "
                     f"{self.config.ta_timeframe}, and the vote needs "
-                    f"{MIN_CANDLES_FOR_TA}. No first buy until it can vote.",
+                    f"{MIN_CANDLES_FOR_TA}. No {self._entry_buy_word()} until it "
+                    f"can vote.",
                     "initial-entry(short-candles)",
                     standing=True,
                 )
@@ -1076,20 +1086,33 @@ class TickPhaseMixin:
                 "initial-entry(three-agree)",
             )
 
+        self._first_buy_held_exit = ""
         return FirstBuyRead(summary=summary, bb_pos=_init_bb_pos, dist_down=_dist_down)
+
+    def _first_buy_line_is_new(self, tick_exit: str, price: float) -> bool:
+        """``_refusal_is_new`` for ``tick_exit``, or one line a stretch where no candle
+        or no price gives that hold a figure to read."""
+        fresh = self._refusal_is_new(tick_exit, price)
+        repeat = tick_exit == self._first_buy_held_exit
+        self._first_buy_held_exit = tick_exit
+        if price and price > 0 and self._cb_last_candle_ts > 0:
+            return fresh
+        return not repeat
 
     async def _first_buy_clears(
         self, ticker: Any, symbol: str, current_value: float
     ) -> bool:
         """True once ``_first_buy_made`` is set or ``_first_buy_read`` clears; a
-        refused read writes its line and gate record."""
+        refused read writes its line and gate record, and takes the fold bank off armed.
+        """
         if self._first_buy_made:
             return True
         read = await self._first_buy_read(ticker, symbol)
         if not read.refusal:
             return True
         self.stats.position_value = current_value
-        if self._refusal_is_new(read.tick_exit, ticker.last):
+        self._last_gate_state.update(fold_armed=False, fold_blockers=[read.tick_exit])
+        if self._first_buy_line_is_new(read.tick_exit, ticker.last):
             self._bus.emit("bot.log", bot_id=self.bot_id, message=read.refusal)
         self._emit_gate_decision_at_quiet_tick(read.tick_exit)
         return False
@@ -1101,7 +1124,7 @@ class TickPhaseMixin:
         answer the gate-record exit of a tick that sent nothing."""
         read = await self._first_buy_read(ticker, symbol)
         if read.standing:
-            if self._refusal_is_new(read.tick_exit, ticker.last):
+            if self._first_buy_line_is_new(read.tick_exit, ticker.last):
                 self._bus.emit("bot.log", bot_id=self.bot_id, message=read.refusal)
             return read.tick_exit
 
@@ -1373,9 +1396,10 @@ class TickPhaseMixin:
                 f"intended ${intended:.8f})"
             ),
         )
-        self._last_trade_side = "FOLD"
-        self._last_trade_price = entry_fill
-        self._reset_opposing_hysteresis_after_fill()
+        if not self._first_buy_made:
+            self._last_trade_side = "FOLD"
+            self._last_trade_price = entry_fill
+            self._reset_opposing_hysteresis_after_fill()
         self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="ENTRY")
         self._emit_gate_decision_at_fire(side="BUY", trade_action="ENTRY")
         self._announce_fill(
