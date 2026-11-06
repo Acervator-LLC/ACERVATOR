@@ -52,7 +52,8 @@ HOLD_ALERT_TITLE_FORMAT = "Bot held: {symbol}"
 
 #: The line ``_tick_breaker_holds`` writes once per outage of the candle feed.
 CANDLE_FEED_OUT = (
-    "BREAKERS CANNOT READ: no candles came back, so neither breaker sees a move"
+    "BREAKERS CANNOT READ: no candles came back, so neither the hard nor the soft "
+    "breaker sees a move"
 )
 
 #: What ``CircuitBreakerMixin.order_hold_reason`` answers while the hard breaker holds.
@@ -419,10 +420,10 @@ class CircuitBreakerMixin(_Host):
 
         The soft breaker also self-resets on cooldown elapse; the hard
         breaker only clears through this call. ``scope`` is 'all', 'soft',
-        or 'hard' (clearing hard resumes a PAUSED bot while ``_pause_event``
-        is set and ``tick_loop_alive`` answers True). Returns
-        ``{'applied': [...], 'scope': ...}`` and never raises — fail-soft for
-        GUI buttons.
+        or 'hard' (clearing hard resumes a PAUSED bot whose ``_pause_event``
+        is set and whose ``tick_loop_alive`` answers True). Returns
+        ``{'applied': [...], 'scope': ...}`` and never raises — fail-soft
+        for GUI buttons.
         """
         applied: list[str] = []
         scope_norm = (scope or "all").lower()

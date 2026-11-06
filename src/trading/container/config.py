@@ -793,8 +793,7 @@ class OrderWatch:
 
 
 def despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[float]:
-    """Return one tranche's despawn age in seconds, or None when it has no usable
-    timestamp.
+    """Return one tranche's age in seconds, or None when it has no usable timestamp.
 
     `as_finite_float` refuses a stored bool and a non-positive stamp reads as
     unset. The age leaves out `TRANCHE_HELD_SECONDS_KEY`.

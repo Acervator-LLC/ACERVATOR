@@ -1265,8 +1265,9 @@ class EtradeConnector(BrokerBase):
         """Preview one order on ``PREVIEW_ROUTE``, the wait ahead of ``place_order``'s
         send, and answer the body and its ids under ``previewed``.
 
-        ``order_body`` raises on a security type outside ``ORDER_SECURITY_TYPES`` and
-        on a fractional sale, and a preview naming no id raises ``NO_PREVIEW_ID``.
+        ``order_body`` raises on a security type outside
+        ``ORDER_SECURITY_TYPES`` and on a fractional sale, and a preview naming
+        no id raises ``NO_PREVIEW_ID``.
         """
         asset = self._asset(symbol)
         body = order_body(

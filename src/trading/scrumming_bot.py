@@ -438,7 +438,6 @@ class ScrummingBot(
         self._last_summary: Optional[VotingSummary] = None
         # Newest candle the last _refresh_market_reading compute saw.
         self._reading_candle_stamp: float = 0.0
-        # The candles this tick's _refresh_market_reading fetched.
         self._tick_candles: list = []
         self._last_bb: Optional[BBProximityResult] = None
         self._last_gate_state: dict = {
@@ -617,6 +616,7 @@ class ScrummingBot(
         self._cb_soft_tripped_at: float = 0.0
         self._cb_soft_trip_pct: float = 0.0
         self._cb_last_candle_ts: float = 0.0
+        self._cb_feed_out: bool = False
         self._cb_unreadable_named: tuple = ()
 
         self._hunger_candles: int = 0
@@ -2545,9 +2545,11 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
+        if order is None and _watch.refusal:
+            return self._refuse_self_destruct(_watch.refusal)
+        if not keep_running:
+            await self.pause()
         if order is None:
-            if _watch.refusal:
-                return self._refuse_self_destruct(_watch.refusal)
             try:
                 self._bus.emit(
                     "bot.log",
@@ -2572,8 +2574,6 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
-        if not keep_running:
-            await self.pause()
         self._return_shadows_to_lots("self-destruct")
         fill_amount, fill_price, _ = await self._settled_fill(
             order, self.config.symbol, units, ref_price, label="SELF-DESTRUCT"
@@ -2656,8 +2656,8 @@ class ScrummingBot(
         keep_running: bool,
         venue_units: Optional[float] = None,
     ) -> dict:
-        """Book one settled piece of a self-destruct sale: lots off highest price first
-        and the fold queue cleared; ``self_destruct`` pauses the bot and no piece does.
+        """Book one settled piece of a self-destruct sale: lots off highest price first,
+        the fold queue cleared; ``self_destruct`` pauses the bot and no piece does.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``.
@@ -3234,8 +3234,6 @@ class ScrummingBot(
             logger.warning(
                 "Bot %s held-order reconcile raised: %s", self.bot_id, _rest_exc
             )
-        if not self._pause_event.is_set():
-            return
 
         self._reconcile_tick_counter += 1
         if (
@@ -5174,9 +5172,8 @@ class ScrummingBot(
 
         Returns:
             The number of tranches created (>=1), or ``LADDER_STOPPED`` when
-            ``order_refusal`` stopped it with none, so no caller sells the whole
-            size. Populates ``self._stack_tranches`` and records ``origin`` on
-            every tranche.
+            ``order_refusal`` stopped it with none. Populates
+            ``self._stack_tranches`` and records ``origin`` on every tranche.
 
         """
         _watch = self.order_watch()
@@ -5305,9 +5302,6 @@ class ScrummingBot(
             t_size = entry["size"]
             t_price = entry["price"]
             if _visible:
-                _watch.refusal = self.order_refusal(_watch)
-                if _watch.refusal:
-                    break
                 try:
                     order = await self.guarded_place_order(
                         symbol=self.config.symbol,

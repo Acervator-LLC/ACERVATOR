@@ -3,9 +3,9 @@
 Holds every word, colour, size and delay ``StartAllProgressDialog`` paints,
 and the state it owns: the headline, the bot lines listed, which button is
 enabled and the calls each progress event makes. ``handle_progress`` answers
-``BEGIN``, ``BOT_STARTING``, ``BOT_STARTED``, ``BOT_HELD``, ``BOT_TIMEOUT``,
-``DONE`` and ``CANCELLED``; any other phase changes nothing. The desktop bridge
-registers ``view_model`` as the handler for ``METHOD``, and ``view_model`` answers
+``BEGIN``, ``BOT_STARTING``, ``BOT_STARTED``, ``BOT_HELD``, ``BOT_TIMEOUT``, ``DONE``
+and ``CANCELLED``; any other phase changes nothing. The desktop bridge registers
+``view_model`` as the handler for ``METHOD``, and ``view_model`` answers
 without loading Qt.
 """
 

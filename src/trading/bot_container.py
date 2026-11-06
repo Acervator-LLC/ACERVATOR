@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 from ..core.emit_contracts import FILL_BUY, FILL_TOPIC, TRADE_TYPES, SettledFill
 from ..core.event_bus import get_event_bus
-from ..exchange.base import OrderStatus
+from ..exchange.base import OrderRefused, OrderStatus
 from ..exchange.data_pool import BALANCE_TTL_SECONDS, TICKER_TTL_SECONDS
 from ..exchange.timeframes import ALL_TIMEFRAMES
 from .container import (
@@ -201,7 +201,6 @@ class BotContainer:
         self._stop_event = asyncio.Event()
         self._pause_event = asyncio.Event()
         self._pause_event.set()  # Not paused initially
-        # Hard trips taken, which CircuitBreakerMixin moves and order_refusal compares.
         self._cb_hard_trips: int = 0
         self._start_time: float = 0.0
         self._bus = get_event_bus()
@@ -908,7 +907,7 @@ class BotContainer:
                 )
             except Exception as exc:
                 logger.debug("bot.log emit for a refused order raised: %s", exc)
-        raise ValueError(message)
+        raise OrderRefused(message)
 
     def _report_held_order(
         self, watch: OrderWatch, side: str, symbol: str, reason: str
@@ -1606,7 +1605,11 @@ class BotContainer:
                         await asyncio.sleep(self.COOLDOWN_SECONDS)
                         self.stats.consecutive_errors = 0
                         if self.state == BotState.COOLDOWN:
-                            self.state = BotState.RUNNING
+                            self.state = (
+                                BotState.RUNNING
+                                if self._pause_event.is_set()
+                                else BotState.PAUSED
+                            )
 
                 await asyncio.sleep(self.tick_interval)
 

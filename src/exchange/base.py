@@ -267,6 +267,10 @@ class OrderHeld(Exception):
     """An order stopped before its venue; the text is what ``hold_reason`` answered."""
 
 
+class OrderRefused(Exception):
+    """An order ``_refuse_order`` or a connector refused before any request left."""
+
+
 def no_order_hold() -> str:
     """The ``hold_reason`` of a caller no hold applies to."""
     return ""
@@ -402,8 +406,8 @@ class ExchangeInterface(ABC):
     ) -> Order:
         """Submit an order and return the resulting ``Order``.
 
-        ``price`` is required for ``OrderType.LIMIT`` and ``OrderType.IOC_LIMIT``; an
-        implementation may ignore ``client_order_id`` and ``hold_reason`` but must
+        ``price`` is required for ``OrderType.LIMIT`` and ``OrderType.IOC_LIMIT``;
+        an implementation may ignore ``client_order_id`` and ``hold_reason`` but must
         accept them, and ``hold_reason`` serves a send that waits in a queue here.
         """
         del symbol, side, order_type, amount, price, client_order_id, hold_reason

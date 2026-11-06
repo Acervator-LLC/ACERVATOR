@@ -140,6 +140,7 @@ from .base import (
     Order,
     OrderBook,
     OrderHeld,
+    OrderRefused,
     OrderSide,
     OrderStatus,
     OrderType,
@@ -148,6 +149,7 @@ from .base import (
     refuse_held_order,
 )
 from .api_logger import get_api_log
+from .idempotency import refuses_used_id
 from .lazy_singleton import ThrottledFault
 from .market_pairs_scout import row_quote_volume_24h
 from .market_rules_store import base_currency, quote_currency, record_venue
@@ -268,14 +270,14 @@ def classify_venue_refusal(exc: BaseException) -> str:
 
 
 def order_stayed_home(exc: BaseException) -> bool:
-    """True where ``exc`` proves no order reached the venue's book: a ``ValueError``
-    from the guard or a broker, a full queue, an open venue breaker, or a ccxt error
-    the venue answered no with."""
+    """True where ``exc`` proves no order reached the venue's book: ``OrderRefused``,
+    a full queue, an open venue breaker, or a ccxt error the venue answered no with.
+    A ``refuses_used_id`` error is False, because that id may hold an order."""
     from .circuit_breaker import CircuitBreakerOpenError
 
-    return isinstance(
+    return not refuses_used_id(exc) and isinstance(
         exc,
-        (ValueError, CCXTQueueFullError, CircuitBreakerOpenError)
+        (OrderRefused, CCXTQueueFullError, CircuitBreakerOpenError)
         + _ccxt_error_types(("ExchangeError", "RateLimitExceeded", "DDoSProtection")),
     )
 
@@ -2955,11 +2957,9 @@ class CCXTConnector(ExchangeInterface):
 
         def create_order(*order: Any) -> Any:
             """``_ex.create_order``, or the ``OrderHeld`` ``hold_reason`` names."""
-            held = hold_reason()
-            if held:
-                return OrderHeld(held)
             _POST_READ.hold_reason = hold_reason
             try:
+                refuse_held_order(hold_reason)
                 return self._ex.create_order(*order)
             except OrderHeld as refused:
                 return refused

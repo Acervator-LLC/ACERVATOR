@@ -29,6 +29,7 @@ from .base import (
     Order,
     OrderBook,
     OrderSide,
+    OrderRefused,
     OrderStatus,
     OrderType,
     Ticker,
@@ -421,7 +422,7 @@ class RobinhoodPathUnpublished(RuntimeError):
     """Raised where Robinhood names an endpoint and publishes no path for it."""
 
 
-class RobinhoodOrderRefused(ValueError, RuntimeError):
+class RobinhoodOrderRefused(OrderRefused, RuntimeError):
     """Raised where this connector refuses an order before any request."""
 
 
