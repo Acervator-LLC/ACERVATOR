@@ -97,6 +97,7 @@ class StateSerializerMixin:
     _target_balance: float
     _tranches_closed_lifetime: int
     _tranches_created_lifetime: int
+    _voting_engine: Any
     bot_id: Any
     config: Any
     retire_tranches_above_held: Callable[..., dict]
@@ -272,7 +273,8 @@ class StateSerializerMixin:
 
     def _shows_past_trading(self) -> bool:
         """True when restored tranches, counters or ``OWN_FILL_STATS`` show a trade of this
-        bot's, or ``_restored_position_usd`` passes ``empty_position``."""
+        bot's, or a weighted bot's ``_restored_position_usd`` passes ``empty_position``.
+        """
         return (
             any(
                 (
@@ -288,7 +290,12 @@ class StateSerializerMixin:
                 )
             )
             or any(getattr(self.stats, name, 0) for name in OWN_FILL_STATS)
-            or not empty_position(self._restored_position_usd(), self._target_balance)
+            or (
+                any(weight > 0.0 for weight in self._voting_engine.indicator_weights)
+                and not empty_position(
+                    self._restored_position_usd(), self._target_balance
+                )
+            )
         )
 
     def restore_first_buy_made(self, saved: Any = None) -> None:

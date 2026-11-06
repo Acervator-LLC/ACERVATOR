@@ -1844,6 +1844,7 @@ class ExecutionEngineMixin:
         _floor = DistanceSettings(*floor_distance) if floor_distance else None
 
         _had_queue = bool(self._fold_tranches)
+        _lots_before = len(self._main_lots)
         _gain_usd, _discharged = self._pay_queue_by_units(
             fill_amount,
             fill_price,
@@ -1853,6 +1854,8 @@ class ExecutionEngineMixin:
             queued_before,
             paid_events,
         )
+        for _lot in self._main_lots[_lots_before:]:
+            _lot["read_price"] = price
         if not _had_queue:
             msg = (
                 f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
@@ -2866,7 +2869,9 @@ class ExecutionEngineMixin:
         An unreadable sibling total counts as none, and a refusal leaves the
         ``_reconcile_holdings`` count alone.
         """
-        claimable, siblings = self._claimable_exchange_units(held)
+        claimable, siblings = self._claimable_exchange_units(
+            held, self.config.exchange_id
+        )
         if not math.isfinite(siblings):
             claimable = held
         booked = max(booked, self._current_holdings)

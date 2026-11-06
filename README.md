@@ -331,14 +331,15 @@ _GATE_ORDER_SCRUM: tuple[str, ...] = (
 
 ##### The first buy reads three agreeing indicators
 
-A bot has made its first buy once a tick reads its own lots, at what they cost,
-at target. The read allows the largest of the dust band, one size step and the
-trading fee's share of target, so the price after the fill cannot matter, and a
-whole buy reads made on any market. It needs a weight above zero. This is a saved
-fact about the bot, and no fill sets it, so it holds however the coins reached
-the book. A bot that made its first buy and lost the position does not owe
-another. A saved record with no such field reads as made when it shows a fill of
-this bot's, a tranche, or a holding of 1% of target or more.
+A bot has made its first buy once a tick reads its own lots at target, each at
+the ticker it was adopted at, the decision price of its buy, or else its cost.
+The read allows the largest of the dust band, one size step and the trading fee's
+share of target, so the price after the fill cannot matter, and a whole buy reads
+made on any market. It needs a weight above zero. This is a saved fact about the
+bot, and no fill sets it, so it holds however the coins reached the book. A bot
+that made its first buy and lost the position does not owe another. A saved
+record with no such field reads as made when it shows a fill of this bot's, a
+tranche, or, with a weight above zero, a holding of 1% of target or more.
 
 While a bot owes a first buy, its Max Cartridge rebalance, its hedge top-up and
 its fold wait for one read. Price must sit in the lowest 30% of the band, past

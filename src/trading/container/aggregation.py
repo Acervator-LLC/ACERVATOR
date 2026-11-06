@@ -244,10 +244,11 @@ class FleetAggregationMixin:
         return False
 
     def sum_sibling_tracked_units(
-        self, bot_id: str, target_asset: str, exchange_id: str
+        self, bot_id: str, target_asset: str, exchange_id: Optional[str] = None
     ) -> float:
         """Sum the ``_main_lots`` and ``_shadow_tranches`` units tracked by every
-        other bot with the same target_asset on ``exchange_id``, excluding the caller.
+        other bot with the same target_asset, on ``exchange_id`` alone where one is
+        named, excluding the caller.
 
         Reconciliation in multi-base mode holds that this bot's
         ``_current_holdings`` never exceeds
@@ -262,7 +263,7 @@ class FleetAggregationMixin:
             try:
                 if (other_bot.config.target_asset or "").upper() != target_norm:
                     continue
-                if other_bot.config.exchange_id != exchange_id:
+                if exchange_id not in (None, other_bot.config.exchange_id):
                     continue
             except Exception as _read_exc:
                 logger.warning(

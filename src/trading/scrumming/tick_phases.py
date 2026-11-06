@@ -71,6 +71,7 @@ from .sizing import (
     target_delta_usd,
     tranche_rebuy_price,
     units_at_scrum,
+    units_for_contracts,
 )
 from .snapshots import yes_no as _yes_no
 from .target_ramp import (
@@ -351,9 +352,7 @@ class TickPhaseMixin:
                     ):
                         _sib_units = float(
                             _mgr.sum_sibling_tracked_units(
-                                self.bot_id,
-                                self.config.target_asset,
-                                self.config.exchange_id,
+                                self.bot_id, self.config.target_asset
                             )
                             or 0.0
                         )
@@ -434,6 +433,7 @@ class TickPhaseMixin:
                         {
                             "units": _own,
                             "initial_buy_price": _basis,
+                            "read_price": _px,
                         }
                     ]
                     self._bus.emit(
@@ -1106,7 +1106,7 @@ class TickPhaseMixin:
             return False
         cost_usd = sum(
             float(lot.get("units", 0.0) or 0.0)
-            * float(lot.get("initial_buy_price", 0.0) or 0.0)
+            * float(lot.get("read_price", lot.get("initial_buy_price")) or 0.0)
             for lot in self._main_lots
         ) * float(self._quote_to_usd or 1.0)
         rules = await self._get_market_rules(symbol)
@@ -1115,10 +1115,11 @@ class TickPhaseMixin:
             rules,
             self._asset_class(symbol),
             self.config.exchange_id,
-            time.time(),
+            None,
             SIDE_BUY,
         ):
             step = max(step, 1.0)
+        step = units_for_contracts(step, rules.contract_size)
         try:
             fee_pct = self.opposing_distance_settings().fee_pct
         except DistanceSettingUnreadable:
@@ -1423,6 +1424,7 @@ class TickPhaseMixin:
             {
                 "units": bought_units,
                 "initial_buy_price": entry_fill,
+                "read_price": intended,
             }
         )
         _entry_usd = priced_usd(self._current_holdings, entry_fill)
