@@ -27,11 +27,27 @@ split, `two-sided-control` before trusting any check.
 Loading one and working from memory of the rest is how a rule gets obeyed in
 spirit and broken in fact.
 
+**Load every skill under `dev_harness/skills/`, by name, at session start and
+after every context reset. Count them against the listing and state the count.**
+Operator, 2026-11-06: *"There are far more than 13 SKILLS that the existing
+harness directs you to load."* Measured that day: 13 of 34 loaded by judgement,
+and the unread 21 held the rules the work then broke. `hop-protocol` was unread
+with the handoff 18 commits behind, `descriptive-comments-only` was unread when a
+pull request body carried catalogue ids, and `log-pruning` was unread when a
+deletion went out unsized. "When the work reaches them" is read before the work.
+
 
 The harness is the authority. Not your judgement, not a delta, not a
 green gate.
 
 ## THE GATE IS `tools/local_ci.py`, AND IT RUNS BEFORE EVERY MERGE
+
+**Superseded for merges. Read this before the rest of the section.** GitHub CI
+runs again since the repository went public on 2026-09-27, and `ci-gate` is the
+one required status on `current`. A merge waits on `ci-gate` and `passed=True`
+from the owning archetype on every changed file. Two lanes of the local gate
+collect no test, so its verdict cannot read PASS: never name it in a brief, never
+retry it and never wait on it. `ocir` C148 holds the measurement.
 
 Operator, 2026-09-13, after catching seven merges that skipped it:
 *"We built our own local CI. You are supposed to be running canonized tests.
@@ -123,7 +139,8 @@ So: always run an adversarial pass. Always mutate each positive control
 to prove it fails when blinded, and restore the file byte-identical
 afterwards.
 
-An adversarial pass is a named tool on the real program. A private script
+An adversarial pass is a named tool on the real program, and a merge never
+waits on one that he did not ask for. A private script
 is never one, and no step follows the gate unless he asks. See
 `canonized-code-testing` and `ocir` C154.
 

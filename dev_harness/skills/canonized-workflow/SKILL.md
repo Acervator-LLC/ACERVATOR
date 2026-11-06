@@ -35,6 +35,10 @@ instrument until something makes the instrument report.
 
 ### 3. The gate — what a merge waits on
 
+**Superseded for merges:** a merge waits on `ci-gate` and `passed=True` from the
+owning archetype on every changed file, and a brief names `ci-gate`. See Skill:
+harness-law.
+
 ```bash
 python -m tools.local_ci --all
 ```
