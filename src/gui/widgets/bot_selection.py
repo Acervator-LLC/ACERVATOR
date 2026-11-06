@@ -99,23 +99,14 @@ class BotListPanelLink:
         return str(getattr(self._panel, "selected_bot_id", "") or "")
 
     def row_selected(self, bot_id: Optional[str]) -> str:
-        """Draw the pressed bot on the panel, mark it on every host and answer the panel's bot."""
+        """Draw the pressed bot on the panel and answer the bot it holds."""
         if self._settling:
             return self.bot_id
         self._settling = True
         try:
-            held = str(self._panel.select_bot(str(bot_id or "")) or "")
-            self._mark_hosts(str(bot_id or ""))
-            return held
+            return str(self._panel.select_bot(str(bot_id or "")) or "")
         finally:
             self._settling = False
-
-    def _mark_hosts(self, wanted: str) -> None:
-        """Call ``highlight_bot`` with ``wanted`` on every host ``hosts`` names."""
-        for host in self._hosts() or ():
-            mark = getattr(host, "highlight_bot", None)
-            if callable(mark):
-                mark(wanted)
 
     def panel_selected(self, event: Any = None) -> str:
         """Highlight the bot the panel now draws, off a bus ``event``."""
@@ -134,7 +125,10 @@ class BotListPanelLink:
         wanted = str(bot_id or "")
         self._settling = True
         try:
-            self._mark_hosts(wanted)
+            for host in self._hosts() or ():
+                mark = getattr(host, "highlight_bot", None)
+                if callable(mark):
+                    mark(wanted)
         finally:
             self._settling = False
         return wanted

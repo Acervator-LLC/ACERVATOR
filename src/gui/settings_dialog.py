@@ -1081,6 +1081,7 @@ if _HAS_QT:
             from src.exchange.credential_state import forget
 
             from .main_tabs.settings_dialog_surface import (
+                remove_question,
                 remove_refusal,
                 removed_feedback_text,
             )
@@ -1091,6 +1092,17 @@ if _HAS_QT:
                 if self._status_log:
                     self._status_log.log(refusal, "warning")
                 return
+            question = remove_question(eid, self._window_fleet())
+            if question:
+                reply = QMessageBox.question(
+                    self,
+                    sds.REMOVE_QUESTION_TITLE,
+                    question,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
             self._sm.remove_exchange(eid)
             self._exchange_list.takeItem(self._exchange_list.row(item))
             self._exchange_list.setCurrentRow(sds.NO_VENUE_ROW)

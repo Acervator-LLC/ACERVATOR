@@ -722,11 +722,12 @@ REMOVE_REFUSED_FORMAT = (
 REMOVE_UNREAD_FORMAT = "{name} cannot be removed: its bots could not be read ({error})."
 REMOVE_BLOCKER_FORMAT = "{symbol} (bot {bot_id}, {state})"
 REMOVE_BLOCKER_JOIN = ", "
-REMOVE_RESTING_FORMAT = (
-    "{name} cannot be removed while a stopped bot holds an order resting there. "
-    "A stopped bot books no fill. Start each bot until its order closes: {bots}."
+REMOVE_QUESTION_TITLE = "Orders still resting"
+REMOVE_QUESTION_FORMAT = (
+    "Orders resting at {name}: {orders} ({bots}). They stay at the venue after a "
+    "Remove, and nothing will read their fills. Remove {name}?"
 )
-REMOVE_RESTING_BOT_FORMAT = "{symbol} (bot {bot_id}, {orders} resting)"
+REMOVE_QUESTION_BOT_FORMAT = "bot {bot_id}: {orders}"
 REMOVE_SEALED_FORMAT = (
     "{name} cannot be removed while the saved fleet is sealed, because its bots "
     "are not loaded. Unlock the fleet first: "
@@ -2415,19 +2416,17 @@ def removed_feedback_text(name: Any) -> str:
 
 
 def remove_refusal(exchange_id: str, fleet: object) -> str:
-    """Say why a sealed fleet, a live bot, a resting order or a failed read keeps ``exchange_id``, else nothing."""
+    """Say why a sealed fleet, a live bot or a failed read keeps ``exchange_id``, else nothing."""
     from .main_window_surface import NOT_RUNNING_STATES, fleet_is_sealed
 
     reader = getattr(fleet, "list_bots_by_exchange", None)
-    resting_reader = getattr(fleet, "resting_orders_by_exchange", None)
-    if reader is None or resting_reader is None:
+    if reader is None:
         return ""
     name = str(exchange_id).capitalize()
     if fleet_is_sealed(fleet):
         return REMOVE_SEALED_FORMAT.format(name=name)
     try:
         statuses = [dict(one) for one in reader(exchange_id) or ()]
-        resting = dict(resting_reader(exchange_id))
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
         return REMOVE_UNREAD_FORMAT.format(
             name=name, error=f"{type(exc).__name__}: {exc}"
@@ -2441,30 +2440,27 @@ def remove_refusal(exchange_id: str, fleet: object) -> str:
         for one in statuses
         if str(one.get("state", "")) not in NOT_RUNNING_STATES
     ]
-    holding = [
-        REMOVE_RESTING_BOT_FORMAT.format(
-            symbol=one.get("symbol", ""),
-            bot_id=one.get("bot_id", ""),
-            orders=resting[one.get("bot_id")],
-        )
-        for one in statuses
-        if str(one.get("state", "")) in NOT_RUNNING_STATES
-        and one.get("bot_id") in resting
-    ]
-    said = []
-    if blocking:
-        said.append(
-            REMOVE_REFUSED_FORMAT.format(
-                name=name, bots=REMOVE_BLOCKER_JOIN.join(blocking)
-            )
-        )
-    if holding:
-        said.append(
-            REMOVE_RESTING_FORMAT.format(
-                name=name, bots=REMOVE_BLOCKER_JOIN.join(holding)
-            )
-        )
-    return " ".join(said)
+    if not blocking:
+        return ""
+    return REMOVE_REFUSED_FORMAT.format(
+        name=name, bots=REMOVE_BLOCKER_JOIN.join(blocking)
+    )
+
+
+def remove_question(exchange_id: str, fleet: object) -> str:
+    """The Yes or No words for orders ``resting_orders_by_exchange`` finds at ``exchange_id``, else nothing."""
+    reader = getattr(fleet, "resting_orders_by_exchange", None)
+    resting = dict(reader(exchange_id)) if reader is not None else {}
+    if not resting:
+        return ""
+    return REMOVE_QUESTION_FORMAT.format(
+        name=str(exchange_id).capitalize(),
+        orders=sum(resting.values()),
+        bots=REMOVE_BLOCKER_JOIN.join(
+            REMOVE_QUESTION_BOT_FORMAT.format(bot_id=bot_id, orders=orders)
+            for bot_id, orders in resting.items()
+        ),
+    )
 
 
 def stored_credential_phrase(entry: Any) -> str:

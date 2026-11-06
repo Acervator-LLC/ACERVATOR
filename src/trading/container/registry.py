@@ -11,6 +11,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger("acervator.bot")
 
 
+def resting_order_count(bot: Any) -> int:
+    """``_resting_orders`` records plus the ``_stack_tranches`` rungs ``bot`` holds at its venue."""
+    rungs = [
+        row
+        for row in getattr(bot, "_stack_tranches", None) or ()
+        if row.get("status") == "pending" and row.get("visible") and row.get("order_id")
+    ]
+    return len(bot._resting_orders) + len(rungs)
+
+
 class BotRegistryMixin:
     """The ``_bots`` dict ``BotManager`` composes in, and every read of it."""
 
@@ -290,9 +300,9 @@ class BotRegistryMixin:
         ]
 
     def resting_orders_by_exchange(self, exchange_id: str) -> dict[str, int]:
-        """Each bot on ``exchange_id`` holding a ``_resting_orders`` record, with its count."""
+        """Each bot on ``exchange_id`` with orders at the venue, with its ``resting_order_count``."""
         return {
-            bot.bot_id: len(bot._resting_orders)
+            bot.bot_id: resting_order_count(bot)
             for bot in self._bots.values()
-            if bot.config.exchange_id == exchange_id and bot._resting_orders
+            if bot.config.exchange_id == exchange_id and resting_order_count(bot)
         }
