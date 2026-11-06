@@ -924,7 +924,7 @@ the venue's published step. `src/trading/bot_container.py, in guarded_place_orde
 the one site every live order passes, so a recorded `amount_increment` floors
 the amount. That same method refuses a size stepping under a recorded
 `min_amount`, and refuses an amount that floors to nothing. The sized amount
-reaches `exchange.place_order`, and `min_cost` is measured on it.
+reaches `exchange.send_order`, and `min_cost` is measured on it.
 
 Driven on a bare host with the home redirected, every socket but loopback
 refused, and an exchange stand-in that raises on every order call, an amount of
@@ -2727,8 +2727,14 @@ submission, so the equities contract cannot carry a Robinhood crypto order.
 
 ```python
 # src/trading/bot_container.py, in guarded_place_order, at the submitting call
-            order = await self.exchange.place_order(
-                symbol, side, order_type, amount, price, client_order_id=_coid
+            order = await self.exchange.send_order(
+                symbol,
+                side,
+                order_type,
+                amount,
+                price,
+                client_order_id=_coid,
+                hold_reason=partial(self.order_refusal, _watch),
             )
 ```
 
@@ -3476,7 +3482,7 @@ The press binds the form, and `src/gui/settings_dialog.py`, in
 
 ```python
 # src/gui/settings_dialog.py, in _open_credentials_for_row
-            self._set_feedback(sds.venue_form_bound(venue), "info")
+            self._set_feedback(sds.venue_form_bound(venue, self._wing), "info")
 ```
 
 The page says it is waiting while step five is open, and it names the wait
@@ -3599,9 +3605,10 @@ coinbase    crypto        api_key_enc, api_secret_enc
 
 A connection the operator has not made is asked for at the moment a bot's route
 wants it. `src/gui/main_window.py`, in `_ask_for_venue_connection`, opens the
-same configuration window `_open_settings` draws, on the bot's own sector, and
-`_connect_broker_for_bot` and `_connect_written_crypto_for_bot` each call it once
-and then read the stored credential again.
+same configuration window `_open_settings` draws, on the Exchanges page of the
+bot's own sector with the venue pressed, and `_connect_broker_for_bot` and
+`_connect_written_crypto_for_bot` each call it once and then read the stored
+credential again.
 
 ### The sign-in is a row on the mechanism, not a second mechanism
 
@@ -9410,7 +9417,7 @@ assertions, 184 passed, 0 failed**, each count carrying its own control.
 | 8 | its gate decisions log under it | built | six real decisions written through `src/core/logging_engine.py, in log_gate_decision` and read back off disk, one file per sector, each row naming its own venue and sector |
 
 `src/stocks/broker_base.py` and `src/stocks/broker_exchange.py` take no change.
-E*TRADE's preview-then-place pair lives inside `place_order`, and
+E*TRADE previews in `prepare_order` and places in `place_order`, and
 `BrokerBase.SECTORS_SERVED` is left empty on purpose: `broker_serves_sector`
 routes a bot off it, and a narrowed set would send a forex or a futures bot down
 the crypto path and then the ccxt one, which carries no etrade.

@@ -1131,7 +1131,7 @@ def despawn_preview(fold: Any, stack: Any, days: Any, now: Any) -> dict:
         "usd_removed": 0.0,
         "units_removed": 0.0,
     }
-    from ...trading.container.config import whole_despawn_days
+    from ...trading.container.config import despawn_age_seconds, whole_despawn_days
 
     whole_days = whole_despawn_days(days)
     report["threshold_days"] = whole_days
@@ -1142,7 +1142,7 @@ def despawn_preview(fold: Any, stack: Any, days: Any, now: Any) -> dict:
         return report
     cutoff = whole_days * SECONDS_PER_DAY
     for one in fold_rows:
-        age = record_age_s(one, CREATED_TS_KEY, read_now)
+        age = despawn_age_seconds(one, CREATED_TS_KEY, read_now)
         if age is None:
             report["ageless_kept"] += 1
             continue
@@ -1156,7 +1156,7 @@ def despawn_preview(fold: Any, stack: Any, days: Any, now: Any) -> dict:
         if units is not None:
             report["units_removed"] += units
     for one in stack_rows:
-        age = record_age_s(one, STACK_OPENED_TS_KEY, read_now)
+        age = despawn_age_seconds(one, STACK_OPENED_TS_KEY, read_now)
         if age is None:
             report["ageless_kept"] += 1
         elif age < cutoff:
@@ -2020,9 +2020,10 @@ class FoldTranchesTabModel:
 
         days = despawn_threshold_days(self.bot.config)
         stack = list(getattr(self.bot, STACK_TRANCHES_ATTRIBUTE, []) or [])
-        armed = despawn_preview(tranches, stack, days, self.now)
+        held = bool(getattr(self.bot, "order_hold_reason", str)())
+        armed = despawn_preview(tranches, stack, 0 if held else days, self.now)
         windows = [
-            [one, despawn_preview(tranches, stack, one, self.now)]
+            [one, despawn_preview(tranches, stack, 0 if held else one, self.now)]
             for one in DESPAWN_PREVIEW_WINDOWS
         ]
         widest = windows[-1][1] if windows else armed

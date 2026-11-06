@@ -59,6 +59,7 @@ class TradingTabMixin:
     _api_pause_btn: Any
     _class_layers: dict
     _cross_api_event: Callable[..., Any]
+    _exchange_tabs: dict
     _main_tabs: Any
     _on_api_event: Callable[..., Any]
     _settings: Any
@@ -92,6 +93,12 @@ class TradingTabMixin:
         if not callable(show):
             return False
         return bool(show(asked))
+
+    def _hold_live_venue(self, page: Any) -> None:
+        """Hand ``TradingTabReact.hold_venue`` the ``_exchange_tabs`` page of ``page``'s venue, else ``page``."""
+        hold = getattr(getattr(self, "_trading_tab", None), "hold_venue", None)
+        if callable(hold):
+            hold(self._exchange_tabs.get(page.exchange_id, page))
 
     def _wire_live_feeds(self) -> None:
         """Route every ``StatusLog`` call to the React Live tab as it paints.

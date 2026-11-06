@@ -1128,6 +1128,23 @@ class TastytradeConnector(BrokerBase):
                 return held
         return None
 
+    async def prepare_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        quantity: float,
+        order_type: OrderType = OrderType.MARKET,
+        limit_price: float = 0,
+        stop_price: float = 0,
+        time_in_force: TimeInForce = TimeInForce.DAY,
+    ) -> dict:
+        """Mint the bearer token where one is due, the one wait ahead of
+        ``place_order``'s send, and answer no extra keyword."""
+        del symbol, side, quantity, order_type
+        del limit_price, stop_price, time_in_force
+        await self._held_bearer()
+        return {}
+
     async def place_order(
         self,
         symbol: str,

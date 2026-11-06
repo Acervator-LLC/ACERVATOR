@@ -7,16 +7,13 @@ cooldown; hard breaker holds every order of the bot until an operator reset.
 from __future__ import annotations
 
 import logging
-import math
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
 from ...core.notifications import AlertEvent, get_notification_manager
-from ...exchange.data_pool import TF_SECONDS
 from ..bot_container import BotState
-from ..container.config import BotConfig
-from ..indicators.types import Candle, candles_from_raw
+from ..container.config import PRESS_AGAIN, BotConfig
 
 logger = logging.getLogger("acervator.scrumming")
 
@@ -49,15 +46,15 @@ DOWN_DIRECTION = "down"
 
 UNREADABLE_FORMAT = "{field}={value!r}"
 
-#: ``BotConfig.ta_timeframe`` default, read where a config holds an empty one.
-DEFAULT_TIMEFRAME = "1h"
-#: The rows ``ScrummingBot.tick`` asks ``_get_ohlcv`` for.
-CANDLE_ROWS = 100
-MS_PER_SECOND = 1000.0
-
 #: The blocker ``_tick_breaker_holds`` writes on both sides while a hold stands.
 HOLD_BLOCKER = "cb-hard-tripped"
 HOLD_ALERT_TITLE_FORMAT = "Bot held: {symbol}"
+
+#: The line ``_tick_breaker_holds`` writes once per outage of the candle feed.
+CANDLE_FEED_OUT = (
+    "BREAKERS CANNOT READ: no candles came back, so neither the hard nor the soft "
+    "breaker sees a move"
+)
 
 #: What ``CircuitBreakerMixin.order_hold_reason`` answers while the hard breaker holds.
 HARD_HOLD_FORMAT = (
@@ -179,66 +176,25 @@ def candle_stamp(candle: Any) -> float:
         return 0.0
 
 
-def forming_candle(
-    held: Optional[Candle],
-    rows: list,
-    period_s: float,
-    now_s: float,
-    price: Any,
-) -> Optional[Candle]:
-    """The candle open at ``now_s`` with ``price`` added to its range.
-
-    ``rows[-1]``, else ``held``, places the candle on the venue's ``period_s``
-    grid, a row at that open supplies its open, and ``held`` carries the range
-    earlier ticks saw. A ``price`` that is not a positive number answers ``held``.
-    """
-    try:
-        last = float(price)
-    except (TypeError, ValueError):
-        return held
-    if isinstance(price, bool) or not math.isfinite(last) or last <= 0.0:
-        return held
-    newest = rows[-1] if rows else None
-    anchor = newest or held
-    if anchor is None:
-        return None
-    anchor_ms = candle_stamp(anchor)
-    period_ms = period_s * MS_PER_SECOND
-    periods = max(0, math.floor((now_s * MS_PER_SECOND - anchor_ms) / period_ms))
-    opened_ms = anchor_ms + periods * period_ms
-    same = [
-        candle
-        for candle in (newest, held)
-        if candle is not None and candle_stamp(candle) == opened_ms
-    ]
-    return Candle(
-        timestamp=opened_ms,
-        open=same[0].open if same else last,
-        high=max([last, *(candle.high for candle in same)]),
-        low=min([last, *(candle.low for candle in same)]),
-        close=last,
-        volume=0.0,
-    )
-
-
 class CircuitBreakerMixin(_Host):
     # ScrummingBot.__init__ assigns each of these; _Host resolves back to
     # ScrummingBot, so the annotations break that cycle for a type reader.
     state: BotState
+    _cb_hard_trips: int
     _cb_hard_tripped: bool
     _cb_hard_tripped_at: float
     _cb_hard_trip_pct: float
-    _cb_hard_candle_ts: float
     _cb_soft_active_side: Optional[str]
     _cb_soft_cooldown_remaining: int
     _cb_soft_tripped_at: float
     _cb_soft_trip_pct: float
-    _cb_soft_candle_ts: float
     _cb_last_candle_ts: float
-    _cb_row_ts: float
-    _cb_forming: Optional[Candle]
+    _cb_feed_out: bool
     _cb_unreadable_named: tuple
     _manual_fire_pending: bool
+    _pause_event: Any
+    _tick_candles: list
+    tick_loop_alive: Any
 
     def order_hold_reason(self) -> str:
         """``HARD_HOLD_FORMAT`` while ``_cb_hard_tripped`` holds, empty otherwise."""
@@ -246,22 +202,14 @@ class CircuitBreakerMixin(_Host):
             return ""
         return HARD_HOLD_FORMAT.format(pct=self._cb_hard_trip_pct)
 
-    async def _tick_breaker_holds(self, ticker: Any, position_usd: float) -> bool:
-        """Read the pooled candles and ``ticker.last`` into the breakers, and answer
-        True while ``_cb_hard_tripped`` holds, which ends ``ScrummingBot.tick``."""
-        timeframe = self.config.ta_timeframe or DEFAULT_TIMEFRAME
+    def _tick_breaker_holds(self, position_usd: float) -> bool:
+        """Read ``_tick_candles`` into the breakers, and answer True while
+        ``_cb_hard_tripped`` holds, which ends ``ScrummingBot.tick``."""
+        if not self._tick_candles and not self._cb_feed_out:
+            self._bus.emit("bot.log", bot_id=self.bot_id, message=CANDLE_FEED_OUT)
+        self._cb_feed_out = not self._tick_candles
         try:
-            raw = await self._get_ohlcv(
-                self.config.symbol, timeframe=timeframe, limit=CANDLE_ROWS
-            )
-            candles = candles_from_raw(raw)
-        except Exception as _read_exc:
-            logger.debug(
-                "Bot %s breaker candles unavailable: %s", self.bot_id, _read_exc
-            )
-            candles = []
-        try:
-            self._check_circuit_breakers(candles, getattr(ticker, "last", None))
+            self._check_circuit_breakers(self._tick_candles)
         except Exception as _cb_exc:
             logger.warning(
                 "Bot %s circuit breaker check raised %s: %s",
@@ -277,7 +225,9 @@ class CircuitBreakerMixin(_Host):
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=f"MANUAL FIRE WAITS: {self.order_hold_reason()}.",
+                message=(
+                    f"MANUAL FIRE REFUSED: {self.order_hold_reason()}. {PRESS_AGAIN}."
+                ),
             )
         self._last_gate_state.update(
             scrum_armed=False,
@@ -288,8 +238,8 @@ class CircuitBreakerMixin(_Host):
         self._emit_gate_decision_at_quiet_tick(HOLD_BLOCKER)
         return True
 
-    def _check_circuit_breakers(self, candles, price=None) -> bool:
-        """Read every candle ``_unread_candles`` names for circuit-breaker triggers.
+    def _check_circuit_breakers(self, candles) -> bool:
+        """Evaluate the most recent candle for circuit-breaker triggers.
 
         Single-candle move % = ``(high - low) / open × 100``. Direction is
         inferred from close vs open: close >= open interrupts the SCRUM side
@@ -302,62 +252,36 @@ class CircuitBreakerMixin(_Host):
         candle, re-opening that side at zero.
 
         Returns True while either breaker is blocking trades on either side.
+        Idempotent per candle timestamp — the same candle never double-trips.
         """
-        figures = breaker_figures(self.config)
-        for candle in self._unread_candles(candles, price):
-            self._read_breaker_candle(candle, figures)
+        if candles:
+            self._read_breaker_candle(candles[-1], breaker_figures(self.config))
         return self._cb_hard_tripped or self._cb_soft_active_side is not None
 
-    def _unread_candles(self, candles, price) -> list:
-        """The rows of ``candles`` from ``_cb_row_ts`` on, then ``_cb_forming`` grown
-        by ``price`` in place of its own row; a first read takes the newest row alone.
-
-        ``MarketDataPool`` serves one slot for a whole timeframe, so ``price`` is
-        what grows the open candle between two slot fetches.
-        """
-        rows = list(candles or [])
-        unread = rows[-1:]
-        if self._cb_row_ts > 0.0:
-            unread = [row for row in rows if candle_stamp(row) >= self._cb_row_ts]
-        if rows:
-            self._cb_row_ts = candle_stamp(rows[-1])
-        period_s = TF_SECONDS.get(self.config.ta_timeframe or DEFAULT_TIMEFRAME)
-        if period_s is None:
-            return unread
-        self._cb_forming = forming_candle(
-            self._cb_forming, rows, period_s, time.time(), price
-        )
-        forming = self._cb_forming
-        if forming is None:
-            return unread
-        opened_ms = candle_stamp(forming)
-        return [row for row in unread if candle_stamp(row) != opened_ms] + [forming]
-
     def _read_breaker_candle(self, candle, figures: BreakerFigures) -> None:
-        """Count ``candle`` when it is newer than ``_cb_last_candle_ts``, and trip each
-        breaker it has reached; a timestamp of 0 makes every read fresh."""
+        """Read ``candle`` unless ``_cb_last_candle_ts`` already holds its timestamp, and
+        trip each breaker it has reached; a timestamp of 0 makes every read fresh."""
         move = breaker_move(candle, figures)
         if move is None:
             return
         ts = candle_stamp(candle)
-        fresh = ts <= 0.0 or ts > self._cb_last_candle_ts
-        if fresh and ts > 0.0:
+        if ts > 0.0 and ts == self._cb_last_candle_ts:
+            return
+        if ts > 0.0:
             self._cb_last_candle_ts = ts
 
-        if figures.unreadable and fresh:
+        if figures.unreadable:
             self._name_unreadable_breaker_figures(figures)
 
-        hard_is_new = ts <= 0.0 or ts > self._cb_hard_candle_ts
-        if not self._cb_hard_tripped and move.hard_trips and hard_is_new:
-            self._trip_hard_breaker(move, figures, ts)
+        if not self._cb_hard_tripped and move.hard_trips:
+            self._trip_hard_breaker(move, figures)
             return
 
         if self._cb_hard_tripped:
             return
 
         if (
-            fresh
-            and self._cb_soft_active_side is not None
+            self._cb_soft_active_side is not None
             and self._cb_soft_cooldown_remaining > 0
         ):
             self._cb_soft_cooldown_remaining -= 1
@@ -375,21 +299,18 @@ class CircuitBreakerMixin(_Host):
                     ),
                 )
 
-        soft_is_new = ts <= 0.0 or ts > self._cb_soft_candle_ts
-        if self._cb_soft_active_side is None and move.soft_side and soft_is_new:
-            self._trip_soft_breaker(move, figures, ts)
+        if self._cb_soft_active_side is None and move.soft_side:
+            self._trip_soft_breaker(move, figures)
 
-    def _trip_hard_breaker(
-        self, move: BreakerMove, figures: BreakerFigures, ts: float
-    ) -> None:
-        """Set ``_cb_hard_tripped`` and ``BotState.PAUSED``, record ``ts`` in
-        ``_cb_hard_candle_ts``, and write the trip to ``bot.log``."""
+    def _trip_hard_breaker(self, move: BreakerMove, figures: BreakerFigures) -> None:
+        """Set ``_cb_hard_tripped`` and ``BotState.PAUSED``, and write the trip to
+        ``bot.log``."""
         move_pct = move.move_pct
         hard_pct = figures.hard_pct
+        self._cb_hard_trips += 1
         self._cb_hard_tripped = True
         self._cb_hard_tripped_at = time.time()
         self._cb_hard_trip_pct = move_pct
-        self._cb_hard_candle_ts = ts
         try:
             self.state = BotState.PAUSED
         except Exception as _sup:
@@ -436,11 +357,9 @@ class CircuitBreakerMixin(_Host):
         except Exception as _alert_exc:
             logger.warning("Bot %s hold alert not sent: %s", self.bot_id, _alert_exc)
 
-    def _trip_soft_breaker(
-        self, move: BreakerMove, figures: BreakerFigures, ts: float
-    ) -> None:
-        """Set ``_cb_soft_active_side`` and its cooldown, record ``ts`` in
-        ``_cb_soft_candle_ts``, and write the trip to ``bot.log``."""
+    def _trip_soft_breaker(self, move: BreakerMove, figures: BreakerFigures) -> None:
+        """Set ``_cb_soft_active_side`` and its cooldown, and write the trip to
+        ``bot.log``."""
         move_pct = move.move_pct
         side = move.soft_side
         cooldown = figures.cooldown_candles
@@ -448,7 +367,6 @@ class CircuitBreakerMixin(_Host):
         self._cb_soft_cooldown_remaining = cooldown
         self._cb_soft_tripped_at = time.time()
         self._cb_soft_trip_pct = move_pct
-        self._cb_soft_candle_ts = ts
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -502,7 +420,8 @@ class CircuitBreakerMixin(_Host):
 
         The soft breaker also self-resets on cooldown elapse; the hard
         breaker only clears through this call. ``scope`` is 'all', 'soft',
-        or 'hard' (clearing hard resumes the bot if PAUSED). Returns
+        or 'hard' (clearing hard resumes a PAUSED bot whose ``_pause_event``
+        is set and whose ``tick_loop_alive`` answers True). Returns
         ``{'applied': [...], 'scope': ...}`` and never raises — fail-soft
         for GUI buttons.
         """
@@ -524,12 +443,17 @@ class CircuitBreakerMixin(_Host):
 
         if scope_norm in ("all", "hard") and self._cb_hard_tripped:
             old_pct = self._cb_hard_trip_pct
+            self._credit_held_age(self._cb_hard_tripped_at, time.time())
             self._cb_hard_tripped = False
             self._cb_hard_tripped_at = 0.0
             self._cb_hard_trip_pct = 0.0
             self._held_orders_named.clear()
             try:
-                if self.state == BotState.PAUSED:
+                if (
+                    self.state == BotState.PAUSED
+                    and self._pause_event.is_set()
+                    and self.tick_loop_alive()
+                ):
                     self.state = BotState.RUNNING
                     applied.append("bot resumed from PAUSED → RUNNING")
             except Exception as _sup:

@@ -19,7 +19,7 @@ from decimal import (
     ROUND_HALF_UP,
 )
 from enum import Enum
-from typing import Optional
+from typing import Callable, Optional
 
 #: Seconds in one day, the grain ``MarketRules.days_to_expiry`` answers in and
 #: the grain a venue's ``settlement_days`` is stated in.
@@ -263,14 +263,35 @@ class SpotPosition:
     raw: dict = field(default_factory=dict)
 
 
+class OrderHeld(Exception):
+    """An order stopped before its venue; the text is what ``hold_reason`` answered."""
+
+
+class OrderRefused(Exception):
+    """An order ``_refuse_order`` or a connector refused before any request left."""
+
+
+def no_order_hold() -> str:
+    """The ``hold_reason`` of a caller no hold applies to."""
+    return ""
+
+
+def refuse_held_order(hold_reason: Callable[[], str]) -> None:
+    """Raise ``OrderHeld`` when ``hold_reason`` answers text, and return otherwise."""
+    reason = hold_reason()
+    if reason:
+        raise OrderHeld(reason)
+
+
 class ExchangeInterface(ABC):
     """The contract a connector class implements.
 
     Every method is abstract except ``get_my_trades`` and
     ``get_order_by_client_id``, which raise ``NotImplementedError`` unless a subclass
     overrides them, ``get_spot_positions``, which returns None until a subclass
-    overrides it, and ``await_bulk_read_slot``, which waits for nothing until a subclass
-    overrides it.
+    overrides it, ``await_bulk_read_slot`` and ``prepare_order``, which wait for
+    nothing until a subclass overrides them, and ``send_order``, which no connector
+    overrides.
     """
 
     @property
@@ -341,6 +362,38 @@ class ExchangeInterface(ABC):
         del currency
         raise NotImplementedError
 
+    async def prepare_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        order_type: OrderType,
+        amount: float,
+        price: Optional[float] = None,
+    ) -> Optional[float]:
+        """Run every wait ``place_order`` needs ahead of its send, and answer the price
+        it sends; this body waits for nothing and answers ``price``."""
+        del symbol, side, order_type, amount
+        return price
+
+    async def send_order(
+        self,
+        symbol: str,
+        side: OrderSide,
+        order_type: OrderType,
+        amount: float,
+        price: Optional[float] = None,
+        client_order_id: Optional[str] = None,
+        hold_reason: Callable[[], str] = no_order_hold,
+    ) -> Order:
+        """Run ``prepare_order``, read ``hold_reason``, then run ``place_order``, the one
+        route ``BotContainer.guarded_place_order`` sends by; ``OrderHeld`` means nothing
+        was sent."""
+        ready_price = await self.prepare_order(symbol, side, order_type, amount, price)
+        refuse_held_order(hold_reason)
+        return await self.place_order(
+            symbol, side, order_type, amount, ready_price, client_order_id, hold_reason
+        )
+
     @abstractmethod
     async def place_order(
         self,
@@ -350,13 +403,15 @@ class ExchangeInterface(ABC):
         amount: float,
         price: Optional[float] = None,
         client_order_id: Optional[str] = None,
+        hold_reason: Callable[[], str] = no_order_hold,
     ) -> Order:
         """Submit an order and return the resulting ``Order``.
 
         ``price`` is required for ``OrderType.LIMIT`` and ``OrderType.IOC_LIMIT``;
-        an implementation may ignore ``client_order_id`` but must accept it.
+        an implementation may ignore ``client_order_id`` and ``hold_reason`` but must
+        accept them, and ``hold_reason`` serves a send that waits in a queue here.
         """
-        del symbol, side, order_type, amount, price, client_order_id
+        del symbol, side, order_type, amount, price, client_order_id, hold_reason
         raise NotImplementedError
 
     async def get_order_by_client_id(self, client_order_id: str, symbol: str) -> Order:

@@ -71,6 +71,7 @@ class ClassFilterTabMixin:
     _tab_widget: Any
     _trading_stack: Any
     _push_live_tab: Callable[..., Any]
+    _hold_live_venue: Callable[..., Any]
 
     def select_asset_class(self, name: Any) -> None:
         """Make one asset class active, then refilter every tab that follows it.
@@ -154,11 +155,12 @@ class ClassFilterTabMixin:
         held: set = set()
         for layer in (getattr(self, "_class_layers", None) or {}).values():
             held |= set(layer["exchange_tabs"])
-        venues = cfs.venues_of_class(sorted(held), key)
-        self._live_layer_for(key, venues)
+        self._live_layer_for(key, cfs.venues_of_class(sorted(held), key))
+        for page in self._exchange_tabs.values():
+            self._hold_live_venue(page)
         self._refilter_class_tabs()
         self._feed_class_tabs(self._class_fleet())
-        self._push_live_tab({"asset_class": key, "class_venues": venues})
+        self._push_live_tab({"asset_class": key})
         self._repaint_header_strip()
 
     def _repaint_header_strip(self) -> None:

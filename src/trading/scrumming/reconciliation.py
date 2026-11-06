@@ -19,6 +19,7 @@ from ...exchange.idempotency import get_idempotency_layer
 from ..bot_container import FILL_DUST_UNITS
 from .sizing import (
     SAME_SIZE_REL,
+    SELF_DESTRUCT_SALE,
     SIDE_BUY,
     SIDE_SELL,
     booked_at_audit,
@@ -68,6 +69,7 @@ class ReconciliationEngineMixin:
     # is created.
     _book_manual_purchase: Callable[..., Any]
     _book_manual_sale: Callable[..., Any]
+    _book_self_destruct: Callable[..., Any]
     _earlier_order_booking: Callable[..., dict]
     _bus: Any
     _current_holdings: float
@@ -78,6 +80,8 @@ class ReconciliationEngineMixin:
     _quote_to_usd: float
     _reconcile_resting_orders: Callable[..., Any]
     _refresh_quote_to_usd: Callable[..., Any]
+    _return_shadows_to_lots: Callable[..., float]
+    _shadow_held_units: Callable[..., float]
     bot_id: Any
     config: Any
     exchange: Any
@@ -1318,18 +1322,22 @@ class ReconciliationEngineMixin:
 
         ``booked_at_audit`` names the decisions. ``_book_manual_purchase`` pays the queue
         or ``_book_manual_sale`` queues a tranche at the price that send read, else
-        ``stats.current_price``. True where one booked.
+        ``stats.current_price``. ``SELF_DESTRUCT_SALE`` sold the Shadow rows too, so it
+        matches with ``_shadow_held_units`` added and books through
+        ``_book_self_destruct``. True where one booked.
         """
         current = float(
             getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
         )
         layer = get_idempotency_layer()
         for send in layer.unanswered_sends(self.bot_id, self.config.symbol, side):
+            whole_sale = send.intent.decision == SELF_DESTRUCT_SALE
+            sent = units + self._shadow_held_units() if whole_sale else units
             read = next(
                 (
                     price
                     for size, price in send.sizes
-                    if math.isclose(size, units, rel_tol=SAME_SIZE_REL)
+                    if math.isclose(size, sent, rel_tol=SAME_SIZE_REL)
                 ),
                 None,
             )
@@ -1346,12 +1354,22 @@ class ReconciliationEngineMixin:
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"LOST ORDER BOOKED: the audit read {units:.8f} "
+                    f"LOST ORDER BOOKED: the audit read {sent:.8f} "
                     f"{self.config.target_asset} past the book, the size of a "
                     f"{side} whose answer was lost, so it books at ${price:.8f}."
                 ),
             )
-            if side == SIDE_BUY:
+            if whole_sale:
+                self._return_shadows_to_lots("self-destruct")
+                await self._book_self_destruct(
+                    sent,
+                    price,
+                    sent,
+                    True,
+                    keep_running=False,
+                    venue_units=exchange_units + sent,
+                )
+            elif side == SIDE_BUY:
                 await self._book_manual_purchase(
                     units,
                     price,

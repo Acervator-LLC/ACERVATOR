@@ -11,10 +11,12 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType
+from ...exchange.ccxt_connector import order_stayed_home
 from ..container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
     EXPIRY_CLOSE_SELL_ALL,
+    NO_ORDER_BACK,
     SMART_CARTRIDGE_CEILING_OFF,
     SMART_CARTRIDGE_CEILING_OFF_TEXT,
     as_finite_float,
@@ -29,7 +31,7 @@ from ..otd_math import (
     DistanceSettingUnreadable,
     fold_rebuy_factor_from_pct,
 )
-from ..stack_math import rung_is_pending
+from ..stack_math import LADDER_STOPPED, rung_is_pending
 from ..target_bands import at_target_dust_band
 from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
@@ -159,6 +161,7 @@ class TickPhaseMixin:
     _get_ohlcv: Callable[..., Any]
     _get_ticker: Callable[..., Any]
     guarded_place_order: Callable[..., Any]
+    order_watch: Callable[..., Any]
     _hedge_bal: float
     _hedge_trades: int
     _hold_resting_order: Callable[..., Any]
@@ -526,6 +529,11 @@ class TickPhaseMixin:
                 self._phantom_timeframes,
             )
             self._phantom_gate_logged = True
+        await self._start_phantom_set(symbol)
+
+    async def _start_phantom_set(self, symbol: str) -> None:
+        """Build and start the phantom set while ``_phantoms_enabled`` asks for one and
+        ``_phantoms_started`` reads False, as it does after ``ScrummingBot.stop``."""
         if self._phantoms_enabled and not self._phantoms_started:
             self._phantom_mgr.create_phantom_set(
                 parent_bot_id=self.bot_id,
@@ -656,7 +664,8 @@ class TickPhaseMixin:
         _cartridge_pct: float,
     ) -> str:
         """Fire the max-cartridge rebalance and answer what
-        ``_execute_manual_rebalance`` answers, ``REBALANCE_SENT`` where it raised."""
+        ``_execute_manual_rebalance`` answers, and where it raised, ``REBALANCE_REFUSED``
+        on ``order_stayed_home`` proof and ``REBALANCE_SENT`` without it."""
         if _direction == "FOLD":
             _verified_units, _refuse_msg = await self._verify_buy_safe_or_refuse(
                 path="cartridge_fold", price=ticker.last
@@ -713,7 +722,7 @@ class TickPhaseMixin:
                 ),
             )
             logger.exception("Max cartridge rebalance failed")
-            return REBALANCE_SENT
+            return REBALANCE_REFUSED if order_stayed_home(exc) else REBALANCE_SENT
 
     async def _tick_detonation(self, ticker: Any) -> bool:
         """Return True when a detonation fired and the tick must stop.
@@ -826,6 +835,7 @@ class TickPhaseMixin:
         )
 
         self._expiry_close_sent_units = held
+        _watch = self.order_watch()
         try:
             order = await self.guarded_place_order(
                 symbol=symbol,
@@ -833,6 +843,7 @@ class TickPhaseMixin:
                 order_type=OrderType.MARKET,
                 amount=held,
                 price=None,
+                watch=_watch,
             )
         except Exception as exc:
             self._expiry_close_sent_units = 0.0
@@ -853,7 +864,7 @@ class TickPhaseMixin:
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"EXPIRY CLOSE FAILED: {symbol} returned no order. The "
+                    f"EXPIRY CLOSE FAILED: {_watch.refusal or NO_ORDER_BACK}. The "
                     f"position is still held and the next tick tries again."
                 ),
             )
@@ -2587,8 +2598,8 @@ class TickPhaseMixin:
             self._refuse_unreadable_distance(unread, "DIST", price)
             return
         if getattr(self.config, "stack_mode", False):
-            await self._ladder_dist_sets(price, summary)
-            if not self._dist_sets:
+            stopped = await self._ladder_dist_sets(price, summary)
+            if stopped or not self._dist_sets:
                 return
         clearing = dist_sets_clearing(self._dist_sets, price, otd_pct)
         if not clearing:
@@ -2628,10 +2639,12 @@ class TickPhaseMixin:
                     ),
                 )
 
-    async def _ladder_dist_sets(self, price: float, summary: Any) -> None:
+    async def _ladder_dist_sets(self, price: float, summary: Any) -> bool:
         """Open one ``_open_stack_from_scrum`` ladder per untried set, anchored no
-        lower than its fold price, and drop each set a rung now holds."""
+        lower than its fold price, and drop each set a rung now holds. True where
+        ``LADDER_STOPPED`` ended the walk, which leaves that set untried."""
         laddered: set[int] = set()
+        stopped = False
         for record in list(self._dist_sets):
             if record.get(DIST_LADDER_TRIED_KEY):
                 continue
@@ -2644,12 +2657,16 @@ class TickPhaseMixin:
                 origin="dist",
                 floor_ref_price=fold_price,
             )
+            if opened == LADDER_STOPPED:
+                stopped = True
+                break
             appended = self._stack_tranches[before:]
             if opened > len(appended) or any(rung_is_pending(r) for r in appended):
                 laddered.add(id(record))
             else:
                 record[DIST_LADDER_TRIED_KEY] = True
         self._dist_sets = [one for one in self._dist_sets if id(one) not in laddered]
+        return stopped
 
     def _hold_dist_sets(self, price: float, otd_pct: float) -> None:
         """Log, once per held refusal, the lowest ``dist_floor_price`` among

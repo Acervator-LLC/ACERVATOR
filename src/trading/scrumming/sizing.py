@@ -3235,6 +3235,7 @@ ENTRY_BUY = "entry_buy"
 HEDGE_BUY = "hedge_buy"
 DETONATION_SALE = "detonation_sale"
 DIST_SALE = "dist_sale"
+SELF_DESTRUCT_SALE = "self_destruct_sale"
 
 #: What ``_execute_manual_rebalance`` answers: an order went out or may have, a gate
 #: refused it, or the wallet left it nothing it may spend.
@@ -3391,11 +3392,13 @@ def answer_fits_plan(
 
 
 def booked_at_audit(decision: str) -> bool:
-    """True where ``_settle_lost_order`` may book ``decision`` through the cartridge's
-    bookers: the excess sale, the shortfall buy and a fold or a tranche fire."""
-    return decision in (EXCESS_SALE, SHORTFALL_BUY) or decision.startswith(
-        FOLD_DECISION_PREFIX
-    )
+    """True where ``_settle_lost_order`` may book ``decision``: the excess sale, the
+    shortfall buy, a fold or a tranche fire, and ``SELF_DESTRUCT_SALE``."""
+    return decision in (
+        EXCESS_SALE,
+        SHORTFALL_BUY,
+        SELF_DESTRUCT_SALE,
+    ) or decision.startswith(FOLD_DECISION_PREFIX)
 
 
 def order_spent_credit(spent_usd: float, tranches: list) -> bool:

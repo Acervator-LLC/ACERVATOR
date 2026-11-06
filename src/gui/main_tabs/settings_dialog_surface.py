@@ -472,6 +472,9 @@ RENAME_FAILED_LOG_FORMAT = (
 )
 ADDED_FEEDBACK_FORMAT = "{name} added {how}."
 ADDED_LOG_FORMAT = "Exchange added: {name} ({how})"
+#: Whether ``SettingsDialog._add_exchange`` closes the window once the box is read.
+ADD_CLOSES_WINDOW = True
+
 ADDED_BOX_TITLE = "Exchange Added"
 ADDED_BOX_TAB_NEW = "The exchange tab will appear in the main window."
 ADDED_BOX_TAB_HELD = "The exchange tab is already in the main window."
@@ -710,7 +713,7 @@ def fleet_lock_intent(
 
 
 NO_SELECTION_FEEDBACK = "Select an exchange to remove."
-REMOVED_TAB_TEXT = "Its exchange tab comes off the main window."
+REMOVED_TAB_TEXT = "Its exchange tab comes off the main window when this window closes."
 REMOVED_FEEDBACK_FORMAT = "{name} removed. " + REMOVED_TAB_TEXT
 REMOVED_LOG_FORMAT = "Exchange removed: {eid}"
 REMOVE_REFUSED_FORMAT = (
@@ -719,6 +722,17 @@ REMOVE_REFUSED_FORMAT = (
 REMOVE_UNREAD_FORMAT = "{name} cannot be removed: its bots could not be read ({error})."
 REMOVE_BLOCKER_FORMAT = "{symbol} (bot {bot_id}, {state})"
 REMOVE_BLOCKER_JOIN = ", "
+REMOVE_QUESTION_TITLE = "Orders still resting"
+REMOVE_QUESTION_FORMAT = (
+    "Orders resting at {name}: {orders} ({bots}). They stay at the venue after a "
+    "Remove, and nothing will read their fills. Remove {name}?"
+)
+REMOVE_QUESTION_BOT_FORMAT = "bot {bot_id}: {orders}"
+REMOVE_SEALED_FORMAT = (
+    "{name} cannot be removed while the saved fleet is sealed, because its bots "
+    "are not loaded. Unlock the fleet first: "
+    f"{USER_TAB} tab, {FLEET_LOCK_UNLOCK_BUTTON_TEXT}."
+)
 
 PROCESS_EVENTS_REASON = "legacy processEvents site"
 
@@ -2174,6 +2188,27 @@ def row_venue_id(wing: Any, at: Any, states: Any = None) -> str:
     return str(rows[found][1])
 
 
+def venue_row_at(wing: Any, venue_id: Any, states: Any = None) -> int:
+    """The ``exchange_status_rows`` index naming ``venue_id``, or ``NO_MATCH_INDEX``."""
+    for at, row in enumerate(exchange_status_rows(wing, states)):
+        if row[1] == venue_id:
+            return at
+    return NO_MATCH_INDEX
+
+
+def venue_page_holding(at: Any) -> int:
+    """The venue array page drawing the ``exchange_status_rows`` index ``at``."""
+    return int(at) // VENUE_PAGE_HOLDS
+
+
+def wing_showing_venue(venue_id: Any, sector: Any) -> str:
+    """``sector`` where its rows name ``venue_id``, else the first listing class, else ``sector``."""
+    for wing in (sector, *acs.asset_classes()):
+        if venue_row_at(wing, venue_id) != NO_MATCH_INDEX:
+            return str(wing)
+    return str(sector)
+
+
 def chosen_venue_text(wing: Any, at: Any, states: Any = None) -> str:
     """The Add form's Exchange row, naming the venue the row at ``at`` chose.
 
@@ -2381,18 +2416,15 @@ def removed_feedback_text(name: Any) -> str:
 
 
 def remove_refusal(exchange_id: str, fleet: object) -> str:
-    """Answer why Remove keeps *exchange_id*, or no text where it may go.
+    """Say why a sealed fleet, a live bot or a failed read keeps ``exchange_id``, else nothing."""
+    from .main_window_surface import NOT_RUNNING_STATES, fleet_is_sealed
 
-    ``list_bots_by_exchange`` on *fleet* names its bots, and one not idle or
-    stopped, or a read that raises, keeps the venue for
-    ``SettingsDialog._remove_exchange`` and ``SettingsDialogModel.remove_exchange``.
-    """
-    from .main_window_surface import NOT_RUNNING_STATES
-
-    reader = getattr(fleet, "list_bots_by_exchange", None)
+    reader = getattr(fleet, "removal_statuses", None)
     if reader is None:
         return ""
     name = str(exchange_id).capitalize()
+    if fleet_is_sealed(fleet):
+        return REMOVE_SEALED_FORMAT.format(name=name)
     try:
         statuses = [dict(one) for one in reader(exchange_id) or ()]
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
@@ -2412,6 +2444,22 @@ def remove_refusal(exchange_id: str, fleet: object) -> str:
         return ""
     return REMOVE_REFUSED_FORMAT.format(
         name=name, bots=REMOVE_BLOCKER_JOIN.join(blocking)
+    )
+
+
+def remove_question(exchange_id: str, fleet: object) -> str:
+    """The Yes or No words for orders ``resting_orders_by_exchange`` finds at ``exchange_id``, else nothing."""
+    reader = getattr(fleet, "resting_orders_by_exchange", None)
+    resting = dict(reader(exchange_id)) if reader is not None else {}
+    if not resting:
+        return ""
+    return REMOVE_QUESTION_FORMAT.format(
+        name=str(exchange_id).capitalize(),
+        orders=sum(resting.values()),
+        bots=REMOVE_BLOCKER_JOIN.join(
+            REMOVE_QUESTION_BOT_FORMAT.format(bot_id=bot_id, orders=orders)
+            for bot_id, orders in resting.items()
+        ),
     )
 
 
@@ -2730,10 +2778,10 @@ def credential_form(venue_id: Any, wing: Any = "") -> dict:
     }
 
 
-def venue_form_bound(venue_id: Any) -> str:
-    """The feedback words one pressed venue button writes, naming the credential
-    its own ``credential_kind`` takes."""
-    return str(credential_form(venue_id)["prompt"])
+def venue_form_bound(venue_id: Any, wing: Any) -> str:
+    """The feedback words one pressed venue button writes on ``wing``, naming the
+    credential ``credential_form`` draws there."""
+    return str(credential_form(venue_id, wing)["prompt"])
 
 
 def browser_credential_fields(venue_id: Any) -> tuple:
@@ -3692,7 +3740,9 @@ class SettingsDialogModel:
             return
         self.venue_row = int(at)
         self.on_exchange_changed()
-        self.set_feedback(venue_form_bound(self.current_exchange_id()), INFO_LEVEL)
+        self.set_feedback(
+            venue_form_bound(self.current_exchange_id(), self.asset_class), INFO_LEVEL
+        )
 
     def on_exchange_changed(self) -> None:
         """Tick the passphrase box for an exchange that needs one and draw the
@@ -3858,11 +3908,9 @@ class SettingsDialogModel:
                     if typed:
                         setattr(config, field, self.encryptor(typed, master))
 
+            tab_is_new = self.settings.get_exchange(eid) is None
             self.settings.add_exchange(config)
-            tab_is_new = (
-                listed_exchange_position(self.listed_exchanges, eid) == NO_MATCH_INDEX
-            )
-            if tab_is_new:
+            if listed_exchange_position(self.listed_exchanges, eid) == NO_MATCH_INDEX:
                 self.listed_exchanges.append(
                     EXCHANGE_ITEM_FORMAT.format(name=eid.capitalize(), eid=eid)
                 )
@@ -3887,7 +3935,7 @@ class SettingsDialogModel:
                     added_box_text(eid.capitalize(), how, tab_is_new),
                 ]
             )
-            self.accepted = True
+            self.accepted = ADD_CLOSES_WINDOW
         finally:
             self.enabled["add_btn"] = True
             self.enabled["test_btn"] = True
@@ -3911,6 +3959,8 @@ class SettingsDialogModel:
         if selected in self.listed_exchanges:
             self.listed_exchanges.remove(selected)
         self.values["exchange_list"] = list(self.listed_exchanges)
+        self.venue_row = NO_VENUE_ROW
+        self.on_exchange_changed()
         self.set_feedback(removed_feedback_text(eid.capitalize()), INFO_LEVEL)
         if self.status_log:
             self.status_log.log(REMOVED_LOG_FORMAT.format(eid=eid), WARNING_LEVEL)

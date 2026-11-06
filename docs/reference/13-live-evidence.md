@@ -472,7 +472,8 @@ the scheme policy       src/core/safe_url.py
 the credential mask     src/exchange/api_logger.py, in _redact
 the amount refusal      src/trading/bot_container.py, in guarded_place_order
 
-exchange.place_order called by      src/trading/bot_container.py
+exchange.send_order called by       src/trading/bot_container.py
+exchange.place_order called by      src/exchange/base.py
 guarded_place_order called by       src/trading/scrumming/execution.py
                                     src/trading/scrumming_bot.py
                                     src/trading/extractor_bot.py
