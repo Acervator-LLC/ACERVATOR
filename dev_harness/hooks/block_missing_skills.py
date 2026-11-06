@@ -5,14 +5,16 @@ the extra skills it demands. `main` returns 2 naming each one a brief left out.
 """
 
 import json
+import os
 import re
 import sys
+from pathlib import Path
 
 GATED_TOOLS = {"Agent"}
 
 COMMISSIONING = re.compile(
     r"##\s*YOUR UNIT\b|##\s*UNIT \d|\bwhat this unit delivers\b"
-    r"|\byour boundary\b|\bthe deliverable is\b",
+    r"|\byour boundary\b|\bthe deliverable is\b|\bYou are a unit\b",
     re.IGNORECASE,
 )
 
@@ -71,6 +73,24 @@ def missing(text):
     return sorted(need - cited)
 
 
+def skill_roots(payload):
+    """Returns the two folders a skill can live in: the user's and the repo's."""
+    cwd = payload.get("cwd") or os.getcwd()
+    return (
+        Path.home() / ".claude" / "skills",
+        Path(cwd) / "dev_harness" / "skills",
+    )
+
+
+def nonexistent(text, roots):
+    """Returns every cited skill that has a SKILL.md in neither root."""
+    cited = sorted(set(re.findall(r"Skill:\s*([\w-]+)", text)))
+    return [
+        name for name in cited
+        if not any((root / name / "SKILL.md").is_file() for root in roots)
+    ]
+
+
 def main():
     """Reads the tool payload on stdin and refuses an under-skilled brief."""
     try:
@@ -82,6 +102,18 @@ def main():
     text = text_of(payload)
     if not COMMISSIONING.search(text):
         return 0
+    roots = skill_roots(payload)
+    invented = nonexistent(text, roots)
+    if invented:
+        sys.stderr.write(
+            "Dispatch refused: the brief cites skills that do not exist.\n"
+            + "".join("  Skill: %s\n" % name for name in invented)
+            + "Looked for <name>/SKILL.md under:\n"
+            + "".join("  %s\n" % root for root in roots)
+            + "A unit told to load a skill that is not there loads nothing and"
+            " follows a rule nobody wrote. Name only skills on disk.\n"
+        )
+        return 2
     absent = missing(text)
     if not absent:
         return 0

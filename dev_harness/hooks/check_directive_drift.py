@@ -25,6 +25,7 @@ DROP_FIGURES = re.compile(
     re.IGNORECASE,
 )
 PARALLEL_PYTEST = re.compile(r"pytest[^\n]{0,80}-n\s+(?:auto|[5-9]|\d\d)")
+LOCAL_GATE = re.compile(r"tools[./\\]local_ci|\blocal_ci\b", re.IGNORECASE)
 
 MANUAL_WORK = re.compile(r"docs/manual|FIGURES\.md", re.IGNORECASE)
 CODE_WORK = re.compile(r"#319|coding_archetype|sweep|comments? audit", re.IGNORECASE)
@@ -90,6 +91,16 @@ def main() -> int:
         deny(
             "the brief allows a parallel pytest run while the platform is live",
             "Run serially, no -n.",
+        )
+    if LOCAL_GATE.search(prompt):
+        deny(
+            "the brief names the local gate, which can never print PASS",
+            "His rule, 2026-10-09: do not name tools.local_ci in a brief, do not"
+            " retry it, do not wait on it. Two of its four lanes collect no test"
+            " by his decision, and CI's lint lane already runs the other two."
+            " A merge is gated by CI's ci-gate and each changed file's archetype"
+            " verdict. For a local lint reading, name `python -m black --check"
+            " <files>` and `python -m flake8 <files>`.",
         )
     if MANUAL_WORK.search(prompt) and not NO_DELETE_CLAUSE.search(prompt):
         deny(
