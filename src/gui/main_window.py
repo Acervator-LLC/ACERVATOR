@@ -93,6 +93,11 @@ BROKER_SESSION_PAPER = True
 #: Why ``_open_broker_session`` refused before reaching the venue.
 #: ``_connect_broker_for_bot`` matches on this to open the configuration window.
 NO_BROKER_CREDENTIAL = "no API credentials are stored"
+VENUE_NOT_STORED = "Settings no longer holds this venue, so the bot stays stopped"
+
+#: What the status log carries for a venue the sync keeps off ``remove_refusal``.
+VENUE_KEPT_FORMAT = "{why} Its tab and connection stay."
+KEY_WAITS_FORMAT = "{venue}: the new key takes effect at each live bot's next Start."
 
 #: What the status log carries while the configuration window opens for a bot
 #: whose venue holds no stored connection yet.
@@ -366,10 +371,9 @@ if _HAS_QT:
             )
 
         def _bot_list_hosts(self) -> list:
-            """Every venue tab that draws a bot list, both layers together."""
-            return list(self._crypto_exchange_tabs.values()) + list(
-                self._stock_exchange_tabs.values()
-            )
+            """Every venue tab that draws a bot list, on every layer of ``_class_layers``."""
+            layers = (getattr(self, "_class_layers", None) or {}).values()
+            return [tab for held in layers for tab in held["exchange_tabs"].values()]
 
         def _on_bot_row_selected(self, bot_id: str) -> str:
             """Draw the pressed bot on the panel and redraw the React page.
@@ -1041,8 +1045,11 @@ if _HAS_QT:
                         tab._refresh_privacy_mode_btn_style()
                     try:
                         if self._bot_manager and hasattr(tab, "exchange_id"):
-                            statuses = self._bot_manager.list_bots_by_exchange(
-                                tab.exchange_id
+                            statuses = _class_filter.bots_of_class(
+                                self._bot_manager.list_bots_by_exchange(
+                                    tab.exchange_id
+                                ),
+                                _class_filter.active(),
                             )
                             tab.update_bots(statuses)
                             self._tab_bots_fault.note_success()
@@ -1816,15 +1823,7 @@ if _HAS_QT:
                 if target_tabs is self._exchange_tabs:
                     self._exchange_tabs[exchange_id] = tab
                 _seated.append(name)
-                if len(_seated) > 1:
-                    continue
-                # Only TradingTabReact holds a venue, keyed by exchange id, so
-                # the first seated tab is the one it follows.
-                hold_venue = getattr(
-                    getattr(self, "_trading_tab", None), "hold_venue", None
-                )
-                if callable(hold_venue):
-                    hold_venue(tab)
+            self._hold_live_venue(layers[_seated[0]]["exchange_tabs"][exchange_id])
             self._push_live_tab({})
 
             # `_landed` asks each layer's own tab bar, never the store written above.
@@ -2988,14 +2987,18 @@ if _HAS_QT:
                 return None
             if getattr(held, "is_connected", False):
                 return held
-            self._exchange_connectors.pop(eid, None)
+            self._release_connector(eid)
+            return None
+
+        def _release_connector(self, eid: str) -> None:
+            """Drop *eid* from `_exchange_connectors` and call `release` on its connector."""
+            held = self._exchange_connectors.pop(eid, None)
             release = getattr(held, "release", None)
             if release is not None:
                 try:
                     release()
                 except Exception as exc:
                     logger.warning("connector release for %s failed: %s", eid, exc)
-            return None
 
         def _wire_connector_for_bot(self, connector, bot) -> None:
             """Register *bot*'s symbol on *connector* and feed the history tab."""
@@ -3117,14 +3120,11 @@ if _HAS_QT:
             )
 
         def _ask_for_venue_connection(self, eid: str, sector: str) -> None:
-            """Open the configuration window on *sector* so the operator can
-            connect *eid* at the moment a bot's route wants it.
-
-            ``variant_surface.SETTINGS_DIALOG`` is the same window
-            ``_open_settings`` draws, and it opens on the bot's own sector so the
-            pressed venue asks for the credential that sector's route takes.
-            """
-            from .variant_surface import SETTINGS_DIALOG, surface_class
+            """Open ``_run_settings_window`` on Exchanges with *eid* bound, on the class ``wing_showing_venue`` answers for *sector*."""
+            from .main_tabs.settings_dialog_surface import (
+                EXCHANGE_TAB,
+                wing_showing_venue,
+            )
 
             self._status_log.log(
                 CONNECTION_WANTED_FORMAT.format(
@@ -3132,11 +3132,9 @@ if _HAS_QT:
                 ),
                 "warning",
             )
-            dialog = surface_class(SETTINGS_DIALOG)(
-                self._settings, self._status_log, self, wing=sector
+            self._run_settings_window(
+                wing_showing_venue(eid, sector), EXCHANGE_TAB, eid
             )
-            dialog.settings_changed.connect(self._on_settings_changed)
-            dialog.exec()
 
         def _open_broker_session(
             self, connector, eid: str, sector: str = ""
@@ -3155,6 +3153,8 @@ if _HAS_QT:
             from ..stocks.broker_base import broker_paper_route
 
             if getattr(connector, "is_connected", False):
+                if self._settings and self._settings.get_exchange(eid) is None:
+                    return False, VENUE_NOT_STORED
                 return True, ""
             try:
                 api_key, api_secret = self._broker_credential(eid, sector)
@@ -3869,6 +3869,13 @@ if _HAS_QT:
             except Exception as beep_exc:
                 logger.debug("tracking beep playback failed: %s", beep_exc)
 
+        async def _start_marked_bot(self, bot) -> None:
+            """Run ``bot.start``, then lift the ``start_pending`` mark ``_on_bot_command`` set."""
+            try:
+                await bot.start()
+            finally:
+                bot.start_pending = False
+
         def _on_bot_command(self, bot_id: str, command: str) -> None:
             if not self._bot_manager:
                 return
@@ -3885,6 +3892,7 @@ if _HAS_QT:
             sound = get_sound_engine()
 
             if command == "start":
+                bot.start_pending = True
                 # Synchronous connect on the GUI thread: the window freezes until done.
                 eid_display = bot.config.exchange_id.capitalize()
                 self._status_log.log(
@@ -3898,7 +3906,11 @@ if _HAS_QT:
 
                 safe_process_events("legacy processEvents site")
 
-                success, msg = self._connect_exchange_for_bot(bot)
+                success, msg = False, ""
+                try:
+                    success, msg = self._connect_exchange_for_bot(bot)
+                finally:
+                    bot.start_pending = success
                 if not success:
                     self._status_log.log(f"Cannot start bot {bot_id}: {msg}", "error")
                     self._spool.notify(f"Bot {bot_id} FAILED: {msg}", "error")
@@ -3942,13 +3954,14 @@ if _HAS_QT:
                     bot._user_verified = True
 
                 try:
-                    self._schedule_async(bot.start())
+                    self._schedule_async(self._start_marked_bot(bot))
                     if bot.order_hold_reason():
                         return
                     self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
                     self._spool.notify(f"Bot {bot_id} RUNNING", "success")
                     sound.play_state_change()
                 except Exception as exc:
+                    bot.start_pending = False
                     self._status_log.log(
                         f"Failed to start bot {bot_id}: {exc}", "error"
                     )
@@ -4034,10 +4047,7 @@ if _HAS_QT:
         def _refuse_while_sealed(self, exchange_id: str = "") -> bool:
             """Show ``FLEET_SEALED_CREATE_TEXT`` and answer True while
             ``launch_classification`` reads ``LAUNCH_LOCKED``."""
-            from ..core.state_manager import LAUNCH_LOCKED
-
-            state_mgr = getattr(self._bot_manager, "_state_manager", None)
-            if state_mgr is None or state_mgr.launch_classification() != LAUNCH_LOCKED:
+            if not window_surface.fleet_is_sealed(self._bot_manager):
                 return False
             QMessageBox.warning(
                 self, FLEET_SEALED_CREATE_TITLE, FLEET_SEALED_CREATE_TEXT
@@ -4279,12 +4289,54 @@ if _HAS_QT:
                 self._status_log.log(f"Settings not opened: {exc}", "error")
                 return
             self._status_log.log(f"Opening settings ({_wing} wing)...")
+            self._run_settings_window(_wing)
+
+        def _run_settings_window(
+            self, wing: str, tab: str = "", venue: str = ""
+        ) -> None:
+            """Run Settings on *wing* at *tab* and *venue*, wired to ``_on_settings_changed``, then ``_sync_exchange_tabs``."""
             from .variant_surface import SETTINGS_DIALOG, surface_class
 
-            _cls = surface_class(SETTINGS_DIALOG)
-            dlg = _cls(self._settings, self._status_log, self, wing=_wing)
-            dlg.settings_changed.connect(self._on_settings_changed)
-            dlg.exec()
+            dialog = surface_class(SETTINGS_DIALOG)(
+                self._settings, self._status_log, self, wing=wing
+            )
+            dialog.settings_changed.connect(self._on_settings_changed)
+            if tab:
+                dialog.show_tab(tab)
+            if venue:
+                dialog.bind_venue(venue)
+            keys_before = self._stored_key_fields()
+            dialog.exec()
+            dialog.deleteLater()
+            self._release_changed_keys(keys_before)
+            self._sync_exchange_tabs()
+
+        def _stored_key_fields(self) -> dict:
+            """Each stored venue's ``_enc`` fields, which ``_release_changed_keys`` compares across a window."""
+            return {
+                one.get("exchange_id"): {
+                    name: value for name, value in one.items() if name.endswith("_enc")
+                }
+                for one in self._settings.list_exchanges()
+            }
+
+        def _release_changed_keys(self, before: dict) -> None:
+            """Release each connected venue whose key differs from *before*, or log that a live bot keeps it."""
+            from .main_tabs.settings_dialog_surface import remove_refusal
+
+            for eid, fields in self._stored_key_fields().items():
+                held = self._exchange_connectors.get(eid)
+                if fields == before.get(eid, fields):
+                    continue
+                if not getattr(held, "is_connected", False):
+                    continue
+                if remove_refusal(eid, self._bot_manager):
+                    self._status_log.log(
+                        KEY_WAITS_FORMAT.format(venue=eid.capitalize()), "warning"
+                    )
+                    continue
+                self._broker_exchanges.pop(eid, None)
+                self._release_connector(eid)
 
         def _on_settings_changed(self) -> None:
             if not self._settings:
@@ -4426,27 +4478,33 @@ if _HAS_QT:
                 f"Opening settings to add exchange " f"({_wing} class)..."
             )
             from .main_tabs.settings_dialog_surface import EXCHANGE_TAB
-            from .variant_surface import SETTINGS_DIALOG, surface_class
 
-            _cls = surface_class(SETTINGS_DIALOG)
-            dlg = _cls(self._settings, self._status_log, self, wing=_wing)
-            dlg.show_tab(EXCHANGE_TAB)
-            dlg.exec()
-            self._sync_exchange_tabs()
+            self._run_settings_window(_wing, EXCHANGE_TAB)
+
+        def _keep_unlisted_venues(self, unlisted: set) -> set:
+            """Answer each venue of *unlisted* that ``remove_refusal`` holds, logging why on ``_status_log``."""
+            from .main_tabs.settings_dialog_surface import remove_refusal
+
+            kept: set[str] = set()
+            for eid in sorted(unlisted):
+                why = remove_refusal(eid, self._bot_manager)
+                if why:
+                    kept.add(eid)
+                    self._status_log.log(VENUE_KEPT_FORMAT.format(why=why), "warning")
+            return kept
 
         def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
-            """Take off every exchange tab whose id is not in ``listed``.
-
-            The layer's Get Started page is added back once its bar empties, and
-            each dropped tab is asked to ``stop_feeds`` before it is deleted.
-            """
+            """Take off each tab neither ``listed`` nor held by ``_keep_unlisted_venues``, and seat Get Started on an emptied bar."""
+            layers = getattr(self, "_class_layers", None) or {}
             kept = set(listed)
+            seated = {eid for held in layers.values() for eid in held["exchange_tabs"]}
+            kept |= self._keep_unlisted_venues(seated - kept)
             dropped = 0
-            for held in (getattr(self, "_class_layers", None) or {}).values():
+            gone: set[str] = set()
+            for held in layers.values():
                 store, bar = held["exchange_tabs"], held["tabs"]
                 for eid in [one for one in store if one not in kept]:
                     tab = store.pop(eid)
-                    self._exchange_tabs.pop(eid, None)
                     at = bar.indexOf(tab)
                     if at >= 0:
                         bar.removeTab(at)
@@ -4456,6 +4514,7 @@ if _HAS_QT:
                     tab.setParent(None)
                     tab.deleteLater()
                     dropped += 1
+                    gone.add(eid)
                     self._status_log.log(f"Exchange tab removed: {eid}", "warning")
                 ph = held.get("placeholder")
                 if ph is not None and not store and bar.indexOf(ph) < 0:
@@ -4464,19 +4523,26 @@ if _HAS_QT:
                         PLACEHOLDER_TAB_TOOLTIP,
                         bar.addTab(ph, PLACEHOLDER_TAB_TITLE),
                     )
-            if dropped:
-                self._push_live_tab({})
+            for eid in gone:
+                self._forget_venue(eid)
             return dropped
 
-        def _sync_exchange_tabs(self) -> None:
-            """Add a tab for each configured exchange missing one, in its own layer.
+        def _forget_venue(self, eid: str) -> None:
+            """Take *eid* out of ``TradingTabReact._venues``, `_broker_exchanges` and `_exchange_connectors`."""
+            drop_venue = getattr(
+                getattr(self, "_trading_tab", None), "drop_venue", None
+            )
+            if callable(drop_venue):
+                drop_venue(eid)
+            self._broker_exchanges.pop(eid, None)
+            self._release_connector(eid)
 
-            A tab the store no longer lists is dropped, so the bar carries what
-            ``list_exchanges`` carries.
-            """
+        def _sync_exchange_tabs(self) -> None:
+            """Seat and drop tabs until each bar matches ``list_exchanges``, then feed a changed bar through ``_refresh_dashboard``."""
             if not self._settings:
                 return
             layers = getattr(self, "_class_layers", None) or {}
+            _added = 0
             _wanted: list[str] = []
             for exch in self._settings.list_exchanges():
                 eid = exch.get("exchange_id", "")
@@ -4492,6 +4558,7 @@ if _HAS_QT:
                 ]
                 if unseated:
                     self.add_exchange_tab(eid, name)
+                    _added += 1
                     seated_on = ", ".join(unseated)
                     self._status_log.log(
                         f"Exchange tab added: {name} ({seated_on} layer)",
@@ -4499,6 +4566,8 @@ if _HAS_QT:
                     )
 
             _gone = self._drop_unlisted_exchange_tabs(_wanted)
+            if _added or _gone:
+                self._refresh_dashboard()
 
             # `_missing` asks the layer tab bar, not the store the loop above wrote.
             _missing = 0

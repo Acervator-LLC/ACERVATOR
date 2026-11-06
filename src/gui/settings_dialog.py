@@ -736,7 +736,19 @@ if _HAS_QT:
                 return
             self._exchange_list.setCurrentRow(int(at))
             self._on_exchange_changed()
-            self._set_feedback(sds.venue_form_bound(venue), "info")
+            self._set_feedback(sds.venue_form_bound(venue, self._wing), "info")
+
+        def bind_venue(self, eid: str) -> None:
+            """Press the row naming ``eid`` on its venue array page, or write why on ``_api_feedback``."""
+            at = sds.venue_row_at(
+                self._status_class(), eid, getattr(self, "_venue_states", {})
+            )
+            if at == sds.NO_MATCH_INDEX:
+                self._set_feedback(sds.venue_form_bound(eid, self._wing), "error")
+                return
+            self._venue_page = sds.venue_page_holding(at)
+            self._open_credentials_for_row(at)
+            self._refresh_exchange_status()
 
         def _on_exchange_changed(self) -> None:
             eid = self._bound_venue()
@@ -886,7 +898,7 @@ if _HAS_QT:
                     self._connect_browser_venue(eid)
                     return
                 if not sds.connector_held(eid):
-                    self._set_feedback(sds.venue_form_bound(eid), "error")
+                    self._set_feedback(sds.venue_form_bound(eid, self._wing), "error")
                     return
                 key = self._new_api_key.text().strip()
                 secret = self._typed_secret()
@@ -922,8 +934,9 @@ if _HAS_QT:
                     if pp:
                         config.passphrase_enc = encrypt(pp, master)
 
+                tab_is_new = self._sm.get_exchange(eid) is None
                 self._sm.add_exchange(config)
-                tab_is_new = self._list_exchange_once(eid)
+                self._list_exchange_once(eid)
                 self._refresh_exchange_status()
                 self._new_api_key.clear()
                 self._new_api_secret.clear()
@@ -947,7 +960,8 @@ if _HAS_QT:
                     ADDED_BOX_TITLE,
                     added_box_text(eid.capitalize(), has_creds, tab_is_new),
                 )
-                self.accept()
+                if sds.ADD_CLOSES_WINDOW:
+                    self.accept()
             finally:
                 self._sync_credential_kind(self._bound_venue())
 
@@ -1043,12 +1057,8 @@ if _HAS_QT:
             if self._status_log:
                 self._status_log.log(words, level)
 
-        def _list_exchange_once(self, eid: str) -> bool:
-            """Draw ``eid`` in ``_exchange_list`` while no line names it yet.
-
-            Answers True where a line was added, which is what
-            ``added_box_text`` reads for its tab sentence.
-            """
+        def _list_exchange_once(self, eid: str) -> None:
+            """Draw ``eid`` in ``_exchange_list`` while no line names it yet."""
             from .main_tabs.settings_dialog_surface import (
                 NO_MATCH_INDEX,
                 listed_exchange_position,
@@ -1058,10 +1068,8 @@ if _HAS_QT:
                 self._exchange_list.item(at).text()
                 for at in range(self._exchange_list.count())
             ]
-            if listed_exchange_position(drawn, eid) != NO_MATCH_INDEX:
-                return False
-            self._exchange_list.addItem(f"{eid.capitalize()} ({eid})")
-            return True
+            if listed_exchange_position(drawn, eid) == NO_MATCH_INDEX:
+                self._exchange_list.addItem(f"{eid.capitalize()} ({eid})")
 
         def _remove_exchange(self) -> None:
             item = self._exchange_list.currentItem()
@@ -1073,11 +1081,26 @@ if _HAS_QT:
             from src.exchange.credential_state import forget
 
             from .main_tabs.settings_dialog_surface import (
+                remove_question,
                 remove_refusal,
                 removed_feedback_text,
             )
 
-            refusal = remove_refusal(eid, self._window_fleet())
+            fleet = self._window_fleet()
+            question = ""
+            if not remove_refusal(eid, fleet):
+                question = remove_question(eid, fleet)
+            if question:
+                reply = QMessageBox.question(
+                    self,
+                    sds.REMOVE_QUESTION_TITLE,
+                    question,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+            refusal = remove_refusal(eid, fleet)
             if refusal:
                 self._set_feedback(refusal, "warning")
                 if self._status_log:
@@ -1085,8 +1108,10 @@ if _HAS_QT:
                 return
             self._sm.remove_exchange(eid)
             self._exchange_list.takeItem(self._exchange_list.row(item))
+            self._exchange_list.setCurrentRow(sds.NO_VENUE_ROW)
             forget(eid)
             self._refresh_exchange_status()
+            self._on_exchange_changed()
             self._set_feedback(removed_feedback_text(eid.capitalize()), "info")
             if self._status_log:
                 self._status_log.log(f"Exchange removed: {eid}", "warning")
