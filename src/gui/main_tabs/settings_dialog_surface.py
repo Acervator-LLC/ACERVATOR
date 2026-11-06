@@ -2419,7 +2419,7 @@ def remove_refusal(exchange_id: str, fleet: object) -> str:
     """Say why a sealed fleet, a live bot or a failed read keeps ``exchange_id``, else nothing."""
     from .main_window_surface import NOT_RUNNING_STATES, fleet_is_sealed
 
-    reader = getattr(fleet, "list_bots_by_exchange", None)
+    reader = getattr(fleet, "removal_statuses", None)
     if reader is None:
         return ""
     name = str(exchange_id).capitalize()

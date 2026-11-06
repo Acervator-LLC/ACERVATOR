@@ -1086,13 +1086,10 @@ if _HAS_QT:
                 removed_feedback_text,
             )
 
-            refusal = remove_refusal(eid, self._window_fleet())
-            if refusal:
-                self._set_feedback(refusal, "warning")
-                if self._status_log:
-                    self._status_log.log(refusal, "warning")
-                return
-            question = remove_question(eid, self._window_fleet())
+            fleet = self._window_fleet()
+            question = ""
+            if not remove_refusal(eid, fleet):
+                question = remove_question(eid, fleet)
             if question:
                 reply = QMessageBox.question(
                     self,
@@ -1103,6 +1100,12 @@ if _HAS_QT:
                 )
                 if reply != QMessageBox.StandardButton.Yes:
                     return
+            refusal = remove_refusal(eid, fleet)
+            if refusal:
+                self._set_feedback(refusal, "warning")
+                if self._status_log:
+                    self._status_log.log(refusal, "warning")
+                return
             self._sm.remove_exchange(eid)
             self._exchange_list.takeItem(self._exchange_list.row(item))
             self._exchange_list.setCurrentRow(sds.NO_VENUE_ROW)

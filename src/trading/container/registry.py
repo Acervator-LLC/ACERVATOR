@@ -299,6 +299,18 @@ class BotRegistryMixin:
             if bot.config.exchange_id == exchange_id
         ]
 
+    def removal_statuses(self, exchange_id: str) -> list[dict]:
+        """``list_bots_by_exchange``, reading ``starting`` on each bot ``start_pending`` marks."""
+        return [
+            (
+                {**bot.get_status(), "state": "starting"}
+                if getattr(bot, "start_pending", False)
+                else bot.get_status()
+            )
+            for bot in self._bots.values()
+            if bot.config.exchange_id == exchange_id
+        ]
+
     def resting_orders_by_exchange(self, exchange_id: str) -> dict[str, int]:
         """Each bot on ``exchange_id`` with orders at the venue, with its ``resting_order_count``."""
         return {

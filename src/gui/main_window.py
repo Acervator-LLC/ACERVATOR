@@ -97,6 +97,7 @@ VENUE_NOT_STORED = "Settings no longer holds this venue, so the bot stays stoppe
 
 #: What the status log carries for a venue the sync keeps off ``remove_refusal``.
 VENUE_KEPT_FORMAT = "{why} Its tab and connection stay."
+KEY_WAITS_FORMAT = "{venue}: the new key takes effect at each live bot's next Start."
 
 #: What the status log carries while the configuration window opens for a bot
 #: whose venue holds no stored connection yet.
@@ -3858,6 +3859,13 @@ if _HAS_QT:
             except Exception as beep_exc:
                 logger.debug("tracking beep playback failed: %s", beep_exc)
 
+        async def _start_marked_bot(self, bot) -> None:
+            """Run ``bot.start``, then lift the ``start_pending`` mark ``_on_bot_command`` set."""
+            try:
+                await bot.start()
+            finally:
+                bot.start_pending = False
+
         def _on_bot_command(self, bot_id: str, command: str) -> None:
             if not self._bot_manager:
                 return
@@ -3874,6 +3882,7 @@ if _HAS_QT:
             sound = get_sound_engine()
 
             if command == "start":
+                bot.start_pending = True
                 # Synchronous connect on the GUI thread: the window freezes until done.
                 eid_display = bot.config.exchange_id.capitalize()
                 self._status_log.log(
@@ -3887,7 +3896,11 @@ if _HAS_QT:
 
                 safe_process_events("legacy processEvents site")
 
-                success, msg = self._connect_exchange_for_bot(bot)
+                success, msg = False, ""
+                try:
+                    success, msg = self._connect_exchange_for_bot(bot)
+                finally:
+                    bot.start_pending = success
                 if not success:
                     self._status_log.log(f"Cannot start bot {bot_id}: {msg}", "error")
                     self._spool.notify(f"Bot {bot_id} FAILED: {msg}", "error")
@@ -3931,13 +3944,14 @@ if _HAS_QT:
                     bot._user_verified = True
 
                 try:
-                    self._schedule_async(bot.start())
+                    self._schedule_async(self._start_marked_bot(bot))
                     if bot.order_hold_reason():
                         return
                     self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
                     self._spool.notify(f"Bot {bot_id} RUNNING", "success")
                     sound.play_state_change()
                 except Exception as exc:
+                    bot.start_pending = False
                     self._status_log.log(
                         f"Failed to start bot {bot_id}: {exc}", "error"
                     )
@@ -4283,9 +4297,38 @@ if _HAS_QT:
                 dialog.show_tab(tab)
             if venue:
                 dialog.bind_venue(venue)
+            keys_before = self._stored_key_fields()
             dialog.exec()
             dialog.deleteLater()
+            self._release_changed_keys(keys_before)
             self._sync_exchange_tabs()
+
+        def _stored_key_fields(self) -> dict:
+            """Each stored venue's ``_enc`` fields, which ``_release_changed_keys`` compares across a window."""
+            return {
+                one.get("exchange_id"): {
+                    name: value for name, value in one.items() if name.endswith("_enc")
+                }
+                for one in self._settings.list_exchanges()
+            }
+
+        def _release_changed_keys(self, before: dict) -> None:
+            """Release each connected venue whose key differs from *before*, or log that a live bot keeps it."""
+            from .main_tabs.settings_dialog_surface import remove_refusal
+
+            for eid, fields in self._stored_key_fields().items():
+                held = self._exchange_connectors.get(eid)
+                if fields == before.get(eid, fields):
+                    continue
+                if not getattr(held, "is_connected", False):
+                    continue
+                if remove_refusal(eid, self._bot_manager):
+                    self._status_log.log(
+                        KEY_WAITS_FORMAT.format(venue=eid.capitalize()), "warning"
+                    )
+                    continue
+                self._broker_exchanges.pop(eid, None)
+                self._release_connector(eid)
 
         def _on_settings_changed(self) -> None:
             if not self._settings:
