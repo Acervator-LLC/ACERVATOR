@@ -18,11 +18,10 @@ import math
 import threading
 import time
 from collections import Counter
-from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from functools import lru_cache
 from urllib.error import HTTPError, URLError
 from concurrent.futures import ThreadPoolExecutor
@@ -191,33 +190,27 @@ VENUE_CREDENTIAL_REJECTED = "credential_rejected"
 VENUE_ANSWERED = "answered"
 
 
-@contextmanager
-def reads_hold_at_post(backend: Any, hold_reason: Callable[[], str]) -> Iterator[None]:
-    """Run ``refuse_held_order`` as ``backend.fetch`` takes its first non-GET request,
-    past ccxt's ``throttle`` at the route's own cost, and leave ``fetch`` as it was."""
+#: The ``hold_reason`` of the order this thread sends, until its POST reads it.
+_POST_READ = threading.local()
+
+
+def reads_hold_at_post(backend: Any) -> None:
+    """Wrap ``backend.fetch`` in one read of the ``hold_reason`` its own thread left on
+    ``_POST_READ``, past ccxt's ``throttle`` at the route's own cost, and a request on
+    any other thread passes unread."""
     fetch = getattr(backend, "fetch", None)
     if fetch is None:
-        yield
         return
-    own_fetch = vars(backend).get("fetch")
-    unread = True
 
     def fetch_after_read(url, method="GET", headers=None, body=None):
-        """``fetch``, behind one hold read at the first request that is not a GET."""
-        nonlocal unread
-        if unread and method != "GET":
-            unread = False
+        """``fetch``, behind that read at the first request that is not a GET."""
+        hold_reason = getattr(_POST_READ, "hold_reason", None)
+        if hold_reason is not None and method != "GET":
+            _POST_READ.hold_reason = None
             refuse_held_order(hold_reason)
         return fetch(url, method, headers, body)
 
     backend.fetch = fetch_after_read
-    try:
-        yield
-    finally:
-        if own_fetch is None:
-            vars(backend).pop("fetch", None)
-        else:
-            backend.fetch = own_fetch
 
 
 def _ccxt_error_types(names: tuple[str, ...]) -> tuple[type[BaseException], ...]:
@@ -272,6 +265,19 @@ def classify_venue_refusal(exc: BaseException) -> str:
         if types and isinstance(exc, types):
             return label
     return VENUE_ANSWERED
+
+
+def order_stayed_home(exc: BaseException) -> bool:
+    """True where ``exc`` proves no order reached the venue's book: a ``ValueError``
+    from the guard or a broker, a full queue, an open venue breaker, or a ccxt error
+    the venue answered no with."""
+    from .circuit_breaker import CircuitBreakerOpenError
+
+    return isinstance(
+        exc,
+        (ValueError, CCXTQueueFullError, CircuitBreakerOpenError)
+        + _ccxt_error_types(("ExchangeError", "RateLimitExceeded", "DDoSProtection")),
+    )
 
 
 def _alert_venue(event_name: str, title: str, message: str) -> None:
@@ -1962,6 +1968,7 @@ class CCXTConnector(ExchangeInterface):
             elapsed = (time.monotonic() - start) * 1000
             market_count = len(sync_exchange.markets) if sync_exchange.markets else 0
             self._connected = True
+            reads_hold_at_post(sync_exchange)
             self._ccxt_sync = sync_exchange
 
             # Prepare async exchange for trading loop (shares loaded markets)
@@ -2623,6 +2630,7 @@ class CCXTConnector(ExchangeInterface):
         fetch_order_book, markets, market, precisionMode, amount_to_precision
         and price_to_precision.
         """
+        reads_hold_at_post(backend)
         self._injected_ex = backend
         self._connected = True
         # A backend has no venue to throttle, so no interval is enforced.
@@ -2950,12 +2958,13 @@ class CCXTConnector(ExchangeInterface):
             held = hold_reason()
             if held:
                 return OrderHeld(held)
-            backend = self._ex
+            _POST_READ.hold_reason = hold_reason
             try:
-                with reads_hold_at_post(backend, hold_reason):
-                    return backend.create_order(*order)
+                return self._ex.create_order(*order)
             except OrderHeld as refused:
                 return refused
+            finally:
+                _POST_READ.hold_reason = None
 
         start = time.monotonic()
         try:
@@ -2991,16 +3000,8 @@ class CCXTConnector(ExchangeInterface):
                 action="ORDER_REFUSED",
                 reason=f"{self._exchange_id} order not sent for {symbol}: {raw}",
                 endpoint="create_order",
-                params={
-                    "symbol": symbol,
-                    "side": side.value,
-                    "type": order_type.value,
-                    "amount": float(amount),
-                    "price": exec_price,
-                },
-                result="Not sent. The hold landed while the order waited to send.",
+                result="Not sent.",
                 level="warning",
-                data_usage="No order reaches the venue and no fill is booked.",
             )
             raise raw
         elapsed = (time.monotonic() - start) * 1000

@@ -28,6 +28,8 @@ STACK_SIZE_KEY = "size"
 STACK_ORDER_ID_KEY = "order_id"
 STACK_STATUS_KEY = "status"
 STACK_STATUS_PENDING = "pending"
+#: What ``_open_stack_from_scrum`` answers when ``order_refusal`` stopped it with no rung.
+LADDER_STOPPED = -1
 # The buy price a rung's units must clear by the opposing trade distance.
 STACK_FLOOR_REF_KEY = "floor_ref_price"
 

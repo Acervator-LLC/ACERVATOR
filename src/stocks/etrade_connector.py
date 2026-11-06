@@ -1303,21 +1303,10 @@ class EtradeConnector(BrokerBase):
         limit_price: float = 0,
         stop_price: float = 0,
         time_in_force: TimeInForce = TimeInForce.DAY,
-        previewed: Optional[tuple] = None,
+        previewed: tuple = (),
     ) -> StockOrder:
-        """Place the body ``prepare_order`` previewed on ``PLACE_ROUTE``, carrying its
-        ids, and run ``prepare_order`` first where ``previewed`` holds none."""
-        if previewed is None:
-            ready = await self.prepare_order(
-                symbol,
-                side,
-                quantity,
-                order_type,
-                limit_price,
-                stop_price,
-                time_in_force,
-            )
-            previewed = ready["previewed"]
+        """Place the body and ids ``prepare_order`` answered in ``previewed`` on
+        ``PLACE_ROUTE``, which ``BrokerExchange.place_order`` hands over."""
         body, ids = previewed
         answered = await self._request(
             "POST",

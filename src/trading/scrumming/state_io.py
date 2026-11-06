@@ -124,7 +124,6 @@ class StateSerializerMixin:
                 getattr(self, "_cb_hard_tripped_at", 0.0) or 0.0
             ),
             "cb_hard_trip_pct": float(getattr(self, "_cb_hard_trip_pct", 0.0) or 0.0),
-            "cb_last_candle_ts": float(getattr(self, "_cb_last_candle_ts", 0.0) or 0.0),
             "cb_soft_active_side": getattr(self, "_cb_soft_active_side", None),
             "cb_soft_cooldown_remaining": admitted_counter(
                 getattr(self, "_cb_soft_cooldown_remaining", 0),
@@ -378,7 +377,6 @@ class StateSerializerMixin:
         try:
             self._cb_hard_tripped_at = float(data.get("cb_hard_tripped_at", 0.0) or 0.0)
             self._cb_hard_trip_pct = float(data.get("cb_hard_trip_pct", 0.0) or 0.0)
-            self._cb_last_candle_ts = float(data.get("cb_last_candle_ts", 0.0) or 0.0)
         except (TypeError, ValueError) as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s",

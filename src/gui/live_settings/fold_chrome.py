@@ -172,9 +172,10 @@ def pin_despawn_rows(
         _bot = dialog._bot
         _live_fold = list(getattr(_bot, "_fold_tranches", []) or [])
         _live_stack = list(getattr(_bot, "_stack_tranches", []) or [])
-        _armed = despawn_preview(_live_fold, _live_stack, days, now_ts)
+        _held = bool(getattr(_bot, "order_hold_reason", str)())
+        _armed = despawn_preview(_live_fold, _live_stack, 0 if _held else days, now_ts)
         _windows = [
-            (w, despawn_preview(_live_fold, _live_stack, w, now_ts))
+            (w, despawn_preview(_live_fold, _live_stack, 0 if _held else w, now_ts))
             for w in DESPAWN_PREVIEW_WINDOWS
         ]
         _timer_lbl = getattr(dialog, "_fold_despawn_timer_lbl", None)
@@ -239,9 +240,10 @@ def install_despawn_rows(
     _stack = list(getattr(_bot, "_stack_tranches", []) or [])
     _t0 = _clock.monotonic()
     _days = despawn_threshold_days(_bot.config)
-    armed = despawn_preview(tranches, _stack, _days, now_ts)
+    _held = bool(getattr(_bot, "order_hold_reason", str)())
+    armed = despawn_preview(tranches, _stack, 0 if _held else _days, now_ts)
     windows = [
-        (w, despawn_preview(tranches, _stack, w, now_ts))
+        (w, despawn_preview(tranches, _stack, 0 if _held else w, now_ts))
         for w in DESPAWN_PREVIEW_WINDOWS
     ]
     _elapsed = _clock.monotonic() - _t0

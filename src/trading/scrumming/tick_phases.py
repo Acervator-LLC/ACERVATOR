@@ -29,7 +29,7 @@ from ..otd_math import (
     DistanceSettingUnreadable,
     fold_rebuy_factor_from_pct,
 )
-from ..stack_math import rung_is_pending
+from ..stack_math import LADDER_STOPPED, rung_is_pending
 from ..target_bands import at_target_dust_band
 from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
@@ -2391,8 +2391,8 @@ class TickPhaseMixin:
             self._refuse_unreadable_distance(unread, "DIST", price)
             return
         if getattr(self.config, "stack_mode", False):
-            await self._ladder_dist_sets(price, summary)
-            if not self._dist_sets:
+            stopped = await self._ladder_dist_sets(price, summary)
+            if stopped or not self._dist_sets:
                 return
         clearing = dist_sets_clearing(self._dist_sets, price, otd_pct)
         if not clearing:
@@ -2432,10 +2432,12 @@ class TickPhaseMixin:
                     ),
                 )
 
-    async def _ladder_dist_sets(self, price: float, summary: Any) -> None:
+    async def _ladder_dist_sets(self, price: float, summary: Any) -> bool:
         """Open one ``_open_stack_from_scrum`` ladder per untried set, anchored no
-        lower than its fold price, and drop each set a rung now holds."""
+        lower than its fold price, and drop each set a rung now holds. True where
+        ``LADDER_STOPPED`` ended the walk, which leaves that set untried."""
         laddered: set[int] = set()
+        stopped = False
         for record in list(self._dist_sets):
             if record.get(DIST_LADDER_TRIED_KEY):
                 continue
@@ -2448,12 +2450,16 @@ class TickPhaseMixin:
                 origin="dist",
                 floor_ref_price=fold_price,
             )
+            if opened == LADDER_STOPPED:
+                stopped = True
+                break
             appended = self._stack_tranches[before:]
             if opened > len(appended) or any(rung_is_pending(r) for r in appended):
                 laddered.add(id(record))
             else:
                 record[DIST_LADDER_TRIED_KEY] = True
         self._dist_sets = [one for one in self._dist_sets if id(one) not in laddered]
+        return stopped
 
     def _hold_dist_sets(self, price: float, otd_pct: float) -> None:
         """Log, once per held refusal, the lowest ``dist_floor_price`` among

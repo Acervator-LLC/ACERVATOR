@@ -1325,10 +1325,10 @@ class FoldTrancheAccountingMixin:
         _now = time.time()
 
         def _age_text(record: dict, field: str) -> str:
-            _age = self._tranche_age_seconds(record, field, _now)
-            if _age is None:
+            _stamp = as_finite_float(record.get(field))
+            if _stamp is None or _stamp <= 0:
                 return "no age"
-            return f"{_age / 86400.0:.2f} days old"
+            return f"{(_now - _stamp) / 86400.0:.2f} days old"
 
         _fold_detail = "; ".join(
             f"ref ${as_finite_float(_t.get('ref')) or 0.0:.8f}, "

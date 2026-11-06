@@ -28,9 +28,9 @@ if TYPE_CHECKING:
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
 from ..exchange.base import OrderSide, OrderType
+from ..exchange.ccxt_connector import order_stayed_home
 from .target_bands import at_target_dust_band
 from .bot_container import (
-    FILL_DUST_UNITS,
     BotContainer,
     BotConfig,
     BotMode,
@@ -54,11 +54,9 @@ from .ta_engine import (
     weights_from_settings,
 )
 from .container.config import (
-    DESTRUCT_RUNNING,
     DETONATION_CONFIDENCE_MIN_DEFAULT,
     PRESS_AGAIN,
-    TICK_PAUSED,
-    OrderWatch,
+    TICK_STOPPED,
     ceiling_multiple,
     target_growth_pct,
 )
@@ -68,7 +66,7 @@ from .otd_math import (
     DistanceSettingUnreadable,
     opposing_sale_price,
 )
-from .stack_math import rung_floor_ref
+from .stack_math import LADDER_STOPPED, rung_floor_ref
 from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
@@ -611,11 +609,9 @@ class ScrummingBot(
         self._below_min_scrum_log_ts: float = 0.0
         self._below_min_fold_log_ts: float = 0.0
 
-        self._cb_hard_trips: int = 0
         self._cb_hard_tripped: bool = False
         self._cb_hard_tripped_at: float = 0.0
         self._cb_hard_trip_pct: float = 0.0
-        self._destructs_running: int = 0
         self._cb_soft_active_side: Optional[str] = None
         self._cb_soft_cooldown_remaining: int = 0
         self._cb_soft_tripped_at: float = 0.0
@@ -1855,17 +1851,15 @@ class ScrummingBot(
             or fold_decision([tranche]),
             watch=_watch,
         )
+        if _watch.refusal:
+            return {"applied": False, "reason": f"{_watch.refusal}. {PRESS_AGAIN}"}
         if fill_price is None or fill_price <= 0:
             return {
                 "applied": False,
                 "reason": (
-                    f"{_watch.refusal}. {PRESS_AGAIN}"
-                    if _watch.refusal
-                    else (
-                        "_execute_buy refused or failed (Smart "
-                        "Ceiling / fail-closed buy safety / P0b guard, or "
-                        "exchange rejection); the activity log names the outcome"
-                    )
+                    "_execute_buy refused or failed (Smart "
+                    "Ceiling / fail-closed buy safety / P0b guard, or "
+                    "exchange rejection); the activity log names the outcome"
                 ),
             }
         return {
@@ -2371,15 +2365,6 @@ class ScrummingBot(
         if _hold:
             return self._refuse_self_destruct(_hold)
 
-        self._destructs_running += 1
-        try:
-            return await self._sell_the_position(_watch, keep_running)
-        finally:
-            self._destructs_running -= 1
-
-    async def _sell_the_position(self, watch: OrderWatch, keep_running: bool) -> dict:
-        """The sale ``self_destruct`` runs past its reads, answering its result dict,
-        while ``_destructs_running`` stops every send a tick makes."""
         try:
             self._bus.emit(
                 "bot.log",
@@ -2487,6 +2472,7 @@ class ScrummingBot(
         try:
             ticker = await self._get_ticker(self.config.symbol)
             ref_price = float(ticker.last)
+            self.stats.current_price = ref_price
         except Exception:
             ref_price = float(self._last_trade_price or 0)
 
@@ -2522,9 +2508,12 @@ class ScrummingBot(
                 order_type=OrderType.MARKET,
                 amount=units,
                 price=None,
-                watch=watch,
+                watch=_watch,
             )
         except Exception as exc:
+            _home = order_stayed_home(exc)
+            if not _home and not keep_running:
+                await self.pause()
             try:
                 self._bus.emit(
                     "bot.log",
@@ -2532,7 +2521,13 @@ class ScrummingBot(
                     message=(
                         f"SELF-DESTRUCT FAILED: order raised "
                         f"{type(exc).__name__}: {exc}. State "
-                        f"NOT cleared — operator must investigate."
+                        f"NOT cleared — operator must investigate. "
+                        + (
+                            "Nothing was sold and the bot is left as it was."
+                            if _home
+                            else "The sale may be at the venue, so the bot stays "
+                            "paused until Start."
+                        )
                     ),
                 )
             except Exception as _sup:
@@ -2551,8 +2546,8 @@ class ScrummingBot(
             }
 
         if order is None:
-            if watch.refusal:
-                return self._refuse_self_destruct(watch.refusal)
+            if _watch.refusal:
+                return self._refuse_self_destruct(_watch.refusal)
             try:
                 self._bus.emit(
                     "bot.log",
@@ -2577,6 +2572,8 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
+        if not keep_running:
+            await self.pause()
         self._return_shadows_to_lots("self-destruct")
         fill_amount, fill_price, _ = await self._settled_fill(
             order, self.config.symbol, units, ref_price, label="SELF-DESTRUCT"
@@ -2594,9 +2591,8 @@ class ScrummingBot(
                         f"SELF-DESTRUCT SENT, NO FILL REPORTED: market-sell "
                         f"{units:.8f} {self.config.target_asset} was accepted and "
                         f"the exchange reported no filled amount. Nothing was "
-                        f"cleared, counted or paused; the sale is booked when the "
-                        f"exchange reports its fill, and this bot's ticks send "
-                        f"nothing until then."
+                        f"cleared or counted. Any fill books at the next worked "
+                        f"tick, and a paused bot works none until Start."
                     ),
                 )
             except Exception as _sup:
@@ -2608,7 +2604,8 @@ class ScrummingBot(
                 )
             return {
                 "ok": False,
-                "reason": "the exchange reported no filled amount; nothing changed",
+                "reason": "the exchange reported no filled amount; "
+                "any fill books at the next worked tick",
                 "sold_qty": 0.0,
                 "sold_usd": 0.0,
                 "fill_price": 0.0,
@@ -2622,24 +2619,11 @@ class ScrummingBot(
             **_destruct,
         )
 
-    def _destruct_unbooked(self) -> bool:
-        """True while ``self_destruct`` runs, or its sale rests at the venue with no
-        piece booked and no ``keep_running``."""
-        if self._destructs_running:
-            return True
-        return any(
-            record.get("booker") == "_book_self_destruct"
-            and float(record.get("booked", 0.0) or 0.0) <= FILL_DUST_UNITS
-            and not (record.get("context") or {}).get("keep_running")
-            for record in self._resting_orders
-        )
-
     def tick_stop_reason(self) -> str:
-        """``DESTRUCT_RUNNING`` while ``_destruct_unbooked``, ``TICK_PAUSED`` while
-        ``_pause_event`` is shut, and empty while a tick may send."""
-        if self._destruct_unbooked():
-            return DESTRUCT_RUNNING
-        return "" if self._pause_event.is_set() else TICK_PAUSED
+        """``TICK_STOPPED`` while ``_pause_event`` is shut or ``_stop_event`` is set,
+        and empty while a tick may send."""
+        shut = self._stop_event.is_set() or not self._pause_event.is_set()
+        return TICK_STOPPED if shut else ""
 
     def _refuse_self_destruct(self, hold: str) -> dict:
         """Write one ``SELF-DESTRUCT FAILED`` line and one ``REFUSED`` trade line naming
@@ -2667,14 +2651,13 @@ class ScrummingBot(
         units: float,
         fill_price: float,
         _asked: float,
-        first: bool,
+        _first: bool,
         *,
         keep_running: bool,
         venue_units: Optional[float] = None,
     ) -> dict:
-        """Book one settled piece of a self-destruct sale: lots off highest price first,
-        the fold queue cleared, and on the ``first`` piece the bot paused unless
-        ``keep_running``.
+        """Book one settled piece of a self-destruct sale: lots off highest price first
+        and the fold queue cleared; ``self_destruct`` pauses the bot and no piece does.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``.
@@ -2728,14 +2711,6 @@ class ScrummingBot(
             )
 
         try:
-            if first and not keep_running:
-                await self.pause()
-        except Exception as _sup:
-            logger.debug(
-                "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
-            )
-
-        try:
             self._emit_voting_panel_snapshot_at_fire(
                 side="SELL", trade_action="SELF_DESTRUCT"
             )
@@ -2772,7 +2747,11 @@ class ScrummingBot(
                     f"SELF-DESTRUCT COMPLETE: sold {fill_amount:.8f} "
                     f"@ ${fill_price:.8f} = ${fill_usd:.2f}. "
                     f"Internal state cleared. Bot "
-                    + ("kept RUNNING" if self._pause_event.is_set() else "PAUSED")
+                    + (
+                        "kept RUNNING"
+                        if keep_running or self._pause_event.is_set()
+                        else "PAUSED"
+                    )
                     + "."
                     + (
                         f" {self._current_holdings:.8f} "
@@ -3302,7 +3281,7 @@ class ScrummingBot(
         _delta_early = target_delta_usd(current_value, self._target_balance)
         self._update_opposing_hysteresis_state(_delta_early, ticker.last)
 
-        if self._tick_breaker_holds(current_value) or self.tick_stop_reason():
+        if self._tick_breaker_holds(current_value):
             return
 
         # Ahead of every early return below: a position at target leaves the tick
@@ -5186,25 +5165,25 @@ class ScrummingBot(
         summary: Optional[VotingSummary] = None,
         origin: str = "scrum",
         floor_ref_price: float = 0.0,
-        press: bool = False,
     ) -> int:
         """Split a SCRUM decision into Stack tranches instead of one immediate sell.
 
         A ``floor_ref_price`` above zero is written on every rung as
         ``STACK_FLOOR_REF_KEY``, and a new rung combines only with a standing rung
-        holding the same figure. ``press`` marks the ``OrderWatch`` of a ladder a
-        tranche Fire opened.
+        holding the same figure.
 
         Returns:
-            The number of tranches created (>=1). Populates
-            ``self._stack_tranches`` and records ``origin`` on every tranche.
+            The number of tranches created (>=1), or ``LADDER_STOPPED`` when
+            ``order_refusal`` stopped it with none, so no caller sells the whole
+            size. Populates ``self._stack_tranches`` and records ``origin`` on
+            every tranche.
 
         """
-        _watch = self.order_watch(press=press)
+        _watch = self.order_watch()
         _hold = self.order_refusal(_watch)
         if _hold and not self._invisible:
-            self._record_refusal(_watch, "SELL", self.config.symbol, _hold)
-            return 0
+            self._report_held_order(_watch, "SELL", self.config.symbol, _hold)
+            return LADDER_STOPPED
 
         from .scrumming.sizing import (
             EVENT_ID_KEY,
@@ -5381,21 +5360,22 @@ class ScrummingBot(
                     f"position."
                 ),
             )
+            if not _opened_rungs:
+                return _combined_n or LADDER_STOPPED
         _mode_label = "VISIBLE" if _visible else "INVISIBLE"
         _agg_label = " (AGGRESSIVE/IOC)" if _visible and _aggressive else ""
-        if _opened_rungs or not _unsent:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"STACK OPENED [{_mode_label}{_agg_label}] "
-                    f"({len(_opened_rungs)} tranches) from {origin} @ "
-                    f"${scrum_price:.8f}, size {scrum_size:.6f}. "
-                    f"Prices: "
-                    f"{[f'${r[STACK_PRICE_KEY]:.8f}' for r in _opened_rungs[:5]]}"
-                    f"{'…' if len(_opened_rungs) > 5 else ''}"
-                ),
-            )
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"STACK OPENED [{_mode_label}{_agg_label}] "
+                f"({len(_opened_rungs)} tranches) from {origin} @ "
+                f"${scrum_price:.8f}, size {scrum_size:.6f}. "
+                f"Prices: "
+                f"{[f'${r[STACK_PRICE_KEY]:.8f}' for r in _opened_rungs[:5]]}"
+                f"{'…' if len(_opened_rungs) > 5 else ''}"
+            ),
+        )
         # A rung combined into a standing one still took this sale's units, so
         # the caller must not fall through to an undivided market sell.
         return len(_opened_rungs) + _combined_n
@@ -5833,7 +5813,6 @@ class ScrummingBot(
                 summary=summary,
                 origin="fold",
                 floor_ref_price=float(fold_price),
-                press=path == "manual_tranche_fire",
             )
         except Exception as _spawn_exc:
             logger.error(
@@ -5865,7 +5844,7 @@ class ScrummingBot(
                     f"(size {float(fold_size):.6f}, path {path})."
                 ),
             )
-        return opened
+        return max(opened, 0)
 
     def open_extractor_tranches(self) -> list[dict]:
         """List the Extractor Tranches held against this bot's asset.

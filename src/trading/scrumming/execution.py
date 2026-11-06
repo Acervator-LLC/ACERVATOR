@@ -2460,7 +2460,7 @@ class ExecutionEngineMixin:
                 scrum_size=float(amount),
                 summary=summary,
             )
-            if _n > 0:
+            if _n:
                 return None
 
         if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side > 0:
@@ -2912,7 +2912,6 @@ class ExecutionEngineMixin:
         ``_answers_this_send`` refuses books through ``_book_earlier_order``. A path
         outside ``OWN_TRANCHE_PATHS`` reads ``cost`` in USD and refuses through
         ``_spends_held_dollars``, and one inside reads it in the quote currency.
-        A press passes its ``watch``, which ``guarded_place_order`` records a refusal on.
         """
         self._last_fill_venue_fee = None
         self._last_buy_filled_units = 0.0

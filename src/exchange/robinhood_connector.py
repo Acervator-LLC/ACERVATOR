@@ -421,7 +421,7 @@ class RobinhoodPathUnpublished(RuntimeError):
     """Raised where Robinhood names an endpoint and publishes no path for it."""
 
 
-class RobinhoodOrderRefused(RuntimeError):
+class RobinhoodOrderRefused(ValueError, RuntimeError):
     """Raised where this connector refuses an order before any request."""
 
 

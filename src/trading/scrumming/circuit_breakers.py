@@ -50,6 +50,11 @@ UNREADABLE_FORMAT = "{field}={value!r}"
 HOLD_BLOCKER = "cb-hard-tripped"
 HOLD_ALERT_TITLE_FORMAT = "Bot held: {symbol}"
 
+#: The line ``_tick_breaker_holds`` writes once per outage of the candle feed.
+CANDLE_FEED_OUT = (
+    "BREAKERS CANNOT READ: no candles came back, so neither breaker sees a move"
+)
+
 #: What ``CircuitBreakerMixin.order_hold_reason`` answers while the hard breaker holds.
 HARD_HOLD_FORMAT = (
     "the hard circuit breaker tripped at {pct:.2f}% and holds every order until "
@@ -183,6 +188,7 @@ class CircuitBreakerMixin(_Host):
     _cb_soft_tripped_at: float
     _cb_soft_trip_pct: float
     _cb_last_candle_ts: float
+    _cb_feed_out: bool
     _cb_unreadable_named: tuple
     _manual_fire_pending: bool
     _pause_event: Any
@@ -195,13 +201,12 @@ class CircuitBreakerMixin(_Host):
             return ""
         return HARD_HOLD_FORMAT.format(pct=self._cb_hard_trip_pct)
 
-    def hard_trip_count(self) -> int:
-        """``_cb_hard_trips``, which only ``_trip_hard_breaker`` moves."""
-        return self._cb_hard_trips
-
     def _tick_breaker_holds(self, position_usd: float) -> bool:
         """Read ``_tick_candles`` into the breakers, and answer True while
         ``_cb_hard_tripped`` holds, which ends ``ScrummingBot.tick``."""
+        if not self._tick_candles and not self._cb_feed_out:
+            self._bus.emit("bot.log", bot_id=self.bot_id, message=CANDLE_FEED_OUT)
+        self._cb_feed_out = not self._tick_candles
         try:
             self._check_circuit_breakers(self._tick_candles)
         except Exception as _cb_exc:

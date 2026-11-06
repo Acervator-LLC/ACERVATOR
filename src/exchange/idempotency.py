@@ -99,14 +99,6 @@ class UnansweredSend:
     sizes: list[tuple[float, float]]
 
 
-def _send_size(
-    intent: TradeIntent, price_read: float, units: Optional[float]
-) -> tuple[float, float]:
-    """The ``UnansweredSend.sizes`` row of one send: ``units``, else ``intent.amount``,
-    and ``price_read``."""
-    return (intent.amount if units is None else float(units), price_read)
-
-
 class IdempotencyLayer:
     """Per-process record of each ``coid`` the venue has not answered."""
 
@@ -127,7 +119,7 @@ class IdempotencyLayer:
         """The ``coid`` held for ``intent``, or a new one no earlier order carried, with
         ``units``, else ``intent.amount``, and ``price_read`` added to
         ``UnansweredSend.sizes``."""
-        size = _send_size(intent, price_read, units)
+        size = (intent.amount if units is None else float(units), price_read)
         with self._lock:
             fp = intent.fingerprint(self.session_nonce)
             held = self._unanswered.get(fp)
@@ -156,14 +148,11 @@ class IdempotencyLayer:
             return coid
 
     def withdraw_send(
-        self,
-        intent: TradeIntent,
-        price_read: float = 0.0,
-        units: Optional[float] = None,
+        self, intent: TradeIntent, price_read: float, units: float
     ) -> None:
         """Undo the ``derive_coid`` of a send that never left: its size leaves
         ``UnansweredSend.sizes``, and a ``coid`` left with no size leaves with it."""
-        size = _send_size(intent, price_read, units)
+        size = (float(units), price_read)
         with self._lock:
             fp = intent.fingerprint(self.session_nonce)
             held = self._unanswered.get(fp)
