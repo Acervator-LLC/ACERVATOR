@@ -41,7 +41,7 @@ def main() -> None:
     except (json.JSONDecodeError, ValueError):
         sys.exit(0)
 
-    if payload.get("tool_name") not in ("Bash", "PowerShell"):
+    if payload.get("tool_name") not in ("Bash", "PowerShell", "Monitor"):
         sys.exit(0)
 
     command = str(payload.get("tool_input", {}).get("command", ""))

@@ -126,7 +126,7 @@ _DOMAIN_RULES: list[tuple[str, re.Pattern[str], str, tuple[str, ...]]] = [
             re.IGNORECASE,
         ),
         "dev_harness.harness.coding_archetype",
-        (_LAW_SKILL, "archetype-peer-review"),
+        (_LAW_SKILL, "archetype-peer-review", "structurally-impossible"),
     ),
     (
         "gui",

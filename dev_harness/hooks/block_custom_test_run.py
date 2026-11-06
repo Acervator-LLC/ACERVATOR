@@ -9,7 +9,7 @@ import json
 import re
 import sys
 
-GATED_TOOLS = {"Bash", "PowerShell"}
+GATED_TOOLS = {"Bash", "PowerShell", "Monitor"}
 
 PYTEST = re.compile(r"\bpytest\b", re.IGNORECASE)
 CUSTOM = re.compile(r"surface_parity", re.IGNORECASE)

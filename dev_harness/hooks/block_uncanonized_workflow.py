@@ -35,8 +35,10 @@ OCIR = re.compile(
     re.IGNORECASE,
 )
 
-#: The merge gate, by its command.
-GATE = re.compile(r"tools\.local_ci|tools/local_ci", re.IGNORECASE)
+#: The merge gate: CI's required status. The operator's 2026-10-09 rule replaced
+#: the local gate, which can never print PASS; check_directive_drift refuses a
+#: brief that names it.
+GATE = re.compile(r"\bci-gate\b", re.IGNORECASE)
 
 #: A brief that writes a host for the second build variant.
 CONVERSION_SUBJECT = re.compile(
@@ -72,7 +74,10 @@ def missing(text):
             "control or the calibration"
         )
     if not GATE.search(text):
-        found.append("the merge gate is not named: python -m tools.local_ci --all")
+        found.append(
+            "the merge gate is not named: GitHub CI's ci-gate status, plus each"
+            " changed file's archetype verdict"
+        )
     if not SKILL_LINE.search(text):
         found.append("no skill block: write `Skill: name` bare, one per line")
     if CONVERSION_SUBJECT.search(text) and not CONVERSION_STEPS.search(text):

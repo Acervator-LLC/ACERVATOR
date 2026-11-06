@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 import bisect
 import builtins
+import csv
 import json
 import os
 import re
@@ -36,6 +37,7 @@ HANDLED_SUFFIXES: tuple[str, ...] = (".md", ".markdown", ".txt")
 
 _SKIP_DIRS = frozenset(
     {
+        ".claude",
         ".git",
         ".mypy_cache",
         ".pytest_cache",
@@ -360,6 +362,10 @@ _GH_LIST_LIMIT = 1000
 # A merged pull request is not open, and T003 compares against open or closed.
 _STATE_ALIASES = {"MERGED": "CLOSED"}
 
+_MACHINE_PATH = re.compile(r"[A-Za-z]:[\\/]+Users[\\/]|/Users/[a-z]|/home/[a-z]")
+_EXPORT_DIR = ("artifacts", "evidence-input", "transactions")
+_ASSET_COLUMN = "Asset"
+
 
 @dataclass
 class _Sentence:
@@ -633,7 +639,7 @@ def phrase_present(phrase: str, text: str) -> bool:
 class TruthArchetype:
     """Resolves a text's claims against the tree, and names the undecidable.
 
-    `review` runs the seven analyzers named in `tools` over one Markdown or text
+    `review` runs the eight analyzers named in `tools` over one Markdown or text
     target.
     """
 
@@ -647,6 +653,7 @@ class TruthArchetype:
         "runtime_claims",
         "proxy_claims",
         "scope",
+        "public_text",
     )
 
     def __init__(self, root: Path | None = None, item: int | None = None) -> None:
@@ -706,6 +713,7 @@ class TruthArchetype:
             ("runtime_claims", self._run_runtime_claims),
             ("proxy_claims", self._run_proxy_claims),
             ("scope", self._run_scope),
+            ("public_text", self._run_public_text),
         ):
             try:
                 findings, status = runner(files)
@@ -720,6 +728,47 @@ class TruthArchetype:
 
         report.falsification = self._falsification(report, self._index)
         return report
+
+    def _export_names(self) -> set[str]:
+        """Return the `_ASSET_COLUMN` values of the newest CSV under `_EXPORT_DIR`."""
+        exports = list(self.root.joinpath(*_EXPORT_DIR).glob("*.csv"))
+        if not exports:
+            return set()
+        newest = max(exports, key=lambda path: path.stat().st_mtime)
+        with newest.open(encoding="utf-8", errors="replace", newline="") as handle:
+            sheet = list(csv.reader(handle))
+        top = next((at for at, cells in enumerate(sheet) if _ASSET_COLUMN in cells), None)
+        if top is None:
+            return set()
+        column = sheet[top].index(_ASSET_COLUMN)
+        cells = (row[column].strip() for row in sheet[top + 1 :] if len(row) > column)
+        return {cell for cell in cells if cell}
+
+    def _run_public_text(self, files: list[Path]) -> tuple[list[Finding], str]:
+        """Report `T008` for a `_MACHINE_PATH` or an `_export_names` value in `files`."""
+        names = self._export_names()
+        pattern = None
+        if names:
+            words = "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
+            pattern = re.compile(rf"(?<![A-Za-z0-9])(?:{words})(?![A-Za-z0-9])")
+        findings: list[Finding] = []
+        for path in files:
+            if pattern is None:
+                findings.append(self._undecided(path, 1, "T008", "no export to read asset names from."))
+            for line, text in enumerate(self._read(path).splitlines(), 1):
+                for found in (_MACHINE_PATH.search(text), pattern.search(text) if pattern else None):
+                    if found:
+                        findings.append(
+                            Finding(
+                                tool="truth",
+                                severity="high",
+                                file=str(path),
+                                line=line,
+                                rule_id="T008",
+                                message=f"public text carries {found.group(0)!r}; reword it before posting.",
+                            )
+                        )
+        return findings, "ok"
 
     def _enumerate(self, target: Path) -> list[Path]:
         if target.is_file():

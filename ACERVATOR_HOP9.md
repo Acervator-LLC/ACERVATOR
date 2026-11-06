@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-06 against `c502cf62`. **Every claim here names one command that
+Written 2026-11-06 against `1c1a6405`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -140,8 +140,8 @@ python -m dev_harness.harness.truth_archetype <path> --item <n>   # a report or 
 ```
 
 One path per call; the archetype scans only its first argument. Report `passed`,
-never a delta. Run the Truth Archetype from one fresh detached worktree: from this
-tree it walks every worktree under `.claude/worktrees`.
+never a delta. Run the Truth Archetype before any public post: rule `T008` refuses a
+machine path or an asset name read from the gitignored export.
 
 **The merge gate** is GitHub CI's `ci-gate` status plus `passed=True` from the
 owning archetype on every changed file. Arm a pull request with
@@ -159,20 +159,22 @@ is a proposed rule for him.
 Briefs go to units through the Agent tool, where hooks refuse a brief that skips
 the six questions (who, what, where, when, why, how), a reading shown to fail, the
 `ci-gate` gate, a skill block of real skills, or the no-deletion clause on manual
-work. The hooks and the user-level skills live in the Claude Code user folder, not
-in the repository; see MOVING TO A NEW MACHINE.
+work. `Workflow` meets the same checks through `gate_workflow_script.py`, and after a
+context boundary `block_unloaded_skills.py` holds work until every skill loads. The
+hooks that run sit in the Claude Code user folder; `dev_harness/hooks/` holds their
+copies and `dev_harness/hooks/settings_hooks.json` their wiring.
 
 ---
 
 ## THE QUEUE
 
 ```bash
-gh issue list --state open --limit 200          # 30 open when written
+gh issue list --state open --limit 200          # 32 open when written
 ```
 
 | To clear | Excluded, and why |
 |---|---|
-| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1643 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540; his research, #1633 |
+| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1643, #1656, #1657 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540; his research, #1633 |
 
 Read the body before dispatching, and grep the symbols a row names in the same
 call: a row's status can be stale, and a scan that calls a row built has been
@@ -182,6 +184,8 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
+- **#1656, then #1657, first.** Prove the merged repairs from the canon, then correct
+  the public text that reported private readings.
 - **#1643, what the manual rewrites found.** Next, in order: row 66, the breaker
   window he ruled for; his ruling in Decision 2, a hard trip cancels the bot's
   resting orders; row 106, a cartridge obeys the Position Ceiling and Max Target

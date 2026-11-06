@@ -165,8 +165,8 @@ CONTRACT
 - exit code: 0 on every path, in both modes. A deny rides in the stdout
   payload, never in the exit status. This is the mechanism
   verify_release_gate uses and it is measured to work here.
-- --pre stdout on deny: {"decision": "deny", "reason": ...} plus the
-  hookSpecificOutput form, so either Claude Code contract denies.
+- --pre stdout on deny: the hookSpecificOutput form alone; a top-level
+  "decision": "deny" fails validation and does not bind.
 - --post stdout: hookSpecificOutput.additionalContext with the summary.
 - Never crashes Claude Code. A crashed hook fails open and is worse
   than no hook.
@@ -1030,10 +1030,8 @@ _WIRING_RE = re.compile(r"Write|Edit")
 
 
 def _emit_deny(reason: str) -> int:
-    """Deny in both Claude Code contracts. Exit code stays 0."""
+    """Deny through `hookSpecificOutput`. Exit code stays 0."""
     payload = {
-        "decision": "deny",
-        "reason": reason,
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
@@ -1197,7 +1195,7 @@ def main(argv: list | None = None) -> int:
     with contextlib.suppress(OSError, ValueError):
         _reap_stale_staging()
     try:
-        raw = sys.stdin.read()
+        raw = sys.stdin.buffer.read().decode("utf-8", errors="replace")
     except (OSError, ValueError):
         return _reject(mode, (
             "Archetype-gate DENY: the gate could not read the hook record on "
