@@ -97,6 +97,22 @@ This is the same rule as `harness-law`: you are a referee, not an author. A test
 you wrote and then edited until it passed proves what you wrote, not what the
 code does.
 
+## A review is not a way round this
+
+Operator, 2026-11-06, verbatim:
+
+> "What review? Why are ryou not using canonized tests and the harness as per
+>  the established work flow?"
+
+**A review, an audit or a verify pass is canon only when a named tool runs it.**
+A script with a stand-in exchange is a made-up test under any of those names.
+Taking the same reading under `pdb` changes nothing, because the tool only wraps
+the private script.
+
+A merge waits on `ci-gate` and `passed=True` from the owning archetype. No step
+follows them unless he asks for one. Where they miss a fault class, the section
+above applies. See `ocir` C154.
+
 ## Running a canon check
 
 - **Prove the instrument first, once per session.** `known_good` exits 0,
