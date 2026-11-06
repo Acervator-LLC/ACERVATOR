@@ -852,8 +852,9 @@ class ExecutionEngineMixin:
                 or context.get("path") in OWN_TRANCHE_PATHS
             ):
                 rules = self._market_rules_cache.get(record.get("symbol"))
-                unfilled = float(record["asked"]) - float(record["booked"])
-                total += float(record["price"]) * units_for_contracts(
+                asked = float(record.get("asked", 0.0) or 0.0)
+                unfilled = asked - float(record.get("booked", 0.0) or 0.0)
+                total += float(record.get("price", 0.0) or 0.0) * units_for_contracts(
                     unfilled, getattr(rules, "contract_size", None)
                 )
         return total

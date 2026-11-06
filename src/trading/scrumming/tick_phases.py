@@ -669,23 +669,23 @@ class TickPhaseMixin:
 
         def announce_fire() -> None:
             """Write the fire line and the ``SENT`` line for the order in hand."""
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"MAX CARTRIDGE FIRE ({_direction}): "
-                    f"|delta|=${abs(_cartridge_delta):.2f} "
-                    f"≥ threshold ${_cartridge_threshold:.2f} "
-                    f"({_cartridge_pct:.1f}% of target "
-                    f"${self._target_balance:.2f}). "
-                    f"Hysteresis clear. Firing aggressive "
-                    f"rebalance — bypasses BB Detection / "
-                    f"soft CB / higher-TF bias gates. "
-                    f"It does NOT bypass "
-                    f"opposing-direction hysteresis."
-                ),
-            )
             try:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"MAX CARTRIDGE FIRE ({_direction}): "
+                        f"|delta|=${abs(_cartridge_delta):.2f} "
+                        f"≥ threshold ${_cartridge_threshold:.2f} "
+                        f"({_cartridge_pct:.1f}% of target "
+                        f"${self._target_balance:.2f}). "
+                        f"Hysteresis clear. Firing aggressive "
+                        f"rebalance — bypasses BB Detection / "
+                        f"soft CB / higher-TF bias gates. "
+                        f"It does NOT bypass "
+                        f"opposing-direction hysteresis."
+                    ),
+                )
                 self._emit_trade_notification(
                     f"CARTRIDGE_{_direction}",
                     "SENT",

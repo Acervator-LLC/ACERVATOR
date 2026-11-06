@@ -266,10 +266,10 @@ class SpotPosition:
 class ExchangeInterface(ABC):
     """The contract a connector class implements.
 
-    Every method is abstract except ``get_my_trades``, which raises
-    ``NotImplementedError`` unless a subclass overrides it,
-    ``get_spot_positions``, which returns None until a subclass overrides it,
-    and ``await_bulk_read_slot``, which waits for nothing until a subclass
+    Every method is abstract except ``get_my_trades`` and
+    ``get_order_by_client_id``, which raise ``NotImplementedError`` unless a subclass
+    overrides them, ``get_spot_positions``, which returns None until a subclass
+    overrides it, and ``await_bulk_read_slot``, which waits for nothing until a subclass
     overrides it.
     """
 
@@ -357,6 +357,12 @@ class ExchangeInterface(ABC):
         an implementation may ignore ``client_order_id`` but must accept it.
         """
         del symbol, side, order_type, amount, price, client_order_id
+        raise NotImplementedError
+
+    async def get_order_by_client_id(self, client_order_id: str, symbol: str) -> Order:
+        """The order the venue holds under ``client_order_id``; a connector with no such
+        read raises ``NotImplementedError``."""
+        del client_order_id, symbol
         raise NotImplementedError
 
     @abstractmethod

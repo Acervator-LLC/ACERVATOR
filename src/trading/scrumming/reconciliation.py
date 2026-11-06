@@ -1449,11 +1449,13 @@ class ReconciliationEngineMixin:
         venue, and on drift down ``_adopt_drift_down`` sets both to the venue.
 
         ``reason`` tags every log line with ``periodic`` or ``post_failure``,
-        and the return is True once the comparison completes, False when the
-        balance fetch raises, when ``Balance.absent`` marks the currency
-        missing from the response, or when ``_reconcilable_lot_book`` or
-        ``_reconcilable_units`` refuses an input.
+        and the return is True once the comparison completes, False when a send of
+        this bot is in flight, when the balance fetch raises, when ``Balance.absent``
+        marks the currency missing from the response, or when
+        ``_reconcilable_lot_book`` or ``_reconcilable_units`` refuses an input.
         """
+        if get_idempotency_layer().sending(self.bot_id, self.config.symbol):
+            return False
         try:
             await self._reconcile_resting_orders()
         except Exception as _rest_exc:

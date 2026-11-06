@@ -70,7 +70,7 @@ Next we come to the combined Scrumming Bot configuration page which has several 
 
 Order Visibility - Trades are listed on the order books or tracked internally to the platform.
 
-Now: each order takes its own id, so the venue cannot hand back an order it has already answered. A lost send keeps its id for a retry of the same decision at any size or price, until an order comes back for it or the holdings audit finds its units and books them. A fold or a tranche fire names the tranches it buys, and an earlier order that comes back pays the queue by units (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._settle_lost_order`).
+Now: each order takes its own id, so the venue cannot hand back an order it has already answered. A lost send keeps its id for a retry of the same decision at any size or price, until an order comes back for it or the holdings audit finds its units and books them. A fold or a tranche fire names the tranches it buys, and an earlier order that comes back pays the queue by units (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._settle_lost_order`). Another bot's audit leaves the units of an unanswered buy alone (`src/trading/container/aggregation.py, in FleetAggregationMixin.sum_sibling_tracked_units`). A venue that refuses a used id answers with that earlier order, read by client id. Where the read fails, the id stays held and each later try reads and sends nothing (`src/exchange/ccxt_connector.py, in CCXTConnector.place_order`).
 
 Aggressive Trading - Trades are priced so that they fill immediately. Trading like this is a bit like guerilla warfare. In and out before anyone notices.
 
@@ -170,7 +170,7 @@ Now: while ticked, the reserve reads no entry price and buys from 1% under targe
 
 Hedge Balance - Sets a limit on the amount of additional liquidity a given bot is allowed to absorb when Current Price drifts below Initial Entry Price.
 
-Now: Hedge Balance caps a dollar reserve separate from Target Balance; each hedge buy spends up to half of it, and 8% of compound growth refills it (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
+Now: Hedge Balance caps a dollar reserve separate from Target Balance; each hedge buy spends up to half of it, and 8% of compound growth refills it (`src/trading/scrumming_bot.py, in ScrummingBot.tick`). A hedge or an entry holds its dollars on the in-flight ledger until its send ends, so a second buyer cannot pass on them (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy`).
 
 ![The Circuit Breakers group.](p21-i0.png)
 
@@ -190,7 +190,7 @@ Soft CB Cooldown - This is the number of candles that must close before the Soft
 
 Max Cartridge Size - This is the maximum amount of deviation allowed for the Target Delta. At this threshold the bot is actively and aggressively looking for a trade opportunity.
 
-Now: at this share of Target Balance the bot fires a market rebalance past the band and vote gates, unless the opposing distance holds it or no queued tranche qualifies, and it spends only dollars no other bot's queued buy-backs or wire credits hold (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance`); a bot that has made no first buy waits for the band and its own vote first (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_clears`).
+Now: at this share of Target Balance the bot fires a market rebalance past the band and vote gates, unless the opposing distance holds it or no queued tranche qualifies, and it spends only dollars no other bot's queued buy-backs or wire credits hold (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_manual_rebalance`); a bot that has made no first buy waits for the band and its own vote first (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_clears`). A cartridge with no dollars it may spend sends nothing and writes one refusal line, and the tick goes on to the fold gates, so a fold still spends its own tranche (`src/trading/scrumming_bot.py, in ScrummingBot.tick`). The unfilled dollars of another bot's resting fold left the free balance, so they count once (`src/trading/container/aggregation.py, in FleetAggregationMixin._one_sibling_hold`).
 
 Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
 
@@ -435,7 +435,7 @@ A press queues a market order to target on the next tick, past the gates, and it
 
 While the hard breaker holds a bot, a press queues nothing and the status log names the breaker, and the button keeps its colour (`src/trading/bot_container.py, in BotManager.force_fire`).
 
-Now: a press that buys spends only dollars no other bot's queued buy-backs or wire credits hold, and the log names those dollars when none are left (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._held_for_other_bots`).
+Now: a press that buys spends only dollars no other bot's queued buy-backs or wire credits hold, and the log names those dollars when none are left (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._held_for_other_bots`). A press on a tranche whose fold still waits on the venue's answer sends nothing and reads refused (`src/trading/bot_container.py, in BotContainer.guarded_place_order`).
 
 Fire and Ammo use their colours differently. Ammo is green above target, and Fire is red to sell above target.
 
