@@ -572,6 +572,23 @@ def client_order_id_field(exchange_id: str) -> str:
     )
 
 
+def client_order_read(exchange_id: str, client_order_id: str) -> tuple[str, dict]:
+    """The ``fetch_order`` id and params that read ``client_order_id`` on one venue.
+
+    ccxt takes ``CLIENT_ORDER_ID_FIELD_DEFAULT`` on most venues, Bybit reads
+    ``orderLinkId`` and asks ``acknowledged``, Crypto.com reads ``client_oid``, and
+    Poloniex takes ``cid:`` on the id itself.
+    """
+    venue = venue_record_key(exchange_id)
+    if venue == "poloniex":
+        return f"cid:{client_order_id}", {}
+    if venue == "bybit":
+        return "", {"orderLinkId": client_order_id, "acknowledged": True}
+    if venue == "cryptocom":
+        return "", {"client_oid": client_order_id}
+    return "", {CLIENT_ORDER_ID_FIELD_DEFAULT: client_order_id}
+
+
 # Exchanges where fetchCurrencies must be disabled (deprecated v2 endpoints)
 #
 # mexc's entry is a private endpoint rather than a deprecated one. ccxt's own
@@ -2978,6 +2995,21 @@ class CCXTConnector(ExchangeInterface):
         try:
             raw = await self._call_sync(create_order, *_order)
         except Exception as _exc:
+            if client_order_id and refuses_used_id(_exc):
+                _earlier = await self._earlier_order(client_order_id, symbol)
+                if _earlier is not None:
+                    _breaker.record_success()
+                    _log.record(
+                        exchange=self._exchange_id,
+                        action="ORDER_ANSWERED",
+                        reason=f"{client_order_id} is a used id; its order answers",
+                        endpoint="fetch_order",
+                        params={"order_id": _earlier.id},
+                        result=f"ID={_earlier.id} filled={_earlier.filled}",
+                        level="success",
+                        data_usage="The earlier order books as this send's answer.",
+                    )
+                    return _earlier
             _venue_said = f"{type(_exc).__name__}: {_exc}"
             _log.record(
                 exchange=self._exchange_id,
@@ -3042,6 +3074,33 @@ class CCXTConnector(ExchangeInterface):
         await self._rate_limit()
         raw = await self._call_sync(self._ex.fetch_order, order_id, symbol)
         return self._parse_order(raw)
+
+    @_with_retry()
+    async def get_order_by_client_id(self, client_order_id: str, symbol: str) -> Order:
+        """The order ``client_order_id`` names, read through ``client_order_read``."""
+        self._ensure_connected()
+        await self._rate_limit()
+        order_id, params = client_order_read(self._exchange_id, client_order_id)
+        raw = await self._call_sync(self._ex.fetch_order, order_id, symbol, params)
+        return self._parse_order(raw)
+
+    async def _earlier_order(
+        self, client_order_id: str, symbol: str
+    ) -> Optional[Order]:
+        """``get_order_by_client_id`` of a used ``client_order_id``, None where it raised."""
+        try:
+            return await self.get_order_by_client_id(client_order_id, symbol)
+        except Exception as exc:
+            logger.warning(
+                "%s refused used id %s on %s and the earlier order could not be read: "
+                "%s: %s",
+                self._exchange_id,
+                client_order_id,
+                symbol,
+                type(exc).__name__,
+                exc,
+            )
+            return None
 
     @_with_retry()
     async def get_open_orders(self, symbol: Optional[str] = None) -> list[Order]:

@@ -11,6 +11,7 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType
+from ...exchange.ccxt_connector import order_stayed_home
 from ..container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
@@ -56,6 +57,8 @@ from .sizing import (
     EVENT_ID_KEY,
     EXCESS_SALE,
     FRACTIONAL_UNITS,
+    REBALANCE_REFUSED,
+    REBALANCE_SENT,
     SIDE_BUY,
     WHOLE_UNITS,
     fold_cap_remaining_usd,
@@ -659,8 +662,10 @@ class TickPhaseMixin:
         _cartridge_delta: float,
         _cartridge_threshold: float,
         _cartridge_pct: float,
-    ) -> None:
-        """Fire the max-cartridge rebalance; the tick ends after this."""
+    ) -> str:
+        """Fire the max-cartridge rebalance and answer what
+        ``_execute_manual_rebalance`` answers, and where it raised, ``REBALANCE_REFUSED``
+        on ``order_stayed_home`` proof and ``REBALANCE_SENT`` without it."""
         if _direction == "FOLD":
             _verified_units, _refuse_msg = await self._verify_buy_safe_or_refuse(
                 path="cartridge_fold", price=ticker.last
@@ -669,39 +674,45 @@ class TickPhaseMixin:
                 if self._refusal_is_new("buy_safety", ticker.last):
                     self._bus.emit("bot.log", bot_id=self.bot_id, message=_refuse_msg)
                     logger.warning("Bot %s %s", self.bot_id, _refuse_msg)
-                return
-        self._bus.emit(
-            "bot.log",
-            bot_id=self.bot_id,
-            message=(
-                f"MAX CARTRIDGE FIRE ({_direction}): "
-                f"|delta|=${abs(_cartridge_delta):.2f} "
-                f"≥ threshold ${_cartridge_threshold:.2f} "
-                f"({_cartridge_pct:.1f}% of target "
-                f"${self._target_balance:.2f}). "
-                f"Hysteresis clear. Firing aggressive "
-                f"rebalance — bypasses BB Detection / "
-                f"soft CB / higher-TF bias gates. "
-                f"It does NOT bypass "
-                f"opposing-direction hysteresis."
-            ),
-        )
+                return REBALANCE_REFUSED
+
+        def announce_fire() -> None:
+            """Write the fire line and the ``SENT`` line for the order in hand."""
+            try:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"MAX CARTRIDGE FIRE ({_direction}): "
+                        f"|delta|=${abs(_cartridge_delta):.2f} "
+                        f"≥ threshold ${_cartridge_threshold:.2f} "
+                        f"({_cartridge_pct:.1f}% of target "
+                        f"${self._target_balance:.2f}). "
+                        f"Hysteresis clear. Firing aggressive "
+                        f"rebalance — bypasses BB Detection / "
+                        f"soft CB / higher-TF bias gates. "
+                        f"It does NOT bypass "
+                        f"opposing-direction hysteresis."
+                    ),
+                )
+                self._emit_trade_notification(
+                    f"CARTRIDGE_{_direction}",
+                    "SENT",
+                    f"|delta|=${abs(_cartridge_delta):.2f} ≥ "
+                    f"${_cartridge_threshold:.2f}",
+                )
+            except Exception as _sup:
+                logger.debug(
+                    "suppressed in %s: %s: %s",
+                    "tick",
+                    type(_sup).__name__,
+                    _sup,
+                )
+
         try:
-            self._emit_trade_notification(
-                f"CARTRIDGE_{_direction}",
-                "SENT",
-                f"|delta|=${abs(_cartridge_delta):.2f} ≥ "
-                f"${_cartridge_threshold:.2f}",
+            return await self._execute_manual_rebalance(
+                ticker, caller_intent="max_cartridge", on_order=announce_fire
             )
-        except Exception as _sup:
-            logger.debug(
-                "suppressed in %s: %s: %s",
-                "tick",
-                type(_sup).__name__,
-                _sup,
-            )
-        try:
-            await self._execute_manual_rebalance(ticker, caller_intent="max_cartridge")
         except Exception as exc:
             self._bus.emit(
                 "bot.log",
@@ -711,6 +722,7 @@ class TickPhaseMixin:
                 ),
             )
             logger.exception("Max cartridge rebalance failed")
+            return REBALANCE_REFUSED if order_stayed_home(exc) else REBALANCE_SENT
 
     async def _tick_detonation(self, ticker: Any) -> bool:
         """Return True when a detonation fired and the tick must stop.

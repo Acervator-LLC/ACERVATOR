@@ -976,6 +976,8 @@ class BotContainer:
 
         Answers None and keeps the text on ``OrderWatch.refusal`` while ``order_refusal``
         of ``watch`` answers, read here and after the waits below, with the send taken back.
+        Answers None for a second send under an id ``IdempotencyLayer.in_flight`` names,
+        and an ``id_refused`` id reads ``get_order_by_client_id`` and sends nothing.
         """
         from ..exchange.base import OrderHeld, OrderSide, OrderType
 
@@ -1428,29 +1430,47 @@ class BotContainer:
             bot_id=getattr(self, "bot_id", "?"),
             purpose=purpose,
         )
+        if _idem.in_flight(_intent):
+            self._warn_order(
+                f"SECOND SEND REFUSED: {_side_str} {symbol} {_amt:.10f} is held: an "
+                f"order under this decision still waits on the venue's answer. "
+                f"API not called."
+            )
+            return None
         _repeated = _idem.holds(_intent)
+        _read_only = _idem.id_refused(_intent)
         _price_read = float(price or self.stats.current_price or 0.0)
         _coid = _idem.derive_coid(_intent, _price_read, _amt)
 
         try:
-            order = await self.exchange.send_order(
-                symbol,
-                side,
-                order_type,
-                amount,
-                price,
-                client_order_id=_coid,
-                hold_reason=partial(self.order_refusal, _watch),
-            )
+            if _read_only:
+                order = await self.exchange.get_order_by_client_id(_coid, symbol)
+            else:
+                order = await self.exchange.send_order(
+                    symbol,
+                    side,
+                    order_type,
+                    amount,
+                    price,
+                    client_order_id=_coid,
+                    hold_reason=partial(self.order_refusal, _watch),
+                )
         except OrderHeld as _held:
             _idem.withdraw_send(_intent, _price_read, _amt)
             self._report_held_order(_watch, _side_str, symbol, str(_held))
             return None
         except Exception as _refused:
             if refuses_used_id(_refused):
-                _idem.end_retry(_intent)
+                _idem.note_id_refused(_intent)
+                self._warn_order(
+                    f"USED ID HELD: the venue refused id {_coid} as used and its "
+                    f"order could not be read. Nothing more goes out under this "
+                    f"{_side_str} decision: each try reads that order, and the "
+                    f"holdings audit can end the id."
+                )
             raise
         finally:
+            _idem.end_flight(_intent)
             # Every live order passes here, answered or not, so its balance window ends here.
             self._invalidate_symbol_balances(symbol)
         _idem.end_retry(_intent)

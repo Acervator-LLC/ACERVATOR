@@ -121,6 +121,7 @@ from .scrumming.fold_tranches import (
 from .scrumming.sizing import (
     EVENT_ID_KEY,
     HEDGE_BUY,
+    REBALANCE_UNFUNDED,
     SIDE_BUY,
     cartridge_threshold_usd,
     cycle_growth_cap_usd,
@@ -3439,14 +3440,15 @@ class ScrummingBot(
                         ticker, symbol, current_value
                     ):
                         return
-                    await self._tick_cartridge_fire(
+                    _cartridge = await self._tick_cartridge_fire(
                         ticker,
                         _direction,
                         _cartridge_delta,
                         _cartridge_threshold,
                         _cartridge_pct,
                     )
-                    return
+                    if _cartridge != REBALANCE_UNFUNDED:
+                        return
 
         if await self._tick_detonation(ticker):
             return
