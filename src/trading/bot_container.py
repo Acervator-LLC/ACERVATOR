@@ -1518,12 +1518,13 @@ class BotContainer:
         """Stop the trading loop task and unregister from the data pool."""
         self._stop_event.set()
         self._pause_event.set()  # Unpause so the loop can exit
-        if self._task and not self._task.done():
+        while self._task and not self._task.done():
             self._task.cancel()
             try:
                 await self._task
             except asyncio.CancelledError:
                 pass
+            self._stop_event.set()
         self.state = BotState.STOPPED
         self.stats.uptime_seconds = time.monotonic() - self._start_time
         if self._data_pool:
