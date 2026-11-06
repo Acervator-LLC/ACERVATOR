@@ -526,6 +526,11 @@ class TickPhaseMixin:
                 self._phantom_timeframes,
             )
             self._phantom_gate_logged = True
+        await self._start_phantom_set(symbol)
+
+    async def _start_phantom_set(self, symbol: str) -> None:
+        """Build and start the phantom set while ``_phantoms_enabled`` asks for one and
+        ``_phantoms_started`` reads False, as it does after ``ScrummingBot.stop``."""
         if self._phantoms_enabled and not self._phantoms_started:
             self._phantom_mgr.create_phantom_set(
                 parent_bot_id=self.bot_id,

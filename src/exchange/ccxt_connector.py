@@ -271,14 +271,22 @@ def classify_venue_refusal(exc: BaseException) -> str:
 
 def order_stayed_home(exc: BaseException) -> bool:
     """True where ``exc`` proves no order reached the venue's book: ``OrderRefused``,
-    a full queue, an open venue breaker, or a ccxt error the venue answered no with.
+    a full queue, an open venue breaker, or a ccxt error that is the venue's own no.
     A ``refuses_used_id`` error is False, because that id may hold an order."""
     from .circuit_breaker import CircuitBreakerOpenError
 
     return not refuses_used_id(exc) and isinstance(
         exc,
         (OrderRefused, CCXTQueueFullError, CircuitBreakerOpenError)
-        + _ccxt_error_types(("ExchangeError", "RateLimitExceeded", "DDoSProtection")),
+        + _ccxt_error_types(
+            (
+                "InvalidOrder",
+                "InsufficientFunds",
+                "BadRequest",
+                "AuthenticationError",
+                "OperationRejected",
+            )
+        ),
     )
 
 

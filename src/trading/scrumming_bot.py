@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
 from ..exchange.base import OrderSide, OrderType
 from ..exchange.ccxt_connector import order_stayed_home
+from ..exchange.idempotency import decision_purpose
 from .target_bands import at_target_dust_band, empty_position
 from .bot_container import (
     BotContainer,
@@ -109,6 +110,7 @@ from .scrumming import (
 )
 from .scrumming.execution import SettledFillFee, venue_fee_record
 from .scrumming.shadow import REGIME_NONE, regime_of, shadow_units
+from .scrumming.sizing import SELF_DESTRUCT_SALE
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
 from .scrumming.tick_phases import ENTRY_NO_FILL_EXIT
@@ -2511,10 +2513,13 @@ class ScrummingBot(
                 order_type=OrderType.MARKET,
                 amount=units,
                 price=None,
+                purpose=decision_purpose(SELF_DESTRUCT_SALE),
                 watch=_watch,
             )
         except Exception as exc:
             _home = order_stayed_home(exc)
+            if not _home:
+                self._audit_next_tick()
             if not _home and not keep_running:
                 await self.pause()
             try:
@@ -2548,11 +2553,9 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
-        if order is None and _watch.refusal:
-            return self._refuse_self_destruct(_watch.refusal)
-        if not keep_running:
-            await self.pause()
         if order is None:
+            if _watch.refusal:
+                return self._refuse_self_destruct(_watch.refusal)
             try:
                 self._bus.emit(
                     "bot.log",
@@ -2577,6 +2580,8 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
+        if not keep_running:
+            await self.pause()
         self._return_shadows_to_lots("self-destruct")
         fill_amount, fill_price, _ = await self._settled_fill(
             order, self.config.symbol, units, ref_price, label="SELF-DESTRUCT"
@@ -3230,6 +3235,8 @@ class ScrummingBot(
         if not self._initialised:
             await self._tick_initialise(symbol)
             return
+
+        await self._start_phantom_set(symbol)
 
         try:
             await self._reconcile_resting_orders()
@@ -5790,6 +5797,7 @@ class ScrummingBot(
         self._release_capital_reservation()
         await self._phantom_mgr.stop_all(self.bot_id)
         self._phantom_mgr.remove_set(self.bot_id)
+        self._phantoms_started = False
         await super().stop()
 
     async def _spawn_stack_from_fold(
