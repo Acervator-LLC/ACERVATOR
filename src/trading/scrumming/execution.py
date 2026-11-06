@@ -78,6 +78,10 @@ REFUSAL_HOLD_MOVE_FRACTION: float = 0.001
 #: The ``_execute_buy`` paths spending the dollars their own tranche holds.
 OWN_TRANCHE_PATHS = ("fold_rebuy", "manual_tranche_fire")
 
+#: The buy paths held to the venue's coin count, which refuse an omitted coin and
+#: answer ``_unbooked_coin_refusal``.
+BOOK_COMPARED_PATHS = ("cartridge_fold", "zero_balance_initial_entry")
+
 #: The booker of an order a repeated decision got back that no plan sized.
 EARLIER_ORDER_BOOKER = "_book_earlier_order"
 
@@ -203,6 +207,7 @@ class ExecutionEngineMixin:
     _combine_fold_tranches_within_distance: Callable[..., Any]
     _count_trade_volume: Callable[..., float]
     _crr: Callable[..., Any]
+    _claimable_exchange_units: Callable[..., tuple]
     _current_holdings: float
     _emit_gate_decision_at_fire: Callable[..., None]
     _emit_trade_notification: Callable[..., None]
@@ -1839,6 +1844,7 @@ class ExecutionEngineMixin:
         _floor = DistanceSettings(*floor_distance) if floor_distance else None
 
         _had_queue = bool(self._fold_tranches)
+        _lots_before = len(self._main_lots)
         _gain_usd, _discharged = self._pay_queue_by_units(
             fill_amount,
             fill_price,
@@ -1848,6 +1854,8 @@ class ExecutionEngineMixin:
             queued_before,
             paid_events,
         )
+        for _lot in self._main_lots[_lots_before:]:
+            _lot["read_price"] = price
         if not _had_queue:
             msg = (
                 f"MANUAL FIRE FOLD FILLED: {fill_amount:.6f} @ "
@@ -2852,16 +2860,45 @@ class ExecutionEngineMixin:
             )
         return True
 
+    def _unbooked_coin_refusal(
+        self, held: float, booked: float, *, path: str, price: float
+    ) -> str:
+        """The refusal for ``path`` while ``held`` units beyond siblings top ``booked`` by more
+        than ``manual_fire_dust_band``, or an empty string.
+
+        An unreadable sibling total counts as none, and a refusal leaves the
+        ``_reconcile_holdings`` count alone.
+        """
+        claimable, siblings = self._claimable_exchange_units(
+            held, self.config.exchange_id
+        )
+        if not math.isfinite(siblings):
+            claimable = held
+        booked = max(booked, self._current_holdings)
+        unbooked = claimable - booked
+        if priced_usd(
+            unbooked, price, float(self._quote_to_usd or 1.0)
+        ) <= manual_fire_dust_band(self._target_balance):
+            return ""
+        return (
+            f"FAIL-CLOSED — buy REFUSED. Path={path}. The exchange holds {claimable:.8f} "
+            f"{self.config.target_asset} past other bots and this bot's book shows "
+            f"{booked:.8f}. No buy goes on top of coins the book does not show; the next "
+            f"holdings audit reads them first."
+        )
+
     async def _verify_buy_safe_or_refuse(
         self,
         *,
         path: str,
+        price: float,
     ) -> tuple[Optional[float], str]:
         """Check the position through ``verify_buy_safe_or_refuse``.
 
         Returns ``(verified_units, refuse_reason)`` for ``path``, with the
         expected units summed from ``_main_lots``, and a non-empty
-        ``refuse_reason`` obliges the caller to refuse the buy.
+        ``refuse_reason`` obliges the caller to refuse the buy. A path in
+        ``BOOK_COMPARED_PATHS`` also answers ``_unbooked_coin_refusal`` at ``price``.
         """
         from ..buy_safety import verify_buy_safe_or_refuse
 
@@ -2873,10 +2910,16 @@ class ExecutionEngineMixin:
             self.config.target_asset,
             expected_units,
             path=path,
+            refuse_absent=path in BOOK_COMPARED_PATHS,
         )
         if verified is None:
             return verified, refusal
-        return max(0.0, verified - self._shadow_held_units()), refusal
+        held = max(0.0, verified - self._shadow_held_units())
+        if path in BOOK_COMPARED_PATHS:
+            refusal = self._unbooked_coin_refusal(
+                held, expected_units, path=path, price=price
+            )
+        return held, refusal
 
     async def _execute_buy(
         self,
@@ -3022,7 +3065,7 @@ class ExecutionEngineMixin:
         _per_cycle_growth_budget = _anchor * (_cap_pct / 100.0)
 
         _fresh_units, _refuse_reason_msg = await self._verify_buy_safe_or_refuse(
-            path=_path
+            path=_path, price=price
         )
         if _refuse_reason_msg:
             if self._refusal_is_new("buy_safety", price):

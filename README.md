@@ -331,21 +331,50 @@ _GATE_ORDER_SCRUM: tuple[str, ...] = (
 
 ##### The first buy reads three agreeing indicators
 
-**Current reading.** The entry above places the first buy in the lower extent of
-the band. The first buy also reads the vote, at the twelve published weights.
-Before this change one bearish indicator was enough. Now the bearish vote must
-top what two indicators reach on that same vote, which is 0.1966 with all twelve
-voting. A bot whose own twelve weights are all zero still buys on the direction
-alone. Every new bot starts that way.
+A bot has made its first buy once a tick reads its own lots at target, each at
+the ticker it was adopted at, the decision price of its buy, or else its cost.
+The read allows the largest of the dust band, one size step and the trading fee's
+share of target, so the price after the fill cannot matter, and a whole buy reads
+made on any market. It needs a weight above zero. This is a saved fact about the
+bot, and no fill sets it, so it holds however the coins reached the book. A bot
+that made its first buy and lost the position does not owe another. A saved
+record with no such field reads as made when it shows a fill of this bot's, a
+tranche, or, with a weight above zero, a holding of 1% of target or more.
 
-`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._tick_initial_entry`
+While a bot owes a first buy, its Max Cartridge rebalance, its hedge top-up and
+its fold wait for one read. Price must sit in the lowest 30% of the band, past
+the Detect distance or within the Fire Threshold of the lower band. The bot's own
+vote must then be bearish and top what two indicators reach on that same vote.
+
+A new bot holds twelve zeros, so it has no vote. It makes no first buy until you
+press Save on the TA Indicators page, and its line in the log says so. Twelve
+zeros never read as made, whatever the bot holds. After Save, a bot that finds
+its whole target at the venue reads as made at its next worked tick. One that
+finds less waits, and then the rebalance buys the rest. A bot saved as made keeps
+that reading.
+
+When the read clears, the rebalance fires as it does at any other time: a market
+order sized at the Target Delta and clipped to the wallet. A first buy clipped to
+the wallet or part filled leaves the bot under target, so its next buy reads
+again. A press of Fire does not wait for the read.
+
+With Smart Cartridge off, a Max Cartridge Size of 0 or above 100 fires no
+rebalance buy. Under 1% of target, a bot takes the first entry, with the same
+read, and buys the whole target. Its wallet must hold that target after what the
+other bots claim, and in Order Book mode its order is a limit. A bot that has
+made its first buy and buys back here votes with its own weights, and at twelve
+zeros it waits for Save. Only a first buy's entry fill restarts the opposing
+trade distance.
+
+Both routes refuse a buy while the venue holds more of the coin than the book
+shows, past other bots on that venue and by more than 1% of target, or omits the
+coin from its balance reply. The holdings audit books those coins on its own
+count.
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_read`
 
 ```python
-if not three_agree(
-    summary.consensus_confidence,
-    summary.signals,
-    self._voting_engine.indicator_weights,
-):
+if not three_agree(summary.consensus_confidence, summary.signals):
 ```
 
 ### 2 - The Phantom Bot
@@ -1175,14 +1204,16 @@ Issue #433 carries the build.
 not built. What a trade the vote decides needs today is three agreeing
 indicators: the vote must top what the two heaviest voters reach at full
 confidence. That holds at every floor, where a landing strip sets the side, and
-on a bot's first buy. A bot with every weight at zero is outside the rule and
-trades as it did.
+on a bot's first buy. A bot with every weight at zero is outside the rule on a
+later trade, except a buy back through the first entry. Neither that buy nor a
+first buy goes out at twelve zeros, because
+`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_read`
+refuses it before any vote.
 
 `src/trading/ta_engine.py` — `three_agree`
 
 ```python
-held = [sig.weight for sig in signals] if weights is None else list(weights)
-if not any(weight > 0.0 for weight in held):
+if not any(sig.weight > 0.0 for sig in signals):
     return True
 return confidence > two_indicator_ceiling(signals)
 ```
