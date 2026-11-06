@@ -3158,7 +3158,9 @@ class ExecutionEngineMixin:
             cost * _qrate_buy if _own_tranche else cost
         )
         _in_flight_usd = (
-            0.0 if _own_tranche else cost * (1.0 + (self._fee_pct_read() or 0.0) / 100.0)
+            0.0
+            if _own_tranche
+            else cost * (1.0 + (self._fee_pct_read() or 0.0) / 100.0)
         )
 
         _target_delta_usd = float(self._target_balance) - _current_position_usd

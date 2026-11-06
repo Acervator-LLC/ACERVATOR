@@ -54,7 +54,8 @@ def _short_hash(text: str) -> str:
 
 def refuses_used_id(error: BaseException) -> bool:
     """True where ``error`` is a ``USED_ID_ERROR``, or a ``VENUE_ANSWER_ERROR`` whose
-    text ``USED_ID_TEXT`` matches: that ``coid`` names an order the venue already took."""
+    text ``USED_ID_TEXT`` matches: that ``coid`` names an order the venue already took.
+    """
     kinds = {kind.__name__ for kind in type(error).__mro__}
     return USED_ID_ERROR in kinds or (
         VENUE_ANSWER_ERROR in kinds and USED_ID_TEXT.search(str(error)) is not None
@@ -108,7 +109,8 @@ class TradeIntent:
 class UnansweredSend:
     """A ``coid`` the venue has not answered: ``intent`` as last sent, ``issued_at`` its
     first send, ``sizes`` each ``(amount, price read)`` it went out at, ``in_flight`` from
-    ``derive_coid`` to ``end_flight``, and ``id_refused`` once ``note_id_refused`` ran."""
+    ``derive_coid`` to ``end_flight``, and ``id_refused`` once ``note_id_refused`` ran.
+    """
 
     coid: str
     issued_at: float

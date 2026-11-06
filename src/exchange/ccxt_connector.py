@@ -2921,6 +2921,16 @@ class CCXTConnector(ExchangeInterface):
                 _earlier = await self._earlier_order(client_order_id, symbol)
                 if _earlier is not None:
                     _breaker.record_success()
+                    _log.record(
+                        exchange=self._exchange_id,
+                        action="ORDER_ANSWERED",
+                        reason=f"{client_order_id} is a used id; its order answers",
+                        endpoint="fetch_order",
+                        params={"order_id": _earlier.id},
+                        result=f"ID={_earlier.id} filled={_earlier.filled}",
+                        level="success",
+                        data_usage="The earlier order books as this send's answer.",
+                    )
                     return _earlier
             _venue_said = f"{type(_exc).__name__}: {_exc}"
             _log.record(
@@ -2986,7 +2996,9 @@ class CCXTConnector(ExchangeInterface):
         raw = await self._call_sync(self._ex.fetch_order, order_id, symbol, params)
         return self._parse_order(raw)
 
-    async def _earlier_order(self, client_order_id: str, symbol: str) -> Optional[Order]:
+    async def _earlier_order(
+        self, client_order_id: str, symbol: str
+    ) -> Optional[Order]:
         """``get_order_by_client_id`` of a used ``client_order_id``, None where it raised."""
         try:
             return await self.get_order_by_client_id(client_order_id, symbol)
