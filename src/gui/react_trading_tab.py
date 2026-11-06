@@ -873,6 +873,17 @@ if _HAS_WEBENGINE:
             payload = status_log_surface.view_model(asked)
             return self.show_models({status_log_surface.METHOD: payload})
 
+        def _seated_request(self) -> dict:
+            """``_tab_request`` naming each ``_venues`` page, so the tab draws what is seated."""
+            seated = [
+                {
+                    "exchange_id": exchange_id,
+                    "display_name": getattr(venue, "exchange_name", ""),
+                }
+                for exchange_id, venue in self._venues.items()
+            ]
+            return {**self._tab_request, trading_tab_surface.EXCHANGES_PARAM: seated}
+
         def show_tab(self, asked: Any = None) -> bool:
             """Rebuild the tab payload from ``asked`` and draw it on the page.
 
@@ -882,7 +893,7 @@ if _HAS_WEBENGINE:
             request = dict(asked or {})
             lines = request.pop("api_lines", None)
             self._tab_request.update(request)
-            built = dict(self._tab_request)
+            built = self._seated_request()
             if lines:
                 built["api_lines"] = list(lines)
             handler = (
@@ -1045,7 +1056,7 @@ if _HAS_WEBENGINE:
             return True
 
         def drop_venue(self, exchange_id: Any) -> bool:
-            """Let go of the page held for ``exchange_id`` and publish ``_venues`` without it."""
+            """Let go of the page held for ``exchange_id`` and draw ``_venues`` without it."""
             named = str(exchange_id or "")
             held = self._venues.pop(named, None)
             if held is None:
@@ -1053,6 +1064,7 @@ if _HAS_WEBENGINE:
             held.published.disconnect(self._venue_published)
             if self._tab_request.get(trading_tab_surface.EXCHANGE_PARAM) == named:
                 del self._tab_request[trading_tab_surface.EXCHANGE_PARAM]
+            self.show_tab({})
             self._venue_published()
             return True
 
@@ -1065,7 +1077,7 @@ if _HAS_WEBENGINE:
             """Create the tab's web view and load its page, once."""
             if self._web is not None:
                 return
-            self._models = models(self._live, self._tab_request)
+            self._models = models(self._live, self._seated_request())
             if self._votes:
                 self._models[indicator_panel_surface.METHOD] = self._votes
             self._waiting = {}
@@ -1074,7 +1086,7 @@ if _HAS_WEBENGINE:
             self._web.setAccessibleName(ACCESSIBLE_NAME)
             self._web.setPage(LivePage(self))
             self._web.loadFinished.connect(self._on_load_finished)
-            self._web.setHtml(panel_html(self._models, self._venue_models, self._theme))
+            self._web.setHtml(panel_html(self._models, None, self._theme))
             self._layout.addWidget(self._web, 1)
 
         def _venue_published(self) -> None:

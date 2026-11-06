@@ -93,6 +93,10 @@ BROKER_SESSION_PAPER = True
 #: Why ``_open_broker_session`` refused before reaching the venue.
 #: ``_connect_broker_for_bot`` matches on this to open the configuration window.
 NO_BROKER_CREDENTIAL = "no API credentials are stored"
+VENUE_NOT_STORED = "Settings no longer holds this venue, so the bot stays stopped"
+
+#: What the status log carries for a venue the sync keeps off ``remove_refusal``.
+VENUE_KEPT_FORMAT = "{why} Its tab and connection stay."
 
 #: What the status log carries while the configuration window opens for a bot
 #: whose venue holds no stored connection yet.
@@ -366,10 +370,9 @@ if _HAS_QT:
             )
 
         def _bot_list_hosts(self) -> list:
-            """Every venue tab that draws a bot list, both layers together."""
-            return list(self._crypto_exchange_tabs.values()) + list(
-                self._stock_exchange_tabs.values()
-            )
+            """Every venue tab that draws a bot list, on every layer of ``_class_layers``."""
+            layers = (getattr(self, "_class_layers", None) or {}).values()
+            return [tab for held in layers for tab in held["exchange_tabs"].values()]
 
         def _on_bot_row_selected(self, bot_id: str) -> str:
             """Draw the pressed bot on the panel and redraw the React page.
@@ -1041,8 +1044,11 @@ if _HAS_QT:
                         tab._refresh_privacy_mode_btn_style()
                     try:
                         if self._bot_manager and hasattr(tab, "exchange_id"):
-                            statuses = self._bot_manager.list_bots_by_exchange(
-                                tab.exchange_id
+                            statuses = _class_filter.bots_of_class(
+                                self._bot_manager.list_bots_by_exchange(
+                                    tab.exchange_id
+                                ),
+                                _class_filter.active(),
                             )
                             tab.update_bots(statuses)
                             self._tab_bots_fault.note_success()
@@ -3146,6 +3152,8 @@ if _HAS_QT:
             from ..stocks.broker_base import broker_paper_route
 
             if getattr(connector, "is_connected", False):
+                if self._settings and self._settings.get_exchange(eid) is None:
+                    return False, VENUE_NOT_STORED
                 return True, ""
             try:
                 api_key, api_secret = self._broker_credential(eid, sector)
@@ -4020,10 +4028,7 @@ if _HAS_QT:
         def _refuse_while_sealed(self, exchange_id: str = "") -> bool:
             """Show ``FLEET_SEALED_CREATE_TEXT`` and answer True while
             ``launch_classification`` reads ``LAUNCH_LOCKED``."""
-            from ..core.state_manager import LAUNCH_LOCKED
-
-            state_mgr = getattr(self._bot_manager, "_state_manager", None)
-            if state_mgr is None or state_mgr.launch_classification() != LAUNCH_LOCKED:
+            if not window_surface.fleet_is_sealed(self._bot_manager):
                 return False
             QMessageBox.warning(
                 self, FLEET_SEALED_CREATE_TITLE, FLEET_SEALED_CREATE_TEXT
@@ -4425,20 +4430,30 @@ if _HAS_QT:
 
             self._run_settings_window(_wing, EXCHANGE_TAB)
 
-        def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
-            """Take off every exchange tab whose id is not in ``listed``.
+        def _keep_unlisted_venues(self, unlisted: set) -> set:
+            """Answer each venue of *unlisted* that ``remove_refusal`` holds, logging why on ``_status_log``."""
+            from .main_tabs.settings_dialog_surface import remove_refusal
 
-            The layer's Get Started page is added back once its bar empties, and
-            each dropped tab is asked to ``stop_feeds`` before it is deleted.
-            """
+            kept: set[str] = set()
+            for eid in sorted(unlisted):
+                why = remove_refusal(eid, self._bot_manager)
+                if why:
+                    kept.add(eid)
+                    self._status_log.log(VENUE_KEPT_FORMAT.format(why=why), "warning")
+            return kept
+
+        def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
+            """Take off each tab neither ``listed`` nor held by ``_keep_unlisted_venues``, and seat Get Started on an emptied bar."""
+            layers = getattr(self, "_class_layers", None) or {}
             kept = set(listed)
+            seated = {eid for held in layers.values() for eid in held["exchange_tabs"]}
+            kept |= self._keep_unlisted_venues(seated - kept)
             dropped = 0
             gone: set[str] = set()
-            for held in (getattr(self, "_class_layers", None) or {}).values():
+            for held in layers.values():
                 store, bar = held["exchange_tabs"], held["tabs"]
                 for eid in [one for one in store if one not in kept]:
                     tab = store.pop(eid)
-                    self._exchange_tabs.pop(eid, None)
                     at = bar.indexOf(tab)
                     if at >= 0:
                         bar.removeTab(at)
@@ -4457,8 +4472,6 @@ if _HAS_QT:
                         PLACEHOLDER_TAB_TOOLTIP,
                         bar.addTab(ph, PLACEHOLDER_TAB_TITLE),
                     )
-            if dropped:
-                self._push_live_tab({})
             for eid in gone:
                 self._forget_venue(eid)
             return dropped

@@ -1853,15 +1853,11 @@ class BotStatusTableModel:
         self.select_row(target)
 
     def highlight_bot(self, bot_id: str) -> str:
-        """Put the highlight on the bot the Voting Panel draws, and answer it.
-
-        The window calls this when the panel's own dropdown or an arrow
-        moved the selection, so it tells nobody back.
-        """
+        """Highlight the row of ``bot_id``, or no row where this table lacks it, telling nobody back."""
         wanted = str(bot_id or "")
         if wanted:
             self.select_row_for_bot(wanted)
-        else:
+        if self.get_selected_bot_id() != wanted:
             self.clear_selection()
             self.current_row = NO_SELECTION_ROW
         found = self.get_selected_bot_id()

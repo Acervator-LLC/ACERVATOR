@@ -722,6 +722,16 @@ REMOVE_REFUSED_FORMAT = (
 REMOVE_UNREAD_FORMAT = "{name} cannot be removed: its bots could not be read ({error})."
 REMOVE_BLOCKER_FORMAT = "{symbol} (bot {bot_id}, {state})"
 REMOVE_BLOCKER_JOIN = ", "
+REMOVE_RESTING_FORMAT = (
+    "{name} cannot be removed while a stopped bot holds an order resting there. "
+    "A stopped bot books no fill. Start each bot until its order closes: {bots}."
+)
+REMOVE_RESTING_BOT_FORMAT = "{symbol} (bot {bot_id}, {orders} resting)"
+REMOVE_SEALED_FORMAT = (
+    "{name} cannot be removed while the saved fleet is sealed, because its bots "
+    "are not loaded. Unlock the fleet first: "
+    f"{USER_TAB} tab, {FLEET_LOCK_UNLOCK_BUTTON_TEXT}."
+)
 
 PROCESS_EVENTS_REASON = "legacy processEvents site"
 
@@ -2405,20 +2415,19 @@ def removed_feedback_text(name: Any) -> str:
 
 
 def remove_refusal(exchange_id: str, fleet: object) -> str:
-    """Answer why Remove keeps *exchange_id*, or no text where it may go.
-
-    ``list_bots_by_exchange`` on *fleet* names its bots, and one not idle or
-    stopped, or a read that raises, keeps the venue for
-    ``SettingsDialog._remove_exchange`` and ``SettingsDialogModel.remove_exchange``.
-    """
-    from .main_window_surface import NOT_RUNNING_STATES
+    """Say why a sealed fleet, a live bot, a resting order or a failed read keeps ``exchange_id``, else nothing."""
+    from .main_window_surface import NOT_RUNNING_STATES, fleet_is_sealed
 
     reader = getattr(fleet, "list_bots_by_exchange", None)
-    if reader is None:
+    resting_reader = getattr(fleet, "resting_orders_by_exchange", None)
+    if reader is None or resting_reader is None:
         return ""
     name = str(exchange_id).capitalize()
+    if fleet_is_sealed(fleet):
+        return REMOVE_SEALED_FORMAT.format(name=name)
     try:
         statuses = [dict(one) for one in reader(exchange_id) or ()]
+        resting = dict(resting_reader(exchange_id))
     except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
         return REMOVE_UNREAD_FORMAT.format(
             name=name, error=f"{type(exc).__name__}: {exc}"
@@ -2432,11 +2441,30 @@ def remove_refusal(exchange_id: str, fleet: object) -> str:
         for one in statuses
         if str(one.get("state", "")) not in NOT_RUNNING_STATES
     ]
-    if not blocking:
-        return ""
-    return REMOVE_REFUSED_FORMAT.format(
-        name=name, bots=REMOVE_BLOCKER_JOIN.join(blocking)
-    )
+    holding = [
+        REMOVE_RESTING_BOT_FORMAT.format(
+            symbol=one.get("symbol", ""),
+            bot_id=one.get("bot_id", ""),
+            orders=resting[one.get("bot_id")],
+        )
+        for one in statuses
+        if str(one.get("state", "")) in NOT_RUNNING_STATES
+        and one.get("bot_id") in resting
+    ]
+    said = []
+    if blocking:
+        said.append(
+            REMOVE_REFUSED_FORMAT.format(
+                name=name, bots=REMOVE_BLOCKER_JOIN.join(blocking)
+            )
+        )
+    if holding:
+        said.append(
+            REMOVE_RESTING_FORMAT.format(
+                name=name, bots=REMOVE_BLOCKER_JOIN.join(holding)
+            )
+        )
+    return " ".join(said)
 
 
 def stored_credential_phrase(entry: Any) -> str:

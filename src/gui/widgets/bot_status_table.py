@@ -490,16 +490,12 @@ if _HAS_QT:
             return NO_SELECTION_BOT_ID
 
         def highlight_bot(self, bot_id: str) -> str:
-            """Put the highlight on the bot the Voting Panel draws.
-
-            The window calls this when the panel's dropdown or an arrow
-            moved the selection, so the move emits nothing back.
-            """
+            """Highlight the row of ``bot_id``, or no row where this table lacks it, emitting nothing."""
             wanted = str(bot_id or "")
             with QSignalBlocker(self):
-                if wanted:
+                if wanted and self.get_selected_bot_id() != wanted:
                     _select_row_for_bot(self, wanted, self._bot_ids)
-                else:
+                if self.get_selected_bot_id() != wanted:
                     self.clearSelection()
                     self.setCurrentCell(-1, -1)
             return self.release_selection_off_view()

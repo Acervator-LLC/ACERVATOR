@@ -322,7 +322,7 @@ Now: the button reads + Add, the active class name, then Exchange or Broker, and
 
 While the initial set up of Acervator requires at least one valid exchange API, additional exchanges can be added and have their own bot swarms. The current upper operational limit of Acervator is unknown. Multi-exchange testing has yet to be attempted as of 8/25/26 with API compatibility work pending. This button also currently opens the Settings Panel but on the incorrect ‘User’ Tab when it should be ‘Exchanges’.
 
-Now: the button, the Exchange menu and Start on a venue with no stored key all open Settings on the Exchanges tab, and a first launch opens with no exchange (`src/gui/main_window.py, in MainWindow._run_settings_window`).
+Now: the button, the Exchange menu and Start on a broker, or on Robinhood on the Crypto class, with no stored key all open Settings on the Exchanges tab, and a first launch opens with no exchange (`src/gui/main_window.py, in MainWindow._run_settings_window`).
 
 ![The Add Crypto Exchange button.](p27-i0.png)
 
@@ -403,7 +403,7 @@ The class-following tabs are declared in `src/gui/main_tabs/class_filter_tab.py,
 
 ### The bot tables
 
-On the Scrumming table, a press on a row draws that bot on the Indicator Voting Panel, and a second press on the same row clears the panel (`src/gui/main_tabs/bot_status_table_surface.py, in selection_after_press`). A press on a column label sorts that column, and blanks sink (`src/gui/main_tabs/bot_status_table_surface.py, in order_statuses`). A press on an Extractor row only selects it for the command bar (`src/gui/react_exchange_tab.py, in ExchangeTabReact.select_extractor`). A held bot's Symbol cell turns red, and it and the Fire button name the hold in their mouse-over (`src/gui/main_tabs/bot_status_table_surface.py, in held_tooltip`).
+On the Scrumming table, a press on a row draws that bot on the Indicator Voting Panel, and a second press on the same row clears the panel (`src/gui/main_tabs/bot_status_table_surface.py, in selection_after_press`). A press on a row or a move on the panel takes the highlight to that bot on every table. A table that does not hold that bot lets go of its highlight, so its command bar acts on no bot and says Select a bot first (`src/gui/widgets/bot_selection.py, in BotListPanelLink._mark_hosts`, `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel.highlight_bot`). A press on a column label sorts that column, and blanks sink (`src/gui/main_tabs/bot_status_table_surface.py, in order_statuses`). A press on an Extractor row only selects it for the command bar (`src/gui/react_exchange_tab.py, in ExchangeTabReact.select_extractor`). A held bot's Symbol cell turns red, and it and the Fire button name the hold in their mouse-over (`src/gui/main_tabs/bot_status_table_surface.py, in held_tooltip`).
 
 | Scrumming Bots column | What it shows and what it reads |
 | --- | --- |

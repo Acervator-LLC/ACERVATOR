@@ -585,8 +585,10 @@ if _HAS_WEBENGINE:
             ``BotListPanelLink.panel_selected`` calls this, which is why it
             drives ``highlight_bot`` and not the press.
             """
+            held = self._scrum.get_selected_bot_id()
             found = self._scrum.highlight_bot(str(bot_id or ""))
-            self._publish()
+            if found != held:
+                self._publish()
             return found
 
         def _refresh_privacy_mode_btn_style(self) -> None:

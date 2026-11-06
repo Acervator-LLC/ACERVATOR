@@ -288,3 +288,11 @@ class BotRegistryMixin:
             for bot in self._bots.values()
             if bot.config.exchange_id == exchange_id
         ]
+
+    def resting_orders_by_exchange(self, exchange_id: str) -> dict[str, int]:
+        """Each bot on ``exchange_id`` holding a ``_resting_orders`` record, with its count."""
+        return {
+            bot.bot_id: len(bot._resting_orders)
+            for bot in self._bots.values()
+            if bot.config.exchange_id == exchange_id and bot._resting_orders
+        }
