@@ -6,6 +6,7 @@ import asyncio
 import logging
 import math
 import time
+from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
@@ -56,10 +57,12 @@ from .sizing import (
     EXCESS_SALE,
     FRACTIONAL_UNITS,
     SIDE_BUY,
+    WHOLE_UNITS,
     fold_cap_remaining_usd,
     fold_decision,
     fold_spend_usd,
     fold_tranche_records,
+    market_unit_rule,
     opposing_event_id,
     priced_usd,
     repeated_fold_decision,
@@ -69,6 +72,7 @@ from .sizing import (
     target_delta_usd,
     tranche_rebuy_price,
     units_at_scrum,
+    units_for_contracts,
 )
 from .snapshots import yes_no as _yes_no
 from .target_ramp import (
@@ -81,6 +85,24 @@ from .target_ramp import (
 )
 
 logger = logging.getLogger("acervator.scrumming")
+
+#: The voters ``three_agree`` asks for, which ``_third_indicator_text`` counts against.
+AGREEING_VOTERS = 3
+
+#: The ``_tick_initial_entry`` exit of a tick whose order may have reached the venue.
+ENTRY_NO_FILL_EXIT = "initial-entry(no-fill)"
+
+
+@dataclass(frozen=True)
+class FirstBuyRead:
+    """What ``TickPhaseMixin._first_buy_read`` found; an empty ``refusal`` clears."""
+
+    refusal: str = ""
+    tick_exit: str = ""
+    standing: bool = False
+    summary: Any = None
+    bb_pos: float = 0.0
+    dist_down: float = 0.0
 
 
 class TickPhaseMixin:
@@ -98,8 +120,10 @@ class TickPhaseMixin:
     _below_min_scrum_log_ts: float
     _book_shadow_take: Callable[..., None]
     _bound_new_fold_tranches: Callable[..., Any]
+    _asset_class: Callable[..., str]
     _bus: Any
     _cartridge_last_smart_pct: float
+    _cb_last_candle_ts: float
     _check_detonation_trigger: Callable[..., Any]
     _combine_fold_tranches_within_distance: Callable[..., Any]
     _count_trade_volume: Callable[..., float]
@@ -108,6 +132,7 @@ class TickPhaseMixin:
     _dist_sets: list[dict]
     _drop_malformed_fold_tranches: Callable[..., int]
     _emit_gate_decision_at_fire: Callable[..., None]
+    _emit_gate_decision_at_quiet_tick: Callable[..., None]
     _emit_trade_fire_snapshot: Callable[..., None]
     _emit_trade_notification: Callable[..., None]
     _emit_voting_panel_snapshot_at_fire: Callable[..., None]
@@ -117,6 +142,8 @@ class TickPhaseMixin:
     _execute_sell: Callable[..., Any]
     _expiry_close_sent_units: float
     _expiry_start_s: float
+    _first_buy_held_exit: str
+    _first_buy_made: bool
     _fold_cycle_cap_consumed: float
     _fold_diag_last_blocker_set: str
     _fold_diag_tick: int
@@ -138,6 +165,7 @@ class TickPhaseMixin:
     _initialised: Any
     _invisible: bool
     _land_pending_wire_credits: Callable[..., float]
+    _last_gate_state: dict
     _last_price: float
     _last_summary: Any
     _last_trade_price: float
@@ -185,6 +213,7 @@ class TickPhaseMixin:
     _verify_buy_safe_or_refuse: Callable[..., Any]
     _voting_engine: VotingEngine
     bot_id: Any
+    opposing_distance_settings: Callable[..., Any]
     config: Any
     exchange: Any
     note_scrum_retention_usd: Callable[..., None]
@@ -406,6 +435,7 @@ class TickPhaseMixin:
                         {
                             "units": _own,
                             "initial_buy_price": _basis,
+                            "read_price": _px,
                         }
                     ]
                     self._bus.emit(
@@ -626,6 +656,15 @@ class TickPhaseMixin:
         _cartridge_pct: float,
     ) -> None:
         """Fire the max-cartridge rebalance; the tick ends after this."""
+        if _direction == "FOLD":
+            _verified_units, _refuse_msg = await self._verify_buy_safe_or_refuse(
+                path="cartridge_fold", price=ticker.last
+            )
+            if _refuse_msg:
+                if self._refusal_is_new("buy_safety", ticker.last):
+                    self._bus.emit("bot.log", bot_id=self.bot_id, message=_refuse_msg)
+                    logger.warning("Bot %s %s", self.bot_id, _refuse_msg)
+                return
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -642,14 +681,6 @@ class TickPhaseMixin:
                 f"opposing-direction hysteresis."
             ),
         )
-        if _direction == "FOLD":
-            _verified_units, _refuse_msg = await self._verify_buy_safe_or_refuse(
-                path="cartridge_fold"
-            )
-            if _refuse_msg:
-                self._bus.emit("bot.log", bot_id=self.bot_id, message=_refuse_msg)
-                logger.warning("Bot %s %s", self.bot_id, _refuse_msg)
-                return
         try:
             self._emit_trade_notification(
                 f"CARTRIDGE_{_direction}",
@@ -884,10 +915,265 @@ class TickPhaseMixin:
             fee=self._fill_fee_fields(fill_price),
         )
 
+    def _entry_buy_word(self) -> str:
+        """``first buy`` while one is owed, ``buy`` once ``_first_buy_made`` is set."""
+        return "buy" if self._first_buy_made else "first buy"
+
+    async def _first_buy_standing(
+        self, ticker: Any, symbol: str
+    ) -> Optional[FirstBuyRead]:
+        """The refusal no tape lifts: no price, a contract ``expiry_close_decision``
+        closes, or every ``indicator_weights`` figure at zero."""
+        if not ticker.last or ticker.last <= 0:
+            return FirstBuyRead(
+                f"INITIAL ENTRY BLOCKED: the ticker holds no price, so no "
+                f"{self._entry_buy_word()} is read. Retrying next tick.",
+                "initial-entry(no-price)",
+                standing=True,
+            )
+        try:
+            rules = await self._get_market_rules(symbol)
+            closing = expiry_close_decision(
+                self.config, rules, time.time(), self._expiry_start_s
+            )
+        except Exception as exc:
+            logger.debug("Bot %s expiry rules read raised: %s", self.bot_id, exc)
+            closing = {"acts": False}
+        if closing["acts"]:
+            return FirstBuyRead(
+                f"INITIAL ENTRY BLOCKED: {symbol} closes for this bot in "
+                f"{closing['days_left']:.2f} days, so nothing buys this contract.",
+                "initial-entry(contract-closing)",
+                standing=True,
+            )
+        weights = self._voting_engine.indicator_weights
+        if not any(weight > 0.0 for weight in weights):
+            return FirstBuyRead(
+                f"INITIAL ENTRY BLOCKED: TA=NEUTRAL (0%) — need BEARISH. All "
+                f"{len(weights)} TA Indicator weights on this bot are zero, so it "
+                f"has no vote and makes no {self._entry_buy_word()}. Press Save on "
+                f"the TA Indicators page of Settings to give it your weights.",
+                "initial-entry(no-weights)",
+                standing=True,
+            )
+        return None
+
+    def _third_indicator_text(self, summary: Any, reach: float) -> str:
+        """Why ``three_agree`` refused ``summary``, with ``reach`` the figure two
+        indicators reach, ``AGREEING_VOTERS`` the count it asks for."""
+        weighted = sum(
+            1 for weight in self._voting_engine.indicator_weights if weight > 0.0
+        )
+        if weighted < AGREEING_VOTERS:
+            return (
+                f"{weighted} of {len(self._voting_engine.indicator_weights)} TA "
+                f"Indicator weights sit above zero, so three cannot agree. Give "
+                f"another a weight on the TA Indicators page and press Save."
+            )
+        bearish = sum(
+            1
+            for sig in summary.signals
+            if sig.weight > 0.0 and sig.direction.name == "BEARISH"
+        )
+        if bearish >= AGREEING_VOTERS:
+            return f"{bearish} indicators agree, and their vote must top {reach:.4f}."
+        abstained = [
+            str(sig.indicator)
+            for sig in summary.signals
+            if sig.abstained and sig.weight > 0.0
+        ]
+        waits = f"The {self._entry_buy_word()} waits for a third to agree."
+        if not abstained:
+            return waits
+        return f"{waits} {', '.join(abstained)} abstained on this tape."
+
+    async def _first_buy_read(self, ticker: Any, symbol: str) -> FirstBuyRead:
+        """The band position and own vote a buy clears, read by ``_first_buy_clears``
+        and ``_tick_initial_entry`` alike."""
+        standing = await self._first_buy_standing(ticker, symbol)
+        if standing is not None:
+            return standing
+        try:
+            candles = await self._get_ohlcv(symbol, self.config.ta_timeframe, limit=100)
+            if not candles or len(candles) < MIN_CANDLES_FOR_TA:
+                return FirstBuyRead(
+                    f"INITIAL ENTRY BLOCKED: {len(candles or [])} candles on "
+                    f"{self.config.ta_timeframe}, and the vote needs "
+                    f"{MIN_CANDLES_FOR_TA}. No {self._entry_buy_word()} until it "
+                    f"can vote.",
+                    "initial-entry(short-candles)",
+                    standing=True,
+                )
+            parsed = candles_from_raw(candles)
+            summary = self._voting_engine.compute_all(
+                parsed, self.config.ta_timeframe, symbol=self.config.symbol
+            )
+            _init_bb = detect_bb_proximity(
+                parsed,
+                tolerance_pct=self.config.bb_tolerance_pct,
+                consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
+                min_pattern_candles=self.config.bb_landing_strip_candles,
+            )
+        except Exception as exc:
+            return FirstBuyRead(
+                f"INITIAL ENTRY BLOCKED: candles could not be read "
+                f"({type(exc).__name__}: {exc}). Retrying next tick.",
+                "initial-entry(candles-unread)",
+                standing=True,
+            )
+        self._last_summary = summary
+
+        if (
+            _init_bb is None
+            or _init_bb.upper <= 0
+            or _init_bb.lower <= 0
+            or _init_bb.upper <= _init_bb.lower
+        ):
+            return FirstBuyRead(
+                f"INITIAL ENTRY BLOCKED: BB data not yet "
+                f"computable — need proper band formation "
+                f"before entry. Price=${ticker.last:.8f}",
+                "initial-entry(band-unread)",
+            )
+
+        _init_price = ticker.last
+        _init_bb_width = _init_bb.upper - _init_bb.lower
+        _init_bb_pos = (_init_price - _init_bb.lower) / max(_init_bb_width, 1e-12)
+
+        if _init_bb_pos > 0.30:
+            return FirstBuyRead(
+                f"INITIAL ENTRY BLOCKED: bb_pos="
+                f"{_init_bb_pos:.2f} > 0.30 — price too "
+                f"high in band for structural entry. "
+                f"Waiting for decline to lower third.",
+                "initial-entry(band-position)",
+            )
+
+        _detect_pct_frac = self.config.scrum_detect_pct / 100.0
+        _fire_pct_frac = self.config.scrum_fire_pct / 100.0
+        _bb_mid_init = (_init_bb.upper + _init_bb.lower) / 2.0
+        _lower_half = _bb_mid_init - _init_bb.lower
+        _dist_down = (_bb_mid_init - _init_price) / max(_lower_half, 1e-12)
+        _near_lower = (
+            abs(_init_price - _init_bb.lower) / max(_init_bb.lower, 1e-12)
+            <= _fire_pct_frac
+        )
+
+        if not (
+            _near_lower
+            or (_bb_mid_init - _init_price)
+            >= _detect_pct_frac * max(_lower_half, 1e-12)
+        ):
+            return FirstBuyRead(
+                f"INITIAL ENTRY BLOCKED: distance-down "
+                f"{_dist_down:.0%} < {_detect_pct_frac:.0%} "
+                f"and not within {_fire_pct_frac:.2%} of "
+                f"lower band. Price=${_init_price:.8f} "
+                f"(lower=${_init_bb.lower:.8f}, "
+                f"mid=${_bb_mid_init:.8f})",
+                "initial-entry(distance)",
+            )
+
+        if summary.consensus_direction.name != "BEARISH":
+            return FirstBuyRead(
+                f"INITIAL ENTRY BLOCKED: TA="
+                f"{summary.consensus_direction.name} "
+                f"({summary.consensus_confidence:.0%}) — "
+                f"need BEARISH (accumulation-trading "
+                f"thesis: buy decline, not rally). "
+                f"BB OK (pos={_init_bb_pos:.2f}, "
+                f"dist={_dist_down:.0%}).",
+                "initial-entry(vote)",
+            )
+
+        if not three_agree(summary.consensus_confidence, summary.signals):
+            _reach = two_indicator_ceiling(summary.signals)
+            return FirstBuyRead(
+                f"INITIAL ENTRY BLOCKED: TA=BEARISH at confidence "
+                f"{summary.consensus_confidence:.4f}, and two indicators "
+                f"reach {_reach:.4f} on this vote. "
+                f"{self._third_indicator_text(summary, _reach)} "
+                f"BB OK (pos={_init_bb_pos:.2f}, dist={_dist_down:.0%}).",
+                "initial-entry(three-agree)",
+            )
+
+        self._first_buy_held_exit = ""
+        return FirstBuyRead(summary=summary, bb_pos=_init_bb_pos, dist_down=_dist_down)
+
+    async def _book_reaches_target(self, symbol: str) -> bool:
+        """True while a weight sits above zero and ``_main_lots`` at cost reach target less
+        the largest of the dust band, one size step and the fee share."""
+        if not any(weight > 0.0 for weight in self._voting_engine.indicator_weights):
+            return False
+        units = sum(float(lot.get("units", 0.0) or 0.0) for lot in self._main_lots)
+        if units <= 0.0:
+            return False
+        cost_usd = sum(
+            float(lot.get("units", 0.0) or 0.0)
+            * float(lot.get("read_price", lot.get("initial_buy_price")) or 0.0)
+            for lot in self._main_lots
+        ) * float(self._quote_to_usd or 1.0)
+        rules = await self._get_market_rules(symbol)
+        step = as_finite_float(getattr(rules, "amount_increment", None)) or 0.0
+        if WHOLE_UNITS == market_unit_rule(
+            rules,
+            self._asset_class(symbol),
+            self.config.exchange_id,
+            None,
+            SIDE_BUY,
+        ):
+            step = max(step, 1.0)
+        step = units_for_contracts(step, rules.contract_size)
+        try:
+            fee_pct = self.opposing_distance_settings().fee_pct
+        except DistanceSettingUnreadable:
+            fee_pct = 0.0
+        step_usd = step * cost_usd / units
+        fee_usd = self._target_balance * fee_pct / 100.0
+        reach_usd = max(at_target_dust_band(self._target_balance), step_usd, fee_usd)
+        least_usd = self._target_balance - reach_usd
+        return cost_usd >= least_usd or math.isclose(cost_usd, least_usd)
+
+    def _first_buy_line_is_new(self, tick_exit: str, price: float) -> bool:
+        """``_refusal_is_new`` for ``tick_exit``, or one line a stretch where no candle
+        or no price gives that hold a figure to read."""
+        fresh = self._refusal_is_new(tick_exit, price)
+        repeat = tick_exit == self._first_buy_held_exit
+        self._first_buy_held_exit = tick_exit
+        if price and price > 0 and self._cb_last_candle_ts > 0:
+            return fresh
+        return not repeat
+
+    async def _first_buy_clears(
+        self, ticker: Any, symbol: str, current_value: float
+    ) -> bool:
+        """True once ``_first_buy_made`` is set or ``_first_buy_read`` clears; a
+        refused read writes its line and gate record, and takes the fold bank off armed.
+        """
+        if self._first_buy_made:
+            return True
+        read = await self._first_buy_read(ticker, symbol)
+        if not read.refusal:
+            return True
+        if ticker.last and ticker.last > 0:
+            self.stats.position_value = current_value
+        self._last_gate_state.update(fold_armed=False, fold_blockers=[read.tick_exit])
+        if self._first_buy_line_is_new(read.tick_exit, ticker.last):
+            self._bus.emit("bot.log", bot_id=self.bot_id, message=read.refusal)
+        self._emit_gate_decision_at_quiet_tick(read.tick_exit)
+        return False
+
     async def _tick_initial_entry(
         self, ticker: Any, symbol: str, current_value: float
-    ) -> None:
-        """Decide and place the structural entry buy for an empty position."""
+    ) -> str:
+        """Decide and place the structural entry buy for an empty position, and
+        answer the gate-record exit of a tick that sent nothing."""
+        read = await self._first_buy_read(ticker, symbol)
+        if read.standing:
+            if self._first_buy_line_is_new(read.tick_exit, ticker.last):
+                self._bus.emit("bot.log", bot_id=self.bot_id, message=read.refusal)
+            return read.tick_exit
+
         try:
             _fresh_bal = await self._get_balance(self.config.target_asset)
             _fresh_units = float(_fresh_bal.free or 0)
@@ -926,7 +1212,7 @@ class TickPhaseMixin:
                         f"Clear saved state manually before restart."
                     ),
                 )
-                return
+                return "initial-entry(guard-a)"
 
             _value_threshold = max(
                 self._target_balance * 0.25, max(self._target_balance * 0.01, 1.0)
@@ -945,7 +1231,7 @@ class TickPhaseMixin:
                         f"position instead of initial entry."
                     ),
                 )
-                return
+                return "initial-entry(guard-b)"
 
             if getattr(self.config, "position_ceiling_enabled", False):
                 try:
@@ -973,7 +1259,7 @@ class TickPhaseMixin:
                                 f"Refusing buy."
                             ),
                         )
-                        return
+                        return "initial-entry(position-ceiling)"
                 except (TypeError, ValueError, AttributeError) as _sup:
                     logger.debug(
                         "suppressed in %s: %s: %s",
@@ -994,7 +1280,7 @@ class TickPhaseMixin:
                     f"fetch raised ({_qb_exc}). Retrying next tick."
                 ),
             )
-            return
+            return "initial-entry(wallet-unread)"
 
         _sibling_claims = self._sum_sibling_base_currency_claims()
         if _sibling_claims is None:
@@ -1014,7 +1300,7 @@ class TickPhaseMixin:
                         f"already claimed. Retrying next tick."
                     ),
                 )
-            return
+            return "initial-entry(claims-unread)"
 
         _quote_free = _quote_free_raw - _sibling_claims
         if _quote_free < 0:
@@ -1038,7 +1324,7 @@ class TickPhaseMixin:
                         f"pause a sibling bot to release its claim."
                     ),
                 )
-            return
+            return "initial-entry(over-allocation)"
 
         if _quote_free < self._target_balance:
             self._underfunded_log_counter = (
@@ -1065,163 +1351,62 @@ class TickPhaseMixin:
                         f"${current_value:.2f})"
                     ),
                 )
-            return
+            return "initial-entry(wallet-short)"
         self._underfunded_log_counter = 0
 
-        candles = await self._get_ohlcv(symbol, self.config.ta_timeframe, limit=100)
-        if candles and len(candles) >= MIN_CANDLES_FOR_TA:
-            engine = VotingEngine()
-            parsed = candles_from_raw(candles)
-            summary = engine.compute_all(
-                parsed, self.config.ta_timeframe, symbol=self.config.symbol
-            )
-            self._last_summary = summary
-
-            _wallet = (
-                f" [{self.config.base_currency}: ${_quote_free:.2f} · "
-                f"{self.config.target_asset}: "
-                f"{self._current_holdings:.6f} = "
-                f"${current_value:.2f}]"
-            )
-
-            _init_bb = detect_bb_proximity(
-                parsed,
-                tolerance_pct=self.config.bb_tolerance_pct,
-                consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-                min_pattern_candles=self.config.bb_landing_strip_candles,
-            )
-            if (
-                _init_bb is None
-                or _init_bb.upper <= 0
-                or _init_bb.lower <= 0
-                or _init_bb.upper <= _init_bb.lower
-            ):
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"INITIAL ENTRY BLOCKED: BB data not yet "
-                    f"computable — need proper band formation "
-                    f"before entry. Price=${ticker.last:.8f}"
-                    f"{_wallet}",
-                )
-                return
-
-            _init_price = ticker.last
-            _init_bb_width = _init_bb.upper - _init_bb.lower
-            _init_bb_pos = (_init_price - _init_bb.lower) / max(_init_bb_width, 1e-12)
-
-            if _init_bb_pos > 0.30:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"INITIAL ENTRY BLOCKED: bb_pos="
-                    f"{_init_bb_pos:.2f} > 0.30 — price too "
-                    f"high in band for structural entry. "
-                    f"Waiting for decline to lower third."
-                    f"{_wallet}",
-                )
-                return
-
-            _detect_pct_frac = self.config.scrum_detect_pct / 100.0
-            _fire_pct_frac = self.config.scrum_fire_pct / 100.0
-            _bb_mid_init = (_init_bb.upper + _init_bb.lower) / 2.0
-            _lower_half = _bb_mid_init - _init_bb.lower
-            _dist_down = (_bb_mid_init - _init_price) / max(_lower_half, 1e-12)
-            _near_lower = (
-                abs(_init_price - _init_bb.lower) / max(_init_bb.lower, 1e-12)
-                <= _fire_pct_frac
-            )
-
-            if not (
-                _near_lower
-                or (_bb_mid_init - _init_price)
-                >= _detect_pct_frac * max(_lower_half, 1e-12)
-            ):
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"INITIAL ENTRY BLOCKED: distance-down "
-                    f"{_dist_down:.0%} < {_detect_pct_frac:.0%} "
-                    f"and not within {_fire_pct_frac:.2%} of "
-                    f"lower band. Price=${_init_price:.8f} "
-                    f"(lower=${_init_bb.lower:.8f}, "
-                    f"mid=${_bb_mid_init:.8f})"
-                    f"{_wallet}",
-                )
-                return
-
-            if summary.consensus_direction.name != "BEARISH":
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"INITIAL ENTRY BLOCKED: TA="
-                    f"{summary.consensus_direction.name} "
-                    f"({summary.consensus_confidence:.0%}) — "
-                    f"need BEARISH (accumulation-trading "
-                    f"thesis: buy decline, not rally). "
-                    f"BB OK (pos={_init_bb_pos:.2f}, "
-                    f"dist={_dist_down:.0%})."
-                    f"{_wallet}",
-                )
-                return
-
-            if not three_agree(
-                summary.consensus_confidence,
-                summary.signals,
-                self._voting_engine.indicator_weights,
-            ):
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"INITIAL ENTRY BLOCKED: TA=BEARISH at confidence "
-                    f"{summary.consensus_confidence:.4f}, and two indicators "
-                    f"reach {two_indicator_ceiling(summary.signals):.4f} on this "
-                    f"vote, so the first buy waits for a third to agree. "
-                    f"BB OK (pos={_init_bb_pos:.2f}, dist={_dist_down:.0%})."
-                    f"{_wallet}",
-                )
-                return
-
-            buy_cost = self._target_balance
-            price = _init_price
+        if read.refusal:
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
-                message=f"INITIAL ENTRY: all 4 gates pass — "
-                f"BB OK, bb_pos={_init_bb_pos:.2f}, "
-                f"dist_down={_dist_down:.0%}, "
-                f"TA=BEARISH ({summary.consensus_confidence:.0%}). "
-                f"Acquiring ${buy_cost:.2f} of "
-                f"{self.config.target_asset} @ ${price:.8f}",
+                message=(
+                    f"{read.refusal} [{self.config.base_currency}: "
+                    f"${_quote_free:.2f} · {self.config.target_asset}: "
+                    f"{self._current_holdings:.6f} = ${current_value:.2f}]"
+                ),
             )
-            entry_fill = await self._execute_buy(
-                buy_cost,
-                price,
-                summary,
-                trace_context={
-                    "path": "zero_balance_initial_entry",
-                    "bb_pos": f"{_init_bb_pos:.3f}",
-                    "dist_down": f"{_dist_down:.1%}",
-                    "gate_current_value": f"${current_value:.6f}",
-                    "gate_threshold": f"${self._target_balance * 0.01:.6f}",
-                },
-                booker="_book_entry_fill",
-                booking={"buy_cost": float(buy_cost), "intended": float(price)},
-                decision=ENTRY_BUY,
+            return read.tick_exit
+
+        buy_cost = self._target_balance
+        price = ticker.last
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=f"INITIAL ENTRY: all 4 gates pass — "
+            f"BB OK, bb_pos={read.bb_pos:.2f}, "
+            f"dist_down={read.dist_down:.0%}, "
+            f"TA=BEARISH ({read.summary.consensus_confidence:.0%}). "
+            f"Acquiring ${buy_cost:.2f} of "
+            f"{self.config.target_asset} @ ${price:.8f}",
+        )
+        entry_fill = await self._execute_buy(
+            buy_cost,
+            price,
+            read.summary,
+            trace_context={
+                "path": "zero_balance_initial_entry",
+                "bb_pos": f"{read.bb_pos:.3f}",
+                "dist_down": f"{read.dist_down:.1%}",
+                "gate_current_value": f"${current_value:.6f}",
+                "gate_threshold": f"${self._target_balance * 0.01:.6f}",
+            },
+            booker="_book_entry_fill",
+            booking={"buy_cost": float(buy_cost), "intended": float(price)},
+            decision=ENTRY_BUY,
+        )
+        if entry_fill is not None and entry_fill > 0:
+            return ""
+        if self._refusal_is_new("initial_entry_refused", price):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"INITIAL ENTRY ABORTED: buy failed at "
+                    f"${price:.8f}; no main_lots entry added. "
+                    f"Bot will retry on next tick if gates "
+                    f"still pass."
+                ),
             )
-            if (entry_fill is None or entry_fill <= 0) and self._refusal_is_new(
-                "initial_entry_refused", price
-            ):
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"INITIAL ENTRY ABORTED: buy failed at "
-                        f"${price:.8f}; no main_lots entry added. "
-                        f"Bot will retry on next tick if gates "
-                        f"still pass."
-                    ),
-                )
+        return ENTRY_NO_FILL_EXIT
 
     async def _book_entry_fill(
         self,
@@ -1243,6 +1428,7 @@ class TickPhaseMixin:
             {
                 "units": bought_units,
                 "initial_buy_price": entry_fill,
+                "read_price": intended,
             }
         )
         _entry_usd = priced_usd(self._current_holdings, entry_fill)
@@ -1257,6 +1443,10 @@ class TickPhaseMixin:
                 f"intended ${intended:.8f})"
             ),
         )
+        if not self._first_buy_made:
+            self._last_trade_side = "FOLD"
+            self._last_trade_price = entry_fill
+            self._reset_opposing_hysteresis_after_fill()
         self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="ENTRY")
         self._emit_gate_decision_at_fire(side="BUY", trade_action="ENTRY")
         self._announce_fill(

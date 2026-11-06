@@ -68,6 +68,8 @@ _BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
     ("no-tranches-queued", "TRNQ"),
     ("position-ceiling", "CEIL"),
     ("HTF-bearish", "HTF"),
+    # The exit TickPhaseMixin._first_buy_clears writes for a held fold.
+    ("initial-entry", "TA"),
     # shared
     ("CB-soft-trip", "CB"),
     ("CB-hard", "CB"),
