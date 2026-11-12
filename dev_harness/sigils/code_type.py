@@ -182,6 +182,9 @@ SIGIL = Sigil(
             "unsound": ["tool", "error code", "line"],
             "trusts": "a plugin or interpreter the tree's own mypy or pyright "
             "settings name runs as code",
+            "imports": "each tool resolves them from the root of the target tree "
+            "and the installed packages it finds, never from the tree's own "
+            "list of files to check",
         },
     ),
     outputs={
