@@ -1,0 +1,14 @@
+# Read with --root harness_fixtures/sigil_code_import/sample_tree
+# Each file names its rule on line 1, then holds the Use instead blocks python -m ruff rule <id> prints.
+
+# CLEAN for its own rule id
+known_good_a004.py
+pkg/known_good_tc001.py
+known_good_tc003.py
+known_good_tc004.py
+known_good_f403.py
+known_good_plc0415.py
+
+# REJECTED, BLOCK at tier 2: the corrected form holds no import, because the fix removes it
+known_good_up010.py
+known_good_up029.py

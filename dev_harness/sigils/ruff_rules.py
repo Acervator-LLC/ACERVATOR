@@ -145,6 +145,7 @@ def check(
         [
             "check",
             "--no-cache",
+            "--no-fix",
             *(["--preview"] if preview else []),
             "--output-format",
             "json",
