@@ -1,0 +1,13 @@
+# Read with --root harness_fixtures/sigil_code_optimize/sample_tree
+# Each file holds the Example block that python -m ruff rule <id> prints.
+
+# OPTIMIZABLE, OPTIMIZE: each file reads its own rule id
+known_bad_perf401.py
+known_bad_perf203.py
+known_bad_furb118.py
+known_bad_c901.py
+known_bad_c901.py, in normalize_status
+fragments_bad/known_bad_sim108.py
+fragments_bad/known_bad_c401.py
+fragments_bad/known_bad_up035.py
+fragments_bad/known_bad_plr1730.py
