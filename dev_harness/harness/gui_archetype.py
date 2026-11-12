@@ -62,7 +62,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from dev_harness.harness import js_screen, web_analyzers
-from dev_harness.harness.coding_archetype import detect_language
+from dev_harness.harness.coding_archetype import (
+    RUFF_SEVERITY_OVERRIDES,
+    detect_language,
+)
 from dev_harness.harness.report import (
     REPO_ROOT,
     ArchetypeReport,
@@ -3078,6 +3081,7 @@ class GUIArchetype:
                 severity = "medium"
             elif code.startswith("D"):
                 severity = "low"
+            severity = RUFF_SEVERITY_OVERRIDES.get(code, severity)
             loc = item.get("location", {})
             findings.append(
                 Finding(
