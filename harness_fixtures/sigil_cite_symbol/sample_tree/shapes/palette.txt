@@ -1,0 +1,2 @@
+triangle
+square

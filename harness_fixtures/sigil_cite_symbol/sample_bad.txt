@@ -1,0 +1,35 @@
+# Read with --root harness_fixtures/sigil_cite_symbol/sample_tree
+
+# NOT_GROUNDED: the file is missing
+shapez/polygon.py, in Polygon
+shapes/absent.py, in Polygon
+absent.py, in x
+
+# NOT_GROUNDED: the path differs in letter case
+SHAPES/polygon.py, in Polygon
+shapes/Polygon.py, in Polygon
+
+# NOT_GROUNDED: an invented symbol, a real symbol under the wrong file, or the wrong nesting
+shapes/polygon.py, in no_such_name
+shapes/notes.py, in Polygon
+shapes/polygon.py, in Corner.label
+
+# NOT_GROUNDED: the name sits only in a comment, a docstring or another string
+shapes/notes.py, in comment_only_name
+shapes/notes.py, in docstring_only_name
+shapes/notes.py, in string_only_name
+
+# REJECTED at tier 1: outside the form
+shapes/polygon.py:12, in Polygon
+shapes/../shapes/polygon.py, in Polygon
+shapes\polygon.py, in Polygon
+./shapes/polygon.py, in Polygon
+https://example.invalid/shapes shapes/polygon.py, in Polygon
+`shapes/polygon.py`, in `Polygon`
+shapes/polygon.py in Polygon
+shapes/polygon.py, in Polygon.label()
+shapes/polygon.py, in first label
+
+# REJECTED at tier 2: a file type with no reader, present or absent
+shapes/palette.txt, in triangle
+shapes/absent.yml, in x
