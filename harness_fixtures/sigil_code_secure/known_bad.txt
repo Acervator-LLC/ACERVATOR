@@ -1,0 +1,15 @@
+# Read with --root harness_fixtures/sigil_code_secure/sample_tree
+# Each file is a bandit 1.9.4 example file, unchanged: examples/<name> at tag 1.9.4,
+# the file each test's page at https://bandit.readthedocs.io/en/1.9.4/ cites.
+
+# WEAK, FIX: each file reads its own bandit test id and that test's CWE id
+known_bad_b602.py
+known_bad_b506.py
+known_bad_b307.py
+known_bad_b324.py
+known_bad_b105.py
+known_bad_b608.py
+
+# WEAK, FIX: narrowed to the one function holding a fault
+known_bad_b506.py, in test_yaml_load
+known_bad_b105.py, in someFunction2

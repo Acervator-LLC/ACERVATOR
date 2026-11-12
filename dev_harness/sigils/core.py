@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 
 class Flag(Enum):
@@ -57,10 +57,19 @@ CONTENT = "tier 2 content compatibility"
 FUNCTIONS = "tier 3 required processing functions"
 TIER_NAMES = (DATA_TYPE, CONTENT, FUNCTIONS)
 
+
+class Reading(NamedTuple):
+    """Tier 3 `output` and `reason`; `holds` False keeps `Flag.HOLD` off this fault."""
+
+    output: str
+    reason: str
+    holds: bool
+
+
 OutputFlag = Literal[Flag.PASS, Flag.FIX, Flag.OPTIMIZE]
 DataType = Callable[[str], str | None]
 Content = Callable[[str, Path], str | None]
-Functions = Callable[[str, Path], tuple[str, str]]
+Functions = Callable[[str, Path], tuple[str, str] | Reading]
 FaultFile = Callable[[str, Path], Path | None]
 TierCard = Mapping[str, object]
 
@@ -117,8 +126,10 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
     fault = sigil.content(text, root)
     if fault:
         return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
-    output, reason = sigil.functions(text, root)
-    flag = flag_of(sigil, output, in_source=in_source)
+    reading = sigil.functions(text, root)
+    holds = not isinstance(reading, Reading) or reading.holds
+    output, reason = reading[0], reading[1]
+    flag = flag_of(sigil, output, in_source=in_source and holds)
     return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag)
 
 
