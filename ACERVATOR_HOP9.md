@@ -276,7 +276,8 @@ issue comments              every claim about the code cites "path, in symbol"
 - `python BUILD.py` ends on a prompt; a non-interactive run raises `EOFError` after
   writing every build. Read `dist/`, never the exit code.
 - A local React build carries Electron only when that tree's `desktop/` holds it:
-  run `npm ci --no-audit --no-fund` there, then `node node_modules/electron/install.js`.
+  run `npm ci --no-audit --no-fund` there, then, from the root,
+  `node desktop/node_modules/electron/install.js`.
   The React window is web pages inside Qt, so a published React build opens
   without Electron. Never report the size gap as a fault.
 - Nothing run may reach outside its process. `webbrowser.open` and
@@ -310,7 +311,7 @@ Then, in each tree he launches from:
 ```bash
 pip install -e .                                  # Python 3.14; groups in pyproject.toml
 npm install --no-audit --no-fund                  # analyzers at the root
-cd desktop && npm ci --no-audit --no-fund && node node_modules/electron/install.js
+(cd desktop && npm ci --no-audit --no-fund) && node desktop/node_modules/electron/install.js
 python BUILD.py                                   # read dist/ afterwards
 python -m tools.hop_check                         # exit 0 before any work
 ```
