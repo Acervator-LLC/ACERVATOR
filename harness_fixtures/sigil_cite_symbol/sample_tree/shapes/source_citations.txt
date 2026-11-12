@@ -1,0 +1,8 @@
+# Read with --root harness_fixtures/sigil_cite_symbol/sample_tree --source shapes
+# This file sits in shapes, the sample tree's application source.
+
+# RESOLVED, PASS
+shapes/polygon.py, in Polygon
+
+# NOT_GROUNDED, HOLD: a missing symbol in application source
+shapes/polygon.py, in no_such_name
