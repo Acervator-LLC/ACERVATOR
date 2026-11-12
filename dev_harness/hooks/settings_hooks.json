@@ -1,0 +1,311 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/verify_release_gate.py",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/archetype_gate.py --pre",
+            "timeout": 300
+          },
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_unanchored_docstring.py",
+            "timeout": 20
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_heredoc.py",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_heavy_run.py",
+            "timeout": 20
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/check_directive_drift.py"
+          },
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_uncanonized_workflow.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_unreachable_done.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_off_item.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_new_test.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_narrowed_bar.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_subsystem_anchor.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_custom_test_run.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|SendMessage|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_coined_instrument.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_alt_grounding.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|SendMessage|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_detour.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_table_search.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_missing_skills.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/gate_workflow_script.py",
+            "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_delegated_canon.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_stand_in_without_source.py",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_conversion_table_grounding.py",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_banned_words.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_screen_point_input.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Workflow|Write|Edit|NotebookEdit|Bash|PowerShell|Monitor|SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_unloaded_skills.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/archetype_gate.py",
+            "timeout": 240
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_unloaded_skills.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/prompt_router.py",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/session_stop_backstop.py",
+            "timeout": 120
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_long_reply.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_unanchored_claim.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_deflection.py",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_banned_words.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -X utf8 __HOOK_DIR__/block_unloaded_skills.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 ---
 name: unit-sizing
-description: Load at the START of any coding, refactor, bug-fix, test or engineering task, BEFORE the first edit. Sizes one work item into units small enough to be built and verified completely in one pass, so an adversary cannot discover the same defect class serially over several rounds. Triggers whenever a task is not already scoped to one variable, one button, one behavior, one signal or one algorithm. Invoke by name when the operator asks to break work down, chunk a task, or size a unit.
+description: Load at the START of any coding, refactor, bug-fix, test or engineering task, BEFORE the first edit. Sizes one work item into units small enough to be built and verified completely in one pass, so an adversary cannot discover the same defect class serially over several rounds. Triggers whenever a task is not already scoped to one variable, one button, one behavior, one signal or one algorithm. Invoke by name when the operator asks to break work down, chunk a task, size a unit, or whether work qualifies for a sigil.
 ---
 
 # Unit Sizing
@@ -412,6 +412,69 @@ understanding the change rationale nor the number of found defects".
 Fewer spurious findings and a shorter review loop is the claim this
 skill supports. Fewer bugs is not.
 
+## THE SCOPE TEST — WORK QUALIFIES FOR A SIGIL ONLY BY ITS FIVE LINES
+
+The splitting test asks whether one item is one unit. This test asks whether one
+piece of work may take a sigil.
+
+A sigil is a short mark, such as `TA.AUDIT@1`, that names one canonized task and
+the output it allows. A card is the block that declares a sigil, inside the
+skill that holds its canon. A sigil applies only to work with a known set of
+formatted results. Everything else stays in prose.
+
+```
+input     its shape is declared, and input out of range has a defined answer
+outputs   every allowed output is listed in advance
+ground    every output can be checked against code or a document
+owner     an archetype reads the result without asking the model
+decision  the model makes one named choice; with no choice, it is an ordinary function
+```
+
+**Hold the work against each line and answer yes or no.** For a card, read the
+field with the same name. A yes needs something a reader can open: a path, a
+list in a skill, or a command. `NOT_GROUNDED` is the listed output for work with
+no ground, so it carries no ground of its own.
+
+```
+five yes                        the work qualifies
+decision no, because no choice  an ordinary function, so no sigil
+any other no                    the work stays in prose
+```
+
+Both examples read the work itself, so neither needs a card on disk.
+
+**A yes.** `TA.AUDIT@1` ranks one departure in one indicator module.
+
+```
+input     yes  one file matching src/trading/indicators/*.py;
+               the defined answer to any other path is a refusal
+outputs   yes  CLEAN | DIRECTION | SIGNAL | CONFIDENCE | DOCUMENTATION | NOT_GROUNDED;
+               the ranks are in dev_harness/skills/ta-canon/SKILL.md, in RANK EVERY DEPARTURE
+ground    yes  the published formula's link, and the symbol read against it
+owner     yes  python -m dev_harness.harness.ta_archetype <path> reads the module;
+               no model runs in it
+decision  yes  which rank the departure carries, against the published formula
+result    five yes, so the work qualifies
+```
+
+**A no.** Checking that a written citation's path and symbol exist sits beside
+`CITE.SYMBOL@1`, and it fails one line.
+
+```
+input     yes  a citation shaped "path, in symbol";
+               the defined answer to any other shape is NOT_GROUNDED
+outputs   yes  RESOLVED | NOT_GROUNDED
+ground    yes  the files on disk
+owner     yes  python -m dev_harness.harness.truth_archetype <path> reads the file;
+               no model runs in it
+decision  no   a lookup gives the answer, so the model chooses nothing
+result    an ordinary function: dev_harness/harness/truth_archetype.py, in _run_symbols
+```
+
+Four yes answers do not carry the work, because one no ends the test.
+`CITE.SYMBOL@1` holds the step before this one: the model chooses which path and
+symbol ground a claim. That step is the one named choice.
+
 ## FALSIFICATION
 
 This skill is wrong if:
@@ -453,3 +516,8 @@ On the boundary rule specifically:
   would mean the units are coupled in the code even though they are
   separate in the spec. That is a code finding, not a skill failure, but it
   falsifies the claim that these are independent units.
+
+On the scope test specifically:
+
+- A reader cannot apply the five lines to a card from that section alone.
+  The section then needs the missing reading, not a brief that restates it.

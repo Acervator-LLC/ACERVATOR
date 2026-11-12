@@ -35,6 +35,10 @@ instrument until something makes the instrument report.
 
 ### 3. The gate — what a merge waits on
 
+**Superseded for merges:** a merge waits on `ci-gate` and `passed=True` from the
+owning archetype on every changed file, and a brief names `ci-gate`. See Skill:
+harness-law.
+
 ```bash
 python -m tools.local_ci --all
 ```
@@ -72,7 +76,8 @@ Calibrate first: `harness_fixtures/truth_archetype/known_good.md` exits 0 and
 and quote that verdict inside the report.
 
 `T001` to `T007` resolve a citation, a count, a runtime claim, a proxy claim and
-a subject outside the item against the tree. `T000` records a claim it could not
+a subject outside the item against the tree. `T008` refuses a machine path or an
+asset name read from the gitignored export, so run it before any public post. `T000` records a claim it could not
 decide, so an undecided claim is never silent.
 
 **Measured 2026-09-14: this archetype sat in the tree, named in the project

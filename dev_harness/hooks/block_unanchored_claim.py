@@ -1,8 +1,10 @@
 """Refuses a reply that predicts a result it has not measured.
 
 `PREDICTIVE` matches a claim about work that has not reported yet, and
-`ANCHORED` matches the evidence a measured claim carries. `main` returns 2 when
-`PREDICTIVE` fires and `ANCHORED` stays below `CAP`.
+`ANCHORED` matches the evidence a measured claim carries. `quoted_removed`
+drops the spans the reply attributes to another speaker. `main` returns 2 when
+`PREDICTIVE` fires on what `quoted_removed` leaves and `ANCHORED` stays below
+its limit.
 """
 
 import json
