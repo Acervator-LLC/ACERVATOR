@@ -1,0 +1,13 @@
+class Cat:
+    def sleep(self) -> None: ...
+    def miaow(self) -> None: ...
+
+class Dog:
+    def sleep(self) -> None: ...
+    def follow_me(self) -> None: ...
+
+def func(animal: Cat | Dog) -> None:
+    # OK: 'sleep' is defined for both Cat and Dog
+    animal.sleep()
+    # Error: Item "Cat" of "Cat | Dog" has no attribute "follow_me"  [union-attr]
+    animal.follow_me()

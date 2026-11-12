@@ -61,6 +61,7 @@ OutputFlag = Literal[Flag.PASS, Flag.FIX, Flag.OPTIMIZE]
 DataType = Callable[[str], str | None]
 Content = Callable[[str, Path], str | None]
 Functions = Callable[[str, Path], tuple[str, str]]
+FaultFile = Callable[[str, Path], Path | None]
 TierCard = Mapping[str, object]
 
 
@@ -89,6 +90,7 @@ class Sigil:
     data_type: DataType
     content: Content
     functions: Functions
+    fault_file: FaultFile | None = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +172,12 @@ def in_application_source(path: Path, root: Path, source: Sequence[str]) -> bool
     return any(parts[: len(prefix)] == prefix for prefix in prefixes)
 
 
+def fault_place(sigil: Sigil, text: str, root: Path, listed: Path) -> Path:
+    """Return the file `sigil.fault_file` names for `text`, else `listed`."""
+    named = sigil.fault_file(text, root) if sigil.fault_file else None
+    return listed if named is None else named
+
+
 def repository_root(start: Path) -> Path | None:
     """Return the nearest folder at or above `start` that holds `.git`, or None."""
     for folder in (start, *start.parents):
@@ -225,12 +233,13 @@ def main(sigil: Sigil, argv: list[str] | None = None) -> int:
         print(f"cannot read {args.file}: {exc}", file=sys.stderr)
         return 1
     source = tuple(args.source) if args.source else APPLICATION_SOURCE
-    in_source = in_application_source(args.file, root, source)
     flags = []
     for number, raw in enumerate(lines, start=1):
         text = raw.strip()
         if not text or text.startswith("#"):
             continue
+        place = fault_place(sigil, text, root, args.file)
+        in_source = in_application_source(place, root, source)
         verdict = judge(sigil, text, root, in_source=in_source)
         flags.append(verdict.flag)
         row = {

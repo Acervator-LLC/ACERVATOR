@@ -1,0 +1,4 @@
+# Read with --root harness_fixtures/sigil_code_type/sample_tree
+
+# UNSOUND, HOLD: the faulty arg-type sample sits in src, application source
+src/known_bad_arg_type.py
