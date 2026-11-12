@@ -1,0 +1,42 @@
+# Read with --root harness_fixtures/sigil_code_collection/sample_tree
+# Each file names its rule on line 1, then holds the Use instead blocks python -m ruff rule <id> prints.
+# For C400 C401 C402 C403 C404 C414 RUF048, the lines between define the names the block uses and never defines.
+# foo.py holds the names the F822 block imports.
+
+# CLEAN for its own rule id
+known_good_s607.py
+known_good_b006.py
+known_good_b033.py
+known_good_b039.py
+known_good_com812.py
+known_good_com818.py
+known_good_com819.py
+known_good_c400.py
+known_good_c401.py
+known_good_c402.py
+known_good_c403.py
+known_good_c404.py
+known_good_c405.py
+known_good_c406.py
+known_good_c408.py
+known_good_c409.py
+known_good_c410.py
+known_good_c414.py
+known_good_c418.py
+known_good_pie800.py
+known_good_perf101.py
+known_good_f601.py
+known_good_f822.py
+known_good_plc0208.py
+known_good_plr6201.py
+known_good_plw0244.py
+known_good_ruf023.py
+
+# FINDINGS, FIX for another rule alone: G101's form reads C408, RUF022's and RUF068's read F822
+known_good_g101.py
+known_good_ruf022.py
+known_good_ruf068.py
+
+# REJECTED, BLOCK at tier 2: the corrected form holds no collection, because the fix removes it
+known_good_b013.py
+known_good_ruf048.py
