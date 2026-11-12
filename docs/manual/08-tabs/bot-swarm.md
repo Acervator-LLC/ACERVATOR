@@ -267,9 +267,9 @@ One method writes the map. Every live transfer books through
 `src/trading/smart_wire.py`, in `book_transfer`, which moves three figures
 together — the source ledger's outgoing total, the target ledger's incoming
 total, and the target's breakdown line for the source. Both live transfer paths
-call it: `src/trading/smart_wire.py`, in `distribute_fold_profit` on a
-compounded fold, and `src/trading/scrumming/wire_routing.py`, in
-`_route_scrum_proceeds_via_wires` on a scrum, a manual scrum and a detonation.
+call it: `src/trading/scrumming/execution.py`, in `_route_unfoldable_proceeds` on a
+detonation and a Shadow exit, and `src/trading/scrumming/wire_routing.py`, in
+`_route_scrum_proceeds_via_wires` on a scrum and a manual scrum.
 A transfer cannot reach the totals without reaching the breakdown.
 
 Now: a scrum or a manual scrum books each wire's share of its surplus alone, a detonation books each wire's share of its proceeds, and a fold books no transfer (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).

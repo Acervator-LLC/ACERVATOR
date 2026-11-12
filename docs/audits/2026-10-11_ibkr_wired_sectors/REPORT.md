@@ -262,7 +262,7 @@ platform is the dated contract.
 - **what** — ibkr names its own futures families: **Agriculture, Cryptocurrency, Currencies, Energy, Equity Indices, E-mini and Micro E-mini Futures, Fixed Income, Interest Rates, Metals, Softs, Volatility Indices**, on "30+ market centers". The list route is `GET /v1/api/trsrv/futures?symbols=ES,MES`, which answers an `expirationDate` and an `ltd` per contract. **No perpetual.** The word "perpetual" names **0** of the 13 ibkr pages read; the controls on the same 13 pages are "futures" 265, "currency" 137, "gold" 72 and "index" 24
 - **where** — the same one order route, with `manualIndicator` False on every US futures order
 - **when** — the same two moments
-- **why** — `src/trading/scrumming/sizing.py, in VARIANT_ROLLING_POSITION` is built and `expiry_close_decision` is the action, reading `MarketRules.expiry_ms` which this connector fills from the venue's own `expirationDate`
+- **why** — `src/trading/scrumming/sizing.py, in MECHANIC_EXPIRY` is built and `expiry_close_decision` is the action, reading `MarketRules.expiry_ms` which this connector fills from the venue's own `expirationDate`
 - **how** — Rolling Position Scrumming, which `VARIANTS_BUILT` holds
 
 The family-to-sector map is schwab's shape on ibkr's own words: Agriculture,

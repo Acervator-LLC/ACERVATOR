@@ -44,9 +44,9 @@ the coordinator and the name the Phantom Bots pages read are two different
 names, and only the second is declared on the bot.
 
 ```
-src/gui/main_window.py, in _on_tf_lock_changed
-    writes   bot._coordinator._lock_timeframe
-    readers  none
+src/trading/scrumming_bot.py, in ScrummingBot._refresh_phantom_lock
+    writes   bot._phantom_lock_timeframe
+    readers  the three Phantom Bots pages below
 
 src/trading/scrumming_bot.py        declares _phantom_lock_timeframe on the bot
 src/gui/main_tabs/phantom_bots_tab_surface.py   LOCK_TIMEFRAME_ATTRIBUTE names that one

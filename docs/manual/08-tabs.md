@@ -3693,7 +3693,7 @@ on the four screens                   84        0
 
 **The twenty was prose, and prose reaches no screen.** No module held the
 figure: `src/gui/theme_engine.py` declares the box's width, padding, text size
-and wait, and none of the four is a word count. `src/gui/tooltips.py, in
+and wait, and none of the four is a word count. `src/gui/descriptions.py, in
 DESCRIPTION_WORD_LIMIT` now holds it, `set_description` reads it on every call,
 and a description over it is still shown and is named in the GUI log with its
 word count. The screen never loses a sentence to the figure, and an over-long
@@ -3915,7 +3915,7 @@ The readings above stand as written. This table gives what each one reads now.
 | "the five sentences      15 to 19 words" | The five sentences are 11 to 13 words, so a line can follow each one. |
 | "A description on every control that has none is unbuilt" | Every control the window builds carries a description. |
 | "178 of the 597 calls build their text at runtime, so no static count reaches them." | The 186 descriptions built at runtime were driven at their longest values, and none is over twenty words. |
-| "`src/gui/tooltips.py, in DESCRIPTION_WORD_LIMIT` now holds it" | `src/gui/descriptions.py` holds the figure, and the helper imports it from there. |
+| "`src/gui/descriptions.py, in DESCRIPTION_WORD_LIMIT` now holds it" | `src/gui/descriptions.py` holds the figure, and the helper imports it from there. |
 | "The three left are the indicator panel's blank padding columns." | Each blank head sits over a pillar the other table titles, and carries that pillar's sentence. |
 | "the browser build appends a privacy line of ten instead." | No heading carries a privacy line. The dot under the label carries the privacy state. |
 | "SETTINGS_TAB_DESCRIPTIONS        50 controls" and the rows under it | The declaration table in this section gives the current counts. |
