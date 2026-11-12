@@ -437,6 +437,8 @@ A press queues a market order to target on the next tick, past the gates, and it
 
 While the hard breaker holds a bot, a press queues nothing and the status log names the breaker, and the button keeps its colour (`src/trading/bot_container.py, in BotManager.force_fire`).
 
+Now: while the hold stands, the button reads Held, dotted, and its mouse-over names the hold (`src/gui/main_tabs/bot_status_table_surface.py, in refused_fire`).
+
 Now: a press that buys spends only dollars no other bot's queued buy-backs or wire credits hold, and the log names those dollars when none are left (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._held_for_other_bots`). A press on a tranche whose fold still waits on the venue's answer sends nothing and reads refused (`src/trading/bot_container.py, in BotContainer.guarded_place_order`).
 
 Fire and Ammo use their colours differently. Ammo is green above target, and Fire is red to sell above target.
@@ -450,6 +452,7 @@ Fire and Ammo use their colours differently. Ammo is green above target, and Fir
 | Muted, dashed, glowing | The position ceiling stops automatic buys. A press buys past it. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire` |
 | Amber fill, amber text or red text | Parked at target: at the band, tracking or searching. A press does nothing. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire` |
 | No Trade, dotted | A press will not act. The distance sits inside 1% of target, or the exchange disputes the bot's unit count. `src/gui/main_tabs/bot_status_table_surface.py, in manual_fire_verdict` |
+| Held, dotted | A press will not act. The hard breaker holds every order, and the mouse-over names the hold. `src/gui/main_tabs/bot_status_table_surface.py, in manual_fire_verdict` |
 | Grey, off | The bot is neither running nor paused. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._fire_button` |
 
 ### The command bar
