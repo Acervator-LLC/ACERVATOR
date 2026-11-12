@@ -35,6 +35,7 @@ from .core import (
     main,
     tool_text,
 )
+from .fix_class import BY_FIX_CLASS, FOLLOW_ON
 
 CLEAN = "CLEAN"
 FINDINGS = "FINDINGS"
@@ -66,14 +67,6 @@ RULES = (
 PREVIEW = ("PLE4703", "FURB140", "FURB142")
 ERROR_CLASS = "PLE"
 HOLDING = tuple(code for code in RULES if code.startswith(ERROR_CLASS))
-FOLLOW_ON = {
-    "always": "apply ruff's fix for that rule and read the file again",
-    "sometimes": "the same, where ruff offers it for that line",
-    "none": "a unit of work",
-}
-BY_FIX_CLASS = "; by fix class: " + "; ".join(
-    f"{fix} -> {rule}" for fix, rule in FOLLOW_ON.items()
-)
 LOOP_NODES = (
     ast.For,
     ast.AsyncFor,

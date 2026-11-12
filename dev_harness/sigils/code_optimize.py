@@ -19,6 +19,7 @@ from .coding_input import (
     locate,
 )
 from .core import FLAGS, Flag, FlagRow, Sigil, Verdict, judge, main, tool_text
+from .fix_class import BY_FIX_CLASS, FOLLOW_ON
 
 CLEAN = "CLEAN"
 OPTIMIZABLE = "OPTIMIZABLE"
@@ -28,11 +29,6 @@ RUFF_BUILT = "0.16.0"
 RUFF_TIMEOUT_S = 120
 FAMILIES = ("PERF", "SIM", "C4", "UP", "FURB", "PLR17", "C901")
 FIX_CLASSES = {"Always": "always", "Sometimes": "sometimes", "None": "none"}
-FOLLOW_ON = {
-    "always": "apply ruff's fix for that rule and read the file again",
-    "sometimes": "the same, where ruff offers it for that line",
-    "none": "a unit of work",
-}
 
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
@@ -198,11 +194,7 @@ SIGIL = Sigil(
         OPTIMIZABLE: FlagRow(Flag.OPTIMIZE),
     },
     refusal=REJECTED,
-    follows={
-        Flag.OPTIMIZE: FLAGS[Flag.OPTIMIZE]["follows"]
-        + "; by fix class: "
-        + "; ".join(f"{fix} -> {rule}" for fix, rule in FOLLOW_ON.items()),
-    },
+    follows={Flag.OPTIMIZE: FLAGS[Flag.OPTIMIZE]["follows"] + BY_FIX_CLASS},
     readers=READERS,
     data_type=data_type_fault,
     content=content_fault,
