@@ -1,0 +1,9 @@
+# Read with --root harness_fixtures/sigil_code_reach/sample_tree
+
+# UNREACHED, HOLD: in src, application source; arg reads 100, the confidence floor.
+# The file is the code block under "Forward references for type annotations"
+# in vulture's README at tag v2.16, unchanged.
+src/known_bad_forward_ref.py
+
+# UNREACHED, FIX: in src, but the dead-code example's highest item is 90, below the floor
+src/known_bad_dead_code.py

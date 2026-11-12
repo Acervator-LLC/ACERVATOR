@@ -1,0 +1,10 @@
+# Read with --root harness_fixtures/sigil_code_reach/sample_tree
+
+# REACHED: dead_code.py from vulture's README at tag v2.16, with lines 1, 4 and 8 removed,
+# the three lines the README reports; every remaining line is the README's own
+known_good_dead_code.py
+
+# REACHED: total is called only from known_good_cross_file_caller.py;
+# vulture on this file alone reports total at 60
+known_good_cross_file.py
+known_good_cross_file_caller.py

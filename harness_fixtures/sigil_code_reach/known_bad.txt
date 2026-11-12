@@ -1,0 +1,10 @@
+# Read with --root harness_fixtures/sigil_code_reach/sample_tree
+# The file is dead_code.py from vulture's README at tag v2.16, section "Examples", unchanged:
+# https://github.com/jendrikseipp/vulture/blob/v2.16/README.md
+
+# UNREACHED, FIX: os, greet and message, the three names the README lists; none reaches 100
+known_bad_dead_code.py
+
+# UNREACHED, FIX: narrowed to the one function or class holding each name
+known_bad_dead_code.py, in hello_world
+known_bad_dead_code.py, in Greeter
