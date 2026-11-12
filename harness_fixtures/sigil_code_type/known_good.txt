@@ -1,0 +1,10 @@
+# Read with --root harness_fixtures/sigil_code_type/sample_tree
+# Each file holds an Example block with the lines the page marks "# Error" taken out.
+# The arg-type and return-value blocks hold no "# OK" line, so no corrected file exists.
+
+# SOUND
+known_good_attr_defined.py
+known_good_union_attr.py
+known_good_call_arg.py
+known_good_index.py
+known_good_union_attr.py, in func
