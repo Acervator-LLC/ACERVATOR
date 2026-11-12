@@ -58,7 +58,7 @@ src/gui/simulator/sim_phantom_bots_tab.py       reads it off the bot
 Which of the two names the drop-down should set is a product choice, so nothing
 here proposes one.
 
-`src/gui/main_window.py` — `_on_tf_lock_changed`
+The handler below is gone from `src/gui/main_window.py`, and the bot reads the lock from its coordinator (`src/trading/scrumming_bot.py, in ScrummingBot._refresh_phantom_lock`).
 
 ```python
 for bot in self._bot_manager._bots.values():
@@ -81,7 +81,7 @@ Phantom Bots pages already read is the one that survives. The handler sets that
 name on the bot and keeps setting the older name on the coordinator, so a reader
 of the older spelling still finds its value.
 
-`src/gui/main_window.py` — `_on_tf_lock_changed`, as it stands
+The later handler below is gone from `src/gui/main_window.py` too, and the same bot method reads the lock (`src/trading/scrumming_bot.py, in ScrummingBot._refresh_phantom_lock`).
 
 ```python
 for bot in self._bot_manager._bots.values():

@@ -1152,12 +1152,12 @@ per paper bot.
 | `unregister_wire` | drops one route |
 | `attach_bot` | holds the fake balance of an open paper bot a share can reach |
 | `release_bot` | gives that balance back when the run ends |
-| `distribute_fold_profit` | moves each wire's share of one fold's growth |
+| `distribute_sale_surplus` | moves each wire's share of one sale's surplus |
 | `land_parked_credits` | spreads a parked pool over standing tranches |
 | `export_wires`, `import_wires` | the routes the paper fleet file carries |
 | `export_ledgers`, `import_ledgers` | the ledgers the paper fleet file carries |
 
-`src/paper/paper_run.py` — the fold hands its growth on
+The wire call in the fold code below is gone, and a paper sale hands its surplus on instead (`src/paper/paper_run.py, in route_sale_surplus`).
 
 ```python
     growth = grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
