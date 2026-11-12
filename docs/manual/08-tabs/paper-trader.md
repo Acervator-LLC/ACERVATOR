@@ -10,7 +10,7 @@ describes what draws there today.
 The tab drew three lines: its name, one sentence saying it was not
 built, and the issue that owned it. It read no bot, no price and no trade.
 
-`paper_trader_tab_surface` — the empty state it carried
+The placeholder carried its empty state in a surface module of its own, and the block below is that state.
 
 ```python
 HEADING = "Paper Trader"
@@ -20,14 +20,13 @@ STATE_TEXT = "This tab is not built."
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
 
-The module `paper_trader_tab_surface` is gone, and the empty state above went
-with it. No module on disk holds `BUILT` or `STATE_TEXT` for this tab.
+That module is gone, and the empty state above went with it. No module on disk
+holds `BUILT` or `STATE_TEXT` for this tab.
 
-Two frontends draw that one view model. `EmptyTabsMixin` in
-`src/gui/main_tabs/empty_tabs.py` builds the Qt tab, and
-`src/gui/web/paper_trader_tab.js` registers a panel with the Electron shell's
-panel host. `src.core.desktop_bridge` serves the model under
-`paper_trader_tab.state`.
+Two frontends drew that one view model. `EmptyTabsMixin` in
+`src/gui/main_tabs/empty_tabs.py` built the Qt tab, and a renderer panel
+registered with the Electron shell's panel host. The bridge served the model
+under a method name that no module declares now.
 
 ## What the step is
 
@@ -84,10 +83,11 @@ Issues #422 and #426 both folded into issue #19, which built the tab.
 ## The screen as it stands now
 
 The tab is built. It sits second on the bar and carries the Trading tab's panes
-over the live exchange feed. `PaperTraderTabQt` draws them in Qt and
-`src/gui/web/paper_trader_tab.js` draws them in React, from one view model.
+over the live exchange feed. `src/gui/paper/paper_trading_tab.py, in PaperTradingTab`
+draws them in Qt and `src/gui/web/paper_trading_tab.js` draws them in React,
+from one view model.
 
-`paper_trader_tab_surface` — the fields both hosts read
+The old Paper Trader surface declared the fields both hosts read.
 That module is gone and no module on disk holds `DECLARED_FIELDS` for this tab.
 The Paper tab's surface is `src/gui/paper/paper_trading_tab_surface.py`,
 `PaperTradingTab` in `src/gui/paper/paper_trading_tab.py` draws it in Qt, and
@@ -116,8 +116,7 @@ DECLARED_FIELDS = (
 )
 ```
 
-The module `paper_trader_tab_surface` is gone, and no module on disk holds
-`DECLARED_FIELDS` for this tab.
+The block above is that old declaration.
 `src/gui/paper/paper_trading_tab_surface.py, in view_model` answers the tab
 today.
 
@@ -126,7 +125,8 @@ rows and the bot list. The bot list uses the Trading tab's own columns. The righ
 pane holds the Indicator Voting Panel, computed from the live window. An empty
 selector draws the empty state and invents no reading.
 
-`paper_trader_tab_surface` — the empty state
+The old Paper Trader surface built the voting panel's empty state through the
+function below.
 That module is gone, and `indicator_payload` is declared once, in
 `src/gui/main_tabs/simulator_tab_surface.py`, with its only caller in that same
 module. Nothing on the Paper side reads it. The Paper pane is
@@ -149,8 +149,7 @@ def indicator_payload(
     return ivp.build_payload(model)
 ```
 
-The module `paper_trader_tab_surface` is gone, and no module on disk holds
-`indicator_payload` for this tab.
+No Paper module calls `indicator_payload`.
 `src/gui/paper/paper_trading_tab_surface.py, in ivp_feed` reads the panel today.
 
 ## The two presses
@@ -159,11 +158,11 @@ Import Live Fleet reads the stored bot record and lists what it finds. Start
 Paper Run opens the run and begins ticking. The same button then reads Stop
 Paper Run and ends it, leaving the balances and the trades on screen.
 
-`paper_trader_tab_surface` — the second row's two faces
+The old Paper Trader surface built the second row's two faces with the block
+below.
 That module is gone. The two faces are declared in
-`src/gui/paper/paper_trading_tab_surface.py`, which holds `START_RUN_ACTION`,
-`STOP_RUN_ACTION`, `START_RUN_TEXT`, `STOP_RUN_TEXT`, `in button_name` and
-`in run_buttons`.
+`src/gui/paper/paper_trading_tab_surface.py` now, as its start and stop actions
+and their texts.
 
 ```python
 {
@@ -177,9 +176,9 @@ That module is gone. The two faces are declared in
 }
 ```
 
-The module `paper_trader_tab_surface` is gone, and no module on disk holds
-`DATA_POOL_ROW`. `src/gui/paper/paper_trading_tab_surface.py, in run_buttons`
-carries the row's two faces today.
+No Paper module holds `DATA_POOL_ROW`.
+`src/gui/paper/paper_trading_tab_surface.py, in run_buttons` carries the row's
+two faces today.
 
 ## Downstream only
 
@@ -321,17 +320,19 @@ FIGURE_LABELS = (
 )
 ```
 
-The Qt window and the React page print one line from one view model, so the two
-hosts cannot report different money.
+The Qt window and the React page printed one line from one view model, so the
+two hosts could not report different money.
 
-`paper_trader_tab_surface` — the one line
+The old Paper Trader surface joined the four figures into that line with the
+call below.
 
 ```python
 "text": LEDGER_SEPARATOR.join(f"{one['label']} {one['text']}" for one in cells),
 ```
 
-The module `paper_trader_tab_surface` is gone, and no module on disk holds
-`LEDGER_SEPARATOR`.
+That module is gone, and no module on disk holds `LEDGER_SEPARATOR`. Both hosts
+now hand the header strip one figure set, built over the held fleet and the
+ledger's figures (`src/paper/fleet_source.py, in strip_aggregate`).
 
 ## The Paper Trader log
 
@@ -430,7 +431,7 @@ Trader placeholder, which drew its name, one sentence saying it was not built,
 and the issue that owned it. The section under this one holds what the tab is
 now.
 
-`paper_trader_tab_surface` — the empty state it carried
+The placeholder carried its empty state in a surface module of its own, and the block below is that state.
 
 ```python
 HEADING = "Paper Trader"
@@ -440,11 +441,10 @@ STATE_TEXT = "This tab is not built."
 ISSUE_TEXT = f"Issue #{ISSUE} carries the build-out."
 ```
 
-The module `paper_trader_tab_surface` is gone, and the empty state above went
-with it.
+That module is gone, and the empty state above went with it.
 
-The Qt tab and the `src/gui/web/paper_trader_tab.js` panel both draw that one
-view model, so neither can drift from the other.
+The Qt tab and a renderer panel both drew that one view model, so neither could
+drift from the other.
 
 Live, Paper and the Simulator differ in one thing only, where the data comes
 from. The trading logic stays one body of pure code all three call, and only
@@ -470,7 +470,7 @@ the Privacy Mode row, the market selector, the two button rows, the bot list,
 the Indicator Voting Panel, the Live Feed pane, the Fake Balance table and the
 Paper Run table. The Qt window and the React page draw one view model.
 
-`paper_trader_tab_surface` — what the tab answers
+The old Paper Trader surface answered the tab under the names in the block below.
 That module is gone and no bridge serves `paper_trader_tab.state`. The surface is
 `src/gui/paper/paper_trading_tab_surface.py`, which declares
 `METHOD = "paper_trading.tab"`, `HEADING = "Paper"` and `ISSUE = 19`. The block
@@ -484,7 +484,6 @@ ISSUE = 19
 BUILT = True
 ```
 
-The module `paper_trader_tab_surface` is gone.
 `src/gui/paper/paper_trading_tab_surface.py, in METHOD` answers
 `paper_trading.tab` today, and that file holds `HEADING` and `ISSUE`. No module
 on disk holds `BUILT` for this tab.
@@ -632,15 +631,13 @@ No TA data — No paper fleet yet. Press Import Live Fleet.
 
 ## The style sheet the Paper page loads
 
-The page carries one style sheet. `TAB_STYLE_ASSETS` names it, and
-`page_html` reads the file and writes it into the page's head.
+The page carries Live's own two style sheets, and one function writes them into
+the page's head.
 
-`react_paper_trader_tab` — the sheet the page carries
-That module is gone, no module declares `TAB_STYLE_ASSETS` for this page, and
-there is no `paper_trader_tab.css` on disk. The Paper page carries Live's own two
-sheets, declared in `src/gui/paper/paper_react_trading_tab.py` as
-`STYLE_ASSETS`, and `in page_html` from `src/gui/react_history_panel.py` writes
-them into the page's head.
+The old Paper page host declared one sheet of its own, in the line below.
+That host is gone, and so is its sheet. The Paper page carries Live's two
+sheets, named in `src/gui/paper/paper_react_trading_tab.py, in STYLE_ASSETS` and
+written into the page's head by `src/gui/react_history_panel.py, in page_html`.
 
 ```python
 TAB_STYLE_ASSETS: tuple[str, ...] = ("paper_trader_tab.css",)
@@ -652,12 +649,12 @@ TAB_STYLE_ASSETS: tuple[str, ...] = ("paper_trader_tab.css",)
 STYLE_ASSETS: tuple[str, ...] = ("trading_tab.css", "exchange_tab.css")
 ```
 
-The sheet sets the page ground, the type, the pane grid and the table rules.
-The grid repeats the two pane sizes the Qt clone gives its splitters, so the
-bot list, the voting panel, the feed pane and the run pane take the same share
+The old sheet set the page ground, the type, the pane grid and the table rules.
+Its grid repeated the two pane sizes the Qt clone gave its splitters, so the
+bot list, the voting panel, the feed pane and the run pane took the same share
 of the window in both builds.
 
-`src/gui/web/paper_trader_tab.css` — the pane grid
+The old sheet's pane grid read:
 
 ```css
 .paper-top,
@@ -672,12 +669,12 @@ serif type, one column and no grid.
 
 ### The skin tokens the Paper sheet reads
 
-The sheet names no colour of its own. Every colour arrives as a custom property
-on the tab element, written from the `SKIN` dictionary the surface builds. A
-scrum row and a fold row in the Paper Run table take the two colours
-`SIDE_COLOURS` gives them in the Qt clone.
+The old sheet named no colour of its own. Every colour arrived as a custom
+property on the tab element, written from the `SKIN` dictionary the old surface
+built. A scrum row and a fold row in the Paper Run table took the two colours
+`SIDE_COLOURS` gave them in the Qt clone.
 
-`src/gui/web/paper_trader_tab.css` — the two trade rows
+The old sheet's two trade rows read:
 
 ```css
 .paper-tab tr[data-side="scrum"] td {
@@ -718,9 +715,9 @@ Both builds carry the same draw.
 Unit Q1 of issue #19. The Paper tab is now Live's tab code, forked under Paper
 names in both builds, with Import Live Fleet as the fleet's one way in and the
 header strip reading the paper ledger while Paper is in front. The two hosts
-the sections above describe, `PaperTraderTabQt` and
-`react_paper_trader_tab`, stay on disk and nothing loads them; a
-later unit removes them once a paper bot ticks on the clone.
+the sections above describe are removed, and no Python or JavaScript file
+holds either name; [The old hosts are gone](#the-old-hosts-are-gone) names
+them.
 
 ### The budget rule today overtakes four sentences
 
@@ -1152,12 +1149,12 @@ per paper bot.
 | `unregister_wire` | drops one route |
 | `attach_bot` | holds the fake balance of an open paper bot a share can reach |
 | `release_bot` | gives that balance back when the run ends |
-| `distribute_fold_profit` | moves each wire's share of one fold's growth |
+| `distribute_sale_surplus` | moves each wire's share of one sale's surplus |
 | `land_parked_credits` | spreads a parked pool over standing tranches |
 | `export_wires`, `import_wires` | the routes the paper fleet file carries |
 | `export_ledgers`, `import_ledgers` | the ledgers the paper fleet file carries |
 
-`src/paper/paper_run.py` — the fold hands its growth on
+The wire call in the fold code below is gone, and a paper sale hands its surplus on instead (`src/paper/paper_run.py, in route_sale_surplus`).
 
 ```python
     growth = grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))

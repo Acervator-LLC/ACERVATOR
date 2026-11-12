@@ -1,0 +1,34 @@
+# NOT_GROUNDED: the file is missing
+srcc/trading/indicators/fvg.py, in x
+SRC/trading/indicators/nope.py, in x
+nope.py, in x
+src/trading/indicators/nope.py, in removed
+src/old.py, in old_fn
+
+# NOT_GROUNDED: the path differs in letter case
+SRC/trading/bot_container.py, in guarded_place_order
+
+# NOT_GROUNDED: an invented symbol, or a real symbol under the wrong path
+src/trading/indicators/fvg.py, in no_such_symbol_here_xyz
+src/trading/indicators/fvg.py, in guarded_place_order
+src/trading/bot_container.py, in no_such_function
+
+# NOT_GROUNDED: the name sits only in a comment, a docstring or another string
+src/trading/scrumming/sizing.py, in VARIANT_ROLLING_POSITION
+dev_harness/harness/coding_archetype.py, in _run_archetype_selfcheck
+src/core/signal_contract.py, in update_charts
+
+# REJECTED: outside the form
+src/trading/bot_container.py:123, in guarded_place_order
+src/trading/../trading/bot_container.py, in guarded_place_order
+src\trading\bot_container.py, in guarded_place_order
+./src/trading/indicators/nope.py, in x
+.github/workflows/nope.yml, in x
+https://example.invalid/fvg src/trading/indicators/fvg.py, in FVGIndicator
+`src/trading/bot_container.py`, in `guarded_place_order`
+src/trading/bot_container.py in guarded_place_order
+src/trading/bot_container.py, in guarded_place_order()
+
+# REJECTED: a real citation of a file that is not Python
+.github/workflows/ci.yml, in ci-gate
+dev_harness/skills/ta-canon/SKILL.md, in RANK EVERY DEPARTURE

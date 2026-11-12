@@ -27,9 +27,9 @@ A drop-down of eleven entries: None, then Lock below each of ten timeframes from
 5m to 1w. It opens on the fifth entry, Lock below 1h. Choosing one writes a
 status line beside the box and puts the timeframe on the event bus.
 
-The main window takes that event and sets `_lock_timeframe` on the coordinator
-of every running Scrumming Bot. Nothing declares or reads that name, so the
-choice reaches the coordinator and stops there. The tooltip on the box says the
+The drop-down above is removed, so no such event reaches the main window, and
+nothing sets a lock name on the coordinator. Each bot reads the lock from its
+coordinator itself (`src/trading/scrumming_bot.py, in ScrummingBot._refresh_phantom_lock`). The tooltip on the box says the
 lock feeds directly into active Scrumming Bots. Issue #155 carries this.
 
 **The issue #155 clause above is overtaken.** It is not edited and not removed.
@@ -44,9 +44,9 @@ the coordinator and the name the Phantom Bots pages read are two different
 names, and only the second is declared on the bot.
 
 ```
-src/gui/main_window.py, in _on_tf_lock_changed
-    writes   bot._coordinator._lock_timeframe
-    readers  none
+src/trading/scrumming_bot.py, in ScrummingBot._refresh_phantom_lock
+    writes   bot._phantom_lock_timeframe
+    readers  the three Phantom Bots pages below
 
 src/trading/scrumming_bot.py        declares _phantom_lock_timeframe on the bot
 src/gui/main_tabs/phantom_bots_tab_surface.py   LOCK_TIMEFRAME_ATTRIBUTE names that one
@@ -58,7 +58,7 @@ src/gui/simulator/sim_phantom_bots_tab.py       reads it off the bot
 Which of the two names the drop-down should set is a product choice, so nothing
 here proposes one.
 
-`src/gui/main_window.py` — `_on_tf_lock_changed`
+The handler below is gone from `src/gui/main_window.py`, and the bot reads the lock from its coordinator (`src/trading/scrumming_bot.py, in ScrummingBot._refresh_phantom_lock`).
 
 ```python
 for bot in self._bot_manager._bots.values():
@@ -81,7 +81,7 @@ Phantom Bots pages already read is the one that survives. The handler sets that
 name on the bot and keeps setting the older name on the coordinator, so a reader
 of the older spelling still finds its value.
 
-`src/gui/main_window.py` — `_on_tf_lock_changed`, as it stands
+The later handler below is gone from `src/gui/main_window.py` too, and the same bot method reads the lock (`src/trading/scrumming_bot.py, in ScrummingBot._refresh_phantom_lock`).
 
 ```python
 for bot in self._bot_manager._bots.values():

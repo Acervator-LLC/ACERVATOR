@@ -79,18 +79,17 @@ The Indicator Voting Panel has [07-indicators.md](../07-indicators.md).
 
 Every screen the window does not build gets a sentinel instead of a widget, so
 a legacy reader gets that sentinel rather than an error. The list covers the
-Competition and Local Testnet tabs, the analytics, risk, journal, alerts and
-audio pages, and the retired Paper Trader widget, which is not the Paper tab
-issue #19 built.
+Competition and Local Testnet tabs, and the analytics, risk, journal, alerts and
+audio pages.
 
 `src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
 
 ```python
 def _install_retired_tab_sentinels(self) -> None:
-    """Assign None to ``_paper_trader``, ``_competition_tab`` and the rest.
+    """Assign None to ``_competition_tab``, ``_testnet_tab`` and the rest.
 
-    ``main_window`` tests ``_analytics_tab``, ``_risk_tab``,
-    ``_journal_tab`` and ``_alerts_tab`` before refreshing them.
+    ``main_window`` tests ``_risk_tab`` and ``_alerts_tab`` before
+    refreshing them.
     """
 ```
 

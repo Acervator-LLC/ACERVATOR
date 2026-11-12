@@ -1,0 +1,6 @@
+# Read with --root harness_fixtures/sigil_code_secure/sample_tree
+
+# WEAK, HOLD: the faulty B602 sample sits in src, application source, with high findings
+src/known_bad_b602.py
+# WEAK, FIX: in src, but its only findings are low, below the medium severity floor
+src/known_good_b602.py

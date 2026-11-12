@@ -1,0 +1,19 @@
+# Read with --root harness_fixtures/sigil_code_secure/sample_tree
+# Each file holds only lines of the same bandit 1.9.4 example file as its faulty sample.
+# None reads the bandit test id of its faulty sample.
+# B307 has none: its page names ast.literal_eval, and no published line calls it.
+
+# b602: lines 1 and 23, the shell=False call the B602 page shows
+known_good_b602.py
+# b324: lines 1 and 26, the usedforsecurity=False call the B324 page names
+known_good_b324.py
+# b506: lines 2-4 and 24-28, marked "no issue should be found"; the page names yaml.safe_load,
+# and no published line calls it; mypy finds no type stubs for yaml, so the file sits in untyped_bad
+untyped_bad/known_good_b506.py
+# b105: lines 96-97 and 104-105, marked "but not"; the B105 page names no safe form
+fragments_bad/known_good_b105.py
+# b608: lines 34-39, marked "good"; the B608 page links to parameterized queries
+fragments_bad/known_good_b608.py
+
+# CLEAN: a faulty file narrowed to a function holding no fault
+known_bad_b506.py, in test_json_load

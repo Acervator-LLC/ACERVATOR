@@ -88,8 +88,8 @@ and the repository tracks one Python module under `tests/`, its own conftest.
 
 **Overtaken.** That correction stays whole here:
 
-> The code still carries the guard. `src/_version.py`, in `describe`, hands git
-> one exact tag name, so a local backup tag is never eligible.
+> The code still carries the guard. `src/_version.py`, in `read_stamp`, hands git
+> no tag name, so a local backup tag is never eligible.
 
 No tag guard is needed now. `src/_version.py`, in `read_stamp`, asks git for
 HEAD's own date and id, and no tag of any name can be chosen or missed. The

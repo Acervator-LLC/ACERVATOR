@@ -450,7 +450,7 @@ platform is the dated contract.
 - **what** — all **68** contracts, every one dated. `Future.expiration-date`, `Future.expires-at` and `Future.last-trade-date` are published per contract, and `contract-codes` lists them per product. **No perpetual.** The word "perpetual" names **0** of the 29 venue files read; the controls on the same 29 files are "futures" 725, "currency" 327, "crypto" 325 and "fractional" 55, and an invented word names 0. The baseline control is the venue's own 404 page, which carries "futures" 11 from the site navigation alone
 - **where** — the same one order route, with `automated-source` True on every order
 - **when** — the same two moments
-- **why** — `src/trading/scrumming/sizing.py, in VARIANT_ROLLING_POSITION` is built and `expiry_close_decision` is the action, reading `MarketRules.expiry_ms` which this connector fills from the venue's own `expiration-date`
+- **why** — `src/trading/scrumming/sizing.py, in MECHANIC_EXPIRY` is built and `expiry_close_decision` is the action, reading `MarketRules.expiry_ms` which this connector fills from the venue's own `expiration-date`
 - **how** — Rolling Position Scrumming, which `VARIANTS_BUILT` holds
 
 **Issue row 5 is overtaken, and this is the venue that overtakes it.** Row 5

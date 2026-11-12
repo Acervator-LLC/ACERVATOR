@@ -190,7 +190,7 @@ ledger per bot.
 | ------ | ------------ |
 | `register_wire` | Adds an edge carrying its own percentage |
 | `unregister_wire` | Drops one edge |
-| `distribute_fold_profit` | Moves that percentage of realised profit to each wired target |
+| `get_outgoing_wires` | Answers one bot's targets and percentages, which the bot reads on each sale to move that percentage of the sale's surplus (`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires`) |
 | `book_transfer` | Books one transfer onto both ledgers — the two wire totals and the target's provenance line for the funder |
 | `export_wires`, `import_wires` | Carry the topology through a save and a restart |
 | `export_ledgers`, `import_ledgers` | Carry the provenance through the same |
@@ -213,7 +213,8 @@ def routable_pct(value) -> Optional[float]:
 A bool is refused by name. `float(True)` answers 1.0, so a saved `true` would
 otherwise stand as a one percent wire nobody configured. `register_wire` and
 `import_wires` refuse that kind before they store anything,
-`distribute_fold_profit` routes no share from a percent it cannot admit, and
+`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires`
+routes a share only from a percent those two stored, and
 `export_wires` drops such a row from the save and logs which route is gone.
 `PaperWireManager` and `SimWireManager` read the same two functions, so the
 three engines admit and refuse the same values.
@@ -267,9 +268,9 @@ One method writes the map. Every live transfer books through
 `src/trading/smart_wire.py`, in `book_transfer`, which moves three figures
 together — the source ledger's outgoing total, the target ledger's incoming
 total, and the target's breakdown line for the source. Both live transfer paths
-call it: `src/trading/smart_wire.py`, in `distribute_fold_profit` on a
-compounded fold, and `src/trading/scrumming/wire_routing.py`, in
-`_route_scrum_proceeds_via_wires` on a scrum, a manual scrum and a detonation.
+call it: `src/trading/scrumming/execution.py`, in `_route_unfoldable_proceeds` on a
+detonation and a Shadow exit, and `src/trading/scrumming/wire_routing.py`, in
+`_route_scrum_proceeds_via_wires` on a scrum and a manual scrum.
 A transfer cannot reach the totals without reaching the breakdown.
 
 Now: a scrum or a manual scrum books each wire's share of its surplus alone, a detonation books each wire's share of its proceeds, and a fold books no transfer (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
@@ -638,11 +639,12 @@ One reservation per bot stands against a wallet. A total above the wallet
 figure is refused whole, and the free figure reports what is left. The claims
 settle against the venue, because the exchange is the authority.
 
-`capital_registry` — `CapitalRegistry.request_reservation`
-That file and that method are gone. The claims table lives in
-`src/trading/capital_reservation.py` now, as `CapitalReservationRegistry`, and
-`in reserve` is the call that takes a claim. It stores a `Reservation` and
-returns its token rather than a granted figure, and `in effective_available`
+The dollar registry's file and its reservation method are gone.
+The claims table lives in one registry now, and
+`src/trading/capital_reservation.py, in CapitalReservationRegistry.reserve`
+takes a claim. It stores a reservation record and returns its token rather than
+a granted figure, and
+`src/trading/capital_reservation.py, in CapitalReservationRegistry.effective_available`
 answers what is left. The block below records the older contract.
 
 ```python
@@ -654,9 +656,9 @@ A total above the ``_wallet_usd`` figure is refused whole with
 """
 ```
 
-The reservation table reaches the frontend through its own bridge method, named
-in the table at the foot of this file. The Qt panel beside it,
-`CapitalRegistryPanel`, is declared and no screen builds it.
+The dollar registry's table reached the frontend through its own bridge method,
+named in the table at the foot of this file. A Qt panel beside it was declared
+and no screen built it, and the section below records that both are gone.
 
 ### The dollar registry and its table are gone
 
@@ -1279,7 +1281,7 @@ The Qt widget file went. `BotListView` and `LaneWireCanvas` had one caller, the
 Swarm tab, and nothing else built either of them. The live bot settings window
 draws its own wire table from `QTableWidget`, so it lost nothing.
 
-`bot_swarm_list` — what was deleted
+The List View module is deleted, and these are the three classes it held.
 
 ```python
 class BotListView(QTableWidget):
@@ -1287,9 +1289,10 @@ class LaneWireCanvas(QWidget):
 class BotSwarmLaneAllocator:
 ```
 
-List View is removed whole. The surface `bot_swarm_list_surface.py` and the
-module `bot_swarm_list.js` are deleted. The bridge method, the manifest line
-and the renderer page's script tag that reached them are gone.
+List View is removed whole. Its Qt surface and its renderer module are deleted
+with it. The bridge method, the manifest line and the renderer page's script tag
+that reached them are gone. The grid of locust cards is the whole tab
+(`src/gui/bot_visualizer.py, in BotVisualizationTab`).
 
 `src/gui/web/bot_swarm_tab.js` — the shell that still names the list globals
 

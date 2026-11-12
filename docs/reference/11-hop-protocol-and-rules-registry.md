@@ -8,9 +8,9 @@ one running today.
 
 ## The handoff file
 
-`ACERVATOR_HOP8.md` at the repository root is the current handoff and the only
-one this manual describes. The earlier `ACERVATOR_HOP*.md` files at the root
-hold archives of sessions that closed, and nothing in them binds.
+`ACERVATOR_HOP9.md` at the repository root is the current handoff. The earlier
+`ACERVATOR_HOP8.md` at the root holds an archive of sessions that closed, and
+nothing in it binds.
 
 ### The root-file inventory sentences, overtaken
 
@@ -74,7 +74,7 @@ rather than a check on one.
 The picker sorts the file names as strings and takes the last one. Every handoff
 suffix holds one digit today, so the answer is correct. Driven with a two-digit
 name added, `ACERVATOR_HOP10` sorts ahead of the single digits, the last entry
-stays `ACERVATOR_HOP8.md`, and the drift report then describes a superseded file.
+stays `ACERVATOR_HOP9.md`, and the drift report then describes a superseded file.
 Driven again with only the two newest names present, the answer is the same. The
 check needs a numeric key before a tenth handoff exists.
 
@@ -485,8 +485,8 @@ reported  H008 when a declared path opens on disk
 ```
 
 The reason may run onto the next line, so the item is read whole rather than one
-line at a time. Read one line at a time the handoff declares one path; read as
-items it declares two.
+line at a time. Read one line at a time `ACERVATOR_HOP8.md` declares one path;
+read as items it declares two.
 
 ```
 ACERVATOR_HOP8.md, under CITED AS ABSENT

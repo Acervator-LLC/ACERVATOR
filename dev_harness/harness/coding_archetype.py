@@ -53,6 +53,7 @@ from dev_harness.harness.report import (
 
 __all__ = [
     "HANDLED_LANGUAGES",
+    "RUFF_SEVERITY_OVERRIDES",
     "SPEC_INJECTED_GLOBALS",
     "SPEC_SUFFIX",
     "UNKNOWN_LANGUAGE",
@@ -314,9 +315,17 @@ _PU_NAME_RE = re.compile(r'"([^"]+)"')
 _PU_BINDING_CACHE: dict[str, tuple[set[str], set[str]]] = {}
 
 
+# Ruff rule ids graded apart from their family; bandit grades B603 and B607 low.
+RUFF_SEVERITY_OVERRIDES: dict[str, str] = {
+    "S603": "low",
+    "S607": "low",
+}
+
+
 # Matched longest-prefix-first, so SIM, SLF, RUF and ANN are not swallowed
 # by the single-letter S family.
 _RUFF_SEV_MAP: dict[str, str] = {
+    **RUFF_SEVERITY_OVERRIDES,
     "F": "medium",  # pyflakes (real bugs / unused code)
     "E": "medium",  # pycodestyle errors
     "W": "low",  # pycodestyle warnings

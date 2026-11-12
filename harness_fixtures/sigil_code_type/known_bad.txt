@@ -1,0 +1,11 @@
+# Read with --root harness_fixtures/sigil_code_type/sample_tree
+# Each file holds the Example block of its error code on mypy's error code list.
+
+# UNSOUND, FIX: each file reads its own error code
+known_bad_arg_type.py
+known_bad_return_value.py
+known_bad_attr_defined.py
+known_bad_union_attr.py
+known_bad_call_arg.py
+known_bad_index.py
+known_bad_union_attr.py, in func

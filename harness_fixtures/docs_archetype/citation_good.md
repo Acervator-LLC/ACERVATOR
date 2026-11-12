@@ -28,7 +28,7 @@ One connector serves every crypto venue. It loads the market table once and
 sizes each order against the entry it finds there.
 
 ```
-# src/exchange/ccxt_connector.py, in load_markets
+# src/exchange/ccxt_connector.py, in CCXTConnector.sync_connect
 ```
 
 A symbol survives every edit short of a rename, and a rename is a change the

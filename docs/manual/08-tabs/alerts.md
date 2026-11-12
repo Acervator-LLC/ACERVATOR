@@ -72,13 +72,13 @@ override the switch.
 
 `src/core/notifications.py, in fill_message` prints the kind, the units, the
 price and the dollars of one fill. The dollars are read by
-`src/core/emit_contracts.py, in fill_usd`, which uses the field names
-`FILL_USD_FIELDS` declares. All ten emitters of the fill event write that one
+`src/core/emit_contracts.py, in read_settled_fill`, which uses the field names
+`SETTLED_FILL_FIELDS` declares. All ten emitters of the fill event write that one
 name, and the `trade.filled` contract takes its optional dollar fields from the
 same tuple.
 
 **The current reading, 2026-10-29.** The message prints the `usd` field of the
-fill that `read_settled_fill` returns, and the two names above are gone. Every
+fill that `read_settled_fill` returns, and the two names above are current. Every
 place in the bot that books a fill sends it in one shape, and the contract for
 the fill event requires every field of that shape, the dollars among them. A
 fill that is not in that shape raises no alert, and the refusal is written to

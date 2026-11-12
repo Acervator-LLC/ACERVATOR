@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-06 against `5d44590b`. **Every claim here names one command that
+Written 2026-11-12 against `54528bd1`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,28 +18,38 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session stopped on 2026-11-06 for a break at the operator's weekly usage
-limit, not at a crash or a context limit. Every repair merged first, and both
-trees and the release were built from the result.
+The session that wrote this was still running, between two units on #1633.
+Every merge since `653f9e5a` is a #1633 unit, and none changes an application
+file.
 
 ```bash
-gh pr list --state open                  # what was still landing
+git log --oneline 653f9e5a..54528bd1     # its 14 merges, pull requests 1664 to 1677
+gh issue view 1633 --comments            # each unit's W5H, result and "Unit closed"
 gh release view                          # what is published
-gh issue view 1643                       # what the manual rewrites found in the code
-gh issue view 1622                       # a buy-back that comes back short in units
+gh pr list --state open                  # what is still landing
 ```
 
-- **In flight when written:** no unit. One dependency update waits on its own
-  gate.
-- **Built in the last stretch:** #1643, a hard breaker stops every order, each
-  breaker reads a candle once, a bot's first buy votes with its own weights, and
-  every route into Settings reaches the running window; #1622 rows 3, 5, 7, 8, 9,
-  11, 15, 16, 17 and 23; #412 row 12 on three pages.
-- **His builds:** both trees built at `c000b151`, build `0.2.0-20261106.0714`.
-  Release `0.2.0-20261106.0715` holds the same code. Nothing merged since changes
-  the application.
-- **Held for him:** the unruled rows of the Decisions tables on #1643 and #1622.
-  Do not raise them as a round.
+- **In flight when written:** this rewrite, and no other unit. Pull request
+  #1663, five routine dependency updates, is open: every check that ran passed,
+  and auto-merge is not armed.
+- **Built on #1633:** the citation sigil CITE.SYMBOL in three editions, the
+  shared sigil core, and the four Coding sigils with one shared input, all under
+  `dev_harness/sigils/`. Truth rules T002 and T003 now decide on their bad
+  sample. Five units corrected manual text that disagreed with the code. The
+  Coding trial's pilot found no benefit and changed no tracked file.
+- **His build and the release** hold the same application code:
+
+```
+his build    0.2.0-20261111.0214, from 653f9e5a, recorded current by each unit
+             gh issue view 1633 --comments, the line "build" in "Unit closed"
+release      0.2.0-20261111.2056, from ad5e2dd5, which merges 653f9e5a into main
+             gh release view
+since        no change in src, desktop, tools, main.py or the two spec files
+             git diff --stat 653f9e5a origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec
+```
+
+- **Held for him:** decision 1 in the #1633 body, and the unruled rows of the
+  Decisions tables on #1643 and #1622. Do not raise them as a round.
 
 ---
 
@@ -184,11 +194,13 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
-- **#1633, Sigil-based Vernacular Condensate, first.** The resume point is the
-  newest comment on the issue headed "Unit closed". It names the last closed Unit,
-  and the next Unit in the body's Build order is the work. Each Unit closes in one
-  pull request and changes no application file. `gh issue view 1633 --comments`
-  shows it.
+- **#1633, Sigil-based Vernacular Condensate, first.** The Coding Archetype's
+  first wave is built, its trial pilot is closed, and its second wave is held.
+  Decision 1 in the body waits on him: may new code run an outside program, such
+  as git, on a path a caller passes in. The resume point stays the newest comment on
+  the issue headed "Unit closed". It names the last closed Unit, and its Next
+  section names the work. Each Unit closes in one pull request and changes no
+  application file. `gh issue view 1633 --comments` shows it.
 - **#1656, then #1657, next.** Prove the merged repairs from the canon, then correct
   the public text that reported private readings.
 - **#1643, what the manual rewrites found.** Next, in order: row 66, the breaker
@@ -216,7 +228,7 @@ wrong far more often than right.
 
 ---
 
-## HIS RULINGS FROM THIS SESSION THAT BIND THE CODE
+## HIS RULINGS THAT BIND THE CODE
 
 ```
 three agreeing indicators   every favour, hunger, the plain floor, a landing strip,
@@ -264,7 +276,8 @@ issue comments              every claim about the code cites "path, in symbol"
 - `python BUILD.py` ends on a prompt; a non-interactive run raises `EOFError` after
   writing every build. Read `dist/`, never the exit code.
 - A local React build carries Electron only when that tree's `desktop/` holds it:
-  run `npm ci --no-audit --no-fund` there, then `node node_modules/electron/install.js`.
+  run `npm ci --no-audit --no-fund` there, then, from the root,
+  `node desktop/node_modules/electron/install.js`.
   The React window is web pages inside Qt, so a published React build opens
   without Electron. Never report the size gap as a fault.
 - Nothing run may reach outside its process. `webbrowser.open` and
@@ -298,7 +311,7 @@ Then, in each tree he launches from:
 ```bash
 pip install -e .                                  # Python 3.14; groups in pyproject.toml
 npm install --no-audit --no-fund                  # analyzers at the root
-cd desktop && npm ci --no-audit --no-fund && node node_modules/electron/install.js
+(cd desktop && npm ci --no-audit --no-fund) && node desktop/node_modules/electron/install.js
 python BUILD.py                                   # read dist/ afterwards
 python -m tools.hop_check                         # exit 0 before any work
 ```
