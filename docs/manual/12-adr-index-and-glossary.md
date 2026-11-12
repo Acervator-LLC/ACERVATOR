@@ -171,7 +171,7 @@ The Simulator rebuild removed the fleet-replay files this glossary once named.
 
 - **Archetype** — a domain quality gate under `dev_harness/harness/`, reporting a
   `passed` boolean.
-- **Handoff** — `ACERVATOR_HOP8.md`, measured for drift by `tools/hop_check.py`.
+- **Handoff** — `ACERVATOR_HOP9.md`, measured for drift by `tools/hop_check.py`.
 - **Rule id** — an RN name in `RULE_META`, in `unreached/core/rule_registry.py`. The
   registry has no production importer and the ids bind nothing.
   `RULE_META` now lives at `unreached/core/rule_registry.py`, moved out of
