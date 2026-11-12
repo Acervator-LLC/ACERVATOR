@@ -715,9 +715,9 @@ Both builds carry the same draw.
 Unit Q1 of issue #19. The Paper tab is now Live's tab code, forked under Paper
 names in both builds, with Import Live Fleet as the fleet's one way in and the
 header strip reading the paper ledger while Paper is in front. The two hosts
-the sections above describe, `PaperTraderTabQt` and
-`react_paper_trader_tab`, stay on disk and nothing loads them; a
-later unit removes them once a paper bot ticks on the clone.
+the sections above describe are removed, and no Python or JavaScript file
+holds either name; [The old hosts are gone](#the-old-hosts-are-gone) names
+them.
 
 ### The budget rule today overtakes four sentences
 

@@ -1428,11 +1428,9 @@ rather than typed.
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `PaperTraderTabQt` | `paper_trader_tab.js` | yes | yes | yes | yes | no | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
-| `react_paper_trader_tab` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_proof_of_accumulation_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_system_status_tab.py` | no | - | no | no | no | - | no | React side |
@@ -1475,7 +1473,7 @@ together: `capital_registry_panel`, its view model, its
 renderer page, and the registry behind them. The bridge no longer offers the
 method, and the renderer manifest no longer names the page.
 
-The two Paper Trader host rows name files the tree no longer holds. The Qt host
+The table holds no row for the two Paper Trader hosts. The Qt host
 and the React host were removed together, and the Paper tab is drawn in Qt by
 `src/gui/paper/paper_trading_tab.py, in PaperTradingTab` today.
 

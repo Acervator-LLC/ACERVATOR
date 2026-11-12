@@ -87,10 +87,10 @@ issue #19 built.
 
 ```python
 def _install_retired_tab_sentinels(self) -> None:
-    """Assign None to ``_paper_trader``, ``_competition_tab`` and the rest.
+    """Assign None to ``_competition_tab``, ``_testnet_tab`` and the rest.
 
-    ``main_window`` tests ``_analytics_tab``, ``_risk_tab``,
-    ``_journal_tab`` and ``_alerts_tab`` before refreshing them.
+    ``main_window`` tests ``_risk_tab`` and ``_alerts_tab`` before
+    refreshing them.
     """
 ```
 
