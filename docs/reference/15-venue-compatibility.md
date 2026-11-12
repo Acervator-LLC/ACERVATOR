@@ -5697,7 +5697,7 @@ Six readers shared the old comparison and all six read the predicate now:
 `src/exchange/market_inspector_fetcher.py, in trading_products`, both market
 scans in `src/gui/bot_wizard.py, in _fetch_markets`, and
 `src/gui/preflight_check.py, in check_symbol` with its view model in
-`src/gui/main_tabs/preflight_check_surface.py, in run`. The two pre-flight
+`src/gui/main_tabs/preflight_check_surface.py, in PreflightModel._inspect_market`. The two pre-flight
 readers also told a published `False` from a published nothing for the first
 time: `active_reported` now reads the field's value rather than the key's
 presence, so a gemini market reads "not reported" instead of "No".

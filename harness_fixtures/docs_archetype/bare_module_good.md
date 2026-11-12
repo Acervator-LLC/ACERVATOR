@@ -44,7 +44,7 @@ sizes each order against the entry it finds there.
 `ccxt_connector` — the market table
 
 ```
-# src/exchange/ccxt_connector.py, in load_markets
+# src/exchange/ccxt_connector.py, in CCXTConnector.sync_connect
 ```
 
 ## The names this page holds

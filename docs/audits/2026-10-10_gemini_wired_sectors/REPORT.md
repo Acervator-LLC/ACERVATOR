@@ -97,8 +97,8 @@ src/exchange/ccxt_connector.py, in asset_info
 src/exchange/ccxt_connector.py, in _sector_products
 src/exchange/market_inspector_fetcher.py, in trading_products
 src/gui/bot_wizard.py, in _fetch_markets                 (both market scans)
-src/gui/preflight_check.py, in check
-src/gui/main_tabs/preflight_check_surface.py, in run
+src/gui/preflight_check.py, in check_symbol
+src/gui/main_tabs/preflight_check_surface.py, in PreflightModel._inspect_market
 ```
 
 The two pre-flight readers also told a published `False` from a published
