@@ -13,9 +13,18 @@ import mypy.api
 import mypy.version
 import pyright
 
-from .code_optimize import SETTINGS as OPTIMIZE_SETTINGS
-from .code_optimize import SIGIL as OPTIMIZE
-from .code_optimize import _locate
+from .coding_input import (
+    CONTENT_TIER,
+    DATA_TYPE_TIER,
+    INPUT_FORM,
+    OWNER,
+    READERS,
+    SEPARATOR,
+    content_fault,
+    data_type_fault,
+    fault_file,
+    locate,
+)
 from .core import (
     APPLICATION_SOURCE,
     Flag,
@@ -25,6 +34,7 @@ from .core import (
     in_application_source,
     judge,
     main,
+    tool_text,
 )
 
 SOUND = "SOUND"
@@ -39,7 +49,7 @@ PYRIGHT_FINISHED = (0, 1)
 NO_CODE = "no code"
 
 SETTINGS: dict[str, str] = {
-    "separator": OPTIMIZE_SETTINGS["separator"],
+    "separator": SEPARATOR,
     "mypy_version": MYPY_BUILT,
     "pyright_version": PYRIGHT_BUILT,
     "type_config": "the mypy and pyright settings each tool finds "
@@ -62,13 +72,6 @@ class Finding:
     line: int
 
 
-def _said(output: str | bytes) -> str:
-    """Return `output` decoded and stripped."""
-    if isinstance(output, bytes):
-        output = output.decode("utf-8", "replace")
-    return output.strip()
-
-
 def _same_file(reported: Path, file: Path) -> bool:
     """Report whether the `reported` path and `file` resolve to one path."""
     return reported.resolve() == file.resolve()
@@ -81,7 +84,7 @@ def _mypy_findings(path: str, root: Path, file: Path) -> list[Finding]:
             ["--output", "json", "--cache-dir", os.devnull, path]
         )
     if status not in MYPY_FINISHED:
-        raise ToolFault(f"mypy exited {status}: {_said(stderr or stdout)}")
+        raise ToolFault(f"mypy exited {status}: {tool_text(stderr or stdout)}")
     try:
         rows = [json.loads(line) for line in stdout.splitlines() if line.strip()]
         return [
@@ -107,9 +110,8 @@ def _pyright_findings(path: str, root: Path, file: Path) -> tuple[str, list[Find
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
         raise ToolFault(f"pyright: {exc}") from exc
     if proc.returncode not in PYRIGHT_FINISHED:
-        raise ToolFault(
-            f"pyright exited {proc.returncode}: {_said(proc.stderr or proc.stdout)}"
-        )
+        said = tool_text(proc.stderr or proc.stdout)
+        raise ToolFault(f"pyright exited {proc.returncode}: {said}")
     try:
         report = json.loads(proc.stdout)
         if report["summary"]["filesAnalyzed"] < 1:
@@ -129,8 +131,8 @@ def _pyright_findings(path: str, root: Path, file: Path) -> tuple[str, list[Find
 
 
 def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
-    """Return `SOUND`, or `UNSOUND` with each `Finding` inside the `_locate` span."""
-    located = _locate(text, root)
+    """Return `SOUND`, or `UNSOUND` with each `Finding` inside the `locate` span."""
+    located = locate(text, root)
     if isinstance(located, str):
         raise ToolFault(f"{text}: {located}, after tier 2 accepted it")
     file, _, (first, last) = located
@@ -149,23 +151,15 @@ def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
     return UNSOUND, f"{versions}: {rows}"
 
 
-def _fault_file(text: str, root: Path) -> Path | None:
-    """Return the file `text` names under `root`, or None when tier 1 refuses it."""
-    if OPTIMIZE.data_type(text):
-        return None
-    path = text.partition(SETTINGS["separator"])[0]
-    return root.joinpath(*path.split("/"))
-
-
 SIGIL = Sigil(
     name="CODE.TYPE",
     edition=1,
-    owner="coding",
-    input_form=OPTIMIZE.input_form,
+    owner=OWNER,
+    input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(
-        OPTIMIZE.tiers[0],
-        OPTIMIZE.tiers[1],
+        DATA_TYPE_TIER,
+        CONTENT_TIER,
         {
             "runs": [
                 (
@@ -193,11 +187,11 @@ SIGIL = Sigil(
     },
     refusal=REJECTED,
     follows={},
-    readers=OPTIMIZE.readers,
-    data_type=OPTIMIZE.data_type,
-    content=OPTIMIZE.content,
+    readers=READERS,
+    data_type=data_type_fault,
+    content=content_fault,
     functions=_functions_verdict,
-    fault_file=_fault_file,
+    fault_file=fault_file,
 )
 
 
@@ -205,7 +199,7 @@ def type_check(
     text: str, root: Path, source: Sequence[str] = APPLICATION_SOURCE
 ) -> Verdict:
     """Return the `judge` verdict of `SIGIL` for one input line under `root`."""
-    named = _fault_file(text, root)
+    named = fault_file(text, root)
     in_source = named is not None and in_application_source(named, root, source)
     return judge(SIGIL, text, root, in_source=in_source)
 

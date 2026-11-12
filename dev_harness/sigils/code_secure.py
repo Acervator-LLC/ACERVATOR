@@ -11,9 +11,18 @@ from functools import cache
 from importlib import metadata
 from pathlib import Path
 
-from .code_optimize import SETTINGS as OPTIMIZE_SETTINGS
-from .code_optimize import SIGIL as OPTIMIZE
-from .code_optimize import _locate
+from .coding_input import (
+    CONTENT_TIER,
+    DATA_TYPE_TIER,
+    INPUT_FORM,
+    OWNER,
+    READERS,
+    SEPARATOR,
+    content_fault,
+    data_type_fault,
+    fault_file,
+    locate,
+)
 from .core import (
     APPLICATION_SOURCE,
     Flag,
@@ -24,6 +33,7 @@ from .core import (
     in_application_source,
     judge,
     main,
+    tool_text,
 )
 
 CLEAN = "CLEAN"
@@ -45,7 +55,7 @@ SEMGREP_SEVERITY = {"INFO": "low", "WARNING": "medium", "ERROR": "high"}
 _CWE_RE = re.compile(r"CWE-(\d+)")
 
 SETTINGS: dict[str, str] = {
-    "separator": OPTIMIZE_SETTINGS["separator"],
+    "separator": SEPARATOR,
     "bandit_version": BANDIT_BUILT,
     "semgrep_version": SEMGREP_BUILT,
     "severity_floor": "medium",
@@ -67,11 +77,6 @@ class Finding:
     cwe: str
     severity: str
     line: int
-
-
-def _said(output: bytes) -> str:
-    """Return `output` decoded and stripped."""
-    return output.decode("utf-8", "replace").strip()
 
 
 @cache
@@ -101,7 +106,7 @@ def _bandit_findings(source: bytes) -> list[Finding]:
         message = f"bandit: {exc}"
         raise ToolFault(message) from exc
     if proc.returncode not in BANDIT_FINISHED:
-        said = _said(proc.stderr or proc.stdout)
+        said = tool_text(proc.stderr or proc.stdout)
         message = f"bandit exited {proc.returncode}: {said}"
         raise ToolFault(message)
     try:
@@ -152,7 +157,7 @@ def _semgrep_findings(name: str, source: bytes) -> tuple[str, list[Finding]]:
             message = f"semgrep: {exc}"
             raise ToolFault(message) from exc
     if proc.returncode not in SEMGREP_FINISHED:
-        said = _said(proc.stderr or proc.stdout)
+        said = tool_text(proc.stderr or proc.stdout)
         message = f"semgrep exited {proc.returncode}: {said}"
         raise ToolFault(message)
     try:
@@ -180,7 +185,7 @@ def _semgrep_findings(name: str, source: bytes) -> tuple[str, list[Finding]]:
 
 def _functions_verdict(text: str, root: Path) -> Reading:
     """Return `CLEAN`, or `WEAK` holding when a finding reaches `severity_floor`."""
-    located = _locate(text, root)
+    located = locate(text, root)
     if isinstance(located, str):
         message = f"{text}: {located}, after tier 2 accepted it"
         raise ToolFault(message)
@@ -206,23 +211,15 @@ def _functions_verdict(text: str, root: Path) -> Reading:
     return Reading(WEAK, f"{versions}: {rows}", holds)
 
 
-def _fault_file(text: str, root: Path) -> Path | None:
-    """Return the file `text` names under `root`, or None when tier 1 refuses it."""
-    if OPTIMIZE.data_type(text):
-        return None
-    path = text.partition(SETTINGS["separator"])[0]
-    return root.joinpath(*path.split("/"))
-
-
 SIGIL = Sigil(
     name="CODE.SECURE",
     edition=1,
-    owner="coding",
-    input_form=OPTIMIZE.input_form,
+    owner=OWNER,
+    input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(
-        OPTIMIZE.tiers[0],
-        OPTIMIZE.tiers[1],
+        DATA_TYPE_TIER,
+        CONTENT_TIER,
         {
             "runs": [
                 (
@@ -252,11 +249,11 @@ SIGIL = Sigil(
     },
     refusal=REJECTED,
     follows={},
-    readers=OPTIMIZE.readers,
-    data_type=OPTIMIZE.data_type,
-    content=OPTIMIZE.content,
+    readers=READERS,
+    data_type=data_type_fault,
+    content=content_fault,
     functions=_functions_verdict,
-    fault_file=_fault_file,
+    fault_file=fault_file,
 )
 
 
@@ -264,7 +261,7 @@ def secure_check(
     text: str, root: Path, source: Sequence[str] = APPLICATION_SOURCE
 ) -> Verdict:
     """Return the `judge` verdict of `SIGIL` for one input line under `root`."""
-    named = _fault_file(text, root)
+    named = fault_file(text, root)
     in_source = named is not None and in_application_source(named, root, source)
     return judge(SIGIL, text, root, in_source=in_source)
 
