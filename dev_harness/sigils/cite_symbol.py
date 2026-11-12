@@ -1,76 +1,43 @@
-"""`resolve_citation` reads one "path, in symbol" line.
-
-It returns RESOLVED, NOT_GROUNDED or REJECTED, with a reason.
-"""
+"""`resolve_citation` filters one citation through the three tiers in `CARD`."""
 
 import argparse
 import ast
 import json
 import re
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 RESOLVED = "RESOLVED"
 NOT_GROUNDED = "NOT_GROUNDED"
 REJECTED = "REJECTED"
 
-_SEPARATOR = ", in "
-_NOT_THE_FORM = "not the form <path>, in <symbol>"
-_SEGMENT = re.compile(r"[A-Za-z0-9_.-]+")
-_LINE_NUMBER = re.compile(r":\d")
-_DRIVE = re.compile(r"[A-Za-z]:")
+SETTINGS: dict[str, str] = {"separator": ", in "}
+
+DATA_TYPE = "tier 1 data type"
+CONTENT = "tier 2 content compatibility"
+FUNCTIONS = "tier 3 required processing functions"
+
+BACKSLASH = "backslash"
+LINE_NUMBER = "line number"
+NOT_THE_FORM = f"not the form <path>{SETTINGS['separator']}<symbol>"
+DRIVE_LETTER = "drive letter"
+ABSOLUTE_PATH = "absolute path"
+PARENT_SEGMENT = "path holds .."
+OUTSIDE_ROOT = "path outside the target tree"
+FILE_MISSING = "file missing"
+CASE_DIFFERS = "letter case differs"
+UNREADABLE = "file unreadable"
+UNPARSED = "file does not parse"
+UNDEFINED = "nothing in the file defines it"
+DEFINED = "the file defines it"
+
+_SEGMENT_RE = re.compile(r"[A-Za-z0-9_.-]+")
+_LINE_NUMBER_RE = re.compile(r":\d")
+_DRIVE_RE = re.compile(r"[A-Za-z]:")
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
-
-def _form_fault(citation: str) -> str | None:
-    """Return why `citation` is outside the input form, or None when it fits."""
-    if "\\" in citation:
-        return "backslash"
-    if _LINE_NUMBER.search(citation):
-        return "line number"
-    if _SEPARATOR not in citation:
-        return _NOT_THE_FORM
-    path, symbol = citation.split(_SEPARATOR, 1)
-    if _DRIVE.match(path):
-        return "drive letter"
-    if path.startswith("/"):
-        return "absolute path"
-    segments = path.split("/")
-    if ".." in segments:
-        return "path holds .."
-    if not all(_SEGMENT.fullmatch(part) and part != "." for part in segments):
-        return _NOT_THE_FORM
-    if not path.endswith(".py"):
-        return "file type other than .py"
-    if not all(part.isidentifier() for part in symbol.split(".")):
-        return _NOT_THE_FORM
-    return None
-
-
-def _walk_exact(root: Path, parts: list[str]) -> str | None:
-    """Return None when `parts` names a file under `root` in exact letter case.
-
-    Otherwise return why not.
-    """
-    here = root
-    case_differs = False
-    for part in parts:
-        try:
-            names = {entry.name for entry in here.iterdir()}
-        except OSError:
-            return "file missing"
-        matches = sorted(name for name in names if name.casefold() == part.casefold())
-        if not matches:
-            return "file missing"
-        if part not in names:
-            case_differs = True
-        here = here / (part if part in names else matches[0])
-    if not here.is_file():
-        return "file missing"
-    return "letter case differs" if case_differs else None
+Reader = Callable[[bytes, list[str]], bool | None]
 
 
 def _scope_statements(node: ast.AST) -> Iterator[ast.stmt]:
@@ -136,44 +103,199 @@ def _defines(tree: ast.Module, parts: list[str]) -> bool:
     return any(name in _bound_names(stmt) for stmt in _scope_statements(tree))
 
 
-def resolve_citation(citation: str, root: Path) -> tuple[str, str]:
-    """Return the verdict for one `citation`, read against the files under `root`.
+def read_python(source: bytes, parts: list[str]) -> bool | None:
+    """Return `_defines` for `parts` in `source`, or None when `ast.parse` fails."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError, RecursionError):
+        return None
+    return _defines(tree, parts)
 
-    The second item is the `reason` that `main` prints.
+
+READERS: dict[str, Reader] = {".py": read_python}
+
+NO_READER = f"file type other than {' or '.join(sorted(READERS))}"
+
+CARD: dict[str, object] = {
+    "sigil": "CITE.SYMBOL",
+    "edition": 2,
+    "owner": "truth",
+    "input": f"one line: <path>{SETTINGS['separator']}<symbol>",
+    "settings": SETTINGS,
+    "tiers": [
+        {
+            "name": DATA_TYPE,
+            "accepts": "a relative path in forward slashes and name characters, "
+            "and a dotted symbol of identifiers",
+            "rejects": [
+                BACKSLASH,
+                LINE_NUMBER,
+                NOT_THE_FORM,
+                DRIVE_LETTER,
+                ABSOLUTE_PATH,
+                PARENT_SEGMENT,
+            ],
+        },
+        {
+            "name": CONTENT,
+            "accepts": "a path inside the target tree, of a file type in readers",
+            "rejects": [OUTSIDE_ROOT, NO_READER],
+        },
+        {
+            "name": FUNCTIONS,
+            "runs": [
+                "the exact-case walk",
+                "the parse",
+                "the search for the definition",
+            ],
+            "not_grounded": [
+                FILE_MISSING,
+                CASE_DIFFERS,
+                UNREADABLE,
+                UNPARSED,
+                UNDEFINED,
+            ],
+            "resolved": [DEFINED],
+        },
+    ],
+    "outputs": [RESOLVED, NOT_GROUNDED],
+    "refusal": REJECTED,
+    "readers": sorted(READERS),
+}
+
+
+def _file_type(path: str) -> str:
+    """Return the last `path` segment's text from its last dot, or an empty string."""
+    name = path.rsplit("/", 1)[-1]
+    return "." + name.rsplit(".", 1)[1] if "." in name else ""
+
+
+def _data_type_fault(citation: str) -> str | None:
+    """Return the `DATA_TYPE` reason `citation` fails, or None when it fits."""
+    if "\\" in citation:
+        return BACKSLASH
+    if _LINE_NUMBER_RE.search(citation):
+        return LINE_NUMBER
+    separator = SETTINGS["separator"]
+    if separator not in citation:
+        return NOT_THE_FORM
+    path, symbol = citation.split(separator, 1)
+    if _DRIVE_RE.match(path):
+        return DRIVE_LETTER
+    if path.startswith("/"):
+        return ABSOLUTE_PATH
+    segments = path.split("/")
+    if ".." in segments:
+        return PARENT_SEGMENT
+    if not all(_SEGMENT_RE.fullmatch(part) and part != "." for part in segments):
+        return NOT_THE_FORM
+    if not all(part.isidentifier() for part in symbol.split(".")):
+        return NOT_THE_FORM
+    return None
+
+
+def _content_fault(path: str, root: Path) -> str | None:
+    """Return the `CONTENT` reason `path` fails under `root`, or None when it fits."""
+    target = root.joinpath(*path.split("/")).resolve()
+    if not target.is_relative_to(root.resolve()):
+        return OUTSIDE_ROOT
+    if _file_type(path) not in READERS:
+        return NO_READER
+    return None
+
+
+def _walk_exact(root: Path, parts: list[str]) -> str | None:
+    """Return None when `parts` names a file under `root` in exact letter case.
+
+    Otherwise return `FILE_MISSING` or `CASE_DIFFERS`.
     """
-    fault = _form_fault(citation)
-    if fault:
-        return REJECTED, fault
-    path, symbol = citation.split(_SEPARATOR, 1)
+    here = root
+    case_differs = False
+    for part in parts:
+        try:
+            names = {entry.name for entry in here.iterdir()}
+        except OSError:
+            return FILE_MISSING
+        matches = sorted(name for name in names if name.casefold() == part.casefold())
+        if not matches:
+            return FILE_MISSING
+        if part not in names:
+            case_differs = True
+        here = here / (part if part in names else matches[0])
+    if not here.is_file():
+        return FILE_MISSING
+    return CASE_DIFFERS if case_differs else None
+
+
+def _functions_verdict(path: str, symbol: str, root: Path) -> tuple[str, str]:
+    """Return the `FUNCTIONS` verdict from `_walk_exact` and the `READERS` entry."""
     parts = path.split("/")
     missing = _walk_exact(root, parts)
     if missing:
         return NOT_GROUNDED, missing
-    target = root.joinpath(*parts)
-    if not target.resolve().is_relative_to(root.resolve()):
-        return REJECTED, "path outside the repository"
     try:
-        tree = ast.parse(target.read_bytes())
+        source = root.joinpath(*parts).read_bytes()
     except OSError:
-        return NOT_GROUNDED, "file unreadable"
-    except (SyntaxError, ValueError, RecursionError):
-        return NOT_GROUNDED, "file does not parse"
-    if _defines(tree, symbol.split(".")):
-        return RESOLVED, "the file defines it"
-    return NOT_GROUNDED, "nothing in the file defines it"
+        return NOT_GROUNDED, UNREADABLE
+    defined = READERS[_file_type(path)](source, symbol.split("."))
+    if defined is None:
+        return NOT_GROUNDED, UNPARSED
+    if defined:
+        return RESOLVED, DEFINED
+    return NOT_GROUNDED, UNDEFINED
+
+
+def resolve_citation(citation: str, root: Path) -> tuple[str, str]:
+    """Return the verdict for `citation` under `root`, and a reason naming its tier."""
+    fault = _data_type_fault(citation)
+    if fault:
+        return REJECTED, f"{DATA_TYPE}: {fault}"
+    path, symbol = citation.split(SETTINGS["separator"], 1)
+    fault = _content_fault(path, root)
+    if fault:
+        return REJECTED, f"{CONTENT}: {fault}"
+    verdict, reason = _functions_verdict(path, symbol, root)
+    return verdict, f"{FUNCTIONS}: {reason}"
+
+
+def repository_root(start: Path) -> Path | None:
+    """Return the nearest folder at or above `start` that holds `.git`, or None."""
+    for folder in (start, *start.parents):
+        if (folder / ".git").exists():
+            return folder
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Print one JSON verdict per citation line in `file`.
-
-    Return 0 only when every citation reads RESOLVED, and 1 otherwise.
-    """
+    """Print `CARD` or one JSON verdict per line of `file`; 0 only if all RESOLVED."""
     parser = argparse.ArgumentParser(
         prog="python -m dev_harness.sigils.cite_symbol",
         description="Resolve one 'path, in symbol' citation per line.",
     )
-    parser.add_argument("file", type=Path, help="one citation per line")
+    parser.add_argument("file", type=Path, nargs="?", help="one citation per line")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        help="the tree the citations name; "
+        "default: the repository holding the working folder",
+    )
+    parser.add_argument("--card", action="store_true", help="print the card as JSON")
     args = parser.parse_args(argv)
+    if args.card:
+        print(json.dumps(CARD, indent=2))
+        return 0
+    if args.file is None:
+        parser.error("a citation file is required unless --card is given")
+    root = args.root if args.root is not None else repository_root(Path.cwd())
+    if root is None:
+        print(
+            "no folder holding .git at or above the working folder; pass --root",
+            file=sys.stderr,
+        )
+        return 1
+    if not root.is_dir():
+        print(f"--root is not a folder: {root}", file=sys.stderr)
+        return 1
     try:
         lines = args.file.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError) as exc:
@@ -185,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
         citation = raw.strip()
         if not citation or citation.startswith("#"):
             continue
-        verdict, reason = resolve_citation(citation, REPO_ROOT)
+        verdict, reason = resolve_citation(citation, root)
         read += 1
         if verdict == RESOLVED:
             resolved += 1

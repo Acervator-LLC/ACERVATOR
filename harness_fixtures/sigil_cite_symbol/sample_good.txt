@@ -1,0 +1,20 @@
+# Read with --root harness_fixtures/sigil_cite_symbol/sample_tree
+
+# RESOLVED: a def or class at any depth, for a bare name
+shapes/polygon.py, in Polygon
+shapes/polygon.py, in describe
+shapes/polygon.py, in load_name
+shapes/polygon.py, in label
+shapes/polygon.py, in kind
+
+# RESOLVED: the exact nesting, for a dotted name
+shapes/polygon.py, in Polygon.label
+shapes/polygon.py, in Polygon.Corner
+shapes/polygon.py, in Polygon.Corner.kind
+shapes/polygon.py, in Polygon.sides
+
+# RESOLVED: a module-level assignment
+shapes/polygon.py, in DEFAULT_NAME
+shapes/polygon.py, in second_label
+shapes/polygon.py, in STYLE
+shapes/notes.py, in LABEL
