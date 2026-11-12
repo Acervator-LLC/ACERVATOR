@@ -7,10 +7,18 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from .code_optimize import SETTINGS as OPTIMIZE_SETTINGS
-from .code_optimize import SIGIL as OPTIMIZE
-from .code_optimize import _locate
-from .code_secure import _fault_file, _said
+from .coding_input import (
+    CONTENT_TIER,
+    DATA_TYPE_TIER,
+    INPUT_FORM,
+    OWNER,
+    READERS,
+    SEPARATOR,
+    content_fault,
+    data_type_fault,
+    fault_file,
+    locate,
+)
 from .core import (
     APPLICATION_SOURCE,
     FLAGS,
@@ -22,6 +30,7 @@ from .core import (
     in_application_source,
     judge,
     main,
+    tool_text,
 )
 
 REACHED = "REACHED"
@@ -32,7 +41,7 @@ VULTURE_BUILT = "2.16"
 VULTURE_TIMEOUT_S = 120
 
 SETTINGS: dict[str, str] = {
-    "separator": OPTIMIZE_SETTINGS["separator"],
+    "separator": SEPARATOR,
     "vulture_version": VULTURE_BUILT,
     "confidence_floor": "100",
     "fault_file": "the file the input line names: UNREACHED reads HOLD when it sits "
@@ -82,13 +91,14 @@ def _vulture_scan(root: Path) -> tuple[str, list[tuple[Path, Finding]]]:
         message = f"vulture: {exc}"
         raise ToolFault(message) from exc
     if proc.returncode != 0:
-        said = _said(proc.stderr or proc.stdout)
+        said = tool_text(proc.stderr or proc.stdout)
         message = f"vulture exited {proc.returncode}: {said}"
         raise ToolFault(message)
     try:
         report = json.loads(proc.stdout)
         if report["exit_code"]:
-            message = f"vulture could not read a file in the tree: {_said(proc.stderr)}"
+            said = tool_text(proc.stderr)
+            message = f"vulture could not read a file in the tree: {said}"
             raise ToolFault(message)
         return report["version"], [
             (Path(path), Finding(kind, name, confidence, line))
@@ -101,7 +111,7 @@ def _vulture_scan(root: Path) -> tuple[str, list[tuple[Path, Finding]]]:
 
 def _functions_verdict(text: str, root: Path) -> Reading:
     """Return `REACHED`, or `UNREACHED` holding if an item hits `confidence_floor`."""
-    located = _locate(text, root)
+    located = locate(text, root)
     if isinstance(located, str):
         message = f"{text}: {located}, after tier 2 accepted it"
         raise ToolFault(message)
@@ -128,12 +138,12 @@ def _functions_verdict(text: str, root: Path) -> Reading:
 SIGIL = Sigil(
     name="CODE.REACH",
     edition=1,
-    owner="coding",
-    input_form=OPTIMIZE.input_form,
+    owner=OWNER,
+    input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(
-        OPTIMIZE.tiers[0],
-        OPTIMIZE.tiers[1],
+        DATA_TYPE_TIER,
+        CONTENT_TIER,
         {
             "runs": [
                 (
@@ -165,11 +175,11 @@ SIGIL = Sigil(
         + ", by quarantine first: the unreached code moves aside in one commit "
         "and is never deleted",
     },
-    readers=OPTIMIZE.readers,
-    data_type=OPTIMIZE.data_type,
-    content=OPTIMIZE.content,
+    readers=READERS,
+    data_type=data_type_fault,
+    content=content_fault,
     functions=_functions_verdict,
-    fault_file=_fault_file,
+    fault_file=fault_file,
 )
 
 
@@ -177,7 +187,7 @@ def reach_check(
     text: str, root: Path, source: Sequence[str] = APPLICATION_SOURCE
 ) -> Verdict:
     """Return the `judge` verdict of `SIGIL` for one input line under `root`."""
-    named = _fault_file(text, root)
+    named = fault_file(text, root)
     in_source = named is not None and in_application_source(named, root, source)
     return judge(SIGIL, text, root, in_source=in_source)
 

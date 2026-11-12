@@ -183,6 +183,23 @@ def in_application_source(path: Path, root: Path, source: Sequence[str]) -> bool
     return any(parts[: len(prefix)] == prefix for prefix in prefixes)
 
 
+def named_file(
+    text: str, root: Path, data_type: DataType, separator: str
+) -> Path | None:
+    """Return the file `text` names under `root`, or None if `data_type` refuses it."""
+    if data_type(text):
+        return None
+    path = text.partition(separator)[0]
+    return root.joinpath(*path.split("/"))
+
+
+def tool_text(output: str | bytes) -> str:
+    """Return a tool's `output` as text: decoded as UTF-8 when bytes, and stripped."""
+    if isinstance(output, bytes):
+        output = output.decode("utf-8", "replace")
+    return output.strip()
+
+
 def fault_place(sigil: Sigil, text: str, root: Path, listed: Path) -> Path:
     """Return the file `sigil.fault_file` names for `text`, else `listed`."""
     named = sigil.fault_file(text, root) if sigil.fault_file else None
