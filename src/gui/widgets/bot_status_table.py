@@ -14,20 +14,19 @@ from ..main_tabs.bot_status_table_surface import (
     COLUMN_LABELS,
     COLUMN_TOOLTIPS,
     DEFAULT_DETONATION_CONFIDENCE,
-    FIRE_LABEL_MANUAL_NOOP,
+    FIRE_LABELS,
     FIRE_MASK_FIELD,
     FIRE_PATH_FOLD_CEILING,
     FIRE_PATH_FOLD_OUTLINE,
     FIRE_PATH_FOLD_SOLID,
     FIRE_PATH_INACTIVE,
-    FIRE_PATH_MANUAL_NOOP,
     FIRE_PATH_NOT_SCRUMMING,
     FIRE_PATH_PHASE_FIRE,
     FIRE_PATH_PHASE_SEARCH,
     FIRE_PATH_PHASE_TRACK,
     FIRE_PATH_SCRUM_OUTLINE,
     FIRE_PATH_SCRUM_SOLID,
-    FIRE_STYLE_MANUAL_NOOP,
+    FIRE_STYLES,
     FIRE_TIP_FOLD_CEILING,
     FIRE_TIP_FOLD_OUTLINE,
     FIRE_TIP_FOLD_SOLID,
@@ -65,17 +64,18 @@ from ..main_tabs.bot_status_table_surface import (
     blockers_text,
     fold_taper_of,
     held_tooltip,
+    hold_of,
     icon_asset_of,
     kept_logo_path,
     lot_units_of,
     manual_fire_dispute,
-    manual_fire_noop_tooltip,
     manual_fire_verdict,
     mode_tooltip,
     opening_address,
     organisation_address,
     organisation_tooltip,
     order_statuses,
+    refused_fire,
     risk_lines,
     selection_after_press,
     shown_state,
@@ -764,7 +764,10 @@ if _HAS_QT:
             fire_dispute = manual_fire_dispute(
                 _ammo, status, target_val, cur_price, qrate
             )
-            fire_verdict = manual_fire_verdict(_ammo, target_val, fire_dispute)
+            fire_hold = hold_of(status)
+            fire_verdict = manual_fire_verdict(
+                _ammo, target_val, fire_hold, fire_dispute
+            )
             fire_acts = fire_verdict == MANUAL_FIRE_ACTS
 
             # Colour encodes direction, so the magnitudes print unsigned.
@@ -918,19 +921,12 @@ if _HAS_QT:
                 )
 
                 if fire_verdict == MANUAL_FIRE_REFUSES:
-                    # Two reasons reach this path: a position the exchange
-                    # disputes, and a delta inside Manual Fire's band and
-                    # outside the tick's.
-                    fire_path = FIRE_PATH_MANUAL_NOOP
-                    fire_btn.setText(mask_or(FIRE_LABEL_MANUAL_NOOP, FIRE_MASK_FIELD))
-                    fire_btn.setStyleSheet(FIRE_STYLE_MANUAL_NOOP)
-                    set_description(
-                        fire_btn,
-                        fitted(
-                            manual_fire_noop_tooltip(_ammo, target_val, fire_dispute),
-                            *risk,
-                        ),
+                    fire_path, fire_tip = refused_fire(
+                        _ammo, target_val, fire_hold, fire_dispute, risk
                     )
+                    fire_btn.setText(mask_or(FIRE_LABELS[fire_path], FIRE_MASK_FIELD))
+                    fire_btn.setStyleSheet(FIRE_STYLES[fire_path])
+                    set_description(fire_btn, fire_tip)
                 elif armed_action == "scrum" and fire_acts:
                     # Solid means auto would fire now; outline means only manual remains.
                     _af = status.get("auto_fire", {}) or {}

@@ -193,7 +193,8 @@ MODE_TIP_FORMAT = "Mode: {mode}\nState: {state}"
 TOOLTIP_LINE_GAP = "\n"
 #: The ``BotContainer.get_status`` key naming why a bot sends no order.
 HOLD_REASON_KEY = "hold_reason"
-HELD_TIP_FORMAT = "HELD: {reason}.\n{tooltip}"
+HELD_LINE_FORMAT = "HELD: {reason}."
+HELD_TIP_FORMAT = HELD_LINE_FORMAT + "\n{tooltip}"
 #: What ``shown_state`` answers for a bot whose ``HOLD_REASON_KEY`` names a hold.
 STATE_HELD = "held"
 
@@ -252,9 +253,10 @@ CHART_OPEN_FAILED_LOG = "Chart URL open failed for %r: %s"
 BROWSER_NEW_WINDOW = 2
 
 FIRE_LABEL = "Fire"
-#: The word the button carries where ``manual_fire_verdict`` refuses the press,
-#: so the refusal reads on the control itself and not only in its tooltip.
+#: The word the button carries where ``manual_fire_verdict`` refuses with no hold.
 FIRE_LABEL_MANUAL_NOOP = "No Trade"
+#: The word the button carries while ``hold_of`` names a hold.
+FIRE_LABEL_HELD = "Held"
 FIRE_MASK_FIELD = "bot_table.fire"
 DETAIL_LABEL = "Detail"
 #: Fire and Detail fill their cell, so a row press paints no band around them.
@@ -317,6 +319,7 @@ FIRE_PATH_PHASE_FIRE = "phase_fire"
 FIRE_PATH_PHASE_TRACK = "phase_track"
 FIRE_PATH_PHASE_SEARCH = "phase_search"
 FIRE_PATH_MANUAL_NOOP = "manual_noop"
+FIRE_PATH_HELD = "held"
 FIRE_PATH_NOT_SCRUMMING = "not_scrumming"
 FIRE_PATH_INACTIVE = "inactive"
 
@@ -330,6 +333,7 @@ FIRE_PATHS = (
     FIRE_PATH_PHASE_TRACK,
     FIRE_PATH_PHASE_SEARCH,
     FIRE_PATH_MANUAL_NOOP,
+    FIRE_PATH_HELD,
     FIRE_PATH_NOT_SCRUMMING,
     FIRE_PATH_INACTIVE,
 )
@@ -344,12 +348,12 @@ FIRE_STYLES = {
     FIRE_PATH_PHASE_TRACK: FIRE_STYLE_PHASE_TRACK,
     FIRE_PATH_PHASE_SEARCH: FIRE_STYLE_PHASE_SEARCH,
     FIRE_PATH_MANUAL_NOOP: FIRE_STYLE_MANUAL_NOOP,
+    FIRE_PATH_HELD: FIRE_STYLE_MANUAL_NOOP,
     FIRE_PATH_NOT_SCRUMMING: FIRE_STYLE_DISABLED,
     FIRE_PATH_INACTIVE: FIRE_STYLE_DISABLED,
 }
 
-#: The word each path draws on the button. Every path promising an order keeps
-#: ``FIRE_LABEL``; the refused path reads ``FIRE_LABEL_MANUAL_NOOP``.
+#: The word each path draws; every path promising an order keeps ``FIRE_LABEL``.
 FIRE_LABELS = {
     FIRE_PATH_SCRUM_SOLID: FIRE_LABEL,
     FIRE_PATH_SCRUM_OUTLINE: FIRE_LABEL,
@@ -360,6 +364,7 @@ FIRE_LABELS = {
     FIRE_PATH_PHASE_TRACK: FIRE_LABEL,
     FIRE_PATH_PHASE_SEARCH: FIRE_LABEL,
     FIRE_PATH_MANUAL_NOOP: FIRE_LABEL_MANUAL_NOOP,
+    FIRE_PATH_HELD: FIRE_LABEL_HELD,
     FIRE_PATH_NOT_SCRUMMING: FIRE_LABEL,
     FIRE_PATH_INACTIVE: FIRE_LABEL,
 }
@@ -375,6 +380,7 @@ FIRE_GLOWS = {
     FIRE_PATH_PHASE_TRACK: NO_GLOW,
     FIRE_PATH_PHASE_SEARCH: NO_GLOW,
     FIRE_PATH_MANUAL_NOOP: NO_GLOW,
+    FIRE_PATH_HELD: NO_GLOW,
     FIRE_PATH_NOT_SCRUMMING: NO_GLOW,
     FIRE_PATH_INACTIVE: NO_GLOW,
 }
@@ -667,10 +673,13 @@ def shown_state(status: Any) -> str:
 
 
 def held_tooltip(tooltip: Any, status: Any) -> str:
-    """``tooltip`` with the hold reason ahead of it, unchanged with no hold."""
+    """``tooltip`` under ``HELD_LINE_FORMAT`` during a hold, the line alone for an
+    empty ``tooltip``, and ``tooltip`` unchanged with no hold."""
     hold = hold_of(status)
     if not hold:
         return str(tooltip)
+    if not tooltip:
+        return HELD_LINE_FORMAT.format(reason=hold)
     return HELD_TIP_FORMAT.format(reason=hold, tooltip=tooltip)
 
 
@@ -1053,16 +1062,19 @@ def manual_fire_dispute(
 
 
 def manual_fire_verdict(
-    ammo: Any, target_balance: float, dispute: Optional[Dict[str, float]] = None
+    ammo: Any,
+    target_balance: float,
+    hold: str,
+    dispute: Optional[Dict[str, float]] = None,
 ) -> str:
-    """What a Fire press would do, read from ``dispute`` and this row's Ammo cell.
+    """What a Fire press would do, read from ``hold``, ``dispute`` and the Ammo cell.
 
-    ``MANUAL_FIRE_REFUSES`` on a ``dispute`` or on ``manual_fire_noop`` outside
-    ``at_target_dust_band``, ``MANUAL_FIRE_PARKED`` inside both bands,
-    ``MANUAL_FIRE_ACTS`` otherwise, and the Qt table and this model read this
-    one answer.
+    ``MANUAL_FIRE_REFUSES`` while ``hold`` names a hold, on a ``dispute``, or
+    on ``manual_fire_noop`` outside ``at_target_dust_band``,
+    ``MANUAL_FIRE_PARKED`` inside both bands, ``MANUAL_FIRE_ACTS`` otherwise,
+    and the Qt table and this model read this one answer.
     """
-    if dispute is not None:
+    if hold or dispute is not None:
         return MANUAL_FIRE_REFUSES
     reading = ammo if isinstance(ammo, dict) else {}
     if not reading.get("manual_fire_noop", False):
@@ -1089,6 +1101,23 @@ def manual_fire_noop_tooltip(
         magnitude=abs(float(reading.get("delta", NO_DELTA) or NO_DELTA)),
         dust_band=manual_fire_dust_band(target_balance),
         tick_band=at_target_dust_band(target_balance),
+    )
+
+
+def refused_fire(
+    ammo: Any,
+    target_balance: float,
+    hold: str,
+    dispute: Optional[Dict[str, float]],
+    risk: list,
+) -> tuple:
+    """``FIRE_PATH_HELD`` and no line while ``hold`` names a hold, else
+    ``FIRE_PATH_MANUAL_NOOP`` and its tooltip."""
+    if hold:
+        return FIRE_PATH_HELD, EMPTY_TEXT
+    return (
+        FIRE_PATH_MANUAL_NOOP,
+        fitted(manual_fire_noop_tooltip(ammo, target_balance, dispute), *risk),
     )
 
 
@@ -1718,10 +1747,10 @@ class BotStatusTableModel:
     def _armed_fire(self, status, ammo, target_val, dispute=None) -> tuple:
         """The path and the tooltip an enabled Fire button carries.
 
-        A press ``manual_fire_verdict`` calls refused takes
-        ``FIRE_PATH_MANUAL_NOOP`` and says so, and a press it calls parked
-        skips the armed paths, which promise a market order, for the phase
-        paths, which already say the press does nothing.
+        A press ``manual_fire_verdict`` calls refused takes ``refused_fire``,
+        and a press it calls parked skips the armed paths, which promise a
+        market order, for the phase paths, which already say the press does
+        nothing.
         """
         scrum_phase = status.get("scrum_target_mode")
         armed_action = status.get("armed_action")
@@ -1747,12 +1776,10 @@ class BotStatusTableModel:
             detonation_tf,
             detonation_bar,
         )
-        verdict = manual_fire_verdict(ammo, target_val, dispute)
+        hold = hold_of(status)
+        verdict = manual_fire_verdict(ammo, target_val, hold, dispute)
         if verdict == MANUAL_FIRE_REFUSES:
-            return (
-                FIRE_PATH_MANUAL_NOOP,
-                fitted(manual_fire_noop_tooltip(ammo, target_val, dispute), *risk),
-            )
+            return refused_fire(ammo, target_val, hold, dispute, risk)
         acts = verdict == MANUAL_FIRE_ACTS
         auto_fire = status.get("auto_fire", {}) or {}
         if armed_action == "scrum" and acts:
