@@ -639,11 +639,12 @@ One reservation per bot stands against a wallet. A total above the wallet
 figure is refused whole, and the free figure reports what is left. The claims
 settle against the venue, because the exchange is the authority.
 
-`capital_registry` — `CapitalRegistry.request_reservation`
-That file and that method are gone. The claims table lives in
-`src/trading/capital_reservation.py` now, as `CapitalReservationRegistry`, and
-`in reserve` is the call that takes a claim. It stores a `Reservation` and
-returns its token rather than a granted figure, and `in effective_available`
+The dollar registry's file and its reservation method are gone.
+The claims table lives in one registry now, and
+`src/trading/capital_reservation.py, in CapitalReservationRegistry.reserve`
+takes a claim. It stores a reservation record and returns its token rather than
+a granted figure, and
+`src/trading/capital_reservation.py, in CapitalReservationRegistry.effective_available`
 answers what is left. The block below records the older contract.
 
 ```python
@@ -655,9 +656,9 @@ A total above the ``_wallet_usd`` figure is refused whole with
 """
 ```
 
-The reservation table reaches the frontend through its own bridge method, named
-in the table at the foot of this file. The Qt panel beside it,
-`CapitalRegistryPanel`, is declared and no screen builds it.
+The dollar registry's table reached the frontend through its own bridge method,
+named in the table at the foot of this file. A Qt panel beside it was declared
+and no screen built it, and the section below records that both are gone.
 
 ### The dollar registry and its table are gone
 
@@ -1280,7 +1281,7 @@ The Qt widget file went. `BotListView` and `LaneWireCanvas` had one caller, the
 Swarm tab, and nothing else built either of them. The live bot settings window
 draws its own wire table from `QTableWidget`, so it lost nothing.
 
-`bot_swarm_list` — what was deleted
+The List View module is deleted, and these are the three classes it held.
 
 ```python
 class BotListView(QTableWidget):
@@ -1288,9 +1289,10 @@ class LaneWireCanvas(QWidget):
 class BotSwarmLaneAllocator:
 ```
 
-List View is removed whole. The surface `bot_swarm_list_surface.py` and the
-module `bot_swarm_list.js` are deleted. The bridge method, the manifest line
-and the renderer page's script tag that reached them are gone.
+List View is removed whole. Its Qt surface and its renderer module are deleted
+with it. The bridge method, the manifest line and the renderer page's script tag
+that reached them are gone. The grid of locust cards is the whole tab
+(`src/gui/bot_visualizer.py, in BotVisualizationTab`).
 
 `src/gui/web/bot_swarm_tab.js` — the shell that still names the list globals
 

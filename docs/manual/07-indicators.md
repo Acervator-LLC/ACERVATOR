@@ -27,9 +27,9 @@ A drop-down of eleven entries: None, then Lock below each of ten timeframes from
 5m to 1w. It opens on the fifth entry, Lock below 1h. Choosing one writes a
 status line beside the box and puts the timeframe on the event bus.
 
-The main window takes that event and sets `_lock_timeframe` on the coordinator
-of every running Scrumming Bot. Nothing declares or reads that name, so the
-choice reaches the coordinator and stops there. The tooltip on the box says the
+The drop-down above is removed, so no such event reaches the main window, and
+nothing sets a lock name on the coordinator. Each bot reads the lock from its
+coordinator itself (`src/trading/scrumming_bot.py, in ScrummingBot._refresh_phantom_lock`). The tooltip on the box says the
 lock feeds directly into active Scrumming Bots. Issue #155 carries this.
 
 **The issue #155 clause above is overtaken.** It is not edited and not removed.
