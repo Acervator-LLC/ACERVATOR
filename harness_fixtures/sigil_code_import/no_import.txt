@@ -1,0 +1,4 @@
+# Read with --root harness_fixtures/sigil_code_import/sample_tree
+
+# REJECTED, BLOCK at tier 2: the file holds no import or from-import statement
+no_import.py
