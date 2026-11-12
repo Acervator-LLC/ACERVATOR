@@ -119,10 +119,12 @@ The eight renames, in the order the bar reads them:
 | Proof of Accumulation | Accumulation |
 | System Status | Status |
 
-Sim, Paper and Live carry the promotion pipeline, and three different grounds
-separate them at a glance. The other seven tabs share the gold ground.
+Sim, Paper and Live carried the promotion pipeline on three different grounds,
+and the other seven tabs shared the gold ground. Those grounds are gone, and
+every tab now takes one look from the theme's style sheet.
 
-`src/gui/main_tabs/main_window_surface.py` — `TAB_GROUNDS`
+The table that gave each tab its ground is gone from the window surface. It
+read:
 
 ```python
 TAB_GROUNDS = {
@@ -139,11 +141,12 @@ TAB_GROUNDS = {
 }
 ```
 
-No tab holds a colour of its own. A ground names two theme tokens, and every
-theme fills those tokens with its own values, so gold is the yellow that suits
-each theme rather than one hex value everywhere.
+No tab holds a colour of its own. A ground named two theme tokens, and every
+theme filled those tokens with its own values, so gold was the yellow that
+suited each theme rather than one hex value everywhere.
 
-`src/gui/theme_engine.py` — the six tab tokens each theme carries
+The six tab tokens each theme carried are gone from the theme engine. They
+read:
 
 ```
 theme             tab_gold_bg tab_gold_text tab_black_bg tab_black_text tab_white_bg tab_white_text
@@ -154,19 +157,20 @@ minimal_modern    #eab308     #7f1d1d       #1a1a1a      #ff6b6b        #ffffff 
 glass_metal       #e8b34a     #6b1020       #1c1c24      #ff6688        #e8e8f0      #1c1c24
 ```
 
-Every pair above clears WCAG 2.2 AA at 4.5 to 1. The narrowest margin is red on
-gold under Minimal Modern, at 5.22 to 1.
+Every pair above cleared WCAG 2.2 AA at 4.5 to 1. The narrowest margin was red
+on gold under Minimal Modern, at 5.22 to 1.
 
-The Qt bar paints those colours itself, because a Qt style sheet cannot colour
-one tab by its position. The theme's own style sheet sets the six colours on the
-bar, so switching theme repaints it.
+The Qt bar painted those colours itself, because a Qt style sheet cannot colour
+one tab by its position. The theme's own style sheet set the six colours on the
+bar, so switching theme repainted it.
 
-`main_tab_bar` — `MainWindowTabBar.paintEvent`
-The file is deleted and no module paints a tab ground by its position now. The
-bar takes its look from the theme's own Qt style sheet, in
-`src/gui/theme_engine.py` under its `QTabBar::tab` rules, with the selected-tab
-rule in `src/gui/main_tabs/main_window_surface.py`. The block below records what
-the bar did while the file was in the tree.
+The tab bar's own file and its paint method are deleted, and no module paints a
+tab ground by its position now.
+The bar takes its look from the theme's Qt style sheet, under its tab rules
+(`src/gui/theme_engine.py, in _theme_qss`). An asset class's tab book takes that
+class's accent on its selected tab
+(`src/gui/main_tabs/main_window_surface.py, in mode_tab_styles`). The block
+below records what the bar did while the file was in the tree.
 
 ```python
 painter.fillRect(self.tabRect(index), ground)
@@ -174,17 +178,16 @@ painter.setPen(text)
 painter.drawText(self.tabRect(index), int(Qt.AlignCenter), self.tabText(index))
 ```
 
-The React bar draws the same ten buttons with the same two colours each. The
-window publishes the colours beside the labels, so the page holds no palette of
-its own.
+The React bar draws the same ten buttons. The window publishes their labels and
+methods and no colours, so the page holds no palette of its own.
 
-`src/gui/main_tabs/main_window_surface.py` — what the frontend reads
+`src/gui/main_tabs/main_window_surface.py` — `MainWindowModel.as_dict`, what the frontend reads
 
 ```python
 "tab_labels": list(self.tab_labels),
 "tab_methods": dict(self.tab_methods),
-"tab_colours": {tab: dict(pair) for tab, pair in self.tab_colours.items()},
 "theme": self.theme,
+"tabs_movable": self.tabs_movable,
 ```
 
 The Live tab, which the manual's part list calls the Trading Tab, has its own
@@ -1471,6 +1474,10 @@ drew was built nowhere, so the table could draw no row. Four modules went
 together: `capital_registry_panel`, its view model, its
 renderer page, and the registry behind them. The bridge no longer offers the
 method, and the renderer manifest no longer names the page.
+
+The two Paper Trader host rows name files the tree no longer holds. The Qt host
+and the React host were removed together, and the Paper tab is drawn in Qt by
+`src/gui/paper/paper_trading_tab.py, in PaperTradingTab` today.
 
 Totals across the 76 rows above, measured on 5 September 2026:
 
