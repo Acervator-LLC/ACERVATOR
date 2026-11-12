@@ -29,6 +29,7 @@ from dev_harness.harness.report import (
     Finding,
     cli_exit,
 )
+from dev_harness.harness.rules.hallucination import _excluded_top_level
 
 __all__ = ["ArchetypeReport", "Finding", "TruthArchetype", "main"]
 
@@ -362,6 +363,10 @@ _GH_LIST_LIMIT = 1000
 # A merged pull request is not open, and T003 compares against open or closed.
 _STATE_ALIASES = {"MERGED": "CLOSED"}
 
+_UNRESOLVED_NUMBER = re.compile(
+    r"Could not resolve to an issue or pull request", re.IGNORECASE
+)
+
 _MACHINE_PATH = re.compile(r"[A-Za-z]:[\\/]+Users[\\/]|/Users/[a-z]|/home/[a-z]")
 _EXPORT_DIR = ("artifacts", "evidence-input", "transactions")
 _ASSET_COLUMN = "Asset"
@@ -452,12 +457,14 @@ def _prose_sentences(text: str) -> list[_Sentence]:
     return out
 
 
-def _iter_sources(root: Path) -> Iterator[Path]:
-    """Yield every file under `root`, skipping the `_SKIP_DIRS` names."""
+def _iter_sources(root: Path, ignored: frozenset[str] = frozenset()) -> Iterator[Path]:
+    """Yield each file under `root`, skipping `_SKIP_DIRS` and top-level `ignored`."""
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
+        skip = _SKIP_DIRS | ignored if dirpath == str(root) else _SKIP_DIRS
+        dirnames[:] = [d for d in dirnames if d not in skip]
         for name in filenames:
-            yield Path(dirpath) / name
+            if name not in skip:
+                yield Path(dirpath) / name
 
 
 def _collect_python(tree: ast.AST, index: _TreeIndex) -> None:
@@ -486,9 +493,9 @@ def _collect_python(tree: ast.AST, index: _TreeIndex) -> None:
 
 
 def build_tree_index(root: Path) -> _TreeIndex:
-    """Return the definition and name index for every source under `root`."""
+    """Return a name index of each source under `root` outside `_excluded_top_level`."""
     index = _TreeIndex()
-    for path in _iter_sources(root):
+    for path in _iter_sources(root, _excluded_top_level(root)):
         suffix = path.suffix.lower()
         if suffix in _PY_SUFFIXES:
             index.python_names.add(path.stem)
@@ -668,6 +675,7 @@ class TruthArchetype:
         self._item = item
         self._subjects: re.Pattern[str] | None = None
         self._subjects_built = False
+        self._views: dict[int, tuple[dict[str, str], str]] = {}
 
     def index(self) -> _TreeIndex:
         """Return the tree index, building it on first use."""
@@ -974,6 +982,22 @@ class TruthArchetype:
                 cited.extend((path, lineno, number, raw) for number in sorted(numbers))
         return cited
 
+    def _state_of(
+        self, number: int, states: dict[int, str], *, truncated: bool
+    ) -> tuple[str | None, str]:
+        """Return `number`'s state from `states` or `_gh_issue_view`, and why none."""
+        if number in states or not truncated:
+            return states.get(number), ""
+        row, reason = self._gh_issue_view(number)
+        if _UNRESOLVED_NUMBER.search(reason):
+            return None, ""
+        if reason:
+            return None, reason
+        state = row.get("state", "").upper()
+        if not state:
+            return None, f"gh issue view {number} returned no state"
+        return state, ""
+
     def _run_issues(self, files: list[Path]) -> tuple[list[Finding], str]:
         cited = self._cited_issues(files)
         if not cited:
@@ -992,23 +1016,29 @@ class TruthArchetype:
         findings: list[Finding] = []
         reported: set[tuple[str, int]] = set()
         for path, lineno, number, raw in cited:
-            state = states.get(number)
-            if state is None:
-                if truncated:
-                    findings.append(
-                        self._undecided(
-                            path,
-                            lineno,
-                            "T003",
-                            f"issue {number} is absent from a truncated listing, "
-                            f"so its absence is a fact about the listing.",
-                        )
+            state, why = self._state_of(number, states, truncated=truncated)
+            if why:
+                findings.append(
+                    self._undecided(
+                        path,
+                        lineno,
+                        "T003",
+                        f"issue {number} is absent from a truncated listing, "
+                        f"and gh issue view could not decide it: {why}.",
                     )
-                    continue
+                )
+                continue
+            if state is None:
                 key = (str(path), number)
                 if key in reported:
                     continue
                 reported.add(key)
+                source = (
+                    "gh issue view could not resolve it."
+                    if truncated
+                    else f"The listing holds {len(states)} issue and "
+                    f"pull-request numbers."
+                )
                 findings.append(
                     Finding(
                         tool="truth",
@@ -1018,8 +1048,7 @@ class TruthArchetype:
                         rule_id="T003",
                         message=(
                             f"cited issue {number} does not exist in this "
-                            f"repository. The listing holds {len(states)} "
-                            f"issue and pull-request numbers."
+                            f"repository. {source}"
                         ),
                     )
                 )
@@ -1278,11 +1307,13 @@ class TruthArchetype:
             "anchors the subject."
         )
 
-    def _gh_issue_body(self, number: int) -> tuple[str, str]:
-        """Return one issue's title and body, or an explanation for neither."""
+    def _gh_issue_view(self, number: int) -> tuple[dict[str, str], str]:
+        """Return the `gh issue view` row for `number`, or why there is none."""
+        if number in self._views:
+            return self._views[number]
         binary = shutil.which("gh")
         if binary is None:
-            return "", "gh is not on PATH"
+            return {}, "gh is not on PATH"
         proc = subprocess.run(  # noqa: S603
             [
                 binary,
@@ -1290,7 +1321,7 @@ class TruthArchetype:
                 "view",
                 str(number),
                 "--json",
-                "number,title,body",
+                "number,title,body,state",
             ],
             cwd=str(self.root),
             capture_output=True,
@@ -1300,14 +1331,25 @@ class TruthArchetype:
             timeout=90,
             check=False,
         )
+        view: tuple[dict[str, str], str]
         if proc.returncode != 0:
             detail = (proc.stderr or "").strip().replace("\n", " ")[:200]
-            return "", f"gh issue view {number} exited {proc.returncode}: {detail}"
-        try:
-            row = json.loads(proc.stdout or "{}")
-        except json.JSONDecodeError as exc:
-            return "", f"gh issue view {number} output did not parse: {exc}"
-        return f"{row.get('title') or ''}\n{row.get('body') or ''}", ""
+            view = {}, f"gh issue view {number} exited {proc.returncode}: {detail}"
+        else:
+            try:
+                row = json.loads(proc.stdout or "{}")
+                view = {key: str(value or "") for key, value in row.items()}, ""
+            except json.JSONDecodeError as exc:
+                view = {}, f"gh issue view {number} output did not parse: {exc}"
+        self._views[number] = view
+        return view
+
+    def _gh_issue_body(self, number: int) -> tuple[str, str]:
+        """Return one issue's title and body, or an explanation for neither."""
+        row, reason = self._gh_issue_view(number)
+        if reason:
+            return "", reason
+        return f"{row.get('title', '')}\n{row.get('body', '')}", ""
 
     def _resolve_item(self, files: list[Path]) -> tuple[int | None, str, str]:
         """Return the item number, its text, and the reason there is neither.
@@ -1446,9 +1488,14 @@ class TruthArchetype:
             "line already calling the path gone is recorded as T000, so a wrong "
             "path beside those words is reported as agreement;",
             "(c) T002 named a symbol bound by a runtime import, a getattr or a "
-            "generated name — the index reads definitions, not dynamic binding;",
-            "(d) T003 read a listing gh truncated, or a listing for a repository "
-            "other than the one the claim is about;",
+            "generated name — the index reads definitions, not dynamic binding. "
+            "The index leaves out only the top-level names .gitignore lists "
+            "bare, so a copy of a cited name kept in any other ignored file "
+            "still reads as a mention;",
+            "(d) T003 read a listing for a repository other than the one the "
+            "claim is about. A number absent from a truncated listing is looked "
+            "up alone with gh issue view, and a lookup that fails for any reason "
+            "but an unresolved number stays T000;",
             "(e) T004 recounted a subject other than the one the sentence meant. "
             "It reads only a line count whose path sits within "
             f"{_COUNT_SUBJECT_GAP} characters of the number, and it decides "

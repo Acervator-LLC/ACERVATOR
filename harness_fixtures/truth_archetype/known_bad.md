@@ -1,9 +1,9 @@
 # Bot Swarm conversion — Explanation
 
-Ground truth: this file carries one planted defect per rule. `TruthArchetype`
-MUST report T001, T002, T003, T004, T005 and T006 on it, and the CLI MUST exit
-1. A run that exits 0 here means the instrument is blind and every other verdict
-it gives is void.
+Ground truth: this file carries one planted defect per rule. Run with
+`--item 195`, `TruthArchetype` MUST report each of T001 to T007 on it at least
+once, and the CLI MUST return exit code 1. A run that exits 0 here means the
+instrument is blind and every other verdict it gives is void.
 
 ## What landed
 
