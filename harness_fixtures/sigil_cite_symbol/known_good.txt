@@ -1,0 +1,25 @@
+# Real citations from the issue comments
+dev_harness/hooks/block_unloaded_skills.py, in on_session_start
+dev_harness/hooks/block_missing_skills.py, in missing
+dev_harness/hooks/block_missing_skills.py, in nonexistent
+dev_harness/hooks/block_missing_skills.py, in main
+tools/hop_check.py, in newest_hop
+src/gui/main_tabs/splash_screen_surface.py, in sigil_ops
+src/gui/main_tabs/bot_wizard_surface.py, in POOL_SIGIL
+dev_harness/hooks/archetype_gate.py, in _pick_archetypes
+dev_harness/hooks/gate_workflow_script.py, in BRIEF_HOOKS
+dev_harness/harness/rules/hallucination.py, in _find_dead_paths
+dev_harness/harness/truth_archetype.py, in _run_symbols
+dev_harness/harness/ta_archetype.py, in TAArchetype
+dev_harness/sigils/cite_symbol.py, in resolve_citation
+
+# Real citations from tracked documents
+src/trading/bot_container.py, in guarded_place_order
+src/trading/bot_container.py, in BotContainer.guarded_place_order
+src/trading/scrumming_bot.py, in ScrummingBot.tick
+src/gui/main_window.py, in MainWindow._on_bot_command
+src/trading/container/config.py, in BotConfig.hunger_gain_per_candle
+src/core/notifications.py, in NotificationManager.DEFAULT_RULES
+src/exchange/base.py, in MarketRules
+src/core/log_paths.py, in gate_log_path
+src/exchange/ccxt_connector.py, in SUPPORTED_EXCHANGES
