@@ -1,0 +1,14 @@
+# Read with --root harness_fixtures/sigil_code_optimize/sample_tree
+# Each file holds the Use instead block that python -m ruff rule <id> prints.
+
+# CLEAN for its own rule id
+known_good_perf401.py
+# OPTIMIZABLE for PERF401 alone: this corrected form appends inside a for loop
+known_good_perf203.py
+known_good_furb118.py
+known_good_c901.py
+known_good_c901.py, in normalize_status
+fragments_bad/known_good_sim108.py
+fragments_bad/known_good_c401.py
+fragments_bad/known_good_up035.py
+fragments_bad/known_good_plr1730.py
