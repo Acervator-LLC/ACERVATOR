@@ -1,0 +1,4 @@
+# Read with --root harness_fixtures/sigil_code_loop/sample_tree
+
+# REJECTED, BLOCK at tier 2: the file holds no for, while, builder or generator expression
+no_loop.py
