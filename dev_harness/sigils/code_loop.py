@@ -1,14 +1,8 @@
 """`SIGIL` is CODE.LOOP on the `core` card; `loop_check` judges one input line."""
 
 import ast
-import json
-import re
-import subprocess
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass
-from functools import cache
-from importlib import metadata
 from pathlib import Path
 
 from .coding_input import (
@@ -33,16 +27,14 @@ from .core import (
     in_application_source,
     judge,
     main,
-    tool_text,
 )
 from .fix_class import BY_FIX_CLASS, FOLLOW_ON
+from .ruff_rules import RUFF_BUILT, ToolFault, check, rule_page, ruff_version
 
 CLEAN = "CLEAN"
 FINDINGS = "FINDINGS"
 REJECTED = "REJECTED"
 
-RUFF_BUILT = "0.16.0"
-RUFF_TIMEOUT_S = 120
 RULES = (
     "ASYNC110",
     "B035",
@@ -80,10 +72,6 @@ NO_LOOP = (
     "no for, async for, while, list, set or dictionary builder, "
     "or generator expression"
 )
-EXAMPLE = "## Example"
-USE_INSTEAD = "Use instead:"
-
-_BLOCK_RE = re.compile(r"```python\n(.*?)```", re.DOTALL)
 
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
@@ -98,121 +86,9 @@ SETTINGS: dict[str, str] = {
 }
 
 
-class ToolFault(Exception):
-    """`python -m ruff` did not run, or printed output this module cannot read."""
-
-
-@dataclass(frozen=True)
-class RulePage:
-    """One rule's `name`, `fix` class, and published `faulty` and `corrected` forms."""
-
-    name: str
-    fix: str
-    faulty: str
-    corrected: str
-
-
-@cache
-def ruff_version() -> str:
-    """Return the installed ruff version `python -P -m ruff` runs."""
-    try:
-        return metadata.version("ruff")
-    except metadata.PackageNotFoundError as exc:
-        message = f"ruff is not installed: {exc}"
-        raise ToolFault(message) from exc
-
-
-def _published_forms(explanation: str) -> tuple[str, str] | None:
-    """Return the code under `EXAMPLE`, before and after `USE_INSTEAD`, or None."""
-    example = explanation.partition(EXAMPLE)[2].split("\n## ", 1)[0]
-    faulty, marker, corrected = example.partition(USE_INSTEAD)
-    faulty_blocks = _BLOCK_RE.findall(faulty)
-    corrected_blocks = _BLOCK_RE.findall(corrected)
-    if not (marker and faulty_blocks and corrected_blocks):
-        return None
-    return "".join(faulty_blocks), "".join(corrected_blocks)
-
-
-@cache
-def rule_page(code: str) -> RulePage:
-    """Return the `RulePage` that `python -m ruff rule <code>` prints as JSON."""
-    try:
-        proc = subprocess.run(
-            [
-                sys.executable,
-                "-P",
-                "-m",
-                "ruff",
-                "rule",
-                code,
-                "--output-format",
-                "json",
-            ],
-            capture_output=True,
-            timeout=RUFF_TIMEOUT_S,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        message = f"ruff rule {code}: {exc}"
-        raise ToolFault(message) from exc
-    if proc.returncode != 0:
-        said = tool_text(proc.stderr or proc.stdout)
-        message = f"ruff rule {code} exited {proc.returncode}: {said}"
-        raise ToolFault(message)
-    try:
-        page = json.loads(proc.stdout)
-        name = page["name"]
-        fix = page["fix_availability"].lower()
-        forms = _published_forms(page["explanation"])
-    except (ValueError, KeyError, TypeError, AttributeError) as exc:
-        message = f"ruff rule {code} printed an unreadable page: {exc!r}"
-        raise ToolFault(message) from exc
-    if fix not in FOLLOW_ON or forms is None:
-        message = f"ruff rule {code} prints no fix class or no {EXAMPLE} form"
-        raise ToolFault(message)
-    return RulePage(name, fix, *forms)
-
-
 def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
     """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    try:
-        proc = subprocess.run(
-            [
-                sys.executable,
-                "-P",
-                "-m",
-                "ruff",
-                "check",
-                "--no-cache",
-                "--preview",
-                "--output-format",
-                "json",
-                "--select",
-                ",".join(RULES),
-                "-",
-            ],
-            input=source,
-            cwd=folder,
-            capture_output=True,
-            timeout=RUFF_TIMEOUT_S,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        message = f"ruff check: {exc}"
-        raise ToolFault(message) from exc
-    if proc.returncode not in {0, 1}:
-        said = tool_text(proc.stderr or proc.stdout)
-        message = f"ruff check exited {proc.returncode}: {said}"
-        raise ToolFault(message)
-    try:
-        return [
-            (row["code"], row["location"]["row"])
-            for row in json.loads(proc.stdout)
-            if row["code"] in RULES
-        ]
-    except (ValueError, KeyError, TypeError) as exc:
-        message = f"ruff check printed an unreadable finding: {exc!r}"
-        raise ToolFault(message) from exc
+    return [(row.code, row.line) for row in check(source, folder, RULES, preview=True)]
 
 
 def _content_fault(text: str, root: Path) -> str | None:

@@ -1,10 +1,7 @@
 """`SIGIL` is CODE.OPTIMIZE on the `core` card; `optimize` judges one input line."""
 
-import json
-import subprocess
 import sys
 from dataclasses import dataclass
-from functools import cache
 from pathlib import Path
 
 from .coding_input import (
@@ -18,17 +15,15 @@ from .coding_input import (
     data_type_fault,
     locate,
 )
-from .core import FLAGS, Flag, FlagRow, Sigil, Verdict, judge, main, tool_text
+from .core import FLAGS, Flag, FlagRow, Sigil, Verdict, judge, main
 from .fix_class import BY_FIX_CLASS, FOLLOW_ON
+from .ruff_rules import RUFF_BUILT, ToolFault, check, fix_class, ruff_version
 
 CLEAN = "CLEAN"
 OPTIMIZABLE = "OPTIMIZABLE"
 REJECTED = "REJECTED"
 
-RUFF_BUILT = "0.16.0"
-RUFF_TIMEOUT_S = 120
 FAMILIES = ("PERF", "SIM", "C4", "UP", "FURB", "PLR17", "C901")
-FIX_CLASSES = {"Always": "always", "Sometimes": "sometimes", "None": "none"}
 
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
@@ -37,10 +32,6 @@ SETTINGS: dict[str, str] = {
     "ruff_config": "the one ruff finds from the folder of the file: "
     "its target version, preview and complexity limit",
 }
-
-
-class ToolFault(Exception):
-    """`python -m ruff` did not run, or printed output `_ruff_findings` cannot read."""
 
 
 @dataclass(frozen=True)
@@ -53,97 +44,12 @@ class Finding:
     fix: str
 
 
-@cache
-def ruff_version() -> str:
-    """Return the version `python -m ruff --version` prints, or raise `ToolFault`."""
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-P", "-m", "ruff", "--version"],
-            capture_output=True,
-            timeout=RUFF_TIMEOUT_S,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ToolFault(f"ruff --version: {exc}") from exc
-    words = proc.stdout.decode("utf-8", "replace").split()
-    if proc.returncode != 0 or len(words) != 2 or words[0] != "ruff":
-        said = tool_text(proc.stderr or proc.stdout)
-        raise ToolFault(f"ruff --version exited {proc.returncode}: {said}")
-    return words[1]
-
-
-@cache
-def fix_classes() -> dict[str, str]:
-    """Return each rule code's `FIX_CLASSES` value from `python -m ruff rule --all`."""
-    try:
-        proc = subprocess.run(
-            [
-                sys.executable,
-                "-P",
-                "-m",
-                "ruff",
-                "rule",
-                "--all",
-                "--output-format",
-                "json",
-            ],
-            capture_output=True,
-            timeout=RUFF_TIMEOUT_S,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ToolFault(f"ruff rule --all: {exc}") from exc
-    if proc.returncode != 0:
-        said = tool_text(proc.stderr or proc.stdout)
-        raise ToolFault(f"ruff rule --all exited {proc.returncode}: {said}")
-    try:
-        return {
-            rule["code"]: FIX_CLASSES[rule["fix_availability"]]
-            for rule in json.loads(proc.stdout)
-        }
-    except (ValueError, KeyError, TypeError) as exc:
-        raise ToolFault(f"ruff rule --all printed an unreadable rule: {exc}") from exc
-
-
 def _ruff_findings(source: bytes, folder: Path) -> list[Finding]:
     """Return each `FAMILIES` `Finding` for `source` on stdin, run from `folder`."""
-    try:
-        proc = subprocess.run(
-            [
-                sys.executable,
-                "-P",
-                "-m",
-                "ruff",
-                "check",
-                "--no-cache",
-                "--output-format",
-                "json",
-                "--select",
-                "PERF,SIM,C4,UP,FURB,PLR17,C901",
-                "-",
-            ],
-            input=source,
-            cwd=folder,
-            capture_output=True,
-            timeout=RUFF_TIMEOUT_S,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ToolFault(f"ruff check: {exc}") from exc
-    if proc.returncode not in {0, 1}:
-        said = tool_text(proc.stderr or proc.stdout)
-        raise ToolFault(f"ruff check exited {proc.returncode}: {said}")
-    classes = fix_classes()
-    try:
-        return [
-            Finding(
-                row["code"], row["name"], row["location"]["row"], classes[row["code"]]
-            )
-            for row in json.loads(proc.stdout)
-            if isinstance(row["code"], str) and row["code"].startswith(FAMILIES)
-        ]
-    except (ValueError, KeyError, TypeError) as exc:
-        raise ToolFault(f"ruff check printed an unreadable finding: {exc}") from exc
+    return [
+        Finding(row.code, row.name, row.line, fix_class(row.code))
+        for row in check(source, folder, FAMILIES, preview=False)
+    ]
 
 
 def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
