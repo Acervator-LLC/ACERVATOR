@@ -190,7 +190,7 @@ ledger per bot.
 | ------ | ------------ |
 | `register_wire` | Adds an edge carrying its own percentage |
 | `unregister_wire` | Drops one edge |
-| `distribute_fold_profit` | Moves that percentage of realised profit to each wired target |
+| `get_outgoing_wires` | Answers one bot's targets and percentages, which the bot reads on each sale to move that percentage of the sale's surplus (`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires`) |
 | `book_transfer` | Books one transfer onto both ledgers — the two wire totals and the target's provenance line for the funder |
 | `export_wires`, `import_wires` | Carry the topology through a save and a restart |
 | `export_ledgers`, `import_ledgers` | Carry the provenance through the same |
@@ -213,7 +213,8 @@ def routable_pct(value) -> Optional[float]:
 A bool is refused by name. `float(True)` answers 1.0, so a saved `true` would
 otherwise stand as a one percent wire nobody configured. `register_wire` and
 `import_wires` refuse that kind before they store anything,
-`distribute_fold_profit` routes no share from a percent it cannot admit, and
+`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires`
+routes a share only from a percent those two stored, and
 `export_wires` drops such a row from the save and logs which route is gone.
 `PaperWireManager` and `SimWireManager` read the same two functions, so the
 three engines admit and refuse the same values.
