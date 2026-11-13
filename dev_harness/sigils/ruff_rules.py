@@ -18,9 +18,11 @@ TOOL_EXITS = frozenset({0})
 CHECK_EXITS = frozenset({0, 1})
 FIX_CLASSES = {"Always": "always", "Sometimes": "sometimes", "None": "none"}
 EXAMPLE = "## Example"
-USE_INSTEAD = "Use instead:"
+USE_INSTEAD = "Use instead"
+FORM_FENCES = ("python", "py", "pyi", "toml")
 
-_BLOCK_RE = re.compile(r"```python\n(.*?)```", re.DOTALL)
+_BLOCK_RE = re.compile(rf"```(?:{'|'.join(FORM_FENCES)})\n(.*?)```", re.DOTALL)
+_HEADING_RE = re.compile(rf"^{re.escape(USE_INSTEAD)}.*$", re.MULTILINE)
 
 
 class ToolFault(Exception):
@@ -108,12 +110,14 @@ def fix_class(code: str) -> str:
 
 
 def _published_forms(explanation: str) -> tuple[str, str] | None:
-    """Return the code under `EXAMPLE`, before and after `USE_INSTEAD`, or None."""
+    """Return `EXAMPLE` blocks above and below its first `USE_INSTEAD` line, or None."""
     example = explanation.partition(EXAMPLE)[2].split("\n## ", 1)[0]
-    faulty, marker, corrected = example.partition(USE_INSTEAD)
-    faulty_blocks = _BLOCK_RE.findall(faulty)
-    corrected_blocks = _BLOCK_RE.findall(corrected)
-    if not (marker and faulty_blocks and corrected_blocks):
+    heading = _HEADING_RE.search(example)
+    if heading is None:
+        return None
+    faulty_blocks = _BLOCK_RE.findall(example[: heading.start()])
+    corrected_blocks = _BLOCK_RE.findall(example[heading.end() :])
+    if not (faulty_blocks and corrected_blocks):
         return None
     return "".join(faulty_blocks), "".join(corrected_blocks)
 
