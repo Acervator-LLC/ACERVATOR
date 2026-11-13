@@ -77,8 +77,11 @@ class ReconciliationEngineMixin:
     _get_balance: Callable[..., Any]
     _get_ticker: Callable[..., Any]
     _main_lots: list[dict]
+    _order_asked_units: Callable[..., float]
     _quote_to_usd: float
     _reconcile_resting_orders: Callable[..., Any]
+    _record_venue_fee: Callable[..., None]
+    _settle_venue_fee: Callable[..., Any]
     _refresh_quote_to_usd: Callable[..., Any]
     _return_shadows_to_lots: Callable[..., float]
     _shadow_held_units: Callable[..., float]
@@ -1318,77 +1321,68 @@ class ReconciliationEngineMixin:
     async def _settle_lost_order(
         self, side: str, units: float, exchange_units: float
     ) -> bool:
-        """Book ``units`` the audit read past the book as the fill of the unanswered
-        decision on ``side`` sent at that size, and end it.
+        """Book ``units`` the audit read past the book as the order ``_lost_order_read``
+        finds under the id of an unanswered ``booked_at_audit`` decision on ``side``, at
+        that order's own price with its fee through ``_record_venue_fee``, end the id,
+        and answer True where one booked.
 
-        ``booked_at_audit`` names the decisions. ``_book_manual_purchase`` pays the queue
-        or ``_book_manual_sale`` queues a tranche at the price that send read, else
-        ``stats.current_price``. ``SELF_DESTRUCT_SALE`` sold the Shadow rows too, so it
-        matches with ``_shadow_held_units`` added and books through
-        ``_book_self_destruct``. True where one booked.
-
-        Each send it books writes ``UnansweredSend.ended_line``, and with none booked each
-        send writes ``UnansweredSend.unmatched_line`` and adds to ``unmatched_audits``.
+        ``_book_manual_purchase``, ``_book_manual_sale`` and, for ``SELF_DESTRUCT_SALE``
+        with ``_shadow_held_units``, ``_book_self_destruct`` book it after
+        ``UnansweredSend.ended_line``, and each send left unbooked writes
+        ``UnansweredSend.unmatched_line`` and adds to ``unmatched_audits``.
         """
-        current = float(
-            getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
-        )
         layer = get_idempotency_layer()
         unmatched = []
         for send in layer.unanswered_sends(self.bot_id, self.config.symbol, side):
             whole_sale = send.intent.decision == SELF_DESTRUCT_SALE
             sent = units + self._shadow_held_units() if whole_sale else units
-            read = next(
-                (
-                    price
-                    for size, price in send.sizes
-                    if math.isclose(size, sent, rel_tol=SAME_SIZE_REL)
-                ),
-                None,
-            )
-            price = float(read or current)
             if not booked_at_audit(send.intent.decision):
                 unmatched.append(
                     (send, sent, "the audit books no order of this decision")
                 )
                 continue
+            read, why = await self._lost_order_read(send, side, sent)
             if read is None:
-                unmatched.append((send, sent, "no size matches"))
+                unmatched.append((send, sent, why))
                 continue
-            if not math.isfinite(price) or price <= 0.0:
-                unmatched.append((send, sent, f"no usable price, ${price:.8f}"))
-                continue
+            order, filled, price, moved = read
+            booked = moved if side == SIDE_BUY else filled
+            self._record_venue_fee(order, filled, price)
+            await self._settle_venue_fee(order, filled, price)
             ended = layer.end_retry(send.intent)
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
                     f"LOST ORDER BOOKED: the audit read {sent:.8f} "
-                    f"{self.config.target_asset} past the book, the size of a "
-                    f"{side} whose answer was lost, so it books at ${price:.8f}."
+                    f"{self.config.target_asset} past the book, the units the venue's "
+                    f"{side} order under id {send.coid} moved, so it books that order: "
+                    f"{booked:.8f} at the venue's ${price:.8f}, with the fee it "
+                    f"charged."
                 ),
             )
             if ended is not None:
                 self._warn_order(
                     ended.ended_line(
-                        f"the holdings audit booked {sent:.8f} at ${price:.8f}"
+                        f"the holdings audit booked {booked:.8f} at the venue's "
+                        f"${price:.8f}"
                     )
                 )
             if whole_sale:
                 self._return_shadows_to_lots("self-destruct")
                 await self._book_self_destruct(
-                    sent,
+                    filled,
                     price,
-                    sent,
+                    filled,
                     True,
                     keep_running=False,
                     venue_units=exchange_units + sent,
                 )
             elif side == SIDE_BUY:
                 await self._book_manual_purchase(
-                    units,
+                    booked,
                     price,
-                    units,
+                    booked,
                     True,
                     label="FOLD",
                     operator_initiated=False,
@@ -1397,9 +1391,9 @@ class ReconciliationEngineMixin:
                 )
             else:
                 await self._book_manual_sale(
-                    units,
+                    filled,
                     price,
-                    units,
+                    filled,
                     True,
                     label="SCRUM",
                     operator_initiated=False,
@@ -1411,6 +1405,52 @@ class ReconciliationEngineMixin:
             layer.note_unmatched(send.intent)
             self._warn_order(send.unmatched_line(sent, why))
         return False
+
+    async def _lost_order_read(
+        self, send: Any, side: str, units: float
+    ) -> tuple[Optional[tuple[Any, float, float, float]], str]:
+        """``((order, filled, average, moved), "")`` for the order
+        ``get_order_by_client_id`` reads under ``send.coid``, closed at a price, whose
+        ``order_units_moved`` on ``side`` matches ``units``; else ``(None, why)``."""
+        from ..bot_container import (
+            CLOSED_ORDER_STATUSES,
+            finite_reading,
+            order_filled_and_average,
+            order_status_text,
+        )
+        from .sizing import order_units_moved
+
+        try:
+            order = await self.exchange.get_order_by_client_id(
+                send.coid, self.config.symbol
+            )
+        except Exception as exc:
+            return None, (
+                f"the venue's order under this id could not be read "
+                f"({type(exc).__name__}: {exc})"
+            )
+        raw = getattr(order, "raw", None)
+        named = str((raw if isinstance(raw, dict) else {}).get("clientOrderId") or "")
+        filled, price = order_filled_and_average(order)
+        moved = order_units_moved(
+            side,
+            filled,
+            finite_reading(getattr(order, "fee", 0.0)),
+            str(getattr(order, "fee_currency", "") or ""),
+            self.config.target_asset,
+        )
+        if named and named != send.coid:
+            return None, f"the venue answered with the order under {named}"
+        if (
+            order_status_text(order) not in CLOSED_ORDER_STATUSES
+            and self._order_asked_units(order, filled) - filled > FILL_DUST_UNITS
+        ):
+            return None, f"its order still rests at the venue with {filled:.8f} filled"
+        if price <= 0.0:
+            return None, "the venue's order names no fill price"
+        if not math.isclose(moved, units, rel_tol=SAME_SIZE_REL):
+            return None, f"the venue's order moved {moved:.8f}"
+        return (order, filled, price, moved), ""
 
     def _note_audit_adoption(self, lots_before: float) -> None:
         """Hand the units this audit moved ``_main_lots`` by from ``lots_before`` to

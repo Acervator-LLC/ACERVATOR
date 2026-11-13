@@ -3401,6 +3401,15 @@ def booked_at_audit(decision: str) -> bool:
     ) or decision.startswith(FOLD_DECISION_PREFIX)
 
 
+def order_units_moved(
+    side: str, filled: float, fee: float, fee_currency: str, asset: str
+) -> float:
+    """The units of ``asset`` an order on ``side`` moved at the venue: ``filled``, less
+    a ``fee`` charged in ``asset`` on ``SIDE_BUY`` and plus one on a sale."""
+    charged = fee if fee_currency.strip().upper() == asset.strip().upper() else 0.0
+    return filled - charged if side == SIDE_BUY else filled + charged
+
+
 def order_spent_credit(spent_usd: float, tranches: list) -> bool:
     """True where ``spent_usd`` passes the ``tranche_sale_usd`` of ``tranches`` by half
     their ``held_wire_usd`` or more, so the order bought with those credits too."""
