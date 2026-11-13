@@ -26,8 +26,10 @@ an https url that names a host. The indicators setting is
 walks the path in exact letter case, parses the file with Python's ast module,
 and searches it for the definition.
 
-TA.AUDIT@1 takes its citation rules and its definition search from
-CITE.SYMBOL@3, by import. A name counts as defined by the rules on the
+TA.AUDIT@1 takes its citation rules and its definition search, by import, from
+the shared module that CITE.SYMBOL@3 also imports from:
+`dev_harness/sigils/citation.py, in data_type_fault` and `in definition_verdict`.
+A name counts as defined by the rules on the
 [CITE.SYMBOL@3 page](cite-symbol.md).
 
 Both sigils import the definition search from
