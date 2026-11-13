@@ -1,0 +1,6 @@
+# RET508 superfluous-else-break: the Use instead block python -m ruff rule RET508 prints
+def foo(bar, baz):
+    for i in bar:
+        if i > baz:
+            break
+        x = 0

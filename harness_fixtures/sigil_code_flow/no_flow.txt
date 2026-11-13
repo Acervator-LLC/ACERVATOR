@@ -1,0 +1,4 @@
+# Read with --root harness_fixtures/sigil_code_flow/sample_tree
+
+# REJECTED, BLOCK at tier 2: the file holds no if, try, with, return, raise, assert, pass or del statement
+no_flow.py

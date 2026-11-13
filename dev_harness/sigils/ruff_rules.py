@@ -18,6 +18,7 @@ TOOL_EXITS = frozenset({0})
 CHECK_EXITS = frozenset({0, 1})
 FIX_CLASSES = {"Always": "always", "Sometimes": "sometimes", "None": "none"}
 EXAMPLE = "## Example"
+SECTION = "\n## "
 USE_INSTEAD = "Use instead"
 FORM_FENCES = ("python", "py", "pyi", "toml")
 
@@ -109,9 +110,16 @@ def fix_class(code: str) -> str:
         raise ToolFault(message) from exc
 
 
-def _published_forms(explanation: str) -> tuple[str, str] | None:
-    """Return `EXAMPLE` blocks above and below its first `USE_INSTEAD` line, or None."""
-    example = explanation.partition(EXAMPLE)[2].split("\n## ", 1)[0]
+def _example_section(explanation: str) -> str:
+    """Return the `EXAMPLE` section, else the first one with a `USE_INSTEAD` line."""
+    if EXAMPLE in explanation:
+        return explanation.partition(EXAMPLE)[2].split(SECTION, 1)[0]
+    sections = explanation.split(SECTION)
+    return next((section for section in sections if _HEADING_RE.search(section)), "")
+
+
+def _published_forms(example: str) -> tuple[str, str] | None:
+    """Return `example` blocks above and below its first `USE_INSTEAD` line, or None."""
     heading = _HEADING_RE.search(example)
     if heading is None:
         return None
@@ -130,7 +138,7 @@ def rule_page(code: str) -> RulePage:
         page = json.loads(printed)
         name = page["name"]
         fix = FIX_CLASSES.get(page["fix_availability"])
-        forms = _published_forms(page["explanation"])
+        forms = _published_forms(_example_section(page["explanation"]))
     except (ValueError, KeyError, TypeError, AttributeError) as exc:
         message = f"ruff rule {code} printed an unreadable page: {exc!r}"
         raise ToolFault(message) from exc
