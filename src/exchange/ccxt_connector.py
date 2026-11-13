@@ -18,10 +18,12 @@ import math
 import threading
 import time
 from collections import Counter
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from functools import lru_cache
 from urllib.error import HTTPError, URLError
 from concurrent.futures import ThreadPoolExecutor
@@ -33,8 +35,22 @@ from typing import Any, Optional
 HistoryCallback = Callable[[str, HistoryAnalysis], object]
 
 
-# Submissions past this depth are refused rather than queued.
+# Submissions past this depth are refused, outside queue_cap_waived.
 SYNC_QUEUE_CAP: int = 8
+
+# True inside queue_cap_waived, where _call_sync_timed queues past SYNC_QUEUE_CAP.
+_QUEUE_CAP_WAIVED: ContextVar[bool] = ContextVar("queue_cap_waived", default=False)
+
+
+@contextmanager
+def queue_cap_waived() -> Iterator[None]:
+    """Queue every sync call this task makes inside the block past ``SYNC_QUEUE_CAP``."""
+    token = _QUEUE_CAP_WAIVED.set(True)
+    try:
+        yield
+    finally:
+        _QUEUE_CAP_WAIVED.reset(token)
+
 
 # Calls one connector runs at once. One worker serves them all, so
 # SYNC_QUEUE_CAP bounds the queue in front of that worker and not concurrency.
@@ -2213,7 +2229,8 @@ class CCXTConnector(ExchangeInterface):
         venue latency.
 
         Raises:
-            CCXTQueueFullError: queue depth is at ``SYNC_QUEUE_CAP``.
+            CCXTQueueFullError: queue depth is at ``SYNC_QUEUE_CAP`` outside
+                ``queue_cap_waived``.
             TimeoutError: the call exceeded ``SYNC_CALL_TIMEOUT_SEC``, or it was
                 still queued on a wedged worker whose executor was replaced.
             asyncio.CancelledError: this awaiter itself was cancelled; a worker
@@ -2223,7 +2240,7 @@ class CCXTConnector(ExchangeInterface):
         """
         call_name = getattr(fn, "__name__", repr(fn))
         # Read and written only on the asyncio loop thread, so no lock.
-        if self._sync_queue_depth >= SYNC_QUEUE_CAP:
+        if self._sync_queue_depth >= SYNC_QUEUE_CAP and not _QUEUE_CAP_WAIVED.get():
             self._release_bulk_read_slot()
             self._sync_queue_refusals += 1
             self._sync_queue_refusals_by_call[call_name] += 1
