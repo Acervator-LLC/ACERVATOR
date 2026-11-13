@@ -276,17 +276,27 @@ class BotContainer:
             logger.debug("Bot %s balance invalidate failed: %s", self.bot_id, _inv_exc)
 
     def _invalidate_symbol_balances(self, symbol: str) -> None:
-        """End the balance window for both legs of ``symbol``.
+        """End the balance window of each currency a trade on ``symbol`` moves: its
+        asset and ``quote_currency`` legs, its ``settle_currency`` leg and its
+        ``wallet_currency``.
 
-        A trade moves the base and the quote together, and naming both leaves
-        every other currency's slot alone. A ``symbol`` naming no leg clears
-        every slot this exchange holds rather than none.
+        A ``symbol`` naming no leg clears every slot this exchange holds.
         """
+        from ..exchange.market_rules_store import (
+            SYMBOL_SEPARATOR,
+            quote_currency,
+            settle_currency,
+        )
+        from .wallet_reservations import wallet_currency
+
         if self._data_pool is None:
             return
-        legs: list[str] = []
-        if isinstance(symbol, str):
-            legs = [leg for leg in symbol.split("/") if leg]
+        held = symbol if isinstance(symbol, str) else ""
+        legs = {
+            held.partition(SYMBOL_SEPARATOR)[0],
+            quote_currency(held),
+            settle_currency(held),
+        } - {""}
         if not legs:
             logger.debug(
                 "Bot %s invalidating every balance slot: %r names no currency",
@@ -295,7 +305,8 @@ class BotContainer:
             )
             self._invalidate_balance()
             return
-        for leg in legs:
+        legs.add(wallet_currency(held, self.config.base_currency))
+        for leg in sorted(legs - {""}):
             self._invalidate_balance(leg)
 
     def _announce_fill(
@@ -437,7 +448,9 @@ class BotContainer:
         filled count and an average price.
 
         Returns ``(filled, average, settled, last)``, ``settled`` being the body
-        carrying both or None, and keeps ``last`` on ``_last_settled_order``.
+        carrying both or None, keeps ``last`` on ``_last_settled_order``, and ends
+        the balance window of ``symbol`` through ``_invalidate_symbol_balances``
+        after a re-read.
         """
         filled, average = order_filled_and_average(order)
         self._last_settled_order = order
@@ -446,22 +459,25 @@ class BotContainer:
         last = order
         order_id = str(getattr(order, "id", "") or "")
         if order_id:
-            for _attempt in range(SETTLE_REREADS):
-                try:
-                    await asyncio.sleep(SETTLE_REREAD_DELAY_S)
-                    fetched = await self.exchange.get_order(order_id, symbol)
-                except Exception as exc:
-                    logger.debug(
-                        "settled-fill re-read failed for %s: %s", order_id, exc
-                    )
-                    break
-                last = fetched
-                self._last_settled_order = fetched
-                read_filled, read_average = order_filled_and_average(fetched)
-                if read_filled > 0.0 and read_average > 0.0:
-                    return read_filled, read_average, fetched, fetched
-                filled = read_filled or filled
-                average = read_average or average
+            try:
+                for _attempt in range(SETTLE_REREADS):
+                    try:
+                        await asyncio.sleep(SETTLE_REREAD_DELAY_S)
+                        fetched = await self.exchange.get_order(order_id, symbol)
+                    except Exception as exc:
+                        logger.debug(
+                            "settled-fill re-read failed for %s: %s", order_id, exc
+                        )
+                        break
+                    last = fetched
+                    self._last_settled_order = fetched
+                    read_filled, read_average = order_filled_and_average(fetched)
+                    if read_filled > 0.0 and read_average > 0.0:
+                        return read_filled, read_average, fetched, fetched
+                    filled = read_filled or filled
+                    average = read_average or average
+            finally:
+                self._invalidate_symbol_balances(symbol)
         return filled, average, None, last
 
     def _hold_resting_order(
@@ -586,6 +602,9 @@ class BotContainer:
     async def _book_resting_progress(self, record: dict, body: object) -> int:
         """Book the units ``body`` reports filled beyond ``record['booked']``, at those
         units' own price, and return 1 when it booked.
+
+        Each piece ends the balance window of ``record['symbol']`` through
+        ``_invalidate_symbol_balances`` before it books.
         """
         filled, average = order_filled_and_average(body)
         held = float(record.get("booked", 0.0) or 0.0)
@@ -606,6 +625,9 @@ class BotContainer:
         record["booked_cost"] = cost
         record["booked_fee"] = max(fee_total, held_fee)
         self._last_settled_order = body
+        self._invalidate_symbol_balances(
+            str(record.get("symbol") or self.config.symbol)
+        )
         try:
             await self._book_resting_delta(
                 record,
