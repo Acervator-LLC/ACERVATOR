@@ -291,6 +291,12 @@ shows, past other bots on that venue and by more than 1% of target, or omits the
 coin from its balance reply. The holdings audit books those coins on its own
 count.
 
+Each read writes one line in the bot's log, and the line ends with the Max
+Cartridge Size the tick ran under. A line the vote decided also names each weight
+above zero that the vote ran at. A read that clears in front of the rebalance, the
+hedge top-up or the fold writes FIRST BUY READ CLEARED. A read that clears on the
+first entry writes that all 4 gates pass.
+
 The read:
 
 `src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_read`
@@ -313,8 +319,18 @@ The hold the rebalance, the hedge top-up and the fold ask:
 if self._first_buy_made:
     return True
 read = await self._first_buy_read(ticker, symbol)
+terms = self._first_buy_terms(read, cartridge_pct)
 if not read.refusal:
-    return True
+```
+
+The close of each line:
+
+`src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_terms`
+
+```python
+size = f"Max Cartridge Size {cartridge_pct:g}%."
+if read.summary is None:
+    return size
 ```
 
 The one write of the field:
