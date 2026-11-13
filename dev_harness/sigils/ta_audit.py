@@ -1,12 +1,23 @@
-"""`SIGIL` is TA.AUDIT on the `core` card, using the `CITE_SYMBOL` citation rules."""
+"""`SIGIL` is TA.AUDIT on the `core` card, using the `citation` rules."""
 
 import sys
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
 
-from .cite_symbol import NOT_GROUNDED, REJECTED, RESOLVED
-from .cite_symbol import SIGIL as CITE_SYMBOL
-from .core import Flag, FlagRow, Sigil, main
+from .citation import (
+    DATA_TYPE_REJECTS,
+    NOT_GROUNDED,
+    READERS,
+    REJECTED,
+    RESOLVED,
+    SEARCH_NOT_GROUNDED,
+    SEARCH_RESOLVED,
+    SEARCH_RUNS,
+    data_type_fault,
+    definition_verdict,
+)
+from .citation import SETTINGS as CITATION_SETTINGS
+from .core import Flag, FlagRow, Sigil, main, named_file
 
 CLEAN = "CLEAN"
 DIRECTION = "DIRECTION"
@@ -15,7 +26,7 @@ CONFIDENCE = "CONFIDENCE"
 DOCUMENTATION = "DOCUMENTATION"
 
 SETTINGS: dict[str, str] = {
-    **CITE_SYMBOL.settings,
+    **CITATION_SETTINGS,
     "field_separator": " | ",
     "indicators": "src/trading/indicators/*.py",
 }
@@ -38,15 +49,6 @@ NOT_HTTPS = "url is not https"
 NO_HOST = "url names no host"
 
 
-def _cite_card(tier: int, key: str) -> list[str]:
-    """Return the list `CITE_SYMBOL.tiers` holds under `key` in tier index `tier`."""
-    listed = CITE_SYMBOL.tiers[tier][key]
-    if not isinstance(listed, list):
-        message = f"CITE.SYMBOL tier index {tier} holds no list under {key}"
-        raise TypeError(message)
-    return [str(item) for item in listed]
-
-
 def _fields(line: str) -> list[str]:
     """Return `line` split at the `field_separator` in `SETTINGS`."""
     return line.split(SETTINGS["field_separator"])
@@ -59,7 +61,7 @@ def _data_type_fault(line: str) -> str | None:
         return NOT_THREE_FIELDS
     if any(part.split() != [part] for part in fields[1:]):
         return NOT_THREE_FIELDS
-    return CITE_SYMBOL.data_type(fields[0])
+    return data_type_fault(fields[0])
 
 
 def _url_fault(url: str) -> str | None:
@@ -86,11 +88,15 @@ def _content_fault(line: str, _root: Path) -> str | None:
 
 
 def _functions_verdict(line: str, root: Path) -> tuple[str, str]:
-    """Return the rank where `CITE_SYMBOL.functions` resolves, else `NOT_GROUNDED`."""
+    """Return the rank where `definition_verdict` resolves, else `NOT_GROUNDED`."""
     citation, rank = _fields(line)[:2]
-    reading = CITE_SYMBOL.functions(citation, root)
-    output, reason = reading[0], reading[1]
+    output, reason = definition_verdict(citation, root)
     return (rank if output == RESOLVED else NOT_GROUNDED), reason
+
+
+def _fault_file(line: str, root: Path) -> Path | None:
+    """Return the module `line` names under `root`, or None if tier 1 refuses it."""
+    return named_file(line, root, _data_type_fault, SETTINGS["separator"])
 
 
 SIGIL = Sigil(
@@ -104,7 +110,7 @@ SIGIL = Sigil(
             "accepts": "three fields split by the field separator: a citation the "
             "CITE.SYMBOL@3 path and symbol rules accept, then a rank and a url "
             "with no space",
-            "rejects": [NOT_THREE_FIELDS, *_cite_card(0, "rejects")],
+            "rejects": [NOT_THREE_FIELDS, *DATA_TYPE_REJECTS],
         },
         {
             "accepts": "a path the indicators setting matches, a rank in outputs, "
@@ -112,18 +118,19 @@ SIGIL = Sigil(
             "rejects": [OUTSIDE_INDICATORS, NOT_A_RANK, NOT_HTTPS, NO_HOST],
         },
         {
-            "runs": _cite_card(2, "runs"),
-            "not_grounded": _cite_card(2, "not_grounded"),
-            "chosen_rank": _cite_card(2, "resolved"),
+            "runs": SEARCH_RUNS,
+            "not_grounded": SEARCH_NOT_GROUNDED,
+            "chosen_rank": SEARCH_RESOLVED,
         },
     ),
     outputs=OUTPUTS,
     refusal=REJECTED,
     follows={},
-    readers=CITE_SYMBOL.readers,
+    readers=READERS,
     data_type=_data_type_fault,
     content=_content_fault,
     functions=_functions_verdict,
+    fault_file=_fault_file,
 )
 
 
