@@ -1412,6 +1412,63 @@ class ReconciliationEngineMixin:
             self._warn_order(send.unmatched_line(sent, why))
         return False
 
+    def _note_audit_adoption(self, lots_before: float) -> None:
+        """Hand the units this audit moved ``_main_lots`` by from ``lots_before`` to
+        ``IdempotencyLayer.note_adopted``: a rise as ``SIDE_BUY``, a fall as
+        ``SIDE_SELL``."""
+        moved = (
+            math.fsum(float(lot.get("units", 0.0) or 0.0) for lot in self._main_lots)
+            - lots_before
+        )
+        if abs(moved) > 1e-12:
+            get_idempotency_layer().note_adopted(
+                self.bot_id,
+                self.config.symbol,
+                SIDE_BUY if moved > 0.0 else SIDE_SELL,
+                abs(moved),
+            )
+
+    def _return_audit_adoption(self, send: Any, filled_units: float) -> None:
+        """Undo up to ``filled_units`` of what audits moved ``_main_lots`` by on their own
+        while ``send`` was held, before the caller books the venue's answer.
+
+        A buy takes the units off ``reconciled_to_exchange`` lots, newest first, and a
+        sell scales every lot back up; a book ``_reconcilable_lot_book`` refuses is left.
+        """
+        lot_each, _why = self._reconcilable_lot_book()
+        if lot_each is None:
+            return
+        lots = list(zip(self._main_lots, lot_each, strict=True))
+        layer = get_idempotency_layer()
+        if send.intent.side == SIDE_BUY:
+            spare = math.fsum(u for lot, u in lots if lot.get("reconciled_to_exchange"))
+            units = layer.take_adopted(send, min(filled_units, spare))
+            left = units
+            for lot, u in reversed(lots):
+                if left > 0.0 and lot.get("reconciled_to_exchange"):
+                    cut = min(left, u)
+                    lot["units"] = u - cut
+                    left -= cut
+            self._main_lots = [
+                lot
+                for lot in self._main_lots
+                if not (
+                    lot.get("reconciled_to_exchange")
+                    and float(lot.get("units", 0.0) or 0.0) <= 1e-12
+                )
+            ]
+            self._current_holdings -= units
+        else:
+            book = math.fsum(lot_each)
+            if book <= 0.0:
+                return
+            units = layer.take_adopted(send, filled_units)
+            for lot, u in lots:
+                lot["units"] = u * (book + units) / book
+            self._current_holdings += units
+        if units > 1e-12:
+            self._warn_order(send.returned_line(units))
+
     def _adopt_drift_down(
         self,
         exchange_units: float,
@@ -1622,6 +1679,7 @@ class ReconciliationEngineMixin:
             ):
                 return True
             self._adopt_drift_down(exchange_units, _lot_each, _scalar_units, reason)
+            self._note_audit_adoption(_lot_units)
         else:
 
             _surplus = max(0.0, exchange_units - internal_units)
@@ -1649,6 +1707,7 @@ class ReconciliationEngineMixin:
                 if _written is not None:
                     # Booked at this pass's price and flagged
                     # reconciled_to_exchange; no fill is invented.
+                    self._note_audit_adoption(_lot_units)
                     _gain = _written
                     _adopt = self._current_holdings
                     _foreign = max(0.0, exchange_units - _adopt)
