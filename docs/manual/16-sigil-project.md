@@ -228,8 +228,8 @@ the card its command prints. A sigil that is not built has no card yet.
 | CODE.LOOP@1 | coding | 19 ruff rules | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
 | CODE.IMPORT@1 | coding | 8 of 28 ruff rules | built | `dev_harness/sigils/code_import.py, in SIGIL` |
 | CODE.COLLECTION@1 | coding | 34 of 39 ruff rules | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
-| CODE.FLOW@1 | coding | no card yet | building | not in the tree yet |
-| VARIABLE | coding | no card yet | unbuilt | not in the tree |
+| CODE.FLOW@1 | coding | 39 of 56 ruff rules | built | `dev_harness/sigils/code_flow.py, in SIGIL` |
+| CODE.VARIABLE@1 | coding | 54 of 89 ruff rules | built | `dev_harness/sigils/code_variable.py, in SIGIL` |
 | TA.AUDIT@1 | ta | no card yet | unbuilt | not in the tree |
 | ROW.CLOSE@1 | not named yet | no card yet | unbuilt | not in the tree |
 
