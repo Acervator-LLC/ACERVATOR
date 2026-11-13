@@ -134,34 +134,79 @@ EXTRACTOR_SECTION_STYLE = (
     "font-weight: bold; padding: 10px 2px 2px 2px;"
 )
 
+START_COMMAND = "start"
+PAUSE_COMMAND = "pause"
+STOP_COMMAND = "stop"
+RESTART_COMMAND = "restart"
+DELETE_COMMAND = "delete"
+ADJUST_STACK_COMMAND = "adjust_stack"
+
 COMMAND_BUTTONS = (
-    ("Start", "start"),
-    ("Pause", "pause"),
-    ("Stop", "stop"),
-    ("Restart", "restart"),
-    ("Delete", "delete"),
+    ("Start", START_COMMAND),
+    ("Pause", PAUSE_COMMAND),
+    ("Stop", STOP_COMMAND),
+    ("Restart", RESTART_COMMAND),
+    ("Delete", DELETE_COMMAND),
 )
 DANGER_COMMAND_LABEL = "Delete"
 
 #: The description each command button carries, keyed by its command.
 COMMAND_TOOLTIPS = {
-    "start": "Starts the selected bot. Hold SHIFT to start every bot on this layer.",
-    "pause": "Pauses the selected bot. Hold SHIFT to pause every bot on this layer.",
-    "stop": "Stops the selected bot. Hold SHIFT to stop every bot on this layer.",
-    "restart": (
+    START_COMMAND: (
+        "Starts the selected bot. Hold SHIFT to start every bot on this layer."
+    ),
+    PAUSE_COMMAND: (
+        "Pauses the selected bot. Hold SHIFT to pause every bot on this layer."
+    ),
+    STOP_COMMAND: "Stops the selected bot. Hold SHIFT to stop every bot on this layer.",
+    RESTART_COMMAND: (
         "Restarts the selected bot. Hold SHIFT to restart every bot on this layer."
     ),
-    "delete": "Deletes the selected bot. There is no all-bots form of Delete.",
+    DELETE_COMMAND: "Deletes the selected bot. There is no all-bots form of Delete.",
 }
 
 #: The label and the command each single-bot command becomes while SHIFT is
 #: held. Delete has no all-bots form, so SHIFT leaves it alone.
 FLEET_COMMANDS = {
-    "start": ("Start All", "start_all"),
-    "pause": ("Pause All", "pause_all"),
-    "stop": ("Stop All", "stop_all"),
-    "restart": ("Restart All", "restart_all"),
+    START_COMMAND: ("Start All", "start_all"),
+    PAUSE_COMMAND: ("Pause All", "pause_all"),
+    STOP_COMMAND: ("Stop All", "stop_all"),
+    RESTART_COMMAND: ("Restart All", "restart_all"),
 }
+
+#: Each command ``MainWindow._on_bot_command`` runs a branch for, keyed as it dispatches.
+BOT_COMMAND_BRANCHES = (
+    START_COMMAND,
+    PAUSE_COMMAND,
+    STOP_COMMAND,
+    RESTART_COMMAND,
+    DELETE_COMMAND,
+    ADJUST_STACK_COMMAND,
+)
+NO_BRANCH = ""
+
+#: The route each caller of ``MainWindow._on_bot_command`` names itself by.
+REACT_LIVE_COMMAND_ROUTE = "the React Live page command bar"
+LIVE_COMMAND_BAR_ROUTE = "the Live tab command bar"
+FLEET_SEQUENCE_ROUTE = "the fleet sequence"
+
+BOT_COMMAND = "BOT COMMAND"
+BOT_COMMAND_NO_BRANCH = "BOT COMMAND WITH NO BRANCH"
+BOT_COMMAND_RUNS_FORMAT = (
+    "{head}: {command} from {route} runs the {branch} branch on {venue}"
+)
+BOT_COMMAND_UNANSWERED_FORMAT = (
+    "{head}: {command} from {route} has no branch on {venue}"
+)
+BOT_COMMAND_NO_BOT_FORMAT = (
+    "{head}: {command} from {route} names no bot the manager holds"
+)
+
+LIVE_PAGE_COMMAND = "LIVE PAGE COMMAND"
+LIVE_PAGE_COMMAND_DROPPED = "LIVE PAGE COMMAND DROPPED"
+LIVE_PAGE_COMMAND_FORMAT = "{head}: {command}, SHIFT {shift}, on {venue}: {outcome}"
+SHIFT_DOWN_TEXT = "down"
+SHIFT_UP_TEXT = "up"
 
 
 def shift_held_after_key(
@@ -251,6 +296,8 @@ SECTIONS_SHOWN = "sections.shown"
 COMMAND_REFUSED = "command.refused"
 COMMAND_SENT = "command.sent"
 FLEET_COMMAND_SENT = "command.fleet"
+COMMAND_UNWIRED = "command.unwired"
+COMMAND_NO_PAGE = "command.no_page"
 BOT_OPENED = "bot.opened"
 SIBLING_CLEARED = "sibling.cleared"
 SCRUM_BOT_HELD = "scrum.held"
@@ -263,6 +310,17 @@ WINDOW_REFRESHED = "window.refreshed"
 WINDOW_UNREACHABLE = "window.unreachable"
 ROW_REFUSED = "row.refused"
 PIN_UNRECORDED = "pin.unrecorded"
+
+#: What the Live page did with one command press, keyed by the tag ``ExchangeTabModel.cmd`` answers.
+COMMAND_OUTCOMES = {
+    COMMAND_SENT: "sent to the bot handler",
+    FLEET_COMMAND_SENT: "sent to the fleet handler",
+    COMMAND_REFUSED: "refused, no bot highlighted",
+    COMMAND_UNWIRED: "dropped, no handler is wired",
+    COMMAND_NO_PAGE: "dropped, no venue page holds it",
+}
+NO_OUTCOME_TEXT = "dropped, the page answered nothing"
+DELIVERED_OUTCOMES = (COMMAND_SENT, FLEET_COMMAND_SENT, COMMAND_REFUSED)
 
 TableCall = list
 
@@ -430,6 +488,46 @@ def refusing_check(status: dict, kind: str) -> Optional[tuple]:
         if check_refuses(status, check):
             return (check, refusal)
     return None
+
+
+def bot_command_branch(command: Any) -> str:
+    """The ``BOT_COMMAND_BRANCHES`` entry equal to *command*, or ``NO_BRANCH``."""
+    return str(command) if command in BOT_COMMAND_BRANCHES else NO_BRANCH
+
+
+def bot_command_line(
+    route: str, command: Any, venue: Optional[str], branch: str
+) -> str:
+    """The line ``MainWindow._on_bot_command`` logs, headed ``BOT_COMMAND_NO_BRANCH`` where *venue* or *branch* is absent."""
+    if venue is None:
+        return BOT_COMMAND_NO_BOT_FORMAT.format(
+            head=BOT_COMMAND_NO_BRANCH, command=command, route=route
+        )
+    if branch == NO_BRANCH:
+        return BOT_COMMAND_UNANSWERED_FORMAT.format(
+            head=BOT_COMMAND_NO_BRANCH, command=command, route=route, venue=venue
+        )
+    return BOT_COMMAND_RUNS_FORMAT.format(
+        head=BOT_COMMAND, command=command, route=route, branch=branch, venue=venue
+    )
+
+
+def live_page_command_line(
+    command: Any, shift_held: Any, venue: str, outcome: Any
+) -> str:
+    """The line ``TradingTabReact.run_press`` logs once the page answers *command*, naming *outcome* from ``COMMAND_OUTCOMES``."""
+    head = (
+        LIVE_PAGE_COMMAND
+        if outcome in DELIVERED_OUTCOMES
+        else LIVE_PAGE_COMMAND_DROPPED
+    )
+    return LIVE_PAGE_COMMAND_FORMAT.format(
+        head=head,
+        command=command,
+        shift=SHIFT_DOWN_TEXT if shift_held else SHIFT_UP_TEXT,
+        venue=venue,
+        outcome=COMMAND_OUTCOMES.get(outcome, NO_OUTCOME_TEXT),
+    )
 
 
 class HostedTableModel:
@@ -810,15 +908,14 @@ class ExchangeTabModel:
             }
         )
 
-    def cmd(self, command: str, shift_held: bool = False) -> None:
-        """Send one command to the bot the operator highlighted.
+    def cmd(self, command: str, shift_held: bool = False) -> str:
+        """Send one command to the bot the operator highlighted, and answer its ``COMMAND_OUTCOMES`` tag.
 
         ``shift_held`` sends the whole fleet the all-bots form of ``command``
         from ``FLEET_COMMANDS`` instead, which needs no highlighted bot.
         """
         if shift_held and command in FLEET_COMMANDS:
-            self.fleet_cmd(FLEET_COMMANDS[command][1])
-            return
+            return self.fleet_cmd(FLEET_COMMANDS[command][1])
         if self.last_clicked_table == TABLE_EXTRACTOR:
             bot_id = self.extractor_table.get_selected_bot_id()
             if not bot_id:
@@ -832,7 +929,7 @@ class ExchangeTabModel:
                 self.logged.append([SELECT_FIRST_MESSAGE, SELECT_FIRST_LEVEL])
                 self.status_log.log(SELECT_FIRST_MESSAGE, SELECT_FIRST_LEVEL)
             self.calls.append([COMMAND_REFUSED, command])
-            return
+            return COMMAND_REFUSED
         chosen = self.last_clicked_table
         scrum_selected = self.scrum_table.get_selected_bot_id()
         extractor_selected = self.extractor_table.get_selected_bot_id()
@@ -864,19 +961,22 @@ class ExchangeTabModel:
                 },
             }
         )
-        if self.on_bot_cmd:
-            self.commands_sent.append([bot_id, command])
-            self.calls.append([COMMAND_SENT, command, came_from])
-            self.on_bot_cmd(bot_id, command)
+        if not self.on_bot_cmd:
+            return COMMAND_UNWIRED
+        self.commands_sent.append([bot_id, command])
+        self.calls.append([COMMAND_SENT, command, came_from])
+        self.on_bot_cmd(bot_id, command)
+        return COMMAND_SENT
 
-    def fleet_cmd(self, fleet_command: str) -> None:
+    def fleet_cmd(self, fleet_command: str) -> str:
         """Send one all-bots command to ``on_fleet_cmd``, which the window
-        answers over every held bot."""
+        answers over every held bot, and answer its ``COMMAND_OUTCOMES`` tag."""
         self.calls.append([FLEET_COMMAND_SENT, fleet_command])
         if not self.on_fleet_cmd:
-            return
+            return COMMAND_UNWIRED
         self.fleet_commands_sent.append(fleet_command)
         self.on_fleet_cmd(fleet_command)
+        return FLEET_COMMAND_SENT
 
     def on_global_privacy_clicked(self) -> None:
         """Flip every registered privacy mask in one shot."""

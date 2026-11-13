@@ -469,6 +469,28 @@ Each command acts on the selected row. With no row selected it logs "Select a bo
 | SHIFT: Restart All | Restarts every bot the manager holds, one at a time. `src/gui/main_window.py, in MainWindow.run_fleet_sequence` |
 | SHIFT: Pause All, Stop All | Pause All takes every running bot and Stop All takes every bot, on every exchange and class. `src/gui/main_window.py, in MainWindow._global_bot_cmd` |
 
+Each command that reaches the handler writes one BOT COMMAND line to the system log. It names the command, the route it came by, the branch that runs and the venue. The route reads the React Live page command bar, the Live tab command bar on the Qt build, or the fleet sequence, which runs at launch and on Start All and Restart All. A command no branch answers, or a bot the manager no longer holds, writes BOT COMMAND WITH NO BRANCH (`src/gui/main_window.py, in MainWindow._on_bot_command`).
+
+On the React build, the Live page then writes LIVE PAGE COMMAND. It names the command, SHIFT, the venue and what the page did with the press: sent to the bot handler, sent to the fleet handler, or refused with no bot highlighted. A press no venue page holds, or one with no handler, writes LIVE PAGE COMMAND DROPPED (`src/gui/react_trading_tab.py, in TradingTabReact.run_press`).
+
+```python
+#: Each command ``MainWindow._on_bot_command`` runs a branch for, keyed as it dispatches.
+BOT_COMMAND_BRANCHES = (
+    START_COMMAND,
+    PAUSE_COMMAND,
+    STOP_COMMAND,
+    RESTART_COMMAND,
+    DELETE_COMMAND,
+    ADJUST_STACK_COMMAND,
+)
+NO_BRANCH = ""
+
+#: The route each caller of ``MainWindow._on_bot_command`` names itself by.
+REACT_LIVE_COMMAND_ROUTE = "the React Live page command bar"
+LIVE_COMMAND_BAR_ROUTE = "the Live tab command bar"
+FLEET_SEQUENCE_ROUTE = "the fleet sequence"
+```
+
 ### The two log panes
 
 | Control | What it does and what it reads |
