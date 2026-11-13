@@ -163,8 +163,10 @@ FOLLOW_ON = {
 
 ## The shared modules
 
-Four modules hold the steps that every sigil shares. Each step has one body. No
-sigil module imports from another sigil module.
+Five modules hold the steps that sigils share: every sigil builds its card with
+`dev_harness/sigils/core.py, in Sigil`, and each of the other four serves only
+some sigils. Each step has one body. No sigil module imports from another sigil
+module.
 
 | Module | What it holds |
 | ------ | ------------- |
