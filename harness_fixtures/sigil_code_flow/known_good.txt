@@ -1,0 +1,50 @@
+# Read with --root harness_fixtures/sigil_code_flow/sample_tree
+# Each file names its rule on line 1, then holds the Use instead blocks python -m ruff rule <id> prints.
+# For ASYNC100 SIM102 SIM114 SIM117 E701 E722 PLE1205 PLE1206 PLR1730 RUF047 RUF072 TRY203, the lines between define the names the block uses and never defines.
+
+# CLEAN for its own rule id
+known_good_async100.py
+known_good_b901.py
+known_good_g201.py
+known_good_g202.py
+known_good_ret501.py
+known_good_ret502.py
+known_good_ret505.py
+known_good_ret506.py
+known_good_ret507.py
+known_good_ret508.py
+known_good_sim105.py
+known_good_sim114.py
+known_good_sim116.py
+known_good_sim117.py
+known_good_e701.py
+known_good_e722.py
+known_good_plr5501.py
+known_good_ruf047.py
+known_good_ruf072.py
+known_good_try004.py
+known_good_try300.py
+
+# FINDINGS, FIX for another rule alone: B029's form reads SIM105, SIM102's reads RUF050,
+# PLE1205's and PLE1206's read TRY400, PLR1708's reads PLR1711, TRY301's reads TRY203,
+# TRY400's reads TRY301
+known_good_b029.py
+known_good_sim102.py
+known_good_ple1205.py
+known_good_ple1206.py
+known_good_plr1708.py
+known_good_try301.py
+known_good_try400.py
+
+# REJECTED, BLOCK at tier 2: the corrected form holds none of the eight statements, because the fix removes it
+known_good_tc005.py
+known_good_perf401.py
+known_good_ple0101.py
+known_good_plr1711.py
+known_good_plr1730.py
+known_good_furb101.py
+known_good_furb103.py
+known_good_furb131.py
+known_good_furb132.py
+known_good_ruf050.py
+known_good_try203.py

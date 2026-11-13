@@ -978,6 +978,7 @@ class BotContainer:
         of ``watch`` answers, read here and after the waits below, with the send taken back.
         Answers None for a second send under an id ``IdempotencyLayer.in_flight`` names,
         and an ``id_refused`` id reads ``get_order_by_client_id`` and sends nothing.
+        A send ``order_stayed_home`` proves refused goes back through ``withdraw_send``.
         """
         from ..exchange.base import OrderHeld, OrderSide, OrderType
 
@@ -1415,6 +1416,7 @@ class BotContainer:
         amount = _contracts
 
         # An order in hand ends the coid; a send with no answer keeps it for a resend.
+        from ..exchange.ccxt_connector import order_stayed_home
         from ..exchange.idempotency import (
             TradeIntent,
             get_idempotency_layer,
@@ -1468,6 +1470,8 @@ class BotContainer:
                     f"{_side_str} decision: each try reads that order, and the "
                     f"holdings audit can end the id."
                 )
+            elif not _read_only and order_stayed_home(_refused):
+                _idem.withdraw_send(_intent, _price_read, _amt)
             raise
         finally:
             _idem.end_flight(_intent)

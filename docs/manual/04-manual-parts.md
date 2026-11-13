@@ -45,3 +45,7 @@ Part Title and Area of Focus
 9 Live Trade History and Supporting Evidence
 
 - VWAP Charts - YTD Data Analysis and Trade Grading - Deep Indicator Function Investigations Via Trade Logic Gate Logs
+
+10 The Sigil Project
+
+• Named Checks That Read Finished Code Against a Published Rule Set - Design and Progress - One Page per Built Sigil

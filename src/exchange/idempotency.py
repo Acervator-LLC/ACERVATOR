@@ -4,7 +4,7 @@
 same ``TradeIntent`` sends the held ``coid``, which a venue will not open twice.
 ``decision_purpose`` names a decision, whose resend keeps the ``coid`` at any size or
 price, and ``IdempotencyLayer.end_retry`` drops it once an order comes back for that
-intent. ``IdempotencyLayer.withdraw_send`` takes back a send that never left, so
+intent. ``IdempotencyLayer.withdraw_send`` takes back a send that left no order, so
 ``unanswered_sends`` reads only sends that may be at the venue.
 ``BotContainer.guarded_place_order`` calls all three, and ``end_flight`` once a send
 is over. A send under a ``coid`` still ``in_flight`` is refused, and a ``coid`` the venue
@@ -176,7 +176,7 @@ class IdempotencyLayer:
     def withdraw_send(
         self, intent: TradeIntent, price_read: float, units: float
     ) -> None:
-        """Undo the ``derive_coid`` of a send that never left: its size leaves
+        """Undo the ``derive_coid`` of a send that left no order: its size leaves
         ``UnansweredSend.sizes``, and a ``coid`` left with no size leaves with it."""
         size = (float(units), price_read)
         with self._lock:
@@ -186,8 +186,23 @@ class IdempotencyLayer:
                 return
             if size in held.sizes:
                 held.sizes.remove(size)
-            if not held.sizes:
-                del self._unanswered[fp]
+            if held.sizes:
+                logger.info(
+                    "Idempotency: coid=%s stays held for %d earlier send(s) after a "
+                    "%s %s send that left no order",
+                    held.coid,
+                    len(held.sizes),
+                    intent.side,
+                    intent.symbol,
+                )
+                return
+            del self._unanswered[fp]
+            logger.info(
+                "Idempotency: coid=%s ends after a %s %s send that left no order",
+                held.coid,
+                intent.side,
+                intent.symbol,
+            )
 
     def holds(self, intent: TradeIntent) -> bool:
         """True where ``derive_coid`` answers a held ``coid`` for ``intent``."""
@@ -234,7 +249,15 @@ class IdempotencyLayer:
         """Drop the ``coid`` held for ``intent``, leaving ``derive_coid`` to issue a new
         one for the next order."""
         with self._lock:
-            self._unanswered.pop(intent.fingerprint(self.session_nonce), None)
+            held = self._unanswered.pop(intent.fingerprint(self.session_nonce), None)
+            if held is not None:
+                logger.info(
+                    "Idempotency: coid=%s ends for %s %s (issued %.1fs ago)",
+                    held.coid,
+                    intent.side,
+                    intent.symbol,
+                    time.time() - held.issued_at,
+                )
 
     def unanswered_sends(
         self, bot_id: str, symbol: str, side: str

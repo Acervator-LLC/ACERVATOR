@@ -1,0 +1,3 @@
+# SIM115 open-file-with-context-handler: the Use instead block python -m ruff rule SIM115 prints
+with open("foo.txt") as file:
+    ...

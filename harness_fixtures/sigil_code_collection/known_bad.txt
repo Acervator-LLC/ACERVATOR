@@ -1,0 +1,47 @@
+# Read with --root harness_fixtures/sigil_code_collection/sample_tree
+# Each file names its rule on line 1, then holds the Example block python -m ruff rule <id> prints.
+# For C400 C401 C402 C403 C404 C411 C414 RUF048, the lines between define the names the block uses and never defines.
+# foo.py holds the names the F822 block imports.
+# The 5 rules left off are on the card, under left_off, each with its reason.
+
+# FINDINGS, FIX: each file reads its own rule id
+known_bad_s607.py
+known_bad_b006.py
+known_bad_b013.py
+known_bad_b033.py
+known_bad_b039.py
+known_bad_com812.py
+known_bad_com818.py
+known_bad_com819.py
+known_bad_c400.py
+known_bad_c401.py
+known_bad_c402.py
+known_bad_c403.py
+known_bad_c404.py
+known_bad_c405.py
+known_bad_c406.py
+known_bad_c408.py
+known_bad_c409.py
+known_bad_c410.py
+known_bad_c411.py
+known_bad_c414.py
+known_bad_c418.py
+known_bad_pie800.py
+known_bad_perf101.py
+known_bad_f601.py
+known_bad_f822.py
+known_bad_plc0208.py
+known_bad_plr6201.py
+known_bad_plw0244.py
+known_bad_ruf023.py
+known_bad_ruf031.py
+known_bad_ruf048.py
+
+# FINDINGS, FIX: each file reads its own rule id and another: G101's reads C408,
+# RUF022's reads F822, RUF068's reads F822 and RUF022
+known_bad_g101.py
+known_bad_ruf022.py
+known_bad_ruf068.py
+
+# FINDINGS, FIX: narrowed to the one function holding the default
+known_bad_b006.py, in add_to_list

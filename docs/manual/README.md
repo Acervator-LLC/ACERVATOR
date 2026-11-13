@@ -35,6 +35,7 @@ meaning; the Part column below is what places a file in the manual.
 | [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Market Inspector and Asset Charts, and the pointers to every other screen's own section under [08-tabs/](08-tabs/README.md) |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
 | [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
+| [16-sigil-project.md](16-sigil-project.md) | 10 | — | The sigil project: what a sigil is, its design, and where each sigil stands |
 | [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
 
 The Part column is the table's second job: it tells the build tool which manual
@@ -106,6 +107,25 @@ the screen's state.
 | [08-tabs/settings.md](08-tabs/settings.md) | Every control on the nine Settings pages, and what each page stores |
 | [08-tabs/promotion-pipeline.md](08-tabs/promotion-pipeline.md) | How a strategy earns its way to real money |
 | [08-tabs/alerts.md](08-tabs/alerts.md) | Notifications and Alerts: the Event Routing table, which events reach the message channels, and the engine that runs without the screen |
+
+## Part 10 sigil pages
+
+Written from each sigil's module and the card its command prints. Each file is
+one built sigil: what it reads, its outputs and flags, its command, and its
+rules. [16-sigil-project.md](16-sigil-project.md) links every one.
+
+| File | Covers |
+| ---- | ------ |
+| [16-sigil-project/cite-symbol.md](16-sigil-project/cite-symbol.md) | CITE.SYMBOL@3: whether a cited file defines the cited name |
+| [16-sigil-project/code-optimize.md](16-sigil-project/code-optimize.md) | CODE.OPTIMIZE@1: seven ruff rule families that name a faster or simpler form |
+| [16-sigil-project/code-type.md](16-sigil-project/code-type.md) | CODE.TYPE@1: mypy and pyright errors |
+| [16-sigil-project/code-secure.md](16-sigil-project/code-secure.md) | CODE.SECURE@1: bandit and semgrep findings, each with its CWE id |
+| [16-sigil-project/code-reach.md](16-sigil-project/code-reach.md) | CODE.REACH@1: code that nothing reaches, found by vulture |
+| [16-sigil-project/code-loop.md](16-sigil-project/code-loop.md) | CODE.LOOP@1: 19 ruff rules for loops and builders |
+| [16-sigil-project/code-import.md](16-sigil-project/code-import.md) | CODE.IMPORT@1: 8 ruff rules for import statements |
+| [16-sigil-project/code-collection.md](16-sigil-project/code-collection.md) | CODE.COLLECTION@1: 34 ruff rules for tuples, lists, sets and dictionaries |
+| [16-sigil-project/code-flow.md](16-sigil-project/code-flow.md) | CODE.FLOW@1: 39 ruff rules for if, try, with, return, raise, assert, pass and del |
+| [16-sigil-project/code-variable.md](16-sigil-project/code-variable.md) | CODE.VARIABLE@1: 54 ruff rules for names, assignments and function arguments |
 
 ## Figures
 

@@ -1,0 +1,17 @@
+# Read with --root harness_fixtures/sigil_code_import/sample_tree
+# Each file names its rule on line 1, then holds the Example block python -m ruff rule <id> prints.
+# foo.py holds the one name the TC004 block uses; pkg/ is the package the TC001 block imports from.
+# The 20 rules left off are on the card, under left_off, each with its reason.
+
+# FINDINGS, FIX: each file reads its own rule id
+known_bad_a004.py
+pkg/known_bad_tc001.py
+known_bad_tc003.py
+known_bad_tc004.py
+known_bad_f403.py
+known_bad_plc0415.py
+known_bad_up010.py
+known_bad_up029.py
+
+# FINDINGS, FIX: narrowed to the one function holding the import
+known_bad_plc0415.py, in print_python_version

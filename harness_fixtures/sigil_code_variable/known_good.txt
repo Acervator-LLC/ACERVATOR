@@ -1,0 +1,64 @@
+# Read with --root harness_fixtures/sigil_code_variable/sample_tree
+# Each file names its rule on line 1, then holds the Use instead blocks python -m ruff rule <id> prints.
+# For BLE001 B007 B031 PIE794 F602 PLR6104 FURB148 RUF059 TRY401, the lines between define the names the block uses and never defines.
+
+# CLEAN for its own rule id
+known_good_ble001.py
+known_good_b003.py
+known_good_b007.py
+known_good_b020.py
+known_good_b023.py
+known_good_a001.py
+known_good_a002.py
+known_good_log002.py
+known_good_pie794.py
+known_good_pie796.py
+known_good_sim113.py
+known_good_n815.py
+known_good_n816.py
+known_good_perf403.py
+known_good_e731.py
+known_good_e741.py
+known_good_f405.py
+known_good_f602.py
+known_good_f901.py
+known_good_plc0105.py
+known_good_plc0131.py
+known_good_plc0205.py
+known_good_plc2401.py
+known_good_ple0237.py
+known_good_ple0605.py
+known_good_plr1704.py
+known_good_plr6104.py
+known_good_plw0127.py
+known_good_plw0128.py
+known_good_plw0131.py
+known_good_plw0602.py
+known_good_plw0603.py
+known_good_up006.py
+known_good_up013.py
+known_good_up014.py
+known_good_up019.py
+known_good_furb148.py
+known_good_furb189.py
+known_good_ruf007.py
+known_good_ruf052.py
+known_good_ruf059.py
+known_good_try401.py
+
+# FINDINGS, FIX for another rule alone: ASYNC230's and ASYNC250's forms read F841, B031's reads B007,
+# N806's, F841's and PLW0642's read RET504, PLE0118's reads PLW0603, FURB187's reads E741
+known_good_async230.py
+known_good_async250.py
+known_good_b031.py
+known_good_n806.py
+known_good_f841.py
+known_good_ple0118.py
+known_good_plw0642.py
+known_good_furb187.py
+
+# REJECTED, BLOCK at tier 2: the corrected form holds none of the bindings tier 2 names, because the fix removes it
+known_good_ret504.py
+known_good_sim115.py
+known_good_up001.py
+known_good_ruf070.py
