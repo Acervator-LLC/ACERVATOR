@@ -1,14 +1,15 @@
 # Read with --root harness_fixtures/sigil_ta_audit/sample_tree --gate
 # Each line resolves, so each reads the rank it names.
-# This file sits outside the sample tree, so every fault reads FIX, never HOLD.
+# This file sits outside the sample tree, and each line names a module under src,
+# the sample tree's application source, so DIRECTION and SIGNAL read HOLD.
 
 # CLEAN, PASS
 src/trading/indicators/crossing.py, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
 
-# DIRECTION, FIX
+# DIRECTION, HOLD
 src/trading/indicators/crossing.py, in CrossingIndicator.compute | DIRECTION | https://en.wikipedia.org/wiki/MACD
 
-# SIGNAL, FIX
+# SIGNAL, HOLD
 src/trading/indicators/crossing.py, in detect_crossing | SIGNAL | https://en.wikipedia.org/wiki/MACD
 
 # CONFIDENCE, FIX
