@@ -291,6 +291,11 @@ shows, past other bots on that venue and by more than 1% of target, or omits the
 coin from its balance reply. The holdings audit books those coins on its own
 count.
 
+Each compare writes one line in the bot's log, once a stretch. A compare that
+clears writes VENUE COMPARE CLEAR. It and the refusal both name what the venue
+holds past other bots, what the book shows, and the gap in dollars against the
+band.
+
 Each read writes one line in the bot's log, and the line ends with the Max
 Cartridge Size the tick ran under. A line the vote decided also names each weight
 above zero that the vote ran at. A read that clears in front of the rebalance, the
@@ -388,6 +393,21 @@ The venue compare:
 
 ```
 src/trading/scrumming/execution.py, in ExecutionEngineMixin._unbooked_coin_refusal
+```
+
+The line a compare that clears writes:
+
+`src/trading/scrumming/execution.py` — `ExecutionEngineMixin._unbooked_coin_refusal`
+
+```python
+if unbooked_usd <= band_usd:
+    if self._refusal_is_new("buy_unbooked_clear", price):
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=f"VENUE COMPARE CLEAR: {counts}",
+        )
+    return ""
 ```
 
 Paper and the Simulator make no first buy. Each opens a bot at its target.
