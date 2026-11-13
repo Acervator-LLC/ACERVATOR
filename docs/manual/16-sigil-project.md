@@ -302,3 +302,5 @@ condition, its outputs and flags, the command that runs it, and its rules.
 - [CODE.LOOP@1](16-sigil-project/code-loop.md)
 - [CODE.IMPORT@1](16-sigil-project/code-import.md)
 - [CODE.COLLECTION@1](16-sigil-project/code-collection.md)
+- [CODE.FLOW@1](16-sigil-project/code-flow.md)
+- [CODE.VARIABLE@1](16-sigil-project/code-variable.md)
