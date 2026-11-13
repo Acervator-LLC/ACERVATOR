@@ -1,0 +1,26 @@
+# Read with --root at the repository root and --gate.
+# Every line reads BLOCK.
+
+# NOT_GROUNDED: an invented symbol, a real class under the wrong module, a missing file
+src/trading/indicators/fvg.py, in no_such_symbol_here_xyz | CLEAN | https://www.tradingview.com/scripts/fairvaluegap/
+src/trading/indicators/rsi.py, in MACD | DIRECTION | https://en.wikipedia.org/wiki/Relative_strength_index
+src/trading/indicators/absent.py, in RSIIndicator | SIGNAL | https://en.wikipedia.org/wiki/Relative_strength_index
+
+# NOT_GROUNDED: a name the module imports and names in its docstring, and never defines
+src/trading/indicators/spring.py, in VotingSummary | CONFIDENCE | https://chartschool.stockcharts.com/table-of-contents/market-analysis/wyckoff-analysis-articles/the-wyckoff-method-a-tutorial
+
+# NOT_GROUNDED: the rank the model chose
+src/trading/indicators/rsi.py, in RSIIndicator | NOT_GROUNDED | https://en.wikipedia.org/wiki/Relative_strength_index
+
+# REJECTED: a module outside src/trading/indicators/*.py
+src/trading/bot_container.py, in BotContainer | DIRECTION | https://en.wikipedia.org/wiki/Relative_strength_index
+src/trading/indicators/__pycache__/rsi.py, in RSIIndicator | CLEAN | https://en.wikipedia.org/wiki/Relative_strength_index
+
+# REJECTED: a rank not in outputs, a url that is not https, a url that names no host
+src/trading/indicators/rsi.py, in RSIIndicator | BEARISH | https://en.wikipedia.org/wiki/Relative_strength_index
+src/trading/indicators/rsi.py, in RSIIndicator | CLEAN | http://en.wikipedia.org/wiki/Relative_strength_index
+src/trading/indicators/rsi.py, in RSIIndicator | CLEAN | https://
+
+# REJECTED: outside the form
+src/trading/indicators/rsi.py, in RSIIndicator | CLEAN
+src/trading/indicators/rsi.py:21, in RSIIndicator | CLEAN | https://en.wikipedia.org/wiki/Relative_strength_index

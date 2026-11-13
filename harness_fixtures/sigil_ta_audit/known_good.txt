@@ -1,0 +1,25 @@
+# Read with --root at the repository root.
+# One line per entry of src/trading/indicators/__init__.py, in INDICATOR_MODULES,
+# naming the main class or function that entry gives.
+# The rank on each line is a fixed input for the resolution check, not an audit result.
+src/trading/indicators/adx.py, in ADXIndicator | CLEAN | https://en.wikipedia.org/wiki/Average_directional_movement_index
+src/trading/indicators/atr.py, in ATRIndicator | CLEAN | https://en.wikipedia.org/wiki/Average_true_range
+src/trading/indicators/bb_proximity.py, in detect_bb_proximity | CLEAN | https://en.wikipedia.org/wiki/Bollinger_Bands
+src/trading/indicators/bollinger.py, in BollingerBands | CLEAN | https://en.wikipedia.org/wiki/Bollinger_Bands
+src/trading/indicators/fvg.py, in FVGIndicator | CLEAN | https://www.tradingview.com/scripts/fairvaluegap/
+src/trading/indicators/heikin_ashi.py, in compute_heikin_ashi | CLEAN | https://en.wikipedia.org/wiki/Heikin-Ashi_chart
+src/trading/indicators/ichimoku.py, in IchimokuCloud | CLEAN | https://en.wikipedia.org/wiki/Ichimoku_Kink%C5%8D_Hy%C5%8D
+src/trading/indicators/kaufman_er.py, in KaufmanERIndicator | CLEAN | https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-overlays/kaufmans-adaptive-moving-average-kama
+src/trading/indicators/landing_strip.py, in detect_landing_strip_v2 | CLEAN | https://en.wikipedia.org/wiki/Bollinger_Bands
+src/trading/indicators/m_top.py, in detect_m_top | CLEAN | https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-overlays/bollinger-bands
+src/trading/indicators/macd.py, in MACD | CLEAN | https://en.wikipedia.org/wiki/MACD
+src/trading/indicators/macd_taper.py, in detect_macd_taper | CLEAN | https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/macd-histogram
+src/trading/indicators/rsi.py, in RSIIndicator | CLEAN | https://en.wikipedia.org/wiki/Relative_strength_index
+src/trading/indicators/slingshot.py, in SlingshotIndicator | CLEAN | https://www.tradingview.com/script/nqQ1DT5a-Squeeze-Momentum-Indicator-LazyBear/
+src/trading/indicators/spring.py, in detect_volume_confirmed_spring | CLEAN | https://chartschool.stockcharts.com/table-of-contents/market-analysis/wyckoff-analysis-articles/the-wyckoff-method-a-tutorial
+src/trading/indicators/stochastic_rsi.py, in StochasticRSI | CLEAN | https://en.wikipedia.org/wiki/Stochastic_oscillator
+src/trading/indicators/supertrend.py, in SupertrendIndicator | CLEAN | https://www.tradingview.com/support/solutions/43000634738-supertrend/
+src/trading/indicators/volume.py, in VolumeAnalysis | CLEAN | https://en.wikipedia.org/wiki/On-balance_volume
+src/trading/indicators/vortex.py, in VortexIndicator | CLEAN | https://en.wikipedia.org/wiki/Vortex_indicator
+src/trading/indicators/w_bottom.py, in detect_w_bottom | CLEAN | https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-overlays/bollinger-bands
+src/trading/indicators/zscore.py, in ZScoreIndicator | CLEAN | https://www.tradingview.com/script/KSMvIkvh-Z-Score-Predictive-Zones-AlgoPoint/

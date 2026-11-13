@@ -66,7 +66,7 @@ class Reading(NamedTuple):
     holds: bool
 
 
-OutputFlag = Literal[Flag.PASS, Flag.FIX, Flag.OPTIMIZE]
+OutputFlag = Literal[Flag.PASS, Flag.FIX, Flag.OPTIMIZE, Flag.BLOCK]
 DataType = Callable[[str], str | None]
 Content = Callable[[str, Path], str | None]
 Functions = Callable[[str, Path], tuple[str, str] | Reading]
