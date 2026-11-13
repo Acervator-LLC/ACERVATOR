@@ -1,0 +1,4 @@
+# Read with --root harness_fixtures/sigil_code_collection/sample_tree
+
+# FINDINGS, FIX: the same faulty F822 sample sits in docs, outside application source
+docs/known_bad_f822.py

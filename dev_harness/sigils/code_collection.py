@@ -1,0 +1,256 @@
+"""`SIGIL` is CODE.COLLECTION on the `core` card; `collection_check` judges an input."""
+
+import ast
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+
+from .coding_input import (
+    CONTENT_TIER,
+    DATA_TYPE_TIER,
+    INPUT_FORM,
+    OWNER,
+    READERS,
+    SEPARATOR,
+    data_type_fault,
+    fault_file,
+    locate,
+)
+from .core import (
+    APPLICATION_SOURCE,
+    FLAGS,
+    Flag,
+    FlagRow,
+    Reading,
+    Sigil,
+    Verdict,
+    in_application_source,
+    judge,
+    main,
+)
+from .fix_class import BY_FIX_CLASS, FOLLOW_ON
+from .ruff_rules import RUFF_BUILT, ToolFault, check, rule_page, ruff_version
+
+CLEAN = "CLEAN"
+FINDINGS = "FINDINGS"
+REJECTED = "REJECTED"
+
+CANDIDATES = (
+    "S104",
+    "S607",
+    "S609",
+    "B006",
+    "B013",
+    "B033",
+    "B039",
+    "COM812",
+    "COM818",
+    "COM819",
+    "C400",
+    "C401",
+    "C402",
+    "C403",
+    "C404",
+    "C405",
+    "C406",
+    "C408",
+    "C409",
+    "C410",
+    "C411",
+    "C414",
+    "C418",
+    "G101",
+    "PIE800",
+    "PERF101",
+    "F601",
+    "F634",
+    "F822",
+    "PLC0208",
+    "PLR6201",
+    "PLW0244",
+    "RUF008",
+    "RUF012",
+    "RUF022",
+    "RUF023",
+    "RUF031",
+    "RUF048",
+    "RUF068",
+)
+LEFT_OFF: dict[str, str] = {
+    "S104": "faulty: ruff S104 possible binding to all interfaces",
+    "S609": "faulty: bandit B602 and B609, ruff S602 and S609, "
+    "semgrep subprocess-shell-true",
+    "C411": "rule_page: python -m ruff rule C411 prints 'Use instead' with no colon",
+    "F634": "faulty: vulture redundant if-condition",
+    "RUF008": "corrected: mypy no-redef and pyright reportRedeclaration, class 'A'",
+    "RUF012": "corrected: mypy no-redef and pyright reportRedeclaration, class 'A'",
+    "RUF031": "rule_page: python -m ruff rule RUF031 prints "
+    "'Use instead (with default setting):'",
+}
+RULES = tuple(code for code in CANDIDATES if code not in LEFT_OFF)
+PREVIEW = ("PLR6201", "PLW0244")
+UNDEFINED_EXPORT = "F822"
+HOLDING = tuple(code for code in RULES if code == UNDEFINED_EXPORT)
+DISPLAY_NODES = (ast.Tuple, ast.List)
+COLLECTION_NODES = (ast.Set, ast.Dict, ast.ListComp, ast.SetComp, ast.DictComp)
+BUILDERS = frozenset({"tuple", "list", "set", "dict"})
+NO_COLLECTION = (
+    "no tuple, list, set or dictionary, written out or built by a comprehension, "
+    "and no call to tuple, list, set or dict"
+)
+
+SETTINGS: dict[str, str] = {
+    "separator": SEPARATOR,
+    "ruff_version": RUFF_BUILT,
+    "rules": " ".join(RULES),
+    "preview_rules": " ".join(PREVIEW),
+    "holding_rules": " ".join(HOLDING),
+    "undefined_export": UNDEFINED_EXPORT,
+    "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
+    "in application_source and one of holding_rules fires",
+    "ruff_config": "the one ruff finds from the folder of the file",
+}
+
+
+def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
+    """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
+    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+    return [(row.code, row.line) for row in rows]
+
+
+def _is_collection(node: ast.expr) -> bool:
+    """Report whether `node` writes out, builds or calls a tuple, list, set or dict."""
+    if isinstance(node, DISPLAY_NODES):
+        return isinstance(node.ctx, ast.Load)
+    if isinstance(node, ast.Call):
+        return isinstance(node.func, ast.Name) and node.func.id in BUILDERS
+    return isinstance(node, COLLECTION_NODES)
+
+
+def _content_fault(text: str, root: Path) -> str | None:
+    """Return the tier 2 fault of `text`: `locate`'s, else `NO_COLLECTION`."""
+    located = locate(text, root)
+    if isinstance(located, str):
+        return located
+    _, source, (first, last) = located
+    has_collection = any(
+        isinstance(node, ast.expr)
+        and _is_collection(node)
+        and first <= node.lineno <= last
+        for node in ast.walk(ast.parse(source))
+    )
+    return None if has_collection else NO_COLLECTION
+
+
+def _functions_verdict(text: str, root: Path) -> Reading:
+    """Return `CLEAN`, or `FINDINGS` holding when a `HOLDING` rule fires."""
+    located = locate(text, root)
+    if isinstance(located, str):
+        message = f"{text}: {located}, after tier 2 accepted it"
+        raise ToolFault(message)
+    file, source, (first, last) = located
+    is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
+    findings = [
+        (code, line)
+        for code, line in _ruff_findings(source, file.parent)
+        if not is_narrowed or first <= line <= last
+    ]
+    version = f"ruff {ruff_version()}"
+    if not findings:
+        return Reading(CLEAN, f"{version}: no rule on the list fires", holds=False)
+    pages = {code: rule_page(code) for code, _ in findings}
+    rows = "; ".join(
+        f"{code} {pages[code].name} line {line} fix {pages[code].fix}"
+        for code, line in findings
+    )
+    forms = "".join(
+        f"\n{code} faulty:\n{page.faulty}{code} corrected:\n{page.corrected}"
+        for code, page in pages.items()
+    )
+    holds = any(code in HOLDING for code in pages)
+    return Reading(FINDINGS, f"{version}: {rows}{forms}", holds)
+
+
+SIGIL = Sigil(
+    name="CODE.COLLECTION",
+    edition=1,
+    owner=OWNER,
+    input_form=INPUT_FORM,
+    settings=SETTINGS,
+    tiers=(
+        DATA_TYPE_TIER,
+        {
+            **CONTENT_TIER,
+            "narrowed": "Python's ast module finds, in the input's lines, a tuple or "
+            "list written out and read as a value, a set or dictionary written out, "
+            "a list, set or dictionary comprehension, or a call to tuple, list, set "
+            "or dict by that name",
+            "narrowed_rejects": [NO_COLLECTION],
+        },
+        {
+            "runs": [
+                "python -m ruff check --preview --select with the rules, "
+                "the file on standard input, from the folder of the file",
+                "for a symbol, only the findings inside its lines",
+                "python -m ruff rule <code> --output-format json, for each rule "
+                "that fires: its name, fix class, and the code under Example, "
+                "before and after Use instead",
+            ],
+            "clean": "no rule on the list fires",
+            "findings": [
+                "rule id",
+                "rule name",
+                "line",
+                "fix class",
+                "faulty form",
+                "corrected form",
+            ],
+            "fix_classes": list(FOLLOW_ON),
+            "preview": "the preview_rules fire only with --preview",
+            "left_off": LEFT_OFF,
+            "left_off_because": "faulty or corrected: the write gate refused that "
+            "rule's sample, because the coding archetype grades the named finding "
+            "high; rule_page: ruff_rules.py, in rule_page, reads the corrected form "
+            "only after 'Use instead:', so a finding of that rule cannot carry it",
+            "not_read": "a ruff setting matched on the file name, such as "
+            "per-file-ignores, because the file reaches ruff on standard input",
+            "refuses": "ruff exits otherwise, or prints a finding or a rule page "
+            "this module cannot read",
+        },
+    ),
+    outputs={
+        CLEAN: FlagRow(Flag.PASS),
+        FINDINGS: FlagRow(Flag.FIX, holds_in_source=bool(HOLDING)),
+    },
+    refusal=REJECTED,
+    follows={
+        flag: FLAGS[flag]["follows"] + BY_FIX_CLASS for flag in (Flag.HOLD, Flag.FIX)
+    },
+    readers=READERS,
+    data_type=data_type_fault,
+    content=_content_fault,
+    functions=_functions_verdict,
+    fault_file=fault_file,
+)
+
+
+def collection_check(
+    text: str, root: Path, source: Sequence[str] = APPLICATION_SOURCE
+) -> Verdict:
+    """Return the `judge` verdict of `SIGIL` for one input line under `root`."""
+    named = fault_file(text, root)
+    in_source = named is not None and in_application_source(named, root, source)
+    return judge(SIGIL, text, root, in_source=in_source)
+
+
+def run(argv: list[str] | None = None) -> int:
+    """Return `main` for `SIGIL`, or 1 with the `ToolFault` on stderr."""
+    try:
+        return main(SIGIL, argv)
+    except ToolFault as exc:
+        print(f"ruff did not run: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(run())

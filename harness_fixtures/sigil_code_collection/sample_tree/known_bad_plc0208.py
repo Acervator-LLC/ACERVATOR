@@ -1,0 +1,3 @@
+# PLC0208 iteration-over-set: the Example block python -m ruff rule PLC0208 prints
+for number in {1, 2, 3}:
+    ...
