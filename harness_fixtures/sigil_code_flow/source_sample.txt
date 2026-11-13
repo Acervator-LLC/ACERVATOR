@@ -1,0 +1,6 @@
+# Read with --root harness_fixtures/sigil_code_flow/sample_tree
+
+# FINDINGS, HOLD: each faulty sample sits in src, application source, and its rule is a holding rule
+src/known_bad_ple0101.py
+src/known_bad_ple1205.py
+src/known_bad_ple1206.py

@@ -1,0 +1,6 @@
+# Read with --root harness_fixtures/sigil_code_flow/sample_tree
+
+# FINDINGS, FIX: the same faulty samples sit in docs, outside application source
+docs/known_bad_ple0101.py
+docs/known_bad_ple1205.py
+docs/known_bad_ple1206.py

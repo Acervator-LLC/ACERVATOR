@@ -1,0 +1,52 @@
+# Read with --root harness_fixtures/sigil_code_flow/sample_tree
+# Each file names its rule on line 1, then holds the Example block python -m ruff rule <id> prints.
+# For ASYNC100 SIM102 SIM114 SIM117 E701 PLE1205 PLE1206 PLR1730 RUF047 RUF072 TRY203, the lines between define the names the block uses and never defines.
+# The 17 rules left off are on the card, under left_off, each with its reason.
+
+# FINDINGS, FIX: each file reads its own rule id
+known_bad_async100.py
+known_bad_b901.py
+known_bad_g201.py
+known_bad_g202.py
+known_bad_ret501.py
+known_bad_ret502.py
+known_bad_ret505.py
+known_bad_ret506.py
+known_bad_ret507.py
+known_bad_ret508.py
+known_bad_sim105.py
+known_bad_sim114.py
+known_bad_sim117.py
+known_bad_tc005.py
+known_bad_perf401.py
+known_bad_e701.py
+known_bad_e722.py
+known_bad_ple0101.py
+known_bad_plr1708.py
+known_bad_plr1730.py
+known_bad_plr5501.py
+known_bad_furb101.py
+known_bad_furb103.py
+known_bad_furb131.py
+known_bad_furb132.py
+known_bad_ruf047.py
+known_bad_ruf050.py
+known_bad_ruf072.py
+known_bad_try004.py
+known_bad_try203.py
+known_bad_try300.py
+
+# FINDINGS, FIX: each file reads its own rule id and another: B029's reads SIM105,
+# SIM102's reads RUF050, SIM116's reads RET505, PLE1205's and PLE1206's read TRY400,
+# PLR1711's reads RET501, TRY301's reads TRY203, TRY400's reads TRY301
+known_bad_b029.py
+known_bad_sim102.py
+known_bad_sim116.py
+known_bad_ple1205.py
+known_bad_ple1206.py
+known_bad_plr1711.py
+known_bad_try301.py
+known_bad_try400.py
+
+# FINDINGS, FIX: narrowed to the one function holding the else
+known_bad_ret505.py, in foo
