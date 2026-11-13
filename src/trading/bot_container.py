@@ -1491,6 +1491,7 @@ class BotContainer:
                         else f"the venue answered send {len(_ended.sizes)}"
                     )
                 )
+                self._return_audit_adoption(_ended, finite_reading(order.filled))
             self._audit_next_tick()
         # A create reply can name no amount, and _hold_resting_order reads this one.
         if finite_reading(order.amount) <= 0.0:
@@ -1500,6 +1501,11 @@ class BotContainer:
     def _audit_next_tick(self) -> None:
         """Ask for a holdings audit at the top of the next tick, where a subclass runs
         one: this answer may hold units an earlier audit already adopted."""
+
+    def _return_audit_adoption(self, send: Any, filled_units: float) -> None:
+        """Undo up to ``filled_units`` of what audits moved on their own while ``send``
+        was held, where a subclass keeps a lot book; the caller books the answer."""
+        del send, filled_units
 
     def tick_loop_alive(self) -> bool:
         """True while ``_run_with_guard`` runs in ``_task``."""
