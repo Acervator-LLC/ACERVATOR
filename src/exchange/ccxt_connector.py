@@ -111,6 +111,11 @@ class CCXTQueueFullError(RuntimeError):
     """Raised by ``_call_sync`` when the connector's queue is at capacity."""
 
 
+class ConnectorClosed(RuntimeError):
+    """Raised by ``_ensure_connected`` and ``_sync_executor_for_submit`` on a closed
+    connector, before any request."""
+
+
 @dataclass
 class SyncCallTiming:
     """How long one sync call waited for the worker, and how long the venue took.
@@ -287,13 +292,14 @@ def classify_venue_refusal(exc: BaseException) -> str:
 
 def order_stayed_home(exc: BaseException) -> bool:
     """True where ``exc`` proves no order reached the venue's book: ``OrderRefused``,
-    a full queue, an open venue breaker, or a ccxt error that is the venue's own no.
-    A ``refuses_used_id`` error is False, because that id may hold an order."""
+    a full queue, an open breaker, ``ConnectorClosed``, or a ccxt error raised before
+    sending or as the venue's own no. A ``refuses_used_id`` error is False: that id
+    may hold an order."""
     from .circuit_breaker import CircuitBreakerOpenError
 
     return not refuses_used_id(exc) and isinstance(
         exc,
-        (OrderRefused, CCXTQueueFullError, CircuitBreakerOpenError)
+        (OrderRefused, CCXTQueueFullError, CircuitBreakerOpenError, ConnectorClosed)
         + _ccxt_error_types(
             (
                 "InvalidOrder",
@@ -301,6 +307,13 @@ def order_stayed_home(exc: BaseException) -> bool:
                 "BadRequest",
                 "AuthenticationError",
                 "OperationRejected",
+                "NotSupported",
+                "ArgumentsRequired",
+                "ExchangeClosedByUser",
+                "InvalidProxySettings",
+                "RateLimitExceeded",
+                "DDoSProtection",
+                "InvalidNonce",
             )
         ),
     )
@@ -2192,12 +2205,12 @@ class CCXTConnector(ExchangeInterface):
         here.
 
         Raises:
-            RuntimeError: ``disconnect`` or ``release`` has closed the connector.
+            ConnectorClosed: ``disconnect`` or ``release`` has closed the connector.
         """
         with self._sync_executor_lock:
             wedged = self._sync_executor
             if wedged is None:
-                raise RuntimeError(
+                raise ConnectorClosed(
                     f"CCXTConnector({self._exchange_id}) has been disconnected; "
                     f"cannot submit new sync calls."
                 )
@@ -2663,10 +2676,10 @@ class CCXTConnector(ExchangeInterface):
 
     def _ensure_connected(self) -> None:
         if not self._connected:
-            raise RuntimeError(f"Not connected to {self.display_name}")
+            raise ConnectorClosed(f"Not connected to {self.display_name}")
         # Through `_ex`, so an attached backend is not rejected.
         if self._ex is None:
-            raise RuntimeError(f"No exchange instance for {self.display_name}")
+            raise ConnectorClosed(f"No exchange instance for {self.display_name}")
 
     @property
     def _ex(self):
