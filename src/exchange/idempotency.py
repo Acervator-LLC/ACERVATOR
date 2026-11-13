@@ -301,6 +301,14 @@ class IdempotencyLayer:
         with self._lock:
             return self._unanswered.get(intent.fingerprint(self.session_nonce))
 
+    def issued_at(self, coid: str) -> float:
+        """``UnansweredSend.issued_at`` of the held ``coid``; KeyError where none is held."""
+        with self._lock:
+            for held in self._unanswered.values():
+                if held.coid == coid:
+                    return held.issued_at
+        raise KeyError(f"no send holds {coid}")
+
     def note_unmatched(self, intent: TradeIntent) -> None:
         """Add one to ``unmatched_audits`` on the ``coid`` held for ``intent``."""
         with self._lock:

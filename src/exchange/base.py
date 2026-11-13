@@ -414,10 +414,12 @@ class ExchangeInterface(ABC):
         del symbol, side, order_type, amount, price, client_order_id, hold_reason
         raise NotImplementedError
 
-    async def get_order_by_client_id(self, client_order_id: str, symbol: str) -> Order:
-        """The order the venue holds under ``client_order_id``; a connector with no such
-        read raises ``NotImplementedError``."""
-        del client_order_id, symbol
+    async def get_order_by_client_id(
+        self, client_order_id: str, symbol: str, sent_at: float
+    ) -> Order:
+        """The order the venue holds under ``client_order_id``, sent at ``sent_at`` epoch
+        seconds; a connector with no such read raises ``NotImplementedError``."""
+        del client_order_id, symbol, sent_at
         raise NotImplementedError
 
     @abstractmethod
