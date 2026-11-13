@@ -753,11 +753,37 @@ REMOVE_UNREAD_FORMAT = "{name} cannot be removed: its bots could not be read ({e
 REMOVE_BLOCKER_FORMAT = "{symbol} (bot {bot_id}, {state})"
 REMOVE_BLOCKER_JOIN = ", "
 REMOVE_QUESTION_TITLE = "Orders still resting"
+RESTING_AT_FORMAT = "Orders resting at {name}: {orders} ({bots})."
 REMOVE_QUESTION_FORMAT = (
-    "Orders resting at {name}: {orders} ({bots}). They stay at the venue after a "
+    RESTING_AT_FORMAT + " They stay at the venue after a "
     "Remove, and nothing will read their fills. Remove {name}?"
 )
+RESET_RESTING_FORMAT = (
+    RESTING_AT_FORMAT + " They stay at the venue after a "
+    "Reset, and nothing will read their fills."
+)
+RESET_RESTING_JOIN = "\n"
 REMOVE_QUESTION_BOT_FORMAT = "bot {bot_id}: {orders}"
+
+#: The presses that take a stored venue out of Settings, as a venue line names them.
+REMOVE_SELECTED_ROUTE = "Remove Selected"
+RESET_ALL_ROUTE = "Reset All Settings"
+#: The Yes or No answer a venue line names, and ``NO_BOX`` where no box asked.
+ANSWER_YES = " after Yes"
+ANSWER_NO = " after No"
+NO_BOX = ""
+#: The ``console/system.log`` lines for a venue a press, or a window close, removes or keeps.
+VENUE_REMOVED_HEAD = "VENUE REMOVED"
+VENUE_KEPT_HEAD = "VENUE KEPT"
+VENUE_LINE_FORMAT = "{head}: {name} by {route}{answer}, orders resting there: {resting}"
+VENUE_REFUSED_LINE_FORMAT = "VENUE KEPT: {name} by {route}, refused: {why}"
+VENUE_CLOSE_KEPT_LINE_FORMAT = "VENUE KEPT AT CLOSE: {kept}"
+VENUE_CLOSE_DROPPED_LINE_FORMAT = (
+    "VENUE DROPPED AT CLOSE: {name}, its tab and connection leave, "
+    "orders resting there: {resting}"
+)
+RESTING_NONE_TEXT = "none"
+RESTING_COUNT_FORMAT = "{orders} ({bots})"
 REMOVE_SEALED_FORMAT = (
     "{name} cannot be removed while the saved fleet is sealed, because its bots "
     "are not loaded. Unlock the fleet first: "
@@ -2501,19 +2527,70 @@ def remove_refusal(exchange_id: str, fleet: object) -> str:
     )
 
 
-def remove_question(exchange_id: str, fleet: object) -> str:
-    """The Yes or No words for orders ``resting_orders_by_exchange`` finds at ``exchange_id``, else nothing."""
+def resting_orders_at(exchange_id: str, fleet: object) -> dict:
+    """``resting_orders_by_exchange`` on ``fleet`` for ``exchange_id``, or an empty dict where ``fleet`` has none."""
     reader = getattr(fleet, "resting_orders_by_exchange", None)
-    resting = dict(reader(exchange_id)) if reader is not None else {}
+    return dict(reader(exchange_id)) if reader is not None else {}
+
+
+def resting_bots_text(resting: dict) -> str:
+    """Each bot in ``resting`` with its order count, in ``REMOVE_QUESTION_BOT_FORMAT``."""
+    return REMOVE_BLOCKER_JOIN.join(
+        REMOVE_QUESTION_BOT_FORMAT.format(bot_id=bot_id, orders=orders)
+        for bot_id, orders in resting.items()
+    )
+
+
+def resting_text(resting: dict) -> str:
+    """The orders ``resting`` holds, summed and named by bot, or ``RESTING_NONE_TEXT``."""
+    if not resting:
+        return RESTING_NONE_TEXT
+    return RESTING_COUNT_FORMAT.format(
+        orders=sum(resting.values()), bots=resting_bots_text(resting)
+    )
+
+
+def remove_question(exchange_id: str, resting: dict) -> str:
+    """The Yes or No words for the ``resting_orders_at`` reading ``resting`` at ``exchange_id``, else nothing."""
     if not resting:
         return ""
     return REMOVE_QUESTION_FORMAT.format(
         name=str(exchange_id).capitalize(),
         orders=sum(resting.values()),
-        bots=REMOVE_BLOCKER_JOIN.join(
-            REMOVE_QUESTION_BOT_FORMAT.format(bot_id=bot_id, orders=orders)
-            for bot_id, orders in resting.items()
-        ),
+        bots=resting_bots_text(resting),
+    )
+
+
+def reset_resting_words(resting_by_venue: dict) -> str:
+    """One ``RESET_RESTING_FORMAT`` sentence for each venue in ``resting_by_venue`` holding orders, else nothing."""
+    return RESET_RESTING_JOIN.join(
+        RESET_RESTING_FORMAT.format(
+            name=str(exchange_id).capitalize(),
+            orders=sum(resting.values()),
+            bots=resting_bots_text(resting),
+        )
+        for exchange_id, resting in resting_by_venue.items()
+        if resting
+    )
+
+
+def venue_line(
+    head: str, exchange_id: str, route: str, answer: str, resting: dict
+) -> str:
+    """The ``VENUE_LINE_FORMAT`` line for ``exchange_id``, which ``route`` took or kept, naming ``resting``."""
+    return VENUE_LINE_FORMAT.format(
+        head=head,
+        name=str(exchange_id).capitalize(),
+        route=route,
+        answer=answer,
+        resting=resting_text(resting),
+    )
+
+
+def venue_dropped_line(exchange_id: str, resting: dict) -> str:
+    """The ``VENUE_CLOSE_DROPPED_LINE_FORMAT`` line for ``exchange_id``, naming ``resting``."""
+    return VENUE_CLOSE_DROPPED_LINE_FORMAT.format(
+        name=str(exchange_id).capitalize(), resting=resting_text(resting)
     )
 
 

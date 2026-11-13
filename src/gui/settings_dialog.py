@@ -1089,12 +1089,16 @@ if _HAS_QT:
                 remove_question,
                 remove_refusal,
                 removed_feedback_text,
+                resting_orders_at,
+                venue_line,
             )
 
             fleet = self._window_fleet()
-            question = ""
-            if not remove_refusal(eid, fleet):
-                question = remove_question(eid, fleet)
+            resting = (
+                {} if remove_refusal(eid, fleet) else resting_orders_at(eid, fleet)
+            )
+            question = remove_question(eid, resting)
+            answer = sds.NO_BOX
             if question:
                 reply = QMessageBox.question(
                     self,
@@ -1104,12 +1108,29 @@ if _HAS_QT:
                     QMessageBox.StandardButton.No,
                 )
                 if reply != QMessageBox.StandardButton.Yes:
+                    logger.info(
+                        venue_line(
+                            sds.VENUE_KEPT_HEAD,
+                            eid,
+                            sds.REMOVE_SELECTED_ROUTE,
+                            sds.ANSWER_NO,
+                            resting,
+                        )
+                    )
                     return
+                answer = sds.ANSWER_YES
             refusal = remove_refusal(eid, fleet)
             if refusal:
                 self._set_feedback(refusal, "warning")
                 if self._status_log:
                     self._status_log.log(refusal, "warning")
+                logger.info(
+                    sds.VENUE_REFUSED_LINE_FORMAT.format(
+                        name=eid.capitalize(),
+                        route=sds.REMOVE_SELECTED_ROUTE,
+                        why=refusal,
+                    )
+                )
                 return
             self._sm.remove_exchange(eid)
             self._exchange_list.takeItem(self._exchange_list.row(item))
@@ -1120,6 +1141,15 @@ if _HAS_QT:
             self._set_feedback(removed_feedback_text(eid.capitalize()), "info")
             if self._status_log:
                 self._status_log.log(f"Exchange removed: {eid}", "warning")
+            logger.info(
+                venue_line(
+                    sds.VENUE_REMOVED_HEAD,
+                    eid,
+                    sds.REMOVE_SELECTED_ROUTE,
+                    answer,
+                    resting,
+                )
+            )
 
         def _create_trading_tab(self) -> QWidget:
             w = QWidget()

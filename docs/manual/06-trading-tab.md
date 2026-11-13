@@ -343,7 +343,7 @@ Every press on this page runs the same handler on both builds. The React page se
 | Control | What it does and what it reads |
 | --- | --- |
 | File > Settings | Opens Settings on its User tab. `src/gui/main_window.py, in MainWindow._open_settings` |
-| File > Reset All Settings | Asks Yes or No, then clears every setting, exchange and stored key. `src/gui/main_window.py, in MainWindow._reset_settings` |
+| File > Reset All Settings | Asks Yes or No, then clears every setting, exchange and stored key. The box names the orders resting at each stored venue, and the system log gets VENUE KEPT or VENUE REMOVED for each venue. `src/gui/main_window.py, in MainWindow._reset_settings`, `src/gui/main_tabs/settings_dialog_surface.py, in reset_resting_words` |
 | File > Exit | Closes the window. `src/gui/main_window.py, in MainWindow._setup_menu` |
 | Exchange > Add Exchange | Opens Settings on the Exchanges tab, in both builds. A class with no venue logs a note instead. `src/gui/main_window.py, in MainWindow._add_exchange` |
 | Theme | Repaints the window in one of five themes and remembers it. Reads the `theme` and `accent_color` settings. `src/gui/main_window.py, in MainWindow._switch_theme` |
