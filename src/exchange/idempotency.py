@@ -111,8 +111,9 @@ class TradeIntent:
 class UnansweredSend:
     """A ``coid`` the venue has not answered: ``intent`` as last sent, ``issued_at`` its
     first send, ``sizes`` each ``(amount, price read)`` it went out at, ``in_flight`` from
-    ``derive_coid`` to ``end_flight``, ``id_refused`` once ``note_id_refused`` ran, and
-    ``unmatched_audits`` each ``note_unmatched``.
+    ``derive_coid`` to ``end_flight``, ``id_refused`` once ``note_id_refused`` ran,
+    ``unmatched_audits`` each ``note_unmatched``, and ``adopted_units`` each
+    ``note_adopted`` less each ``take_adopted``.
     """
 
     coid: str
@@ -122,6 +123,7 @@ class UnansweredSend:
     in_flight: bool = True
     id_refused: bool = False
     unmatched_audits: int = 0
+    adopted_units: float = 0.0
 
     def _named(self) -> str:
         """``intent.side``, ``intent.symbol``, the decision ``intent`` names or
@@ -158,6 +160,16 @@ class UnansweredSend:
             f"{time.time() - self.issued_at:.1f}s: {route}. {self.unmatched_audits} "
             f"audit(s) met units past the book while it was held and did not book them "
             f"as this order."
+        )
+
+    def returned_line(self, units: float) -> str:
+        """The ``LOST ORDER ANSWERED`` line for ``units`` an audit took in on its own
+        while ``coid`` was held, which the venue's answer now books."""
+        moved = "leave the lot book" if self.intent.side == "buy" else "return to it"
+        return (
+            f"LOST ORDER ANSWERED: an audit moved {units:.8f} units on its own while "
+            f"{self._named()} was held. The venue's answer books them as this order, so "
+            f"those units {moved} and the order books once."
         )
 
 
@@ -295,6 +307,26 @@ class IdempotencyLayer:
             held = self._unanswered.get(intent.fingerprint(self.session_nonce))
             if held is not None:
                 held.unmatched_audits += 1
+
+    def note_adopted(self, bot_id: str, symbol: str, side: str, units: float) -> None:
+        """Add ``units`` an audit moved on its own to ``adopted_units`` of each of the
+        ``unanswered_sends`` for ``bot_id``, ``symbol`` and ``side``."""
+        with self._lock:
+            for held in self.unanswered_sends(bot_id, symbol, side):
+                held.adopted_units += float(units)
+
+    def take_adopted(self, send: UnansweredSend, units: float) -> float:
+        """Take up to ``units`` off ``send.adopted_units``, and the same off each of the
+        ``unanswered_sends`` beside it, and answer what was taken."""
+        intent = send.intent
+        with self._lock:
+            taken = max(0.0, min(float(units), send.adopted_units))
+            send.adopted_units -= taken
+            for held in self.unanswered_sends(
+                intent.bot_id, intent.symbol, intent.side
+            ):
+                held.adopted_units = max(0.0, held.adopted_units - taken)
+            return taken
 
     def end_retry(self, intent: TradeIntent) -> Optional[UnansweredSend]:
         """Drop the ``coid`` held for ``intent``, leaving ``derive_coid`` to issue a new

@@ -74,6 +74,8 @@ Now: each order takes its own id, so the venue cannot hand back an order it has 
 
 A send that gets no answer writes ORDER LOST to the system log and the bot's log, naming its decision and id. An audit that reads units past the book while that id is held, and books none of them as that order, writes LOST ORDER UNMATCHED. The id's end writes LOST ORDER ENDED once, naming whether the venue answered a retry or the holdings audit booked it, and how many audits met it unmatched first (`src/exchange/idempotency.py, in UnansweredSend.ended_line`). Where the venue answered after one or more of those audits, the answer may hold units an audit already adopted, and the next audit takes them out (`src/trading/bot_container.py, in BotContainer._audit_next_tick`).
 
+The venue's answer to that id first takes back what those audits moved on their own while it was held, up to the units the order filled, so the order books once at the venue's price. A buy's units leave the reconciliation lots those audits wrote, newest first, a sale's units go back to every lot, and the log writes LOST ORDER ANSWERED with the units (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._return_audit_adoption`).
+
 Aggressive Trading - Trades are priced so that they fill immediately. Trading like this is a bit like guerilla warfare. In and out before anyone notices.
 
 Now: only Stack tranches in Order Book mode change, each going out as an immediate-or-cancel limit at its ladder price, and every other order ignores this box (`src/trading/scrumming_bot.py, in ScrummingBot._open_stack_from_scrum`).
