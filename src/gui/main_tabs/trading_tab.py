@@ -23,6 +23,11 @@ from ..color_alpha import rgba
 from . import asset_class_surface as acs
 from ..widgets.status_log import StatusLog
 from .main_window_surface import LIVE_TAB
+from .settings_dialog_surface import (
+    GET_STARTED_ROUTE,
+    LIVE_CORNER_ROUTE,
+    REACT_LIVE_ROUTE,
+)
 from .trading_tab_surface import (
     ACTIVITY_PAUSED_PARAM,
     ADD_EXCHANGE_PARAM,
@@ -127,7 +132,7 @@ class TradingTabMixin:
         ``setChecked`` runs the Pause toggles' own ``toggled`` closures.
         """
         return {
-            ADD_EXCHANGE_PARAM: lambda _pressed: self._add_exchange(),
+            ADD_EXCHANGE_PARAM: lambda _pressed: self._add_exchange(REACT_LIVE_ROUTE),
             ACTIVITY_PAUSED_PARAM: self._activity_pause_btn.setChecked,
             API_PAUSED_PARAM: self._api_pause_btn.setChecked,
             EXCHANGE_PARAM: self._show_exchange_tab,
@@ -219,7 +224,7 @@ class TradingTabMixin:
             add_btn = QPushButton(acs.add_exchange_label(asset_class))
             add_btn.setMinimumWidth(140)
             set_description(add_btn, acs.add_exchange_tooltip(asset_class))
-            add_btn.clicked.connect(self._add_exchange)
+            add_btn.clicked.connect(lambda: self._add_exchange(LIVE_CORNER_ROUTE))
             self._add_exchange_buttons.append(add_btn)
             tab_w.setCornerWidget(add_btn)
 
@@ -248,7 +253,7 @@ class TradingTabMixin:
                 f"QPushButton {{ border: 1px solid {accent}; "
                 f"color: {accent}; border-radius: 4px; }}"
             )
-            ph_add.clicked.connect(self._add_exchange)
+            ph_add.clicked.connect(lambda: self._add_exchange(GET_STARTED_ROUTE))
             self._add_exchange_buttons.append(ph_add)
             ph_layout.addWidget(ph_add, alignment=Qt.AlignCenter)
             ph_hint = QLabel(placeholder_hint_text(label_text))

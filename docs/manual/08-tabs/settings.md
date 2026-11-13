@@ -32,6 +32,27 @@ The React page draws a second title line. It reads Settings — Crypto Wing on C
 
 One method builds the window on all three routes (`src/gui/main_window.py, in MainWindow._run_settings_window`). On each one, a Save reaches the running window at once.
 
+Each press that opens the window gives that method its own route name, and one table picks the page. When the window shows, the system log gets a SETTINGS OPENED line. It names the route, the asset class, the page on show and the page the route opens. A page that differs writes SETTINGS OPENED ON THE WRONG PAGE. On Start, the line also names the venue asked for and the venue pressed. When the window closes, a SETTINGS CLOSED line names the Saves pressed and the Saves that reached the running window (`src/gui/main_tabs/settings_dialog_surface.py, in settings_opened_line`, `src/gui/main_tabs/settings_dialog_surface.py, in settings_closed_line`).
+
+```python
+SETTINGS_MENU_ROUTE = "File > Settings"
+ADD_EXCHANGE_MENU_ROUTE = "Exchange > Add Exchange"
+LIVE_CORNER_ROUTE = "the Live tab corner Add button"
+GET_STARTED_ROUTE = "the Get Started Add button"
+REACT_LIVE_ROUTE = "the React Live page Add button"
+START_ROUTE = "Start with no stored key"
+
+#: The page ``MainWindow._run_settings_window`` shows for each route into Settings.
+ROUTE_PAGES = {
+    SETTINGS_MENU_ROUTE: USER_TAB,
+    ADD_EXCHANGE_MENU_ROUTE: EXCHANGE_TAB,
+    LIVE_CORNER_ROUTE: EXCHANGE_TAB,
+    GET_STARTED_ROUTE: EXCHANGE_TAB,
+    REACT_LIVE_ROUTE: EXCHANGE_TAB,
+    START_ROUTE: EXCHANGE_TAB,
+}
+```
+
 An exchange you add or remove changes the tabs when the window closes, on both builds. A new tab draws its bot table at that moment (`src/gui/main_window.py, in MainWindow._sync_exchange_tabs`). A removed venue leaves the tab bars, the React Live page and the list of connectors (`src/gui/main_window.py, in MainWindow._forget_venue`).
 
 A venue the store no longer lists keeps its tab and its connection while a bot on it is neither idle nor stopped, or while the fleet is sealed. The Activity Log names the venue and says why, at each close (`src/gui/main_window.py, in MainWindow._keep_unlisted_venues`). Start refuses a broker the store no longer holds, even while its connection is open (`src/gui/main_window.py, in MainWindow._open_broker_session`).
