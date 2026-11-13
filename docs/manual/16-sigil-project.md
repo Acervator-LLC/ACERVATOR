@@ -280,14 +280,52 @@ FreeCAD. Its sigils are professional approaches built from that program's own
 scripting calls. A prompt becomes a run of those approaches instead of a
 generated picture.
 
+Each discipline of a game team is a mode. A discipline's practice is the same
+in every program: a lighting artist lights a scene by the same rules in Unreal,
+Unity or Blender. A mode states each discipline once, and every application
+archetype carries it out with its own program's calls. A mode is a
+family of sigils, such as `LIGHT.<approach>@1`, grounded in that discipline's
+published practice. A prompt names the role, that mode's sigils load, and the
+program's archetype carries each one out.
+
 *Proposed, not present:*
 
 ```
 ground    the scripting calls the program lists from inside itself, for a pinned version
+modes     one per discipline of a game team, written once and carried out by every
+          application archetype: WORLD, LIGHT, LOOK, ANIMATE, VFX, CINEMA, AUDIO, UI,
+          QA, GAMEPLAY, each a family of sigils grounded in that discipline's published
+          practice
 owner     the archetype reopens the saved file with no window and reads the scene back
 waits     built only if a bound sigil beats a cited one on validity in the full trial
 status    unbuilt
 ```
+
+The table lists the first ten modes. Each mode maps to the section of the
+Unreal Engine documentation that covers that work. Unity and Blender map the
+same modes to their own manuals' sections once their archetypes exist.
+FreeCAD is an engineering program, so its modes come from its own manual, not
+from this list.
+
+| Mode | The role on a game team | Unreal Engine documentation section |
+| ---- | ----------------------- | ----------------------------------- |
+| WORLD | level designer, environment artist | Building Virtual Worlds |
+| LIGHT | lighting artist | Lighting the Environment |
+| LOOK | technical artist: materials and rendering | Designing Visuals, Rendering and Graphics |
+| ANIMATE | animator | Animating Characters and Objects |
+| VFX | visual effects artist | Creating Visual Effects |
+| CINEMA | cinematic artist | Cinematics and Movie Making |
+| AUDIO | sound designer | Working with Audio |
+| UI | user interface designer | Creating User Interfaces |
+| QA | quality and performance tester | Testing and Optimizing Your Content |
+| GAMEPLAY | gameplay programmer | Programming with C++ |
+
+Sources:
+
+- [Unreal Engine documentation](https://dev.epicgames.com/documentation/en-us/unreal-engine)
+- [Cinematics and Movie Making](https://dev.epicgames.com/documentation/en-us/unreal-engine/cinematics-and-movie-making-in-unreal-engine)
+- [What is an environment artist](https://www.unrealengine.com/blog/what-is-an-environment-artist)
+- [Jobs in Unreal Engine: technical artist](https://www.unrealengine.com/tech-blog/jobs-in-unreal-engine---technical-artist)
 
 ## The sigil pages
 
