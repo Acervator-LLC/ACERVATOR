@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-12 against `54528bd1`. **Every claim here names one command that
+Written 2026-11-13 against `04d7ebb4`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,38 +18,44 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running, between two units on #1633.
-Every merge since `653f9e5a` is a #1633 unit, and none changes an application
-file.
+The session that wrote this was still running, between units. The 16 merges
+since `b7c5f315` are pull requests 1680 to 1696; 1695 is an issue, not a pull
+request. Eleven are #1633 units and five are #1656 units.
 
 ```bash
-git log --oneline 653f9e5a..54528bd1     # its 14 merges, pull requests 1664 to 1677
+git log --oneline b7c5f315..04d7ebb4     # the 16 merges
 gh issue view 1633 --comments            # each unit's W5H, result and "Unit closed"
+gh issue view 1656 --comments
+gh issue view 1695 --comments            # row 1's six answers
 gh release view                          # what is published
 gh pr list --state open                  # what is still landing
 ```
 
-- **In flight when written:** this rewrite, and no other unit. Pull request
-  #1663, five routine dependency updates, is open: every check that ran passed,
-  and auto-merge is not armed.
-- **Built on #1633:** the citation sigil CITE.SYMBOL in three editions, the
-  shared sigil core, and the four Coding sigils with one shared input, all under
-  `dev_harness/sigils/`. Truth rules T002 and T003 now decide on their bad
-  sample. Five units corrected manual text that disagreed with the code. The
-  Coding trial's pilot found no benefit and changed no tracked file.
-- **His build and the release** hold the same application code:
+- **In flight when written:** this rewrite, and #1695 row 1, whose six answers
+  are on the issue with no pull request open yet. Pull request #1663, five routine
+  dependency updates, is open, and auto-merge is not armed.
+- **Built on #1633:** decision 1 is ruled and built, the second wave of five
+  sigils is built on one shared ruff reader, and the Product Manual carries the
+  project as Part 10, with one page per built sigil and the discipline modes.
+- **Built on #1656:** row 1's Fire button reads Held and names the hold. Rows 2
+  to 5 add log lines that show each repair, and each waits for his app to write
+  them.
+- **The release and both trees** hold the same application code:
 
 ```
-his build    0.2.0-20261111.0214, from 653f9e5a, recorded current by each unit
-             gh issue view 1633 --comments, the line "build" in "Unit closed"
-release      0.2.0-20261111.2056, from ad5e2dd5, which merges 653f9e5a into main
+release      0.2.0-20261112.2355, from 2abfe5ed, which merges 0272a5c4 into main
              gh release view
-since        no change in src, desktop, tools, main.py or the two spec files
-             git diff --stat 653f9e5a origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec
+both trees   built both variants at 2abfe5ed
+             gh issue view 1656 --comments, the comment "Unit closed: row 5"
+since        04d7ebb4 changes a manual page and the PDF; nothing in src, desktop, tools,
+             main.py or the two spec files
+             git diff --stat 2abfe5ed origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec
+his logs     the newest build they name is 0.2.0-20261112.2246, read for #1695 row 1
+             gh issue view 1695 --comments
 ```
 
-- **Held for him:** decision 1 in the #1633 body, and the unruled rows of the
-  Decisions tables on #1643 and #1622. Do not raise them as a round.
+- **Held for him:** the unruled rows of the Decisions tables on #1643 and #1622.
+  Do not raise them as a round.
 
 ---
 
@@ -179,12 +185,12 @@ copies and `dev_harness/hooks/settings_hooks.json` their wiring.
 ## THE QUEUE
 
 ```bash
-gh issue list --state open --limit 200          # 34 open when written
+gh issue list --state open --limit 200          # 35 open when written
 ```
 
 | To clear | Excluded, and why |
 |---|---|
-| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540 |
+| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540 |
 
 Read the body before dispatching, and grep the symbols a row names in the same
 call: a row's status can be stale, and a scan that calls a row built has been
@@ -194,15 +200,31 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
-- **#1633, Sigil-based Vernacular Condensate, first.** The Coding Archetype's
-  first wave is built, its trial pilot is closed, and its second wave is held.
-  Decision 1 in the body waits on him: may new code run an outside program, such
-  as git, on a path a caller passes in. The resume point stays the newest comment on
-  the issue headed "Unit closed". It names the last closed Unit, and its Next
-  section names the work. Each Unit closes in one pull request and changes no
-  application file. `gh issue view 1633 --comments` shows it.
-- **#1656, then #1657, next.** Prove the merged repairs from the canon, then correct
-  the public text that reported private readings.
+- **#1695, two refusals on the live buy path, first.** Row 1: a Max Cartridge
+  fold is refused when the platform's own call queue is full. Its six answers are
+  the issue's newest comment, and they name the change. Resume there; when its
+  pull request opens, `gh pr list --state open` shows it. Row 2, a buy goes out
+  only when the venue holds the quote it spends, is unbuilt.
+- **#1656, then #1657, next.** Rows 1 and 2 are partial. Rows 3 to 5 are merged
+  and wait on his app: their lines read as below. Row 6, every route into
+  Settings, is next, as the newest comment headed "Unit closed" names.
+
+```
+row 3   each first-buy line names its Max Cartridge Size and the weights the vote ran at,
+        and a read that clears writes FIRST BUY READ CLEARED
+row 4   each restored bot writes FIRST BUY MADE or FIRST BUY OWED, and what decided it
+row 5   each Max Cartridge fold and first entry writes VENUE COMPARE CLEAR or its refusal
+        gh issue view 1656, the Status column
+```
+
+- **#1633, Sigil-based Vernacular Condensate.** Ten sigils are built, the five of
+  the second wave among them, each a reader of finished code. The Product Manual
+  carries the project as Part 10, in `docs/manual/16-sigil-project.md` with one
+  page per sigil under `docs/manual/16-sigil-project/`. Its "Application
+  archetypes" section carries the ten discipline modes, unbuilt. No unit is named
+  next: the newest comment headed "Unit closed" says the modes stay unbuilt with
+  the application archetypes, and the body's Build order holds Units 2 to 11.
+  Each Unit closes in one pull request and changes no application file.
 - **#1643, what the manual rewrites found.** Next, in order: row 66, the breaker
   window he ruled for; his ruling in Decision 2, a hard trip cancels the bot's
   resting orders; row 106, a cartridge obeys the Position Ceiling and Max Target
@@ -253,6 +275,9 @@ a hard trip                 cancels the bot's resting orders, and after Reset th
                             places what it still needs, #1643 Decision 2, unbuilt
 a cartridge fold            obeys the Position Ceiling and Max Target Growth,
                             #1643 Decision 9 and row 106, unbuilt
+an outside program          new code may run one on a path a caller passes in; ruff S603
+                            and S607 read low, the grade bandit gives B603 and B607
+                            dev_harness/harness/coding_archetype.py, in RUFF_SEVERITY_OVERRIDES
 the manual                  his sentences verbatim; one cited "Now:" line; no dated reading
 issue comments              every claim about the code cites "path, in symbol"
 ```
@@ -261,6 +286,11 @@ issue comments              every claim about the code cites "path, in symbol"
 
 ## OPEN DEFECTS
 
+- A Max Cartridge fold is refused when the platform's own call queue is full
+  (`src/exchange/ccxt_connector.py, in CCXTConnector._call_sync_timed`). The
+  issue body of #1695 counts it from his logs, as row 1.
+- The venue refuses buys that spend quote it does not hold
+  (`src/exchange/ccxt_connector.py, in CCXTConnector.place_order`); #1695 row 2.
 - The React Bot Swarm page's layer buttons do nothing when pressed
   (`src/gui/web/bot_visualizer.js`, in `LayerHeader`); recorded on #23.
 - Paper and the Simulator judge the vote at the plain floor
