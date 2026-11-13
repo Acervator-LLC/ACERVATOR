@@ -3437,7 +3437,7 @@ class ScrummingBot(
                         )
                 else:
                     if _direction == "FOLD" and not await self._first_buy_clears(
-                        ticker, symbol, current_value
+                        ticker, symbol, current_value, _cartridge_pct
                     ):
                         return
                     _cartridge = await self._tick_cartridge_fire(
@@ -3454,7 +3454,12 @@ class ScrummingBot(
             return
 
         if empty_position(current_value, self._target_balance):
-            _entry_exit = await self._tick_initial_entry(ticker, symbol, current_value)
+            _entry_exit = await self._tick_initial_entry(
+                ticker,
+                symbol,
+                current_value,
+                _cartridge_pct,
+            )
             if _entry_exit:
                 if ticker.last > 0 and _entry_exit != ENTRY_NO_FILL_EXIT:
                     self.stats.position_value = current_value
@@ -4596,7 +4601,7 @@ class ScrummingBot(
             self._emit_gate_decision_at_quiet_tick(GATE_CHAIN_EXIT)
         if _fold_chain_result.should_fire:
             if await self._first_buy_clears(
-                ticker, symbol, current_value
+                ticker, symbol, current_value, _cartridge_pct
             ) and await self._tick_execute_fold(
                 ticker, summary, delta, _distance, bb_result, _fold_chain_result
             ):
@@ -4743,7 +4748,7 @@ class ScrummingBot(
             if _gap / max(self._target_balance, 1e-9) >= 0.01:
                 _use = min(self._hedge_bal * 0.5, _gap)
                 if _use > 0.01 and await self._first_buy_clears(
-                    ticker, symbol, current_value
+                    ticker, symbol, current_value, _cartridge_pct
                 ):
                     hedge_fill = await self._execute_buy(
                         _use,

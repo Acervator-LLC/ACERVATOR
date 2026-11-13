@@ -95,6 +95,9 @@ AGREEING_VOTERS = 3
 #: The ``_tick_initial_entry`` exit of a tick whose order may have reached the venue.
 ENTRY_NO_FILL_EXIT = "initial-entry(no-fill)"
 
+#: The ``_first_buy_line_is_new`` key of a ``_first_buy_read`` that cleared.
+FIRST_BUY_CLEARED = "first-buy(cleared)"
+
 
 @dataclass(frozen=True)
 class FirstBuyRead:
@@ -1101,6 +1104,7 @@ class TickPhaseMixin:
                 f"BB OK (pos={_init_bb_pos:.2f}, "
                 f"dist={_dist_down:.0%}).",
                 "initial-entry(vote)",
+                summary=summary,
             )
 
         if not three_agree(summary.consensus_confidence, summary.signals):
@@ -1112,10 +1116,22 @@ class TickPhaseMixin:
                 f"{self._third_indicator_text(summary, _reach)} "
                 f"BB OK (pos={_init_bb_pos:.2f}, dist={_dist_down:.0%}).",
                 "initial-entry(three-agree)",
+                summary=summary,
             )
 
-        self._first_buy_held_exit = ""
         return FirstBuyRead(summary=summary, bb_pos=_init_bb_pos, dist_down=_dist_down)
+
+    def _first_buy_terms(self, read: FirstBuyRead, cartridge_pct: float) -> str:
+        """``cartridge_pct`` and the weights above zero ``read.summary`` voted at."""
+        size = f"Max Cartridge Size {cartridge_pct:g}%."
+        if read.summary is None:
+            return size
+        weights = ", ".join(
+            f"{sig.indicator} {sig.weight:g}"
+            for sig in read.summary.signals
+            if sig.weight > 0.0
+        )
+        return f"{size} The vote ran at this bot's own weights: {weights}."
 
     async def _book_reaches_target(self, symbol: str) -> bool:
         """True while a weight sits above zero and ``_main_lots`` at cost reach target less
@@ -1162,33 +1178,53 @@ class TickPhaseMixin:
         return not repeat
 
     async def _first_buy_clears(
-        self, ticker: Any, symbol: str, current_value: float
+        self, ticker: Any, symbol: str, current_value: float, cartridge_pct: float
     ) -> bool:
-        """True once ``_first_buy_made`` is set or ``_first_buy_read`` clears; a
-        refused read writes its line and gate record, and takes the fold bank off armed.
+        """True once ``_first_buy_made`` is set or ``_first_buy_read`` clears; each
+        read writes its line ending in ``_first_buy_terms``.
         """
         if self._first_buy_made:
             return True
         read = await self._first_buy_read(ticker, symbol)
+        terms = self._first_buy_terms(read, cartridge_pct)
         if not read.refusal:
+            if self._first_buy_line_is_new(FIRST_BUY_CLEARED, ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"FIRST BUY READ CLEARED: TA=BEARISH at confidence "
+                        f"{read.summary.consensus_confidence:.4f}. BB OK "
+                        f"(pos={read.bb_pos:.2f}, dist={read.dist_down:.0%}). {terms}"
+                    ),
+                )
             return True
         if ticker.last and ticker.last > 0:
             self.stats.position_value = current_value
         self._last_gate_state.update(fold_armed=False, fold_blockers=[read.tick_exit])
         if self._first_buy_line_is_new(read.tick_exit, ticker.last):
-            self._bus.emit("bot.log", bot_id=self.bot_id, message=read.refusal)
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"{read.refusal} {terms}",
+            )
         self._emit_gate_decision_at_quiet_tick(read.tick_exit)
         return False
 
     async def _tick_initial_entry(
-        self, ticker: Any, symbol: str, current_value: float
+        self, ticker: Any, symbol: str, current_value: float, cartridge_pct: float
     ) -> str:
         """Decide and place the structural entry buy for an empty position, and
         answer the gate-record exit of a tick that sent nothing."""
         read = await self._first_buy_read(ticker, symbol)
+        terms = self._first_buy_terms(read, cartridge_pct)
         if read.standing:
             if self._first_buy_line_is_new(read.tick_exit, ticker.last):
-                self._bus.emit("bot.log", bot_id=self.bot_id, message=read.refusal)
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"{read.refusal} {terms}",
+                )
             return read.tick_exit
 
         try:
@@ -1376,13 +1412,14 @@ class TickPhaseMixin:
                 "bot.log",
                 bot_id=self.bot_id,
                 message=(
-                    f"{read.refusal} [{self.config.base_currency}: "
+                    f"{read.refusal} {terms} [{self.config.base_currency}: "
                     f"${_quote_free:.2f} · {self.config.target_asset}: "
                     f"{self._current_holdings:.6f} = ${current_value:.2f}]"
                 ),
             )
             return read.tick_exit
 
+        self._first_buy_held_exit = FIRST_BUY_CLEARED
         buy_cost = self._target_balance
         price = ticker.last
         self._bus.emit(
@@ -1392,7 +1429,7 @@ class TickPhaseMixin:
             f"BB OK, bb_pos={read.bb_pos:.2f}, "
             f"dist_down={read.dist_down:.0%}, "
             f"TA=BEARISH ({read.summary.consensus_confidence:.0%}). "
-            f"Acquiring ${buy_cost:.2f} of "
+            f"{terms} Acquiring ${buy_cost:.2f} of "
             f"{self.config.target_asset} @ ${price:.8f}",
         )
         entry_fill = await self._execute_buy(
