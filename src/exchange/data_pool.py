@@ -170,7 +170,8 @@ class BalanceEntry:
     """Free, used and total for one exchange and currency.
 
     ``is_stale`` turns True 10 seconds after ``fetch_time``. ``has_data`` is
-    False until the first fetch lands.
+    False until the first fetch lands. ``end_count`` is the pool's
+    ``_balance_end_count`` when ``invalidate_balance`` last ended this slot.
     """
 
     exchange_id: str
@@ -181,6 +182,7 @@ class BalanceEntry:
     absent: bool = True
     fetch_time: float = 0.0
     subscribers: int = 0
+    end_count: int = 0
 
     @property
     def is_stale(self) -> bool:
@@ -259,6 +261,7 @@ class MarketDataPool:
         self._balance_cache_hits = 0
         self._balance_batch_fills = 0
         self._balance_batch_slots = 0
+        self._balance_end_count = 0
         self._wedged_locks_cleared = 0
         self._fetch_lock_fault = ThrottledFault(
             "exchange fetching through the shared market data pool",
@@ -627,8 +630,9 @@ class MarketDataPool:
         """Return a ``Balance`` for ``currency``, fetching when the entry is
         stale.
 
-        ``BalanceEntry.is_stale`` sets the 10-second window and
-        ``invalidate_balance`` ends it early.
+        ``BalanceEntry.is_stale`` sets the 10-second window, ``invalidate_balance``
+        ends it early, and a read during which ``invalidate_balance`` ends this slot
+        is taken again.
         """
         from .base import Balance
 
@@ -666,25 +670,43 @@ class MarketDataPool:
                 entry = BalanceEntry(exchange_id=exchange_id, currency=currency)
                 self._balances[bkey] = entry
 
-            reported = await self._read_account(connector, exchange_id)
-            if reported is None:
-                balance = await connector.get_balance(currency)
-                self._write_balance_entry(entry, currency, balance)
-                self._balance_fetches += 1
-                return balance
+            while True:
+                begun = self._balance_end_count
+                reported = await self._read_account(connector, exchange_id)
+                if reported is None:
+                    balance = await connector.get_balance(currency)
+                    self._balance_fetches += 1
+                    if entry.end_count > begun:
+                        self._note_read_again(exchange_id, currency)
+                        continue
+                    self._write_balance_entry(entry, currency, balance)
+                    return balance
 
-            self._fill_balance_entries(exchange_id, reported)
-            self._balance_fetches += 1
-            held = reported.get(currency)
-            if held is not None:
-                return held
-            absent = Balance(
-                currency=currency, free=0.0, used=0.0, total=0.0, absent=True
-            )
-            self._write_balance_entry(entry, currency, absent)
-            return absent
+                self._fill_balance_entries(exchange_id, reported, begun)
+                self._balance_fetches += 1
+                if entry.end_count > begun:
+                    self._note_read_again(exchange_id, currency)
+                    continue
+                held = reported.get(currency)
+                if held is not None:
+                    return held
+                absent = Balance(
+                    currency=currency, free=0.0, used=0.0, total=0.0, absent=True
+                )
+                self._write_balance_entry(entry, currency, absent)
+                return absent
         finally:
             lock.release()
+
+    @staticmethod
+    def _note_read_again(exchange_id: str, currency: str) -> None:
+        """Log one ``get_or_fetch_balance`` read that ``invalidate_balance`` ended."""
+        logger.debug(
+            "DataPool: the %s balance on %s was ended while its read was in "
+            "flight; reading it again.",
+            currency,
+            exchange_id,
+        )
 
     async def _read_account(self, connector, exchange_id: str):
         """One account read naming every currency, None when ``connector`` has none.
@@ -708,13 +730,14 @@ class MarketDataPool:
             return None
         return reported if isinstance(reported, dict) else None
 
-    def _fill_balance_entries(self, exchange_id: str, reported: dict) -> int:
-        """Write every ``_balances`` slot this exchange holds from one account read.
+    def _fill_balance_entries(
+        self, exchange_id: str, reported: dict, begun: int
+    ) -> int:
+        """Write every ``_balances`` slot this exchange holds from one account read
+        begun at ``_balance_end_count`` ``begun``, and return how many it filled.
 
-        Returns how many slots the read filled. A currency the read reports a
-        holding in gets a slot it did not have, so the next reader of anything
-        the venue holds answers from cache rather than making its own account
-        read.
+        A slot ``invalidate_balance`` ended after ``begun`` stays stale, and a
+        currency the read reports a holding in gets a slot it did not have.
         """
         from .base import Balance
 
@@ -730,6 +753,8 @@ class MarketDataPool:
         filled = 0
         for slot in self._balances.values():
             if slot.exchange_id != exchange_id:
+                continue
+            if slot.end_count > begun:
                 continue
             held = reported.get(slot.currency)
             if held is None:
@@ -776,22 +801,24 @@ class MarketDataPool:
         """
         if not self._slots_held(self._balances, exchange_id):
             return 0
+        begun = self._balance_end_count
         reported = await self._read_account(connector, exchange_id)
         if reported is None:
             return 0
-        return self._fill_balance_entries(exchange_id, reported)
+        return self._fill_balance_entries(exchange_id, reported, begun)
 
     def invalidate_balance(
         self,
         exchange_id: str,
         currency: Optional[str] = None,
     ) -> int:
-        """Zero ``fetch_time`` on matching ``_balances`` slots; the next
-        ``get_or_fetch_balance`` then re-fetches.
+        """Zero ``fetch_time`` on matching ``_balances`` slots and stamp each with a
+        new ``_balance_end_count``; the next ``get_or_fetch_balance`` then re-fetches.
 
         A ``currency`` of None clears every slot for ``exchange_id``. Returns
         the number cleared.
         """
+        self._balance_end_count += 1
         invalidated = 0
         for bkey, entry in list(self._balances.items()):
             if entry.exchange_id != exchange_id:
@@ -799,6 +826,7 @@ class MarketDataPool:
             if currency is not None and entry.currency != currency:
                 continue
             entry.fetch_time = 0.0
+            entry.end_count = self._balance_end_count
             invalidated += 1
         return invalidated
 
