@@ -7,11 +7,15 @@ venue-fee records a settled fill produces on either side.
 from __future__ import annotations
 
 import asyncio
+import functools
+import inspect
 import logging
 import math
 import time
+from collections.abc import Awaitable
+from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, ParamSpec, TypeVar
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType
@@ -93,6 +97,30 @@ BOOK_COMPARED_PATHS = ("cartridge_fold", "zero_balance_initial_entry")
 
 #: The booker of an order a repeated decision got back that no plan sized.
 EARLIER_ORDER_BOOKER = "_book_earlier_order"
+
+#: The ``_execute_buy`` paths whose venue calls queue past ``SYNC_QUEUE_CAP``.
+QUEUE_WAIVED_PATHS = ("fold_rebuy", "hedge_replenish")
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def waives_queue_cap_by_path(
+    send: Callable[P, Awaitable[R]],
+) -> Callable[P, Awaitable[R]]:
+    """Run ``send`` inside ``queue_cap_waived`` when its ``trace_context`` path is in ``QUEUE_WAIVED_PATHS``."""
+    signature = inspect.signature(send)
+
+    @functools.wraps(send)
+    async def waived(*args: P.args, **kwargs: P.kwargs) -> R:
+        from ...exchange.ccxt_connector import queue_cap_waived
+
+        trace_context = signature.bind(*args, **kwargs).arguments.get("trace_context")
+        path = (trace_context or {}).get("path")
+        with queue_cap_waived() if path in QUEUE_WAIVED_PATHS else nullcontext():
+            return await send(*args, **kwargs)
+
+    return waived
 
 
 @dataclass(frozen=True)
@@ -3029,6 +3057,7 @@ class ExecutionEngineMixin:
             )
         return held, refusal
 
+    @waives_queue_cap_by_path
     async def _execute_buy(
         self,
         cost: float,
