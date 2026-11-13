@@ -569,15 +569,16 @@ if _HAS_WEBENGINE:
             scrum_surface.drive(self._scrum, {scrum_surface.VIEW_BAND_PARAM: band})
             self._publish()
 
-        def press_command(self, command: Any, shift_held: Any = False) -> None:
-            """Send one command-bar press on, then publish the fleet again.
+        def press_command(self, command: Any, shift_held: Any = False) -> str:
+            """Send one command-bar press on, publish the fleet again, and answer the ``ExchangeTabModel.cmd`` tag.
 
             ``TradingTabReact.run_action`` calls this; the bar acts on the bot
             the drawn list holds, or on the whole fleet while SHIFT is held.
             """
             self._screen.hold_scrum_bot(self._scrum.get_selected_bot_id())
-            self._screen.cmd(str(command or ""), bool(shift_held))
+            outcome = self._screen.cmd(str(command or ""), bool(shift_held))
             self._publish()
+            return outcome
 
         def highlight_bot(self, bot_id: Any) -> str:
             """Put the bot table's highlight on the Voting Panel's bot.

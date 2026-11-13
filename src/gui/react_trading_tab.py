@@ -983,10 +983,17 @@ if _HAS_WEBENGINE:
                     answered = True
             command = params.get(venue_surface.COMMAND_PARAM)
             if command is not None:
+                shift_held = params.get(venue_surface.SHIFT_PARAM)
                 press = getattr(venue, "press_command", None)
+                outcome = venue_surface.COMMAND_NO_PAGE
                 if callable(press):
-                    press(command, params.get(venue_surface.SHIFT_PARAM))
+                    outcome = press(command, shift_held)
                     answered = True
+                logger.info(
+                    venue_surface.live_page_command_line(
+                        command, shift_held, venue_of_press(params), outcome
+                    )
+                )
             if params.get(scrum_surface.SELECT_BOT_PARAM) is not None:
                 self.refresh_votes()
             return answered

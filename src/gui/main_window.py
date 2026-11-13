@@ -10,12 +10,26 @@ import logging
 import math
 import re
 import time
+from functools import partial
 from pathlib import Path
 from typing import Optional
 
 from ..core.event_bus import get_event_bus
 from .. import __version__
 from . import design_system as ds
+from .main_tabs.exchange_tab_surface import (
+    ADJUST_STACK_COMMAND,
+    DELETE_COMMAND,
+    FLEET_SEQUENCE_ROUTE,
+    LIVE_COMMAND_BAR_ROUTE,
+    PAUSE_COMMAND,
+    REACT_LIVE_COMMAND_ROUTE,
+    RESTART_COMMAND,
+    START_COMMAND,
+    STOP_COMMAND,
+    bot_command_branch,
+    bot_command_line,
+)
 from .main_tabs.main_window_surface import (
     ABOUT_TITLE,
     ACCUMULATION_TAB,
@@ -1794,6 +1808,11 @@ if _HAS_QT:
             except Exception as exc:
                 logger.warning("React exchange page unavailable: %s", exc)
                 page_class = ExchangeTab
+            command_route = (
+                LIVE_COMMAND_BAR_ROUTE
+                if page_class is ExchangeTab
+                else REACT_LIVE_COMMAND_ROUTE
+            )
 
             _ph_dropped = 0
             _seated: list = []
@@ -1812,7 +1831,7 @@ if _HAS_QT:
                     display_name,
                     on_new_bot=self._create_bot,
                     on_bot_clicked=self._on_bot_clicked,
-                    on_bot_cmd=self._on_bot_command,
+                    on_bot_cmd=partial(self._on_bot_command, route=command_route),
                     on_fleet_cmd=self._global_bot_cmd,
                     on_bot_fire=self._on_bot_fire,
                     status_log=self._status_log,
@@ -3878,10 +3897,17 @@ if _HAS_QT:
             finally:
                 bot.start_pending = False
 
-        def _on_bot_command(self, bot_id: str, command: str) -> None:
+        def _on_bot_command(self, bot_id: str, command: str, route: str) -> None:
+            """Log ``bot_command_line`` for *command* from *route*, then run the branch ``bot_command_branch`` names."""
             if not self._bot_manager:
                 return
             bot = self._bot_manager.get_bot(bot_id)
+            branch = bot_command_branch(command)
+            logger.info(
+                bot_command_line(
+                    route, command, bot.config.exchange_id if bot else None, branch
+                )
+            )
             if not bot:
                 self._status_log.log(f"Bot {bot_id} not found.", "error")
                 return
@@ -3893,7 +3919,7 @@ if _HAS_QT:
 
             sound = get_sound_engine()
 
-            if command == "start":
+            if branch == START_COMMAND:
                 bot.start_pending = True
                 # Synchronous connect on the GUI thread: the window freezes until done.
                 eid_display = bot.config.exchange_id.capitalize()
@@ -3969,7 +3995,7 @@ if _HAS_QT:
                     )
                     sound.play_error()
 
-            elif command == "pause":
+            elif branch == PAUSE_COMMAND:
                 self._status_log.log(f"Pausing bot {bot_id}...", "info")
                 try:
                     self._schedule_async(bot.pause())
@@ -3981,7 +4007,7 @@ if _HAS_QT:
                         f"Failed to pause bot {bot_id}: {exc}", "error"
                     )
 
-            elif command == "stop":
+            elif branch == STOP_COMMAND:
                 self._status_log.log(f"Stopping bot {bot_id}...", "info")
                 try:
                     self._schedule_async(bot.stop())
@@ -3991,7 +4017,7 @@ if _HAS_QT:
                 except Exception as exc:
                     self._status_log.log(f"Failed to stop bot {bot_id}: {exc}", "error")
 
-            elif command == "restart":
+            elif branch == RESTART_COMMAND:
                 eid_display = bot.config.exchange_id.capitalize()
                 self._status_log.log(
                     f"⏳ Restarting bot {bot_id}... Reconnecting to "
@@ -4016,7 +4042,7 @@ if _HAS_QT:
                     )
                     sound.play_error()
 
-            elif command == "delete":
+            elif branch == DELETE_COMMAND:
                 confirm = QMessageBox.question(
                     self,
                     "Delete Bot",
@@ -4039,7 +4065,7 @@ if _HAS_QT:
                     self._spool.notify(f"Bot {bot_id} DELETED", "warning")
                     sound.play_state_change()
 
-            elif command == "adjust_stack":
+            elif branch == ADJUST_STACK_COMMAND:
                 self._on_bot_clicked(bot_id)
 
         def fleet_locked(self) -> bool:
@@ -4204,7 +4230,7 @@ if _HAS_QT:
                     bot_id=bot.bot_id,
                 )
                 try:
-                    self._on_bot_command(bot.bot_id, command)
+                    self._on_bot_command(bot.bot_id, command, FLEET_SEQUENCE_ROUTE)
                 except Exception as exc:
                     logger.warning(
                         "Fleet %s of bot %s raised: %s", command, bot.bot_id, exc
