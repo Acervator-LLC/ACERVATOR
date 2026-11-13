@@ -2955,7 +2955,9 @@ class ExecutionEngineMixin:
         than ``manual_fire_dust_band``, or an empty string.
 
         An unreadable sibling total counts as none, and a refusal leaves the
-        ``_reconcile_holdings`` count alone.
+        ``_reconcile_holdings`` count alone. ``_refusal_is_new`` writes each answer
+        once a stretch, the refusal under ``buy_unbooked`` and a clear under
+        ``buy_unbooked_clear``.
         """
         claimable, siblings = self._claimable_exchange_units(
             held, self.config.exchange_id
@@ -2963,17 +2965,31 @@ class ExecutionEngineMixin:
         if not math.isfinite(siblings):
             claimable = held
         booked = max(booked, self._current_holdings)
-        unbooked = claimable - booked
-        if priced_usd(
-            unbooked, price, float(self._quote_to_usd or 1.0)
-        ) <= manual_fire_dust_band(self._target_balance):
-            return ""
-        return (
-            f"FAIL-CLOSED — buy REFUSED. Path={path}. The exchange holds {claimable:.8f} "
-            f"{self.config.target_asset} past other bots and this bot's book shows "
-            f"{booked:.8f}. No buy goes on top of coins the book does not show; the next "
-            f"holdings audit reads them first."
+        unbooked_usd = priced_usd(
+            claimable - booked, price, float(self._quote_to_usd or 1.0)
         )
+        band_usd = manual_fire_dust_band(self._target_balance)
+        counts = (
+            f"Path={path}. The exchange holds {claimable:.8f} "
+            f"{self.config.target_asset} past other bots and this bot's book shows "
+            f"{booked:.8f}, unbooked=${unbooked_usd:+.2f} band=${band_usd:.2f}."
+        )
+        if unbooked_usd <= band_usd:
+            if self._refusal_is_new("buy_unbooked_clear", price):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=f"VENUE COMPARE CLEAR: {counts}",
+                )
+            return ""
+        refusal = (
+            f"FAIL-CLOSED — buy REFUSED. {counts} No buy goes on top of coins the book "
+            f"does not show; the next holdings audit reads them first."
+        )
+        if self._refusal_is_new("buy_unbooked", price):
+            self._bus.emit("bot.log", bot_id=self.bot_id, message=refusal)
+            logger.warning("Bot %s %s", self.bot_id, refusal)
+        return refusal
 
     async def _verify_buy_safe_or_refuse(
         self,
@@ -2987,6 +3003,7 @@ class ExecutionEngineMixin:
         expected units summed from ``_main_lots``, and a non-empty
         ``refuse_reason`` obliges the caller to refuse the buy. A path in
         ``BOOK_COMPARED_PATHS`` also answers ``_unbooked_coin_refusal`` at ``price``.
+        An unverified position writes its refusal once a stretch under ``buy_safety``.
         """
         from ..buy_safety import verify_buy_safe_or_refuse
 
@@ -3001,6 +3018,9 @@ class ExecutionEngineMixin:
             refuse_absent=path in BOOK_COMPARED_PATHS,
         )
         if verified is None:
+            if self._refusal_is_new("buy_safety", price):
+                self._bus.emit("bot.log", bot_id=self.bot_id, message=refusal)
+                logger.warning("Bot %s %s", self.bot_id, refusal)
             return verified, refusal
         held = max(0.0, verified - self._shadow_held_units())
         if path in BOOK_COMPARED_PATHS:
@@ -3158,11 +3178,6 @@ class ExecutionEngineMixin:
             path=_path, price=price
         )
         if _refuse_reason_msg:
-            if self._refusal_is_new("buy_safety", price):
-                self._bus.emit(
-                    "bot.log", bot_id=self.bot_id, message=_refuse_reason_msg
-                )
-                logger.warning("Bot %s %s", self.bot_id, _refuse_reason_msg)
             return None
 
         _qrate_buy = float(self._quote_to_usd or 1.0)

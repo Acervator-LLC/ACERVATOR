@@ -674,9 +674,6 @@ class TickPhaseMixin:
                 path="cartridge_fold", price=ticker.last
             )
             if _refuse_msg:
-                if self._refusal_is_new("buy_safety", ticker.last):
-                    self._bus.emit("bot.log", bot_id=self.bot_id, message=_refuse_msg)
-                    logger.warning("Bot %s %s", self.bot_id, _refuse_msg)
                 return REBALANCE_REFUSED
 
         def announce_fire() -> None:
