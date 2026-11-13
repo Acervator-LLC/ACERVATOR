@@ -80,15 +80,12 @@ LEFT_OFF: dict[str, str] = {
     "S104": "faulty: ruff S104 possible binding to all interfaces",
     "S609": "faulty: bandit B602 and B609, ruff S602 and S609, "
     "semgrep subprocess-shell-true",
-    "C411": "rule_page: python -m ruff rule C411 prints 'Use instead' with no colon",
     "F634": "faulty: vulture redundant if-condition",
     "RUF008": "corrected: mypy no-redef and pyright reportRedeclaration, class 'A'",
     "RUF012": "corrected: mypy no-redef and pyright reportRedeclaration, class 'A'",
-    "RUF031": "rule_page: python -m ruff rule RUF031 prints "
-    "'Use instead (with default setting):'",
 }
 RULES = tuple(code for code in CANDIDATES if code not in LEFT_OFF)
-PREVIEW = ("PLR6201", "PLW0244")
+PREVIEW = ("PLR6201", "PLW0244", "RUF031")
 UNDEFINED_EXPORT = "F822"
 HOLDING = tuple(code for code in RULES if code == UNDEFINED_EXPORT)
 DISPLAY_NODES = (ast.Tuple, ast.List)
@@ -210,8 +207,7 @@ SIGIL = Sigil(
             "left_off": LEFT_OFF,
             "left_off_because": "faulty or corrected: the write gate refused that "
             "rule's sample, because the coding archetype grades the named finding "
-            "high; rule_page: ruff_rules.py, in rule_page, reads the corrected form "
-            "only after 'Use instead:', so a finding of that rule cannot carry it",
+            "high",
             "not_read": "a ruff setting matched on the file name, such as "
             "per-file-ignores, because the file reaches ruff on standard input",
             "refuses": "ruff exits otherwise, or prints a finding or a rule page "

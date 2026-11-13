@@ -1,6 +1,6 @@
 # Read with --root harness_fixtures/sigil_code_collection/sample_tree
 # Each file names its rule on line 1, then holds the Use instead blocks python -m ruff rule <id> prints.
-# For C400 C401 C402 C403 C404 C414 RUF048, the lines between define the names the block uses and never defines.
+# For C400 C401 C402 C403 C404 C411 C414 RUF048, the lines between define the names the block uses and never defines.
 # foo.py holds the names the F822 block imports.
 
 # CLEAN for its own rule id
@@ -21,6 +21,7 @@ known_good_c406.py
 known_good_c408.py
 known_good_c409.py
 known_good_c410.py
+known_good_c411.py
 known_good_c414.py
 known_good_c418.py
 known_good_pie800.py
@@ -31,6 +32,7 @@ known_good_plc0208.py
 known_good_plr6201.py
 known_good_plw0244.py
 known_good_ruf023.py
+known_good_ruf031.py
 
 # FINDINGS, FIX for another rule alone: G101's form reads C408, RUF022's and RUF068's read F822
 known_good_g101.py
