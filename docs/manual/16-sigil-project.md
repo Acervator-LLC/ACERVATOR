@@ -114,6 +114,7 @@ flowchart TD
     OUT -->|a named optimization rule| OPT
     OUT -->|a fault outside application source| FIX
     OUT -->|a fault in application source| HOLD
+    OUT -->|an output the card flags BLOCK| BLOCK
 ```
 
 ## Flags and follow-on rules
@@ -126,7 +127,7 @@ rule yet.
 
 | Flag | Side | When | What follows |
 | ---- | ---- | ---- | ------------ |
-| BLOCK | input | a tier 1 or tier 2 refusal | the work does not start |
+| BLOCK | input | a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK | the work does not start |
 | HOLD | output | a fault in application source code | the merge waits until it is fixed |
 | FIX | output | a fault anywhere else, such as a document | the merge proceeds, and the fault is fixed at once |
 | OPTIMIZE | output | a named optimization rule fires | the merge proceeds |
@@ -171,6 +172,7 @@ sigil module imports from another sigil module.
 | `dev_harness/sigils/coding_input.py` | the Coding Archetype's input: tier 1 in `DATA_TYPE_TIER`, tier 2 in `CONTENT_TIER`, and the file readers in `READERS` |
 | `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
 | `dev_harness/sigils/fix_class.py` | the follow-on rule of each fix class, in `FOLLOW_ON` |
+| `dev_harness/sigils/citation.py` | the citation form that CITE.SYMBOL@3 and TA.AUDIT@1 share: tier 1 in `data_type_fault`, and the definition search in `definition_verdict` |
 
 CITE.SYMBOL@3 keeps its own tiers 1 and 2. Its input form differs, and the
 Truth Archetype owns it.

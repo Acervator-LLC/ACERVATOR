@@ -30,14 +30,17 @@ TA.AUDIT@1 takes its citation rules and its definition search from
 CITE.SYMBOL@3, by import. A name counts as defined by the rules on the
 [CITE.SYMBOL@3 page](cite-symbol.md).
 
+Both sigils import the definition search from
+`dev_harness/sigils/citation.py, in definition_verdict`, a module that defines
+no sigil.
+
 `dev_harness/sigils/ta_audit.py, in _functions_verdict`:
 
 ```python
 def _functions_verdict(line: str, root: Path) -> tuple[str, str]:
-    """Return the rank where `CITE_SYMBOL.functions` resolves, else `NOT_GROUNDED`."""
+    """Return the rank where `definition_verdict` resolves, else `NOT_GROUNDED`."""
     citation, rank = _fields(line)[:2]
-    reading = CITE_SYMBOL.functions(citation, root)
-    output, reason = reading[0], reading[1]
+    output, reason = definition_verdict(citation, root)
     return (rank if output == RESOLVED else NOT_GROUNDED), reason
 ```
 
@@ -58,16 +61,24 @@ where tier 3 finds no definition. It reads BLOCK, so a rank with no ground
 never counts. A line whose chosen rank is NOT_GROUNDED reads NOT_GROUNDED too.
 REJECTED is the output of a tier 1 or tier 2 refusal.
 
-As with CITE.SYMBOL@3, the file that holds the audit line decides application
-source. DIRECTION and SIGNAL read HOLD when that file sits in application
-source, and FIX anywhere else.
+The indicator module the line names decides application source. DIRECTION and
+SIGNAL read HOLD when that file sits in application source, and FIX anywhere
+else.
+
+`dev_harness/sigils/ta_audit.py, in _fault_file`:
+
+```python
+def _fault_file(line: str, root: Path) -> Path | None:
+    """Return the module `line` names under `root`, or None if tier 1 refuses it."""
+    return named_file(line, root, _data_type_fault, SETTINGS["separator"])
+```
 
 The card states what follows each flag. NOT_GROUNDED reads BLOCK at tier 3, in
 addition to the refusals that the BLOCK row names.
 
 | Flag | Side | When | What follows |
 | ---- | ---- | ---- | ------------ |
-| BLOCK | input | a tier 1 or tier 2 refusal | the work does not start |
+| BLOCK | input | a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK | the work does not start |
 | HOLD | output | a fault in application source code | the merge waits until it is fixed |
 | FIX | output | a fault anywhere else, such as a document | the merge proceeds, and the fault is fixed at once |
 | PASS | output | the output is valid | nothing further |
