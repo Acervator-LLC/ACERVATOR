@@ -1,0 +1,45 @@
+# Read with --root harness_fixtures/sigil_ta_audit/sample_tree --gate
+# Every line reads BLOCK.
+
+# NOT_GROUNDED: the file is missing
+src/trading/indicators/absent.py, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
+
+# NOT_GROUNDED: the file name differs in letter case
+src/trading/indicators/Crossing.py, in CrossingIndicator | DIRECTION | https://en.wikipedia.org/wiki/MACD
+
+# NOT_GROUNDED: an invented symbol, or a real name under the wrong nesting
+src/trading/indicators/crossing.py, in no_such_name | SIGNAL | https://en.wikipedia.org/wiki/MACD
+src/trading/indicators/crossing.py, in detect_crossing.compute | CONFIDENCE | https://en.wikipedia.org/wiki/MACD
+
+# NOT_GROUNDED: the name sits only in a comment, a docstring or a string
+src/trading/indicators/crossing.py, in comment_only_name | DOCUMENTATION | https://en.wikipedia.org/wiki/MACD
+src/trading/indicators/crossing.py, in docstring_only_name | CLEAN | https://en.wikipedia.org/wiki/MACD
+src/trading/indicators/crossing.py, in string_only_name | DIRECTION | https://en.wikipedia.org/wiki/MACD
+
+# NOT_GROUNDED: the rank the model chose
+src/trading/indicators/crossing.py, in CrossingIndicator | NOT_GROUNDED | https://en.wikipedia.org/wiki/MACD
+
+# REJECTED at tier 1: not three fields
+src/trading/indicators/crossing.py, in CrossingIndicator | CLEAN
+src/trading/indicators/crossing.py, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD | extra
+src/trading/indicators/crossing.py, in CrossingIndicator|CLEAN|https://en.wikipedia.org/wiki/MACD
+src/trading/indicators/crossing.py, in CrossingIndicator | NOT GROUNDED | https://en.wikipedia.org/wiki/MACD
+
+# REJECTED at tier 1: the citation fails the CITE.SYMBOL@3 path and symbol rules
+src\trading\indicators\crossing.py, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
+src/trading/indicators/crossing.py:8, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
+src/trading/indicators/crossing.py in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
+src/trading/../trading/indicators/crossing.py, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
+
+# REJECTED at tier 2: a path the indicators setting does not match
+src/trading/engine.py, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
+src/trading/indicators/sub/crossing.py, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
+SRC/trading/indicators/crossing.py, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
+
+# REJECTED at tier 2: a rank not in outputs
+src/trading/indicators/crossing.py, in CrossingIndicator | BULLISH | https://en.wikipedia.org/wiki/MACD
+src/trading/indicators/crossing.py, in CrossingIndicator | clean | https://en.wikipedia.org/wiki/MACD
+
+# REJECTED at tier 2: a url that is not https, or that names no host
+src/trading/indicators/crossing.py, in CrossingIndicator | CLEAN | http://en.wikipedia.org/wiki/MACD
+src/trading/indicators/crossing.py, in CrossingIndicator | CLEAN | https:///wiki/MACD

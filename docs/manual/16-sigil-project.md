@@ -230,7 +230,7 @@ the card its command prints. A sigil that is not built has no card yet.
 | CODE.COLLECTION@1 | coding | 34 of 39 ruff rules | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
 | CODE.FLOW@1 | coding | 39 of 56 ruff rules | built | `dev_harness/sigils/code_flow.py, in SIGIL` |
 | CODE.VARIABLE@1 | coding | 54 of 89 ruff rules | built | `dev_harness/sigils/code_variable.py, in SIGIL` |
-| TA.AUDIT@1 | ta | no card yet | unbuilt | not in the tree |
+| TA.AUDIT@1 | ta | no rule list: its tiers decide | built | `dev_harness/sigils/ta_audit.py, in SIGIL` |
 | ROW.CLOSE@1 | not named yet | no card yet | unbuilt | not in the tree |
 
 CODE.FLOW@1 reads if, try, with, return, raise, assert, pass and del. VARIABLE
@@ -342,3 +342,4 @@ condition, its outputs and flags, the command that runs it, and its rules.
 - [CODE.COLLECTION@1](16-sigil-project/code-collection.md)
 - [CODE.FLOW@1](16-sigil-project/code-flow.md)
 - [CODE.VARIABLE@1](16-sigil-project/code-variable.md)
+- [TA.AUDIT@1](16-sigil-project/ta-audit.md)
