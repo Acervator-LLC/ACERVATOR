@@ -1,0 +1,11 @@
+# Read with --root harness_fixtures/sigil_ta_audit/sample_tree --gate
+# This file sits in src, the sample tree's application source.
+
+# CLEAN, PASS
+src/trading/indicators/crossing.py, in CrossingIndicator | CLEAN | https://en.wikipedia.org/wiki/MACD
+
+# DIRECTION, HOLD
+src/trading/indicators/crossing.py, in CrossingIndicator.compute | DIRECTION | https://en.wikipedia.org/wiki/MACD
+
+# SIGNAL, HOLD
+src/trading/indicators/crossing.py, in detect_crossing | SIGNAL | https://en.wikipedia.org/wiki/MACD
