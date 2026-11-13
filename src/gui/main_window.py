@@ -4427,18 +4427,38 @@ if _HAS_QT:
             self._status_log.log("Settings saved.", "success")
 
         def _reset_settings(self) -> None:
-            """Confirm, then call `reset_defaults` and tell the operator to restart."""
+            """Confirm, naming each stored venue's ``resting_orders_at`` reading, then call `reset_defaults` and tell the operator to restart."""
+            from .main_tabs import settings_dialog_surface as sds
+
+            stored = self._settings.list_exchanges() if self._settings else []
+            resting = {
+                eid: sds.resting_orders_at(eid, self._bot_manager)
+                for eid in (one.get("exchange_id", "") for one in stored)
+                if eid
+            }
+            orders_words = sds.reset_resting_words(resting)
             confirm = QMessageBox.question(
                 self,
                 "Reset All Settings",
                 "This will clear ALL settings, exchanges, and stored credentials.\n"
                 "The application will restart with the setup wizard.\n\n"
-                "Are you sure?",
+                + (orders_words + "\n\n" if orders_words else "")
+                + "Are you sure?",
                 QMessageBox.Yes | QMessageBox.No,
             )
-            if confirm == QMessageBox.Yes:
-                if self._settings:
-                    self._settings.reset_defaults()
+            accepted = confirm == QMessageBox.Yes
+            if accepted and self._settings:
+                self._settings.reset_defaults()
+            head, answer = (
+                (sds.VENUE_REMOVED_HEAD, sds.ANSWER_YES)
+                if accepted
+                else (sds.VENUE_KEPT_HEAD, sds.ANSWER_NO)
+            )
+            for eid, held in resting.items():
+                logger.info(
+                    sds.venue_line(head, eid, sds.RESET_ALL_ROUTE, answer, held)
+                )
+            if accepted:
                 self._status_log.log(
                     "All settings reset. Restart the application.", "warning"
                 )
@@ -4524,19 +4544,29 @@ if _HAS_QT:
             self._run_settings_window(_wing, route)
 
         def _keep_unlisted_venues(self, unlisted: set) -> set:
-            """Answer each venue of *unlisted* that ``remove_refusal`` holds, logging why on ``_status_log``."""
-            from .main_tabs.settings_dialog_surface import remove_refusal
+            """Answer each venue of *unlisted* that ``remove_refusal`` holds, logging why on ``_status_log`` and ``logger``."""
+            from .main_tabs.settings_dialog_surface import (
+                VENUE_CLOSE_KEPT_LINE_FORMAT,
+                remove_refusal,
+            )
 
             kept: set[str] = set()
             for eid in sorted(unlisted):
                 why = remove_refusal(eid, self._bot_manager)
                 if why:
                     kept.add(eid)
-                    self._status_log.log(VENUE_KEPT_FORMAT.format(why=why), "warning")
+                    words = VENUE_KEPT_FORMAT.format(why=why)
+                    self._status_log.log(words, "warning")
+                    logger.info(VENUE_CLOSE_KEPT_LINE_FORMAT.format(kept=words))
             return kept
 
         def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
             """Take off each tab neither ``listed`` nor held by ``_keep_unlisted_venues``, and seat Get Started on an emptied bar."""
+            from .main_tabs.settings_dialog_surface import (
+                resting_orders_at,
+                venue_dropped_line,
+            )
+
             layers = getattr(self, "_class_layers", None) or {}
             kept = set(listed)
             seated = {eid for held in layers.values() for eid in held["exchange_tabs"]}
@@ -4565,7 +4595,10 @@ if _HAS_QT:
                         PLACEHOLDER_TAB_TOOLTIP,
                         bar.addTab(ph, PLACEHOLDER_TAB_TITLE),
                     )
-            for eid in gone:
+            for eid in sorted(gone):
+                logger.info(
+                    venue_dropped_line(eid, resting_orders_at(eid, self._bot_manager))
+                )
                 self._forget_venue(eid)
             return dropped
 
