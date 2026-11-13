@@ -111,6 +111,14 @@ def quote_currency(symbol: Any) -> str:
     return held.partition(EXPIRY_SEPARATOR)[0]
 
 
+def settle_currency(symbol: Any) -> str:
+    """The ``SETTLE_SEPARATOR`` leg of a recorded contract symbol with its
+    ``EXPIRY_SEPARATOR`` date stripped, and empty for a spot pair."""
+    rest = str(symbol or "").partition(SYMBOL_SEPARATOR)[2]
+    held = rest.partition(SETTLE_SEPARATOR)[2]
+    return held.partition(EXPIRY_SEPARATOR)[0]
+
+
 def is_contract(symbol: Any) -> bool:
     """True while a recorded market symbol carries a ``SETTLE_SEPARATOR`` leg,
     which a perpetual and a dated contract both do and a spot pair does not."""
