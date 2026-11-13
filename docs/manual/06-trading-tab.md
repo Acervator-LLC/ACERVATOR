@@ -40,7 +40,7 @@ Scrum - To sell an amount from an investment position that allows it to return t
 
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
-Now: each fold spends queued tranche dollars whose rebuy price the market has reached, up to the growth room left this cycle, so the Target Delta does not size it (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`). A buy goes out only when the venue's free balance of its quote currency, read just before the send, covers the buy's price times its amount; otherwise nothing is sent and the log names both figures (`src/exchange/ccxt_connector.py, in CCXTConnector.place_order`). The fee is not counted, so a buy that fits only without its fee still reaches the venue, which refuses it.
+Now: each fold spends queued tranche dollars whose rebuy price the market has reached, up to the growth room left this cycle, so the Target Delta does not size it (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`). A buy goes out only when the venue's free balance of its quote currency, read just before the send, covers the buy's price times its amount; otherwise nothing is sent and the log names both figures (`src/exchange/ccxt_connector.py, in CCXTConnector.place_order`). The fee is not counted, so a buy that fits only without its fee still reaches the venue, which refuses it. Every venue call of a fold's buy, from its open-orders read to its send, waits its turn in the venue's call queue, and a full queue does not refuse it; a balance the venue does not confirm still refuses the buy (`src/trading/scrumming/execution.py, in waives_queue_cap_by_path`).
 
 ![The wizard's first page: Trading Mode, with Scrumming selected.](p16-i0.png)
 
@@ -170,7 +170,7 @@ Now: while ticked, the reserve reads no entry price and buys from 1% under targe
 
 Hedge Balance - Sets a limit on the amount of additional liquidity a given bot is allowed to absorb when Current Price drifts below Initial Entry Price.
 
-Now: Hedge Balance caps a dollar reserve separate from Target Balance; each hedge buy spends up to half of it, and 8% of compound growth refills it (`src/trading/scrumming_bot.py, in ScrummingBot.tick`). A hedge or an entry holds its dollars on the in-flight ledger until its send ends, so a second buyer cannot pass on them (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy`).
+Now: Hedge Balance caps a dollar reserve separate from Target Balance; each hedge buy spends up to half of it, and 8% of compound growth refills it (`src/trading/scrumming_bot.py, in ScrummingBot.tick`). A hedge or an entry holds its dollars on the in-flight ledger until its send ends, so a second buyer cannot pass on them (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy`). Every venue call of a hedge buy, from its open-orders read to its send, waits its turn in the venue's call queue, and a full queue does not refuse it (`src/trading/scrumming/execution.py, in waives_queue_cap_by_path`).
 
 ![The Circuit Breakers group.](p21-i0.png)
 
