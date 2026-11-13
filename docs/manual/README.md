@@ -124,6 +124,8 @@ rules. [16-sigil-project.md](16-sigil-project.md) links every one.
 | [16-sigil-project/code-loop.md](16-sigil-project/code-loop.md) | CODE.LOOP@1: 19 ruff rules for loops and builders |
 | [16-sigil-project/code-import.md](16-sigil-project/code-import.md) | CODE.IMPORT@1: 8 ruff rules for import statements |
 | [16-sigil-project/code-collection.md](16-sigil-project/code-collection.md) | CODE.COLLECTION@1: 34 ruff rules for tuples, lists, sets and dictionaries |
+| [16-sigil-project/code-flow.md](16-sigil-project/code-flow.md) | CODE.FLOW@1: 39 ruff rules for if, try, with, return, raise, assert, pass and del |
+| [16-sigil-project/code-variable.md](16-sigil-project/code-variable.md) | CODE.VARIABLE@1: 54 ruff rules for names, assignments and function arguments |
 
 ## Figures
 
