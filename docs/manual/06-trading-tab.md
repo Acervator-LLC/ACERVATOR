@@ -40,7 +40,7 @@ Scrum - To sell an amount from an investment position that allows it to return t
 
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
-Now: each fold spends queued tranche dollars whose rebuy price the market has reached, up to the growth room left this cycle, so the Target Delta does not size it (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`).
+Now: each fold spends queued tranche dollars whose rebuy price the market has reached, up to the growth room left this cycle, so the Target Delta does not size it (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`). A buy goes out only when the venue's free balance of its quote currency, read just before the send, covers the buy's price times its amount; otherwise nothing is sent and the log names both figures (`src/exchange/ccxt_connector.py, in CCXTConnector.place_order`). The fee is not counted, so a buy that fits only without its fee still reaches the venue, which refuses it.
 
 ![The wizard's first page: Trading Mode, with Scrumming selected.](p16-i0.png)
 
