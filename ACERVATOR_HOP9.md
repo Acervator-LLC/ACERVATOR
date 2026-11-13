@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-13 against `04d7ebb4`. **Every claim here names one command that
+Written 2026-11-13 against `f18888d8`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,40 +18,53 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running, between units. The 16 merges
-since `b7c5f315` are pull requests 1680 to 1696; 1695 is an issue, not a pull
-request. Eleven are #1633 units and five are #1656 units.
+The session that wrote this was still running, between units. The 17 commits
+since `bee1a42b` are pull requests 1698 to 1710; 1698 merged as a merge commit
+and carries four branch commits. Three are #1695 units, five are #1656 units, two
+are #1622 units and three are #1633 units.
 
 ```bash
-git log --oneline b7c5f315..04d7ebb4     # the 16 merges
-gh issue view 1633 --comments            # each unit's W5H, result and "Unit closed"
-gh issue view 1656 --comments
-gh issue view 1695 --comments            # row 1's six answers
+git log --oneline --first-parent bee1a42b..f18888d8   # the 13 pull requests
+gh issue view 1695 --comments            # rows 1 to 3, each with its "Unit closed"
+gh issue view 1656 --comments            # rows 6 to 9, and row 9's double booking
+gh issue view 1622 --comments            # rows 10 and 19 closed; row 20's six answers
+gh issue view 1633 --comments            # TA.AUDIT@1, the citation module, two page sentences
 gh release view                          # what is published
 gh pr list --state open                  # what is still landing
 ```
 
-- **In flight when written:** this rewrite, and #1695 row 1, whose six answers
-  are on the issue with no pull request open yet. Pull request #1663, five routine
-  dependency updates, is open, and auto-merge is not armed.
-- **Built on #1633:** decision 1 is ruled and built, the second wave of five
-  sigils is built on one shared ruff reader, and the Product Manual carries the
-  project as Part 10, with one page per built sigil and the discipline modes.
-- **Built on #1656:** row 1's Fire button reads Held and names the hold. Rows 2
-  to 5 add log lines that show each repair, and each waits for his app to write
-  them.
-- **The release and both trees** hold the same application code:
+- **In flight when written:** #1622 row 20, the holdings audit booking a lost
+  order at the venue's own fill and fee. Its six answers are the issue's newest
+  comment, and no pull request is open for it yet. Pull request #1663, five
+  routine dependency updates, is open, and auto-merge is not armed.
+- **Built on #1695:** every row. A Max Cartridge fold, a fold rebuy and a hedge
+  top-up wait their turn in the venue call queue, and a buy goes out only when the
+  venue holds the quote it spends.
+- **Built on #1656:** every row, each waiting on his app. Rows 6 to 9 write new
+  log lines for Settings routes, command bar presses, venue removals and lost
+  orders. Row 9 also repairs a lost order that booked twice when the venue
+  answered after an audit took its units in.
+- **Built on #1622:** row 10, a wallet read a gate trusts is newer than the last
+  fill, on spot and contract markets; row 19, a send the venue refused gives its id
+  back on a rate limit, a refused nonce and a closed connector.
+- **Built on #1633:** TA.AUDIT@1, the first sigil the TA Quant owns. It and
+  CITE.SYMBOL@3 share one citation module, `dev_harness/sigils/citation.py`, and
+  TA.AUDIT@1 holds by the indicator file a line names. Pull request #1710
+  corrected the two sigil-page sentences that the shared module made false.
+- **The release and both trees** hold the same application code. His app runs an
+  older build:
 
 ```
-release      0.2.0-20261112.2355, from 2abfe5ed, which merges 0272a5c4 into main
+release      0.2.0-20261113.1537.gcd3af6d10095, from cd3af6d1, which merges 0baa95f0 into main
              gh release view
-both trees   built both variants at 2abfe5ed
-             gh issue view 1656 --comments, the comment "Unit closed: row 5"
-since        04d7ebb4 changes a manual page and the PDF; nothing in src, desktop, tools,
-             main.py or the two spec files
-             git diff --stat 2abfe5ed origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec
-his logs     the newest build they name is 0.2.0-20261112.2246, read for #1695 row 1
-             gh issue view 1695 --comments
+both trees   built both variants at cd3af6d1
+             gh issue view 1622 --comments, the comment "Unit closed: row 19"
+since        67290aba and f18888d8 change sigil, fixture, manual and PDF files; nothing in src,
+             desktop, tools, main.py or the two spec files
+             git diff --stat cd3af6d1 origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec
+his app      0.2.0-20261112.2246.g3480ce51b7d6, a Qt build, holding none of the 13 pull requests
+             gh issue view 1656 --comments, row 7's six answers
+             git merge-base --is-ancestor cf54c0b7 3480ce51      # exit 1: not in his build
 ```
 
 - **Held for him:** the unruled rows of the Decisions tables on #1643 and #1622.
@@ -118,6 +131,15 @@ The operator decides product and specification; the session decides
 implementation. Bring him outcomes in plain words, never code questions. His
 standing directive: clear the open issue list except the items listed as excluded
 under THE QUEUE.
+
+His ruling of 2026-11-13: the session sets the work order across items and rows
+unless he prompts otherwise. Live faults on the Trading path go first, then each
+issue's own row order, and a report states the order and its ground in one line.
+An order he gives wins.
+
+```bash
+grep -n "prompt otherwise" ~/.claude/projects/*/memory/feedback_sequencing_is_mine.md
+```
 
 ---
 
@@ -200,38 +222,51 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
-- **#1695, two refusals on the live buy path, first.** Row 1: a Max Cartridge
-  fold is refused when the platform's own call queue is full. Its six answers are
-  the issue's newest comment, and they name the change. Resume there; when its
-  pull request opens, `gh pr list --state open` shows it. Row 2, a buy goes out
-  only when the venue holds the quote it spends, is unbuilt.
-- **#1656, then #1657, next.** Rows 1 and 2 are partial. Rows 3 to 5 are merged
-  and wait on his app: their lines read as below. Row 6, every route into
-  Settings, is next, as the newest comment headed "Unit closed" names.
+- **#1622, buy-back short in units, first.** Row 20 is running: the holdings
+  audit books a lost order at the price the send read and with no fee. Its six
+  answers are the issue's newest comment, and they name the change. Then the
+  body's other unbuilt rows, in row order: 12, 13, 14, 18, 21, 22, 24 to 27, 29
+  to 31, 33, 35, 36 and 38. Rows 28, 32, 34 and 37 are blocked on his answers in
+  the Decisions table.
+- **#1695 and #1656 wait on his app.** Every row of both is built, and his app
+  runs a build that holds none of them. When his logs name a build that holds
+  cd3af6d1, read them, read only, for each row's lines:
 
 ```
-row 3   each first-buy line names its Max Cartridge Size and the weights the vote ran at,
-        and a read that clears writes FIRST BUY READ CLEARED
-row 4   each restored bot writes FIRST BUY MADE or FIRST BUY OWED, and what decided it
-row 5   each Max Cartridge fold and first entry writes VENUE COMPARE CLEAR or its refusal
-        gh issue view 1656, the Status column
+#1695 rows 1 and 3   no Max Cartridge fold, fold rebuy or hedge top-up line names CCXTQueueFullError
+#1695 row 2          a buy the venue cannot pay for writes "order not sent", the free balance and the cost
+#1656 row 1          a breaker trip inside a send
+#1656 row 2          a send with no answer keeps its id until the order comes back
+#1656 row 3          FIRST BUY READ CLEARED
+#1656 row 4          FIRST BUY MADE or FIRST BUY OWED
+#1656 row 5          VENUE COMPARE CLEAR or its refusal
+#1656 row 6          SETTINGS OPENED and SETTINGS CLOSED
+#1656 row 7          BOT COMMAND, and LIVE PAGE COMMAND on a React build
+#1656 row 8          VENUE KEPT, VENUE REMOVED, VENUE KEPT AT CLOSE or VENUE DROPPED AT CLOSE
+#1656 row 9          ORDER LOST, LOST ORDER UNMATCHED, LOST ORDER ENDED and LOST ORDER ANSWERED
+                     gh issue view 1695 and gh issue view 1656, the Status column
 ```
 
-- **#1633, Sigil-based Vernacular Condensate.** Ten sigils are built, the five of
-  the second wave among them, each a reader of finished code. The Product Manual
-  carries the project as Part 10, in `docs/manual/16-sigil-project.md` with one
-  page per sigil under `docs/manual/16-sigil-project/`. Its "Application
-  archetypes" section carries the ten discipline modes, unbuilt. No unit is named
-  next: the newest comment headed "Unit closed" says the modes stay unbuilt with
-  the application archetypes, and the body's Build order holds Units 2 to 11.
-  Each Unit closes in one pull request and changes no application file.
+- **#1633, Sigil-based Vernacular Condensate.** Eleven sigils are built,
+  TA.AUDIT@1 the newest, and ROW.CLOSE@1 is unbuilt. The Product Manual carries
+  the project as Part 10, in `docs/manual/16-sigil-project.md` with one page per
+  built sigil. The body holds Units 2 to 11; the comment headed "Unit closed:
+  TA.AUDIT@1" names the trial's task set, Unit 7 in Layer 2, as next. Each Unit
+  closes in one pull request and changes no application file. TA.AUDIT@1's
+  reasons "file unreadable" and "file does not parse" have no sample line yet, as
+  the result comment for pull request 1709 states.
+
+```bash
+grep -c '| built |' docs/manual/16-sigil-project.md      # 11
+gh issue view 1633 --comments                            # "Unit closed: TA.AUDIT@1", then the 1709 result
+```
+
+- **#1657, public text that breaks the writing rules.** Read the body before
+  dispatch.
 - **#1643, what the manual rewrites found.** Next, in order: row 66, the breaker
   window he ruled for; his ruling in Decision 2, a hard trip cancels the bot's
   resting orders; row 106, a cartridge obeys the Position Ceiling and Max Target
   Growth. Then the remaining unbuilt rows.
-- **#1622, buy-back short in units.** Rows 1, 3, 4 to 9, 11, 15 to 17 and 23 are
-  built. Next: rows 10, 12, 13 and 14, then 18 onward. Rows 28, 32, 34 and 37 are
-  blocked on his answers in the Decisions table.
 - **#412, the manual.** Row 12 is in progress, one page at a time: his sentences
   verbatim with one cited "Now:" line each, every dated reading gone. The issue
   lists the pages done and the pages left. Row 14, the one PDF rebuild, waits on
@@ -286,11 +321,28 @@ issue comments              every claim about the code cites "path, in symbol"
 
 ## OPEN DEFECTS
 
-- A Max Cartridge fold is refused when the platform's own call queue is full
-  (`src/exchange/ccxt_connector.py, in CCXTConnector._call_sync_timed`). The
-  issue body of #1695 counts it from his logs, as row 1.
-- The venue refuses buys that spend quote it does not hold
-  (`src/exchange/ccxt_connector.py, in CCXTConnector.place_order`); #1695 row 2.
+Live on his running build and repaired on `current`; each waits on his next build
+to show in his logs:
+
+```
+a Max Cartridge fold, fold rebuy or hedge top-up refused on a full call queue
+    src/exchange/ccxt_connector.py, in queue_cap_waived; #1695 rows 1 and 3
+a buy sent for quote the venue does not hold
+    src/exchange/ccxt_connector.py, in CCXTConnector._refuse_unheld_quote; #1695 row 2
+a lost order booked twice when the venue answers after an audit took its units in
+    src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._return_audit_adoption; #1656 row 9
+a wallet read older than the last fill
+    src/trading/bot_container.py, in BotContainer._invalidate_symbol_balances; #1622 row 10
+a refused send held as lost, so a same-size withdrawal books a sale that never happened
+    src/exchange/ccxt_connector.py, in order_stayed_home; #1622 row 19
+```
+
+Open on `current`:
+
+- The holdings audit books a lost order at the price the send read and with no
+  fee, never at the venue's own fill
+  (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._settle_lost_order`).
+  Row 20's six answers on #1622 measure it on the paper backend.
 - The React Bot Swarm page's layer buttons do nothing when pressed
   (`src/gui/web/bot_visualizer.js`, in `LayerHeader`); recorded on #23.
 - Paper and the Simulator judge the vote at the plain floor

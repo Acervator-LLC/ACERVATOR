@@ -114,6 +114,7 @@ flowchart TD
     OUT -->|a named optimization rule| OPT
     OUT -->|a fault outside application source| FIX
     OUT -->|a fault in application source| HOLD
+    OUT -->|an output the card flags BLOCK| BLOCK
 ```
 
 ## Flags and follow-on rules
@@ -126,7 +127,7 @@ rule yet.
 
 | Flag | Side | When | What follows |
 | ---- | ---- | ---- | ------------ |
-| BLOCK | input | a tier 1 or tier 2 refusal | the work does not start |
+| BLOCK | input | a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK | the work does not start |
 | HOLD | output | a fault in application source code | the merge waits until it is fixed |
 | FIX | output | a fault anywhere else, such as a document | the merge proceeds, and the fault is fixed at once |
 | OPTIMIZE | output | a named optimization rule fires | the merge proceeds |
@@ -162,8 +163,10 @@ FOLLOW_ON = {
 
 ## The shared modules
 
-Four modules hold the steps that every sigil shares. Each step has one body. No
-sigil module imports from another sigil module.
+Five modules hold the steps that sigils share: every sigil builds its card with
+`dev_harness/sigils/core.py, in Sigil`, and each of the other four serves only
+some sigils. Each step has one body. No sigil module imports from another sigil
+module.
 
 | Module | What it holds |
 | ------ | ------------- |
@@ -171,6 +174,7 @@ sigil module imports from another sigil module.
 | `dev_harness/sigils/coding_input.py` | the Coding Archetype's input: tier 1 in `DATA_TYPE_TIER`, tier 2 in `CONTENT_TIER`, and the file readers in `READERS` |
 | `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
 | `dev_harness/sigils/fix_class.py` | the follow-on rule of each fix class, in `FOLLOW_ON` |
+| `dev_harness/sigils/citation.py` | the citation form that CITE.SYMBOL@3 and TA.AUDIT@1 share: tier 1 in `data_type_fault`, and the definition search in `definition_verdict` |
 
 CITE.SYMBOL@3 keeps its own tiers 1 and 2. Its input form differs, and the
 Truth Archetype owns it.
@@ -212,6 +216,58 @@ Where the code holds each row:
 
 A real citation that does not support the claim passes every check above. That
 layer stays with the owning archetype or a licensed reviewer.
+
+## The Coding Archetype's disciplines
+
+The Coding Archetype reviews source code. ISO/IEC 5055:2021 measures source
+code on four characteristics, and those four are the archetype's disciplines:
+security, reliability, performance efficiency and maintainability. Each
+discipline is a skill folder under `dev_harness/disciplines`, with a SKILL.md
+and a rules.json. Only an archetype that runs a rule the discipline holds is
+compatible with it, and SKILL.md names those archetypes as data.
+
+Every rule the archetype runs on a Python file sits under each discipline whose
+weakness it reports, or in unplaced.json with its reason. One rule can sit under
+more than one discipline. Each placement names its ground: a CWE id that the
+discipline's ISO/IEC 5055 list holds, or the tool's own words naming the
+concern. The CWE lists come from the
+[OMG ASCQM 1.0 specification](https://www.omg.org/spec/ASCQM/1.0/PDF), Tables 1
+to 4.
+
+| Discipline | CWE ids in its list | Rules it holds | Compatible archetypes |
+| ---------- | ------------------- | -------------- | --------------------- |
+| security | 74 | 365 | coding, gui, docs |
+| reliability | 74 | 17 | coding, gui, docs |
+| performance efficiency | 18 | 37 | coding, gui, ta |
+| maintainability | 29 | 21 | coding, gui |
+
+| Tool | Rules it runs | Placed | Unplaced |
+| ---- | ------------- | ------ | -------- |
+| ruff, with every rule selected | 810 | 113 | 697 |
+| semgrep | 216 | 216 | 0 |
+| bandit | 75 | 75 | 0 |
+| mypy | 58 | 2 | 56 |
+| pyright | 42 | 4 | 38 |
+| pylint | 12 | 1 | 11 |
+| vulture | 1 | 1 | 0 |
+| the six rule modules | 19 | 3 | 16 |
+| all | 1,233 | 415 | 818 |
+
+The command reads each tool's own rule list under the archetype's own flags.
+It then checks that list against the four rules.json files and unplaced.json,
+and exits 1 on any fault. `--root` names the tree, and `--card` prints the card.
+
+`dev_harness/sigils/coding_house.py, in count`:
+
+```python
+    faults = {
+        "missing": sorted(f"{t} {r}" for t, r in pairs - held),
+        "stale": sorted(f"{t} {r}" for t, r in held - pairs if t in run),
+        "both": sorted(f"{t} {r}" for t, r in housed & unplaced),
+        "ungrounded": ungrounded(folder),
+        "unread": unread,
+    }
+```
 
 ## Progress
 

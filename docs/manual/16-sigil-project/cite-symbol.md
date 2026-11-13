@@ -22,7 +22,7 @@ assignment. A dotted name resolves to that exact chain of nested definitions,
 and its last part may be an assignment in a class body. A comment, a docstring
 or any other string never counts as a definition.
 
-`dev_harness/sigils/cite_symbol.py, in _defines`:
+`dev_harness/sigils/citation.py, in _defines`:
 
 ```python
 def _defines(tree: ast.Module, parts: list[str]) -> bool:

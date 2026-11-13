@@ -1,0 +1,30 @@
+{
+  "discipline": "maintainability",
+  "standard": "ISO/IEC 5055:2021",
+  "cwe_source": "https://www.omg.org/spec/ASCQM/1.0/PDF",
+  "cwe_table": "Table 1 and clause 7.1",
+  "cwe": ["CWE-407", "CWE-478", "CWE-480", "CWE-484", "CWE-561", "CWE-570", "CWE-571", "CWE-783", "CWE-1041", "CWE-1045", "CWE-1047", "CWE-1048", "CWE-1051", "CWE-1052", "CWE-1054", "CWE-1055", "CWE-1062", "CWE-1064", "CWE-1074", "CWE-1075", "CWE-1079", "CWE-1080", "CWE-1084", "CWE-1085", "CWE-1086", "CWE-1087", "CWE-1090", "CWE-1095", "CWE-1121"],
+  "rules": [
+    {"tool": "ruff", "rule": "ERA001", "grounds": [{"cwe": "CWE-561", "quote": "Commented-out code is dead code, and is often included inadvertently."}, {"cwe": "CWE-1085", "quote": "Found commented-out code."}]},
+    {"tool": "ruff", "rule": "B014", "grounds": [{"cwe": "CWE-561", "quote": "Including the same exception multiple times in the same handler is redundant, as the first exception will catch the exception, making the second exception unreachable."}]},
+    {"tool": "ruff", "rule": "B025", "grounds": [{"cwe": "CWE-561", "quote": "Duplicate exception handlers are redundant, as the first handler will catch the exception, making the second handler unreachable."}]},
+    {"tool": "ruff", "rule": "SIM220", "grounds": [{"cwe": "CWE-570", "quote": "An `and` expression that includes both an expression and its negation will always evaluate to `False`."}]},
+    {"tool": "ruff", "rule": "SIM221", "grounds": [{"cwe": "CWE-571", "quote": "An `or` expression that includes both an expression and its negation will always evaluate to `True`."}]},
+    {"tool": "ruff", "rule": "C901", "grounds": [{"cwe": "CWE-1121", "quote": "Checks for functions with a high `McCabe` complexity."}]},
+    {"tool": "ruff", "rule": "F631", "grounds": [{"cwe": "CWE-571", "quote": "Assert test is a non-empty tuple, which is always `True`."}]},
+    {"tool": "ruff", "rule": "F634", "grounds": [{"cwe": "CWE-571", "quote": "If test is a tuple, which is always `True`."}]},
+    {"tool": "ruff", "rule": "PLR0133", "grounds": [{"cwe": "CWE-570", "quote": "Comparing two constants will always resolve to the same value, so the comparison is redundant."}, {"cwe": "CWE-571", "quote": "Comparing two constants will always resolve to the same value, so the comparison is redundant."}]},
+    {"tool": "ruff", "rule": "PLR0913", "grounds": [{"cwe": "CWE-1064", "quote": "Too many arguments in function definition ({c_args} > {max_args})."}]},
+    {"tool": "ruff", "rule": "PLR0917", "grounds": [{"cwe": "CWE-1064", "quote": "Checks for function definitions that include too many positional arguments."}]},
+    {"tool": "ruff", "rule": "PLW0177", "grounds": [{"cwe": "CWE-570", "quote": "For example, `float(\"NaN\") == float(\"NaN\")` will return `False` and, in general, `x == float(\"NaN\")` will always return `False`, even if `x` is `NaN`."}]},
+    {"tool": "ruff", "rule": "PLW0406", "grounds": [{"cwe": "CWE-1047", "quote": "Importing a module from itself is a circular dependency and results in an `ImportError` exception."}]},
+    {"tool": "ruff", "rule": "UP008", "grounds": [{"term": "maintainable", "quote": "When possible, omit the arguments to `super` to make the code more concise and maintainable."}]},
+    {"tool": "mypy", "rule": "truthy-function", "grounds": [{"cwe": "CWE-571", "quote": "Warn about function that always evaluate to true in boolean contexts."}]},
+    {"tool": "pyright", "rule": "reportAssertAlwaysTrue", "grounds": [{"cwe": "CWE-571", "quote": "Generate or suppress diagnostics for `assert` statement that will provably always assert because its first argument is a parenthesized tuple (for example, `assert (v > 0, \"Bad value\")` when the intent was probably `assert v > 0, \"Bad value\"`)."}]},
+    {"tool": "pyright", "rule": "reportUnusedExcept", "grounds": [{"cwe": "CWE-561", "quote": "Generate or suppress diagnostics for an `except` clause that will never be reached."}]},
+    {"tool": "vulture", "rule": "dead-code", "grounds": [{"cwe": "CWE-561", "quote": "Find dead code"}]},
+    {"tool": "pylint", "rule": "R0801", "grounds": [{"cwe": "CWE-1041", "quote": ":duplicate-code (R0801): *Similar lines in %s files* Indicates that a set of similar lines has been detected among multiple file."}]},
+    {"tool": "slop", "rule": "SL001", "grounds": [{"cwe": "CWE-1041", "quote": "Signals defensive-scaffolding buildup where the same \"swallow anything\" pattern got copy-pasted instead of factored into a helper."}]},
+    {"tool": "slop", "rule": "SL003", "grounds": [{"cwe": "CWE-1080", "quote": "FILE TOO BIG Module spanning >3000 lines."}]}
+  ]
+}

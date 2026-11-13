@@ -629,6 +629,48 @@ def client_order_read(exchange_id: str, client_order_id: str) -> tuple[str, dict
     return "", {CLIENT_ORDER_ID_FIELD_DEFAULT: client_order_id}
 
 
+def client_order_lists(
+    exchange_id: str, client_order_id: str, market_id: str
+) -> tuple[tuple[str, dict], ...]:
+    """The ccxt list methods and params that find ``client_order_id`` on market
+    ``market_id`` where ``fetch_order`` reads only the venue's own id, else empty.
+
+    Coinbase pages ``fetch_orders`` by cursor under ``product_ids``, Kraken filters
+    both lists by ``cl_ord_id``, Bitfinex pages its closed list, and Gemini lists open
+    orders only.
+    """
+    venue = venue_record_key(exchange_id)
+    if venue == "coinbase":
+        return (("fetch_orders", {"paginate": True, "product_ids": [market_id]}),)
+    if venue == "kraken":
+        return (
+            ("fetch_closed_orders", {CLIENT_ORDER_ID_FIELD_DEFAULT: client_order_id}),
+            ("fetch_open_orders", {CLIENT_ORDER_ID_FIELD_DEFAULT: client_order_id}),
+        )
+    if venue == "bitfinex":
+        return (("fetch_closed_orders", {"paginate": True}), ("fetch_open_orders", {}))
+    if venue == "gemini":
+        return (("fetch_open_orders", {}),)
+    return ()
+
+
+def echoed_client_order_id(exchange_id: str, client_order_id: str) -> str:
+    """The ``clientOrderId`` ccxt parses from an order sent under ``client_order_id``:
+    gate's ``create_order`` puts ``t-`` before an id not opening with ``t``."""
+    if venue_record_key(exchange_id) == "gateio" and not client_order_id.startswith(
+        "t"
+    ):
+        return f"t-{client_order_id}"
+    return client_order_id
+
+
+def names_client_order_id(exchange_id: str, row: Any, client_order_id: str) -> bool:
+    """True where the ccxt order ``row`` carries ``echoed_client_order_id``."""
+    return isinstance(row, dict) and str(
+        row.get("clientOrderId") or ""
+    ) == echoed_client_order_id(exchange_id, client_order_id)
+
+
 # Exchanges where fetchCurrencies must be disabled (deprecated v2 endpoints)
 #
 # mexc's entry is a private endpoint rather than a deprecated one. ccxt's own
@@ -3172,20 +3214,59 @@ class CCXTConnector(ExchangeInterface):
         return self._parse_order(raw)
 
     @_with_retry()
-    async def get_order_by_client_id(self, client_order_id: str, symbol: str) -> Order:
-        """The order ``client_order_id`` names, read through ``client_order_read``."""
+    async def get_order_by_client_id(
+        self, client_order_id: str, symbol: str, sent_at: float
+    ) -> Order:
+        """The order ``client_order_id`` names on ``symbol``, from each
+        ``client_order_lists`` call since ``sent_at`` epoch seconds, else ``fetch_order``
+        through ``client_order_read``.
+
+        A listed order ``names_client_order_id`` refuses, an answer naming another id,
+        or no listed order raises ccxt's ``OrderNotFound``.
+        """
+        from ccxt.base.errors import OrderNotFound
+
         self._ensure_connected()
+        lists = client_order_lists(
+            self._exchange_id, client_order_id, self._ex.market(symbol)["id"]
+        )
+        for method, params in lists:
+            await self._rate_limit()
+            listed = await self._call_sync(
+                getattr(self._ex, method), symbol, int(sent_at * 1000), None, params
+            )
+            for row in listed or []:
+                if names_client_order_id(self._exchange_id, row, client_order_id):
+                    return self._parse_order(row)
+        if lists:
+            raise OrderNotFound(
+                f"{self._exchange_id} lists no {symbol} order under {client_order_id} "
+                f"since the send"
+            )
         await self._rate_limit()
         order_id, params = client_order_read(self._exchange_id, client_order_id)
         raw = await self._call_sync(self._ex.fetch_order, order_id, symbol, params)
+        named = str((raw if isinstance(raw, dict) else {}).get("clientOrderId") or "")
+        if named and not names_client_order_id(self._exchange_id, raw, client_order_id):
+            raise OrderNotFound(
+                f"{self._exchange_id} answered {client_order_id} with the order "
+                f"under {named}"
+            )
         return self._parse_order(raw)
 
     async def _earlier_order(
         self, client_order_id: str, symbol: str
     ) -> Optional[Order]:
-        """``get_order_by_client_id`` of a used ``client_order_id``, None where it raised."""
+        """``get_order_by_client_id`` of a used ``client_order_id`` since
+        ``IdempotencyLayer.issued_at``, None where it raised."""
+        from .idempotency import get_idempotency_layer
+
         try:
-            return await self.get_order_by_client_id(client_order_id, symbol)
+            return await self.get_order_by_client_id(
+                client_order_id,
+                symbol,
+                get_idempotency_layer().issued_at(client_order_id),
+            )
         except Exception as exc:
             logger.warning(
                 "%s refused used id %s on %s and the earlier order could not be read: "

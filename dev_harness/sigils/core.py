@@ -23,7 +23,7 @@ class Flag(Enum):
 FLAGS: dict[Flag, dict[str, str]] = {
     Flag.BLOCK: {
         "side": "input",
-        "when": "a tier 1 or tier 2 refusal",
+        "when": "a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK",
         "follows": "the work does not start",
     },
     Flag.HOLD: {
