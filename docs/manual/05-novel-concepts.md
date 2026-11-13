@@ -297,6 +297,10 @@ above zero that the vote ran at. A read that clears in front of the rebalance, t
 hedge top-up or the fold writes FIRST BUY READ CLEARED. A read that clears on the
 first entry writes that all 4 gates pass.
 
+When the app starts, each restored bot writes FIRST BUY MADE or FIRST BUY OWED in
+its log. The line says what decided it: the saved record, or, where the record
+saves no such field, its fills, tranches and holding.
+
 The read:
 
 `src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_read`
@@ -321,6 +325,17 @@ if self._first_buy_made:
 read = await self._first_buy_read(ticker, symbol)
 terms = self._first_buy_terms(read, cartridge_pct)
 if not read.refusal:
+    if self._first_buy_line_is_new(FIRST_BUY_CLEARED, ticker.last):
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"FIRST BUY READ CLEARED: TA=BEARISH at confidence "
+                f"{read.summary.consensus_confidence:.4f}. BB OK "
+                f"(pos={read.bb_pos:.2f}, dist={read.dist_down:.0%}). {terms}"
+            ),
+        )
+    return True
 ```
 
 The close of each line:
@@ -351,9 +366,22 @@ The read of a saved record:
 `src/trading/scrumming/state_io.py` — `StateSerializerMixin.restore_first_buy_made`
 
 ```python
-self._first_buy_made = (
-    saved if isinstance(saved, bool) else self._shows_past_trading()
+from_save = isinstance(saved, bool)
+self._first_buy_made = saved if from_save else self._shows_past_trading()
+self._bus.emit(
+    "bot.log",
+    bot_id=self.bot_id,
+    message=first_buy_restore_line(self._first_buy_made, from_save),
 )
+```
+
+The line a restore writes:
+
+`src/trading/scrumming/state_io.py` — `first_buy_restore_line`
+
+```python
+if made:
+    return f"FIRST BUY MADE on restore: {ground}."
 ```
 
 The venue compare:

@@ -18,7 +18,7 @@ from ..container.config import (
     as_whole_count,
     ceiling_multiple,
 )
-from ..target_bands import empty_position
+from ..target_bands import EMPTY_POSITION_SHARE, empty_position
 from .distribution import dist_sets_from_saved, dist_units
 from .shadow import shadow_rows_from_saved
 from .target_ramp import RAMP_MODES, RAMP_SEARCH
@@ -57,6 +57,29 @@ def admitted_counter(stored: Any, field: str, bot_id: Any) -> int:
         )
         return 0
     return counted
+
+
+def first_buy_restore_line(made: bool, from_save: bool) -> str:
+    """The ``bot.log`` text for ``made``, decided by the saved flag when ``from_save``, else by
+    ``_shows_past_trading``."""
+    if from_save:
+        ground = "the saved record says so"
+    elif made:
+        ground = (
+            "the record saves no first-buy field, and a fill, a tranche or a holding "
+            "of this bot's shows past trading"
+        )
+    else:
+        ground = (
+            f"the record saves no first-buy field, and shows no fill, no tranche and "
+            f"no holding of {EMPTY_POSITION_SHARE:.0%} of target with a weight above zero"
+        )
+    if made:
+        return f"FIRST BUY MADE on restore: {ground}."
+    return (
+        f"FIRST BUY OWED on restore: {ground}. Its Max Cartridge rebalance, hedge "
+        f"top-up and fold wait for one read."
+    )
 
 
 class StateSerializerMixin:
@@ -298,9 +321,13 @@ class StateSerializerMixin:
 
     def restore_first_buy_made(self, saved: Any = None) -> None:
         """Set ``_first_buy_made`` to a saved flag, or to ``_shows_past_trading`` on a
-        record that holds none."""
-        self._first_buy_made = (
-            saved if isinstance(saved, bool) else self._shows_past_trading()
+        record that holds none, and emit ``first_buy_restore_line``."""
+        from_save = isinstance(saved, bool)
+        self._first_buy_made = saved if from_save else self._shows_past_trading()
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=first_buy_restore_line(self._first_buy_made, from_save),
         )
 
     def import_scrumming_state(self, data: dict) -> None:
