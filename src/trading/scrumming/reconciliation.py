@@ -82,6 +82,7 @@ class ReconciliationEngineMixin:
     _refresh_quote_to_usd: Callable[..., Any]
     _return_shadows_to_lots: Callable[..., float]
     _shadow_held_units: Callable[..., float]
+    _warn_order: Callable[..., None]
     bot_id: Any
     config: Any
     exchange: Any
@@ -1325,11 +1326,15 @@ class ReconciliationEngineMixin:
         ``stats.current_price``. ``SELF_DESTRUCT_SALE`` sold the Shadow rows too, so it
         matches with ``_shadow_held_units`` added and books through
         ``_book_self_destruct``. True where one booked.
+
+        Each send it books writes ``UnansweredSend.ended_line``, and with none booked each
+        send writes ``UnansweredSend.unmatched_line`` and adds to ``unmatched_audits``.
         """
         current = float(
             getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
         )
         layer = get_idempotency_layer()
+        unmatched = []
         for send in layer.unanswered_sends(self.bot_id, self.config.symbol, side):
             whole_sale = send.intent.decision == SELF_DESTRUCT_SALE
             sent = units + self._shadow_held_units() if whole_sale else units
@@ -1342,14 +1347,18 @@ class ReconciliationEngineMixin:
                 None,
             )
             price = float(read or current)
-            if (
-                read is None
-                or not booked_at_audit(send.intent.decision)
-                or not math.isfinite(price)
-                or price <= 0.0
-            ):
+            if not booked_at_audit(send.intent.decision):
+                unmatched.append(
+                    (send, sent, "the audit books no order of this decision")
+                )
                 continue
-            layer.end_retry(send.intent)
+            if read is None:
+                unmatched.append((send, sent, "no size matches"))
+                continue
+            if not math.isfinite(price) or price <= 0.0:
+                unmatched.append((send, sent, f"no usable price, ${price:.8f}"))
+                continue
+            ended = layer.end_retry(send.intent)
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
@@ -1359,6 +1368,12 @@ class ReconciliationEngineMixin:
                     f"{side} whose answer was lost, so it books at ${price:.8f}."
                 ),
             )
+            if ended is not None:
+                self._warn_order(
+                    ended.ended_line(
+                        f"the holdings audit booked {sent:.8f} at ${price:.8f}"
+                    )
+                )
             if whole_sale:
                 self._return_shadows_to_lots("self-destruct")
                 await self._book_self_destruct(
@@ -1392,6 +1407,9 @@ class ReconciliationEngineMixin:
                     venue_units=exchange_units + units,
                 )
             return True
+        for send, sent, why in unmatched:
+            layer.note_unmatched(send.intent)
+            self._warn_order(send.unmatched_line(sent, why))
         return False
 
     def _adopt_drift_down(

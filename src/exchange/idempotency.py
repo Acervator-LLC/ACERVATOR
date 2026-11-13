@@ -111,7 +111,8 @@ class TradeIntent:
 class UnansweredSend:
     """A ``coid`` the venue has not answered: ``intent`` as last sent, ``issued_at`` its
     first send, ``sizes`` each ``(amount, price read)`` it went out at, ``in_flight`` from
-    ``derive_coid`` to ``end_flight``, and ``id_refused`` once ``note_id_refused`` ran.
+    ``derive_coid`` to ``end_flight``, ``id_refused`` once ``note_id_refused`` ran, and
+    ``unmatched_audits`` each ``note_unmatched``.
     """
 
     coid: str
@@ -120,6 +121,44 @@ class UnansweredSend:
     sizes: list[tuple[float, float]]
     in_flight: bool = True
     id_refused: bool = False
+    unmatched_audits: int = 0
+
+    def _named(self) -> str:
+        """``intent.side``, ``intent.symbol``, the decision ``intent`` names or
+        ``NO_DECISION_PURPOSE``, and ``coid``."""
+        return (
+            f"{self.intent.side.upper()} {self.intent.symbol} "
+            f"{self.intent.decision or NO_DECISION_PURPOSE} under id {self.coid}"
+        )
+
+    def lost_line(self, error: BaseException) -> str:
+        """The ``ORDER LOST`` line for the last of ``sizes``, which ``error`` left unanswered."""
+        return (
+            f"ORDER LOST: {self._named()} got no answer ({type(error).__name__}: "
+            f"{error}). The id stays held, send {len(self.sizes)}."
+        )
+
+    def unmatched_line(self, units: float, why: str) -> str:
+        """The ``LOST ORDER UNMATCHED`` line for an audit that read ``units`` past the book
+        and booked none of them under ``coid``, naming ``why``."""
+        sent = ", ".join(
+            f"{amount:.8f} at ${price:.8f}" for amount, price in self.sizes
+        )
+        return (
+            f"LOST ORDER UNMATCHED: the audit read {units:.8f} past the book, and "
+            f"{self._named()} went out at {sent or 'no size'}: {why}. The audit books "
+            f"those units on its own and the id stays held."
+        )
+
+    def ended_line(self, route: str) -> str:
+        """The ``LOST ORDER ENDED`` line for ``coid``, which ``route`` ended, naming
+        ``unmatched_audits``."""
+        return (
+            f"LOST ORDER ENDED: {self._named()} after {len(self.sizes)} send(s) over "
+            f"{time.time() - self.issued_at:.1f}s: {route}. {self.unmatched_audits} "
+            f"audit(s) met units past the book while it was held and did not book them "
+            f"as this order."
+        )
 
 
 class IdempotencyLayer:
@@ -245,9 +284,21 @@ class IdempotencyLayer:
             if held is not None:
                 held.id_refused = True
 
-    def end_retry(self, intent: TradeIntent) -> None:
+    def held_send(self, intent: TradeIntent) -> Optional[UnansweredSend]:
+        """The ``UnansweredSend`` held for ``intent``, None where none is."""
+        with self._lock:
+            return self._unanswered.get(intent.fingerprint(self.session_nonce))
+
+    def note_unmatched(self, intent: TradeIntent) -> None:
+        """Add one to ``unmatched_audits`` on the ``coid`` held for ``intent``."""
+        with self._lock:
+            held = self._unanswered.get(intent.fingerprint(self.session_nonce))
+            if held is not None:
+                held.unmatched_audits += 1
+
+    def end_retry(self, intent: TradeIntent) -> Optional[UnansweredSend]:
         """Drop the ``coid`` held for ``intent``, leaving ``derive_coid`` to issue a new
-        one for the next order."""
+        one for the next order, and answer the ``UnansweredSend`` dropped, or None."""
         with self._lock:
             held = self._unanswered.pop(intent.fingerprint(self.session_nonce), None)
             if held is not None:
@@ -258,6 +309,7 @@ class IdempotencyLayer:
                     intent.symbol,
                     time.time() - held.issued_at,
                 )
+            return held
 
     def unanswered_sends(
         self, bot_id: str, symbol: str, side: str

@@ -1461,7 +1461,7 @@ class BotContainer:
             _idem.withdraw_send(_intent, _price_read, _amt)
             self._report_held_order(_watch, _side_str, symbol, str(_held))
             return None
-        except Exception as _refused:
+        except (asyncio.CancelledError, Exception) as _refused:
             if refuses_used_id(_refused):
                 _idem.note_id_refused(_intent)
                 self._warn_order(
@@ -1472,13 +1472,25 @@ class BotContainer:
                 )
             elif not _read_only and order_stayed_home(_refused):
                 _idem.withdraw_send(_intent, _price_read, _amt)
+            elif not _read_only:
+                _lost = _idem.held_send(_intent)
+                if _lost is not None:
+                    self._warn_order(_lost.lost_line(_refused))
             raise
         finally:
             _idem.end_flight(_intent)
             # Every live order passes here, answered or not, so its balance window ends here.
             self._invalidate_symbol_balances(symbol)
-        _idem.end_retry(_intent)
+        _ended = _idem.end_retry(_intent)
         if _repeated:
+            if _ended is not None:
+                self._warn_order(
+                    _ended.ended_line(
+                        "a read of its used id found its order"
+                        if _read_only
+                        else f"the venue answered send {len(_ended.sizes)}"
+                    )
+                )
             self._audit_next_tick()
         # A create reply can name no amount, and _hold_resting_order reads this one.
         if finite_reading(order.amount) <= 0.0:
