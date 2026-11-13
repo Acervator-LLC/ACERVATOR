@@ -306,6 +306,17 @@ def order_stayed_home(exc: BaseException) -> bool:
     )
 
 
+def quote_short_of_spend(free: float, quote: str, spend: float) -> str:
+    """The ``OrderRefused`` text for a buy spending ``spend`` of ``quote`` against
+    ``free``, empty where ``free`` covers it."""
+    if not free < spend:
+        return ""
+    return (
+        f"the venue holds {free:.8f} {quote} free and this buy spends "
+        f"{spend:.8f} {quote}"
+    )
+
+
 def _alert_venue(event_name: str, title: str, message: str) -> None:
     """Send one venue alert on its own thread, so no channel blocks a venue call.
 
@@ -2936,6 +2947,56 @@ class CCXTConnector(ExchangeInterface):
                 raise refusal_error
         return exec_price
 
+    async def _refuse_unheld_quote(
+        self,
+        symbol: str,
+        market: Mapping[str, Any],
+        order_type: OrderType,
+        amount: float,
+        price: Optional[float],
+    ) -> None:
+        """Raise ``OrderRefused`` where ``quote_short_of_spend`` refuses a spot buy
+        against one ``get_balance`` read; an unread balance raises nothing."""
+        quote = str(market.get("quote") or quote_currency(symbol) or "")
+        if (
+            price is None
+            or not quote
+            or is_contract_market(market)
+            or is_option_market(market)
+        ):
+            return
+        try:
+            held = await self.get_balance(quote)
+        except Exception as unread:
+            logger.warning(
+                "%s %s balance unread before a %s buy, sent unread: %s",
+                self._exchange_id,
+                quote,
+                symbol,
+                unread,
+            )
+            return
+        refusal = quote_short_of_spend(held.free, quote, amount * price)
+        if not refusal:
+            return
+        get_api_log().record(
+            exchange=self._exchange_id,
+            action="ORDER_REFUSED",
+            reason=f"{self._exchange_id} order not sent for {symbol}: {refusal}",
+            endpoint="create_order",
+            params={
+                "symbol": symbol,
+                "side": OrderSide.BUY.value,
+                "type": order_type.value,
+                "amount": amount,
+                "price": price,
+            },
+            result="Not sent.",
+            level="warning",
+            data_usage="No order reaches the venue and no fill is booked.",
+        )
+        raise OrderRefused(refusal)
+
     # Submission is never retried: create_order is not idempotent without a
     # client_order_id.
     async def place_order(
@@ -2958,12 +3019,17 @@ class CCXTConnector(ExchangeInterface):
         _breaker = self._order_breaker(symbol)
         _log = get_api_log()
 
-        self._ex.market(symbol)
+        _market = self._ex.market(symbol)
         amount = self._ex.amount_to_precision(symbol, amount)
 
         exec_price = price
         if exec_price is not None:
             exec_price = float(self._ex.price_to_precision(symbol, exec_price))
+
+        if side == OrderSide.BUY:
+            await self._refuse_unheld_quote(
+                symbol, _market, order_type, float(amount), exec_price
+            )
 
         _log.record(
             exchange=self._exchange_id,
