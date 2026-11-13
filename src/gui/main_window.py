@@ -399,7 +399,11 @@ if _HAS_QT:
             file_menu.addSeparator()
             file_menu.addAction("E&xit", self.close)
             exchange_menu = menu_bar.addMenu("&Exchange")
-            exchange_menu.addAction("&Add Exchange", self._add_exchange)
+            from .main_tabs.settings_dialog_surface import ADD_EXCHANGE_MENU_ROUTE
+
+            exchange_menu.addAction(
+                "&Add Exchange", lambda: self._add_exchange(ADD_EXCHANGE_MENU_ROUTE)
+            )
             theme_menu = menu_bar.addMenu("&Theme")
             from .theme_engine import THEMES
 
@@ -3122,7 +3126,7 @@ if _HAS_QT:
         def _ask_for_venue_connection(self, eid: str, sector: str) -> None:
             """Open ``_run_settings_window`` on Exchanges with *eid* bound, on the class ``wing_showing_venue`` answers for *sector*."""
             from .main_tabs.settings_dialog_surface import (
-                EXCHANGE_TAB,
+                START_ROUTE,
                 wing_showing_venue,
             )
 
@@ -3132,9 +3136,7 @@ if _HAS_QT:
                 ),
                 "warning",
             )
-            self._run_settings_window(
-                wing_showing_venue(eid, sector), EXCHANGE_TAB, eid
-            )
+            self._run_settings_window(wing_showing_venue(eid, sector), START_ROUTE, eid)
 
         def _open_broker_session(
             self, connector, eid: str, sector: str = ""
@@ -4289,24 +4291,39 @@ if _HAS_QT:
                 self._status_log.log(f"Settings not opened: {exc}", "error")
                 return
             self._status_log.log(f"Opening settings ({_wing} wing)...")
-            self._run_settings_window(_wing)
+            from .main_tabs.settings_dialog_surface import SETTINGS_MENU_ROUTE
 
-        def _run_settings_window(
-            self, wing: str, tab: str = "", venue: str = ""
-        ) -> None:
-            """Run Settings on *wing* at *tab* and *venue*, wired to ``_on_settings_changed``, then ``_sync_exchange_tabs``."""
+            self._run_settings_window(_wing, SETTINGS_MENU_ROUTE)
+
+        def _run_settings_window(self, wing: str, route: str, venue: str = "") -> None:
+            """Run Settings on *wing* at ``ROUTE_PAGES[route]`` and *venue*, logging ``settings_opened_line`` and ``settings_closed_line``."""
+            from .main_tabs.settings_dialog_surface import (
+                ROUTE_PAGES,
+                settings_closed_line,
+                settings_opened_line,
+            )
             from .variant_surface import SETTINGS_DIALOG, surface_class
 
             dialog = surface_class(SETTINGS_DIALOG)(
                 self._settings, self._status_log, self, wing=wing
             )
-            dialog.settings_changed.connect(self._on_settings_changed)
-            if tab:
-                dialog.show_tab(tab)
+            saves = {"pressed": 0, "applied": 0}
+
+            def _apply_save() -> None:
+                saves["pressed"] += 1
+                self._on_settings_changed()
+                saves["applied"] += 1
+
+            dialog.settings_changed.connect(_apply_save)
+            dialog.show_tab(ROUTE_PAGES[route])
             if venue:
                 dialog.bind_venue(venue)
+            logger.info(
+                settings_opened_line(route, wing, dialog.tab, venue, dialog.venue)
+            )
             keys_before = self._stored_key_fields()
             dialog.exec()
+            logger.info(settings_closed_line(route, saves["pressed"], saves["applied"]))
             dialog.deleteLater()
             self._release_changed_keys(keys_before)
             self._sync_exchange_tabs()
@@ -4460,7 +4477,8 @@ if _HAS_QT:
             for _name, _held in layers.items():
                 _held["tabs"].setStyleSheet(sheets.get(_name, ""))
 
-        def _add_exchange(self) -> None:
+        def _add_exchange(self, route: str) -> None:
+            """Open Settings from the Add press *route* names, or log the active class's note when no venue serves it."""
             from .main_tabs.asset_class_surface import (
                 add_exchange_enabled,
                 class_state,
@@ -4477,9 +4495,7 @@ if _HAS_QT:
             self._status_log.log(
                 f"Opening settings to add exchange " f"({_wing} class)..."
             )
-            from .main_tabs.settings_dialog_surface import EXCHANGE_TAB
-
-            self._run_settings_window(_wing, EXCHANGE_TAB)
+            self._run_settings_window(_wing, route)
 
         def _keep_unlisted_venues(self, unlisted: set) -> set:
             """Answer each venue of *unlisted* that ``remove_refusal`` holds, logging why on ``_status_log``."""

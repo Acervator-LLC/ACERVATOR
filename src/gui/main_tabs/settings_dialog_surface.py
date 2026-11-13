@@ -102,6 +102,36 @@ TAB_TITLES = (
     AI_TAB,
 )
 
+SETTINGS_MENU_ROUTE = "File > Settings"
+ADD_EXCHANGE_MENU_ROUTE = "Exchange > Add Exchange"
+LIVE_CORNER_ROUTE = "the Live tab corner Add button"
+GET_STARTED_ROUTE = "the Get Started Add button"
+REACT_LIVE_ROUTE = "the React Live page Add button"
+START_ROUTE = "Start with no stored key"
+
+#: The page ``MainWindow._run_settings_window`` shows for each route into Settings.
+ROUTE_PAGES = {
+    SETTINGS_MENU_ROUTE: USER_TAB,
+    ADD_EXCHANGE_MENU_ROUTE: EXCHANGE_TAB,
+    LIVE_CORNER_ROUTE: EXCHANGE_TAB,
+    GET_STARTED_ROUTE: EXCHANGE_TAB,
+    REACT_LIVE_ROUTE: EXCHANGE_TAB,
+    START_ROUTE: EXCHANGE_TAB,
+}
+
+SETTINGS_OPENED = "SETTINGS OPENED"
+SETTINGS_WRONG_PAGE = "SETTINGS OPENED ON THE WRONG PAGE"
+SETTINGS_OPENED_FORMAT = (
+    "{head} from {route}, {sector} class: {shown} page, the route opens {asked}"
+)
+SETTINGS_VENUE_FORMAT = "; {asked} asked, {pressed} pressed"
+SETTINGS_CLOSED_FORMAT = (
+    "SETTINGS CLOSED from {route}: {pressed} Save pressed, "
+    "{applied} reached the running window"
+)
+NO_PAGE_SHOWN = "no"
+NO_VENUE_PRESSED = "none"
+
 TAB_TOOLTIPS = {
     USER_TAB: "Your user name and the Fleet Lock password.",
     EXCHANGE_TAB: "Add, test and remove exchange keys, and see each venue's state.",
@@ -2207,6 +2237,30 @@ def wing_showing_venue(venue_id: Any, sector: Any) -> str:
         if venue_row_at(wing, venue_id) != NO_MATCH_INDEX:
             return str(wing)
     return str(sector)
+
+
+def settings_opened_line(
+    route: str, sector: str, shown: str, venue: str = "", pressed: str = ""
+) -> str:
+    """The ``SETTINGS_OPENED_FORMAT`` line for *route*, headed ``SETTINGS_WRONG_PAGE`` where *shown* differs from ``ROUTE_PAGES[route]``."""
+    asked = ROUTE_PAGES[route]
+    line = SETTINGS_OPENED_FORMAT.format(
+        head=SETTINGS_OPENED if shown == asked else SETTINGS_WRONG_PAGE,
+        route=route,
+        sector=sector,
+        shown=shown or NO_PAGE_SHOWN,
+        asked=asked,
+    )
+    if venue:
+        line += SETTINGS_VENUE_FORMAT.format(
+            asked=venue, pressed=pressed or NO_VENUE_PRESSED
+        )
+    return line
+
+
+def settings_closed_line(route: str, pressed: int, applied: int) -> str:
+    """The ``SETTINGS_CLOSED_FORMAT`` line: Saves *pressed* in the window *route* opened, and Saves *applied* by ``_on_settings_changed``."""
+    return SETTINGS_CLOSED_FORMAT.format(route=route, pressed=pressed, applied=applied)
 
 
 def chosen_venue_text(wing: Any, at: Any, states: Any = None) -> str:

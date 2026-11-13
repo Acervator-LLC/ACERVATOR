@@ -279,6 +279,11 @@ if _HAS_QT:
                 return ""
             return book.tabText(book.currentIndex())
 
+        @property
+        def venue(self) -> str:
+            """The venue id ``_bound_venue`` answers, empty while no Exchange Status button is pressed."""
+            return self._bound_venue()
+
         def show_tab(self, title: str) -> None:
             """Show the tab whose title is ``title``, and ignore an unknown one.
 
