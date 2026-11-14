@@ -1,29 +1,27 @@
 # Read with --root harness_fixtures/sigil_code_loop/sample_tree
 # Each file names its rule on line 1, then holds the Use instead block python -m ruff rule <id> prints.
-# For C416 C419 C420 FURB122 FURB140 FURB142 PLW0120 RUF006 UP028, the lines between
-# define the names the block uses and never defines.
 
 # CLEAN for its own rule id
-known_good_b035.py
+known_good_b007.py
 known_good_c419.py
-known_good_sim911.py
+known_good_f402.py
 known_good_perf102.py
 known_good_plc0206.py
-known_good_plr1736.py
-known_good_plw0120.py
-known_good_up028.py
-known_good_furb122.py
-known_good_furb129.py
-known_good_ruf006.py
-
-# FINDINGS, FIX for another rule alone: PLE4703's form reads FURB142, PLR1733's reads PERF102
 known_good_ple4703.py
+known_good_pth206.py
+known_good_ruf006.py
+known_good_sim911.py
+known_good_up028.py
+
+# FINDINGS, FIX for another rule alone: B031's form reads B007, FURB129's form reads B007,
+# PLR1733's form reads B007 and PERF102, PLR1736's form reads B007
+known_good_b031.py
+known_good_furb129.py
 known_good_plr1733.py
+known_good_plr1736.py
 
 # REJECTED, BLOCK at tier 2: the corrected form holds no loop, because the fix removes it
 known_good_async110.py
-known_good_c416.py
 known_good_c420.py
-known_good_perf402.py
 known_good_furb140.py
-known_good_furb142.py
+known_good_perf402.py

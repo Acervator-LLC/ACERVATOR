@@ -1,14 +1,40 @@
 # CODE.COLLECTION@1
 
 Reference. CODE.COLLECTION@1 reads the tuples, lists, sets and dictionaries in
-one Python file against 34 ruff rules. The Coding Archetype owns it. It is one
+one Python file against the 23 ruff rules it can run. The Coding Archetype owns it. It is one
 sigil of [the sigil project](../16-sigil-project.md).
+
+## Function and disciplines
+
+CODE.COLLECTION@1 reads each tuple, list, set and dictionary, written out, built
+or called, for contents that are wrong, wasteful, unsafe, unclear, untyped or
+against convention. It draws on six disciplines: conventions, maintainability,
+performance efficiency, reliability, security and typing.
+
+The card holds no rule list of its own. It takes each ruff rule that the
+construct scope places on the collection construct and that one of its disciplines
+houses. [The construct scope](../16-sigil-project.md#the-construct-scope)
+states how a rule is placed.
+
+`dev_harness/sigils/code_collection.py, in TAKEN`:
+
+```python
+DISCIPLINES = (
+    "conventions",
+    "maintainability",
+    "performance-efficiency",
+    "reliability",
+    "security",
+    "typing",
+)
+TAKEN = take("collection", DISCIPLINES)
+```
 
 ## What it reads
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module. Tier 3 runs ruff
-with the 34 rules on the card. Three of them are preview rules, so ruff runs
+with the 23 rules the card can run. Two of them are preview rules, so ruff runs
 with preview rules on. The file goes to ruff on standard input, from the folder
 of the file. For a function or class, only the findings inside its lines count.
 
@@ -77,51 +103,57 @@ rules on.
 
 | Rule | ruff name | What it catches | Fix | Preview |
 | ---- | --------- | --------------- | --- | ------- |
-| S607 | start-process-with-partial-path | Checks for the starting of a process with a partial executable path. | none | no |
 | B006 | mutable-argument-default | Checks for uses of mutable objects as function argument defaults. | sometimes | no |
-| B013 | redundant-tuple-in-exception-handler | Checks for single-element tuples in exception handlers (e.g., `except (ValueError,):`). | always | no |
-| B033 | duplicate-value | Checks for set literals that contain duplicate items. | sometimes | no |
-| B039 | mutable-contextvar-default | Checks for uses of mutable objects as `ContextVar` defaults. | none | no |
-| COM812 | missing-trailing-comma | Checks for the absence of trailing commas. | always | no |
-| COM818 | trailing-comma-on-bare-tuple | Checks for the presence of trailing commas on bare (i.e., unparenthesized) tuples. | none | no |
-| COM819 | prohibited-trailing-comma | Checks for the presence of prohibited trailing commas. | always | no |
 | C400 | unnecessary-generator-list | Checks for unnecessary generators that can be rewritten as list comprehensions (or with `list()` directly). | always | no |
-| C401 | unnecessary-generator-set | Checks for unnecessary generators that can be rewritten as set comprehensions (or with `set()` directly). | always | no |
-| C402 | unnecessary-generator-dict | Checks for unnecessary generators that can be rewritten as dict comprehensions. | always | no |
-| C403 | unnecessary-list-comprehension-set | Checks for unnecessary list comprehensions. | always | no |
-| C404 | unnecessary-list-comprehension-dict | Checks for unnecessary list comprehensions. | always | no |
-| C405 | unnecessary-literal-set | Checks for `set()` calls that take unnecessary list or tuple literals as arguments. | always | no |
-| C406 | unnecessary-literal-dict | Checks for unnecessary list or tuple literals. | always | no |
-| C408 | unnecessary-collection-call | Checks for unnecessary `dict()`, `list()` or `tuple()` calls that can be rewritten as empty literals. | always | no |
-| C409 | unnecessary-literal-within-tuple-call | Checks for `tuple` calls that take unnecessary list or tuple literals as arguments. | sometimes | no |
-| C410 | unnecessary-literal-within-list-call | Checks for `list()` calls that take unnecessary list or tuple literals as arguments. | always | no |
-| C411 | unnecessary-list-call | Checks for unnecessary `list()` calls around list comprehensions. | sometimes | no |
 | C414 | unnecessary-double-cast-or-process | Checks for unnecessary `list()`, `reversed()`, `set()`, `sorted()`, and `tuple()` call within `list()`, `set()`, `sorted()`, and `tuple()` calls. | always | no |
-| C418 | unnecessary-literal-within-dict-call | Checks for `dict()` calls that take unnecessary dict literals or dict comprehensions as arguments. | sometimes | no |
-| G101 | logging-extra-attr-clash | Checks for `extra` keywords in logging statements that clash with `LogRecord` attributes. | none | no |
-| PIE800 | unnecessary-spread | Checks for unnecessary dictionary unpacking operators (`**`). | sometimes | no |
-| PERF101 | unnecessary-list-cast | Checks for explicit casts to `list` on for-loop iterables. | always | no |
-| F601 | multi-value-repeated-key-literal | Checks for dictionary literals that associate multiple values with the same key. | sometimes | no |
+| C419 | unnecessary-comprehension-in-call | Checks for unnecessary list or set comprehensions passed to builtin functions that take an iterable. | sometimes | no |
+| C420 | unnecessary-dict-comprehension-for-iterable | Checks for unnecessary dict comprehension when creating a dictionary from an iterable. | sometimes | no |
+| F634 | if-tuple | Checks for `if` statements that use non-empty tuples as test conditions. | none | no |
 | F822 | undefined-export | Checks for undefined names in `__all__`. | none | no |
+| G101 | logging-extra-attr-clash | Checks for `extra` keywords in logging statements that clash with `LogRecord` attributes. | none | no |
+| NPY201 | numpy2-deprecation | Checks for uses of NumPy functions and constants that were removed from the main namespace in NumPy 2.0. | sometimes | no |
+| PERF101 | unnecessary-list-cast | Checks for explicit casts to `list` on for-loop iterables. | always | no |
+| PIE800 | unnecessary-spread | Checks for unnecessary dictionary unpacking operators (`**`). | sometimes | no |
 | PLC0208 | iteration-over-set | Checks for iteration over a `set` literal in which each element is a literal. | always | no |
 | PLR6201 | literal-membership | Checks for membership tests on `list` and `tuple` literals. | always | yes |
 | PLW0244 | redefined-slots-in-subclass | Checks for a re-defined slot in a subclass. | none | yes |
+| PT007 | pytest-parametrize-values-wrong-type | Checks for the type of parameter values passed to `pytest.mark.parametrize`. | always | no |
+| PYI061 | redundant-none-literal | Checks for redundant `Literal[None]` annotations. | sometimes | no |
+| RUF008 | mutable-dataclass-default | Checks for mutable default values in dataclass attributes. | none | no |
+| RUF012 | mutable-class-default | Checks for mutable default values in class attributes. | none | no |
 | RUF022 | unsorted-dunder-all | Checks for `__all__` definitions that are not ordered according to an "isort-style" sort. | sometimes | no |
 | RUF023 | unsorted-dunder-slots | Checks for `__slots__` definitions that are not ordered according to a [natural sort](https://en.wikipedia.org/wiki/Natural_sort_order). | sometimes | no |
-| RUF031 | incorrectly-parenthesized-tuple-in-subscript | Checks for consistent style regarding whether nonempty tuples in subscripts are parenthesized. | always | yes |
-| RUF048 | map-int-version-parsing | Checks for calls of the form `map(int, __version__.split("."))`. | none | no |
-| RUF068 | duplicate-entry-in-dunder-all | Detects duplicate elements in `__all__` definitions. | sometimes | no |
+| S104 | hardcoded-bind-all-interfaces | Checks for hardcoded bindings to all network interfaces (`0.0.0.0`). | none | no |
+| S607 | start-process-with-partial-path | Checks for the starting of a process with a partial executable path. | none | no |
+| S609 | unix-command-wildcard-injection | Checks for possible wildcard injections in calls to `subprocess.Popen()`. | none | no |
 
 ## Rules left off
 
-The card leaves 5 of the 39 collection rules off. For each one, the write gate
-refused that rule's faulty or corrected sample, because the coding archetype
-grades the named finding high. The reason column is the card's own text.
+The card does not run the rules below, though its own rule list once named
+them. Each reason comes from the construct scope and the six disciplines. The
+card's left setting names every rule on the collection construct that no discipline
+houses, with its unplaced.json text.
 
-| Rule | ruff name | Reason on the card |
-| ---- | --------- | ------------------ |
-| S104 | hardcoded-bind-all-interfaces | faulty: ruff S104 possible binding to all interfaces |
-| S609 | unix-command-wildcard-injection | faulty: bandit B602 and B609, ruff S602 and S609, semgrep subprocess-shell-true |
-| F634 | if-tuple | faulty: vulture redundant if-condition |
-| RUF008 | mutable-dataclass-default | corrected: mypy no-redef and pyright reportRedeclaration, class 'A' |
-| RUF012 | mutable-class-default | corrected: mypy no-redef and pyright reportRedeclaration, class 'A' |
+| Rule | Reason |
+| ---- | ------ |
+| B013 | No discipline houses it. |
+| B033 | No discipline houses it. |
+| B039 | No discipline houses it. |
+| COM812 | It reads text the AST does not hold, so it sits on no construct. |
+| COM818 | It reads text the AST does not hold, so it sits on no construct. |
+| COM819 | It reads text the AST does not hold, so it sits on no construct. |
+| C401 | No discipline houses it. |
+| C402 | No discipline houses it. |
+| C403 | No discipline houses it. |
+| C404 | No discipline houses it. |
+| C405 | No discipline houses it. |
+| C406 | No discipline houses it. |
+| C408 | No discipline houses it. |
+| C409 | No discipline houses it. |
+| C410 | No discipline houses it. |
+| C411 | No discipline houses it. |
+| C418 | No discipline houses it. |
+| F601 | No discipline houses it. |
+| RUF031 | It reads text the AST does not hold, so it sits on no construct. |
+| RUF048 | No discipline houses it. |
+| RUF068 | No discipline houses it. |

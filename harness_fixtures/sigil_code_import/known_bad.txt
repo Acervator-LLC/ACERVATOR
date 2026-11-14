@@ -1,17 +1,38 @@
 # Read with --root harness_fixtures/sigil_code_import/sample_tree
 # Each file names its rule on line 1, then holds the Example block python -m ruff rule <id> prints.
-# foo.py holds the one name the TC004 block uses; pkg/ is the package the TC001 block imports from.
-# The 20 rules left off are on the card, under left_off, each with its reason.
+# For F403, the lines above the block define
+# the names it uses and never defines.
+# foo.py, example.py, pandas.py, bar.py and bár.py hold the names the blocks import; pkg/ and mypkg/
+# are the packages the TC001 and TID252 blocks import from.
+# The write gate refuses a file holding the faulty form of F401 F406 UP023, and beside pandas.py
+# ruff reads pandas as first-party, so TC002 reads TC001 here; each of the four is read from its
+# published form in a temporary tree.
 
 # FINDINGS, FIX: each file reads its own rule id
 known_bad_a004.py
-pkg/known_bad_tc001.py
+known_bad_e402.py
+known_bad_f403.py
+known_bad_icn001.py
+known_bad_n811.py
+known_bad_n812.py
+known_bad_n813.py
+known_bad_n814.py
+known_bad_n817.py
+known_bad_plc0415.py
+known_bad_plc2403.py
+known_bad_plr0402.py
 known_bad_tc003.py
 known_bad_tc004.py
-known_bad_f403.py
-known_bad_plc0415.py
-known_bad_up010.py
-known_bad_up029.py
+known_bad_up035.py
+pkg/known_bad_tc001.py
+pkg/sub/known_bad_tid252.py
+
+# FINDINGS, FIX: each file reads its own rule id and another: E401's reads I001, F404's reads I001,
+# I001's reads ICN001, PYI057's reads UP035
+known_bad_e401.py
+known_bad_f404.py
+known_bad_i001.py
+known_bad_pyi057.py
 
 # FINDINGS, FIX: narrowed to the one function holding the import
 known_bad_plc0415.py, in print_python_version

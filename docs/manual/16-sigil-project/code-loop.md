@@ -1,14 +1,32 @@
 # CODE.LOOP@1
 
-Reference. CODE.LOOP@1 reads the loops in one Python file against 19 ruff
-rules. The Coding Archetype owns it. It is one sigil of
+Reference. CODE.LOOP@1 reads the loops in one Python file against the 18 ruff
+rules it can run. The Coding Archetype owns it. It is one sigil of
 [the sigil project](../16-sigil-project.md).
+
+## Function and disciplines
+
+CODE.LOOP@1 reads each loop and comprehension for the faults that give a wrong
+result, waste work, or write by hand what Python's own forms already state. It
+draws on three disciplines: conventions, performance efficiency and reliability.
+
+The card holds no rule list of its own. It takes each ruff rule that the
+construct scope places on the loop construct and that one of its disciplines
+houses. [The construct scope](../16-sigil-project.md#the-construct-scope)
+states how a rule is placed.
+
+`dev_harness/sigils/code_loop.py, in TAKEN`:
+
+```python
+DISCIPLINES = ("conventions", "performance-efficiency", "reliability")
+TAKEN = take("loop", DISCIPLINES)
+```
 
 ## What it reads
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module. Tier 3 runs ruff
-with the 19 rules on the card and with preview rules on. The file goes to ruff
+with the 18 rules the card can run and with preview rules on. The file goes to ruff
 on standard input, from the folder of the file. For a function or class, only
 the findings inside its lines count.
 
@@ -21,7 +39,8 @@ class, and its published faulty and corrected forms. The card records ruff
 ```python
 def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
     """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    return [(row.code, row.line) for row in check(source, folder, RULES, preview=True)]
+    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+    return [(row.code, row.line) for row in rows]
 ```
 
 Tier 2 accepts an input only when Python's ast module finds a for, async for,
@@ -77,26 +96,35 @@ rules on.
 | Rule | ruff name | What it catches | Fix | Preview |
 | ---- | --------- | --------------- | --- | ------- |
 | ASYNC110 | async-busy-wait | Checks for the use of an async sleep function in a `while` loop. | none | no |
-| B035 | static-key-dict-comprehension | Checks for dictionary comprehensions that use a static key, like a string literal or a variable defined outside the comprehension. | none | no |
-| C416 | unnecessary-comprehension | Checks for unnecessary dict, list, and set comprehension. | always | no |
+| B007 | unused-loop-control-variable | Checks for unused variables in loops (e.g., `for` and `while` statements). | sometimes | no |
+| B031 | reuse-of-groupby-generator | Checks for multiple usage of the generator returned from `itertools.groupby()`. | none | no |
 | C419 | unnecessary-comprehension-in-call | Checks for unnecessary list or set comprehensions passed to builtin functions that take an iterable. | sometimes | no |
 | C420 | unnecessary-dict-comprehension-for-iterable | Checks for unnecessary dict comprehension when creating a dictionary from an iterable. | sometimes | no |
-| SIM911 | zip-dict-keys-and-values | Checks for use of `zip()` to iterate over keys and values of a dictionary at once. | always | no |
+| F402 | import-shadowed-by-loop-var | Checks for import bindings that are shadowed by loop variables. | none | no |
+| FURB129 | readlines-in-for | Checks for uses of `readlines()` when iterating over a file line-by-line. | always | no |
+| FURB140 | reimplemented-starmap | Checks for generator expressions, list and set comprehensions that can be replaced with `itertools.starmap`. | sometimes | yes |
 | PERF102 | incorrect-dict-iterator | Checks for uses of `dict.items()` that discard either the key or the value when iterating over the dictionary. | always | no |
 | PERF402 | manual-list-copy | Checks for `for` loops that append every item of an iterable to a list, which can be replaced with a call to `list`. | none | no |
 | PLC0206 | dict-index-missing-items | Checks for dictionary iterations that extract the dictionary value via explicit indexing, instead of using `.items()`. | none | no |
 | PLE4703 | modified-iterating-set | Checks for loops in which a `set` is modified during iteration. | always | yes |
 | PLR1733 | unnecessary-dict-index-lookup | Checks for key-based dict accesses during `.items()` iterations. | always | no |
 | PLR1736 | unnecessary-list-index-lookup | Checks for index-based list accesses during `enumerate` iterations. | always | no |
-| PLW0120 | useless-else-on-loop | Checks for `else` clauses on loops without a `break` statement. | sometimes | no |
-| UP028 | yield-in-for-loop | Checks for `for` loops that can be replaced with `yield from` expressions. | sometimes | no |
-| FURB122 | for-loop-writes | Checks for the use of `IOBase.write` in a for loop. | always | no |
-| FURB129 | readlines-in-for | Checks for uses of `readlines()` when iterating over a file line-by-line. | always | no |
-| FURB140 | reimplemented-starmap | Checks for generator expressions, list and set comprehensions that can be replaced with `itertools.starmap`. | sometimes | yes |
-| FURB142 | for-loop-set-mutations | Checks for code that updates a set with the contents of an iterable by using a `for` loop to call `.add()` or `.discard()` on each element separately. | always | yes |
+| PTH206 | os-sep-split | Checks for uses of `.split(os.sep)` | none | no |
 | RUF006 | asyncio-dangling-task | Checks for `asyncio.create_task` and `asyncio.ensure_future` calls that do not store a reference to the returned result. | none | no |
+| SIM911 | zip-dict-keys-and-values | Checks for use of `zip()` to iterate over keys and values of a dictionary at once. | always | no |
+| UP028 | yield-in-for-loop | Checks for `for` loops that can be replaced with `yield from` expressions. | sometimes | no |
 
 ## Rules left off
 
-The card holds no list of rules left off, so every rule this sigil reads is in
-the table above.
+The card does not run the rules below, though its own rule list once named
+them. Each reason comes from the construct scope and the six disciplines. The
+card's left setting names every rule on the loop construct that no discipline
+houses, with its unplaced.json text.
+
+| Rule | Reason |
+| ---- | ------ |
+| B035 | No discipline houses it. |
+| C416 | No discipline houses it. |
+| PLW0120 | No discipline houses it. |
+| FURB122 | No discipline houses it. |
+| FURB142 | No discipline houses it, and no sigil runs this preview rule now, so it left the house too. |
