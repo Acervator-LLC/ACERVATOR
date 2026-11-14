@@ -163,8 +163,7 @@ SIGIL = Sigil(
                 else "no rule on the list is a preview rule, so ruff runs without --preview"
             ),
             "left": TAKEN.left,
-            "left_because": "each is a rule the scope places on this construct that "
-            "no discipline houses; its text is the unplaced.json row",
+            "left_because": TAKEN.left_because,
             "not_read": "a ruff setting matched on the file name, such as "
             "per-file-ignores, because the file reaches ruff on standard input",
             "refuses": "ruff exits otherwise, or prints a finding or a rule page "

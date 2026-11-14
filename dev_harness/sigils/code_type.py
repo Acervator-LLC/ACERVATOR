@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import mypy.api
+import mypy.errorcodes
 import mypy.version
 import pyright
 
@@ -25,6 +26,7 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .construct_rules import LEFT_BECAUSE, hold, house_rules
 from .core import (
     APPLICATION_SOURCE,
     Flag,
@@ -48,10 +50,27 @@ MYPY_FINISHED = (0, 1)
 PYRIGHT_FINISHED = (0, 1)
 NO_CODE = "no code"
 
+FUNCTION = (
+    "reads each value against the type its annotation, assignment or call gives it, "
+    "for a type fault that fails at run time, breaks the typing standard, or leaves "
+    "implicit what Python's conventions ask to state"
+)
+DISCIPLINES = ("conventions", "reliability", "typing")
+MYPY = hold("mypy", sorted(mypy.errorcodes.error_codes), DISCIPLINES)
+PYRIGHT = hold("pyright", house_rules("pyright"), DISCIPLINES)
+HELD = {held.tool: frozenset(held.rules) for held in (MYPY, PYRIGHT)}
+
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "mypy_version": MYPY_BUILT,
     "pyright_version": PYRIGHT_BUILT,
+    "function": FUNCTION,
+    "disciplines": " ".join(DISCIPLINES),
+    "scope": "each code on mypy's own error code list, mypy.errorcodes.error_codes, "
+    "and each pyright rule a discipline houses or unplaced.json lists: the rules "
+    "pyright reports as an error with no configuration",
+    "mypy_rules": " ".join(MYPY.rules),
+    "pyright_rules": " ".join(PYRIGHT.rules),
     "type_config": "the mypy and pyright settings each tool finds "
     "from the root of the target tree",
     "fault_file": "the file the input line names: HOLD when it sits "
@@ -131,7 +150,7 @@ def _pyright_findings(path: str, root: Path, file: Path) -> tuple[str, list[Find
 
 
 def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
-    """Return `SOUND`, or `UNSOUND` with each `Finding` inside the `locate` span."""
+    """Return `SOUND`, or `UNSOUND` with each `HELD` `Finding` inside the `locate` span."""
     located = locate(text, root)
     if isinstance(located, str):
         raise ToolFault(f"{text}: {located}, after tier 2 accepted it")
@@ -142,11 +161,12 @@ def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
     findings = [
         finding
         for finding in [*_mypy_findings(path, root, file), *pyright_found]
-        if not is_narrowed or first <= finding.line <= last
+        if finding.code in HELD[finding.tool]
+        and (not is_narrowed or first <= finding.line <= last)
     ]
     versions = f"mypy {mypy.version.__version__}, pyright {pyright_ran}"
     if not findings:
-        return SOUND, f"{versions}: neither tool reports an error"
+        return SOUND, f"{versions}: neither tool reports an error under a rule on the card"
     rows = "; ".join(f"{item.tool} {item.code} line {item.line}" for item in findings)
     return UNSOUND, f"{versions}: {rows}"
 
@@ -170,10 +190,15 @@ SIGIL = Sigil(
                     "pyright, through pyright.run from the root of the target tree, "
                     "with --outputjson"
                 ),
+                "only the errors under mypy_rules and pyright_rules",
                 "for a symbol, only the errors inside its lines",
             ],
-            "sound": "neither tool reports an error",
+            "sound": "neither tool reports an error under a rule on the card",
             "unsound": ["tool", "error code", "line"],
+            "left": {MYPY.tool: MYPY.left, PYRIGHT.tool: PYRIGHT.left},
+            "left_because": LEFT_BECAUSE,
+            "not_held": "an error under a code outside the scope, or with no code, "
+            "moves no verdict",
             "trusts": "a plugin or interpreter the tree's own mypy or pyright "
             "settings name runs as code",
             "imports": "each tool resolves them from the root of the target tree "

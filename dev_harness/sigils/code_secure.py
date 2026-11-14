@@ -23,6 +23,7 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .construct_rules import LEFT_BECAUSE, hold, house_rules
 from .core import (
     APPLICATION_SOURCE,
     Flag,
@@ -54,10 +55,26 @@ SEMGREP_SEVERITY = {"INFO": "low", "WARNING": "medium", "ERROR": "high"}
 
 _CWE_RE = re.compile(r"CWE-(\d+)")
 
+FUNCTION = (
+    "reads each call, query, secret, parse and path for a weakness an attacker "
+    "can use, with the CWE id each tool attaches to it"
+)
+DISCIPLINES = ("security",)
+BANDIT = hold("bandit", house_rules("bandit"), DISCIPLINES)
+SEMGREP = hold("semgrep", house_rules("semgrep"), DISCIPLINES)
+HELD = {held.tool: frozenset(held.rules) for held in (BANDIT, SEMGREP)}
+
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "bandit_version": BANDIT_BUILT,
     "semgrep_version": SEMGREP_BUILT,
+    "function": FUNCTION,
+    "disciplines": " ".join(DISCIPLINES),
+    "scope": "each bandit test and semgrep rule a discipline houses or unplaced.json "
+    "lists: the tests python -m bandit --help lists, and the rules p/python and "
+    "p/security-audit hold",
+    "bandit_rules": " ".join(BANDIT.rules),
+    "semgrep_rules": " ".join(SEMGREP.rules),
     "severity_floor": "medium",
     "fault_file": "the file the input line names: WEAK reads HOLD when it sits "
     "in application_source and a finding reaches severity_floor",
@@ -184,7 +201,7 @@ def _semgrep_findings(name: str, source: bytes) -> tuple[str, list[Finding]]:
 
 
 def _functions_verdict(text: str, root: Path) -> Reading:
-    """Return `CLEAN`, or `WEAK` holding when a finding reaches `severity_floor`."""
+    """Return `CLEAN`, or `WEAK` holding when a `HELD` finding reaches `severity_floor`."""
     located = locate(text, root)
     if isinstance(located, str):
         message = f"{text}: {located}, after tier 2 accepted it"
@@ -195,12 +212,15 @@ def _functions_verdict(text: str, root: Path) -> Reading:
     findings = [
         finding
         for finding in [*_bandit_findings(source), *semgrep_found]
-        if not is_narrowed or first <= finding.line <= last
+        if finding.rule in HELD[finding.tool]
+        and (not is_narrowed or first <= finding.line <= last)
     ]
     versions = f"bandit {bandit_version()}, semgrep {semgrep_ran}"
     if not findings:
         return Reading(
-            CLEAN, f"{versions}: neither tool reports a finding", holds=False
+            CLEAN,
+            f"{versions}: neither tool reports a finding under a rule on the card",
+            holds=False,
         )
     floor = SEVERITIES.index(SETTINGS["severity_floor"])
     holds = any(SEVERITIES.index(finding.severity) >= floor for finding in findings)
@@ -232,12 +252,17 @@ SIGIL = Sigil(
                     "--json --quiet --no-git-ignore ., in an empty temporary folder "
                     "holding a copy of the file under its own name"
                 ),
+                "only the findings under bandit_rules and semgrep_rules",
                 "for a symbol, only the findings inside its lines",
             ],
-            "clean": "neither tool reports a finding",
+            "clean": "neither tool reports a finding under a rule on the card",
             "weak": ["tool", "rule id", "CWE id", "severity", "line"],
             "cwe": "the CWE id each tool reports for its own finding, else no CWE",
             "severity": {"bandit": BANDIT_SEVERITY, "semgrep": SEMGREP_SEVERITY},
+            "left": {BANDIT.tool: BANDIT.left, SEMGREP.tool: SEMGREP.left},
+            "left_because": LEFT_BECAUSE,
+            "not_held": "a finding under a rule outside the scope, such as a rule "
+            "the registry adds after the house was counted, moves no verdict",
             "fetches": "semgrep downloads both rule sets from its registry on each run",
             "refuses": "a tool that exits otherwise, reports an error, "
             "or did not read the file",

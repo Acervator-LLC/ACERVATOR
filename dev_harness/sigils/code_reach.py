@@ -19,6 +19,7 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .construct_rules import LEFT_BECAUSE, hold, house_rules
 from .core import (
     APPLICATION_SOURCE,
     FLAGS,
@@ -40,9 +41,21 @@ REJECTED = "REJECTED"
 VULTURE_BUILT = "2.16"
 VULTURE_TIMEOUT_S = 120
 
+FUNCTION = (
+    "reads each def, class, name and import for code that nothing in the tree "
+    "reaches, which a maintainer must still read and keep"
+)
+DISCIPLINES = ("maintainability",)
+VULTURE = hold("vulture", house_rules("vulture"), DISCIPLINES)
+
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "vulture_version": VULTURE_BUILT,
+    "function": FUNCTION,
+    "disciplines": " ".join(DISCIPLINES),
+    "scope": "each vulture rule a discipline houses or unplaced.json lists: "
+    "dead-code, the one rule id every vulture item carries",
+    "vulture_rules": " ".join(VULTURE.rules),
     "confidence_floor": "100",
     "fault_file": "the file the input line names: UNREACHED reads HOLD when it sits "
     "in application_source and an item reaches confidence_floor",
@@ -122,7 +135,9 @@ def _functions_verdict(text: str, root: Path) -> Reading:
     findings = [
         finding
         for path, finding in items
-        if path == target and (not is_narrowed or first <= finding.line <= last)
+        if VULTURE.rules
+        and path == target
+        and (not is_narrowed or first <= finding.line <= last)
     ]
     if not findings:
         return Reading(REACHED, f"vulture {version}: no item in the file", holds=False)
@@ -155,10 +170,13 @@ SIGIL = Sigil(
                     "only the items in the input file, so a name used in another "
                     "file of the tree is not called unused"
                 ),
+                "only while vulture_rules holds dead-code",
                 "for a symbol, only the items inside its lines",
             ],
             "reached": "vulture reports no item in the file",
             "unreached": ["kind", "name", "confidence", "line"],
+            "left": {VULTURE.tool: VULTURE.left},
+            "left_because": LEFT_BECAUSE,
             "not_read": "a tool.vulture table in the tree's pyproject.toml, "
             "so no name, decorator or path it lists is ignored",
             "refuses": "vulture exits otherwise, cannot read a Python file "
