@@ -163,8 +163,8 @@ FOLLOW_ON = {
 
 ## The shared modules
 
-Five modules hold the steps that sigils share: every sigil builds its card with
-`dev_harness/sigils/core.py, in Sigil`, and each of the other four serves only
+Six modules hold the steps that sigils share: every sigil builds its card with
+`dev_harness/sigils/core.py, in Sigil`, and each of the other five serves only
 some sigils. Each step has one body. No sigil module imports from another sigil
 module.
 
@@ -172,7 +172,8 @@ module.
 | ------ | ------------- |
 | `dev_harness/sigils/core.py` | the card as data in `Sigil`, the tiers in `judge`, the flags in `FLAGS`, and the command in `main` |
 | `dev_harness/sigils/coding_input.py` | the Coding Archetype's input: tier 1 in `DATA_TYPE_TIER`, tier 2 in `CONTENT_TIER`, and the file readers in `READERS` |
-| `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
+| `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, each rule's fix class and its preview and removed marks in `listing`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
+| `dev_harness/sigils/construct_rules.py` | the rules a coding sigil holds from its disciplines: `take` for a construct sigil, `hold` for a tool sigil, and the reason each other scope rule left in `why_left` |
 | `dev_harness/sigils/fix_class.py` | the follow-on rule of each fix class, in `FOLLOW_ON` |
 | `dev_harness/sigils/citation.py` | the citation form that CITE.SYMBOL@3 and TA.AUDIT@1 share: tier 1 in `data_type_fault`, and the definition search in `definition_verdict` |
 
@@ -294,9 +295,11 @@ all 7 are placed.
 | CODE.LOOP | 2 | 2 | 0 |
 | CODE.COLLECTION | 2 | 2 | 0 |
 | CODE.FLOW | 3 | 3 | 0 |
+| CODE.OPTIMIZE | 3 | 3 | 0 |
 
-CODE.IMPORT, CODE.VARIABLE and CODE.OPTIMIZE select only rules the archetype
-already runs.
+CODE.IMPORT and CODE.VARIABLE select only rules the archetype already runs.
+CODE.OPTIMIZE runs the same 3 preview rules that CODE.LOOP and CODE.FLOW run, so
+the 7 stay 7.
 CODE.SECURE, CODE.TYPE and CODE.REACH run bandit, semgrep, mypy, pyright and
 vulture, and the house counts those under the archetype's own lists.
 
@@ -384,6 +387,41 @@ python -m dev_harness.sigils.construct_scope
 | flow | 62 | 33 |
 | variable | 73 | 38 |
 
+A scope rule that no discipline houses and unplaced.json does not list leaves
+with a reason too: the house holds only the rules the archetype or a sigil runs,
+and neither runs it. Eight preview rules leave the construct sigils this way.
+
+## The tool scope
+
+The four tool sigils, CODE.OPTIMIZE, CODE.TYPE, CODE.SECURE and CODE.REACH,
+hold no rule list of their own either. Each one holds the rules its disciplines
+house inside its tool's scope. A finding under any other rule moves no verdict,
+and each sigil's page lists the rules it holds and the rules that left.
+
+`dev_harness/sigils/construct_rules.py, in hold`:
+
+```python
+def hold(tool: str, rules: Iterable[str], named: Sequence[str]) -> Held:
+    """Return the `Held` scope `rules` of `tool` that the `named` disciplines house."""
+    _check_named(named)
+    held: list[str] = []
+    left: dict[str, str] = {}
+    for rule in rules:
+        why = why_left(tool, rule, named)
+        if why is None:
+            held.append(rule)
+        else:
+            left[rule] = why
+    return Held(tool, tuple(named), tuple(held), left)
+```
+
+| Sigil | Scope | Rules in scope | Rules it can run | Disciplines |
+| ----- | ----- | -------------- | ---------------- | ----------- |
+| CODE.OPTIMIZE | each ruff rule in its seven families | 149 | 85 | conventions, maintainability, performance efficiency, typing |
+| CODE.TYPE | each mypy error code, and each pyright rule the house holds | 120 | 62 | conventions, reliability, typing |
+| CODE.SECURE | each bandit test and semgrep rule the house holds | 291 | 291 | security |
+| CODE.REACH | the vulture rule the house holds | 1 | 1 | maintainability |
+
 ## Progress
 
 Every sigil, its owner and where it stands. A built sigil's count comes from
@@ -392,10 +430,10 @@ the card its command prints. A sigil that is not built has no card yet.
 | Sigil | Owner | Rules on the card | Status | Module |
 | ----- | ----- | ----------------- | ------ | ------ |
 | CITE.SYMBOL@3 | truth | no rule list: its tiers decide | built | `dev_harness/sigils/cite_symbol.py, in SIGIL` |
-| CODE.OPTIMIZE@1 | coding | 7 ruff rule families | built | `dev_harness/sigils/code_optimize.py, in SIGIL` |
-| CODE.TYPE@1 | coding | no rule list: every mypy and pyright error | built | `dev_harness/sigils/code_type.py, in SIGIL` |
-| CODE.SECURE@1 | coding | no rule list: every bandit and semgrep finding | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
-| CODE.REACH@1 | coding | no rule list: every vulture item | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
+| CODE.OPTIMIZE@1 | coding | 85 ruff rules it can run | built | `dev_harness/sigils/code_optimize.py, in SIGIL` |
+| CODE.TYPE@1 | coding | 62 mypy and pyright rules it can run | built | `dev_harness/sigils/code_type.py, in SIGIL` |
+| CODE.SECURE@1 | coding | 291 bandit and semgrep rules it can run | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
+| CODE.REACH@1 | coding | 1 vulture rule it can run | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
 | CODE.LOOP@1 | coding | 18 ruff rules it can run | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
 | CODE.IMPORT@1 | coding | 25 ruff rules it can run | built | `dev_harness/sigils/code_import.py, in SIGIL` |
 | CODE.COLLECTION@1 | coding | 23 ruff rules it can run | built | `dev_harness/sigils/code_collection.py, in SIGIL` |

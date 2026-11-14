@@ -4,10 +4,15 @@
 # OPTIMIZABLE, OPTIMIZE: each file reads its own rule id
 known_bad_perf401.py
 known_bad_perf203.py
-known_bad_furb118.py
 known_bad_c901.py
 known_bad_c901.py, in normalize_status
-fragments_bad/known_bad_sim108.py
-fragments_bad/known_bad_c401.py
 fragments_bad/known_bad_up035.py
 fragments_bad/known_bad_plr1730.py
+
+# OPTIMIZABLE, OPTIMIZE for UP034 alone: C401 left the card, unplaced
+fragments_bad/known_bad_c401.py
+
+# CLEAN, PASS: the file's own rule left the card; FURB118 no discipline houses,
+# SIM108 sits in unplaced.json
+known_bad_furb118.py
+fragments_bad/known_bad_sim108.py
