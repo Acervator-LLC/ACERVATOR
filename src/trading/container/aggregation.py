@@ -527,22 +527,71 @@ class FleetAggregationMixin:
             return None
         return total
 
-    def _one_sibling_hold(self, other_bot: Any) -> Optional[float]:
+    def _one_sibling_hold(
+        self, other_bot: Any, bodies: Optional[dict] = None
+    ) -> Optional[float]:
         """``held_usd`` of one other bot's ``_fold_tranches`` and
-        ``_pending_wire_credits``, past its ``resting_tranche_usd``."""
+        ``_pending_wire_credits``, past its ``resting_tranche_usd``, plus its
+        ``unbooked_sale_usd`` of the order ``bodies`` its resting sales answered."""
         rows = getattr(other_bot, "_fold_tranches", ()) or ()
         resting = getattr(other_bot, "resting_tranche_usd", None)
-        return held_usd(
+        unbooked = getattr(other_bot, "unbooked_sale_usd", None)
+        held = held_usd(
             rows,
             getattr(other_bot, "_pending_wire_credits", 0.0),
             resting() if callable(resting) else 0.0,
         )
+        sold = held_amount(unbooked(bodies)) if bodies and callable(unbooked) else 0.0
+        if held is None or sold is None:
+            return None
+        return held + sold
+
+    @staticmethod
+    def _on_wallet(other_bot: Any, exchange_id: str, currency: str) -> bool:
+        """True where ``other_bot`` trades on ``exchange_id`` from the ``currency``
+        wallet that ``wallet_currency`` names."""
+        other_cfg = other_bot.config
+        return other_cfg.exchange_id == exchange_id and currency == wallet_currency(
+            other_cfg.symbol, getattr(other_cfg, "base_currency", "")
+        )
+
+    async def read_sibling_held_usd(
+        self,
+        bot_id: str,
+        exchange_id: str,
+        currency: str,
+    ) -> Optional[float]:
+        """``sum_sibling_held_usd`` after each other bot on the wallet answers its
+        ``read_buy_back_sales`` from the venue, so a piece sold since that bot's last
+        booking counts."""
+        currency_norm = (currency or "").upper()
+        sales: dict = {}
+        for other_id, other_bot in list(self._bots.items()):
+            reader = getattr(other_bot, "read_buy_back_sales", None)
+            if other_id == bot_id or not callable(reader):
+                continue
+            try:
+                on_wallet = self._on_wallet(other_bot, exchange_id, currency_norm)
+            except Exception as _cfg_exc:
+                logger.debug("Bot %s wallet unreadable: %s", other_id, _cfg_exc)
+                continue
+            if not on_wallet:
+                continue
+            try:
+                sales[other_id] = await reader()
+            except Exception as _read_exc:
+                logger.warning(
+                    "Bot %s resting sales could not be read: %s", other_id, _read_exc
+                )
+                sales[other_id] = None
+        return self.sum_sibling_held_usd(bot_id, exchange_id, currency, sales)
 
     def sum_sibling_held_usd(
         self,
         bot_id: str,
         exchange_id: str,
         currency: str,
+        sales: Optional[dict] = None,
     ) -> Optional[float]:
         """Sum of what OTHER bots on ``exchange_id`` quoting ``currency`` hold in queued
         fold tranches and parked wire credits, in that currency's units.
@@ -550,9 +599,12 @@ class FleetAggregationMixin:
         ``sum_sibling_base_currency_claims`` reads a bot's allocation, and this reads
         the dollars its buy-backs wait on. Every run state counts, and a
         ``_boot_state_records`` bot absent from ``_bots`` counts through
-        ``saved_record_hold``. Returns ``None``, never a partial sum, when one bot
-        cannot be read, and a caller that gets ``None`` must refuse to spend.
+        ``saved_record_hold``. ``sales`` maps a bot to the order bodies of its resting
+        buy-back sales, None where they could not be read. Returns ``None``, never a
+        partial sum, when one bot cannot be read, and a caller that gets ``None`` must
+        refuse to spend.
         """
+        sales = sales or {}
         currency_norm = (currency or "").upper()
         total = 0.0
         unread: list[str] = []
@@ -575,16 +627,14 @@ class FleetAggregationMixin:
             if other_id == bot_id:
                 continue
             try:
-                other_cfg = other_bot.config
-                same_exchange = other_cfg.exchange_id == exchange_id
-                other_wallet = wallet_currency(
-                    other_cfg.symbol, getattr(other_cfg, "base_currency", "")
-                )
-                if not same_exchange or other_wallet != currency_norm:
+                if not self._on_wallet(other_bot, exchange_id, currency_norm):
                     continue
-                held = self._one_sibling_hold(other_bot)
+                held = self._one_sibling_hold(other_bot, sales.get(other_id))
             except Exception as _read_exc:
                 unread.append(f"{other_id} ({_read_exc})")
+                continue
+            if other_id in sales and sales[other_id] is None:
+                unread.append(f"{other_id} (its resting sales could not be read)")
                 continue
             if held is None:
                 unread.append(f"{other_id} (a held figure is no amount)")
