@@ -244,30 +244,44 @@ beside the rule's own text, and the CWE must be in the discipline's list. A
 conventions or typing placement quotes the PEP or specification section that
 states the rule's check, beside the rule's own text.
 
+A placement can also rest on Python's own published canon. In conventions, a
+line of PEP 20, the Zen of Python, grounds a rule whose own text names that
+line's concern, such as "Readability counts." or "Flat is better than nested."
+A section of the [Python 3.14 documentation](https://docs.python.org/3.14/)
+grounds a rule where it states the failure, cost, idiom or type of the construct
+the rule detects, and the rule sits under that concern's discipline. A framework
+rule rests the same way on the framework's own documentation, such as pytest or
+Django. Each such placement quotes both texts, with the section's address.
+
 | Discipline | CWE ids in its list | Rules it holds | Compatible archetypes |
 | ---------- | ------------------- | -------------- | --------------------- |
 | security | 74 | 389 | coding, gui, docs, ta |
-| reliability | 74 | 39 | coding, gui, docs |
-| performance efficiency | 18 | 38 | coding, gui, ta |
+| reliability | 74 | 108 | coding, gui, docs |
+| performance efficiency | 18 | 47 | coding, gui, ta |
 | maintainability | 29 | 30 | coding, gui |
-| conventions | 0 | 75 | coding, gui |
-| typing | 0 | 58 | coding, gui |
+| conventions | 0 | 250 | coding, gui, ta |
+| typing | 0 | 76 | coding, gui |
 
 | Tool | Rules it runs | Placed | Unplaced |
 | ---- | ------------- | ------ | -------- |
-| ruff, with every rule selected | 810 | 240 | 570 |
+| ruff, with every rule selected | 810 | 484 | 326 |
 | semgrep | 216 | 216 | 0 |
 | bandit | 75 | 75 | 0 |
-| mypy | 58 | 23 | 35 |
-| pyright | 42 | 24 | 18 |
+| mypy | 58 | 34 | 24 |
+| pyright | 42 | 31 | 11 |
 | pylint | 12 | 1 | 11 |
 | vulture | 1 | 1 | 0 |
 | the six rule modules | 19 | 4 | 15 |
-| all | 1,233 | 584 | 649 |
+| all | 1,233 | 846 | 387 |
 
 Each rule left in unplaced.json carries its reason: no listed CWE definition and
 no PEP or specification section describes it, or its text names a PEP that no
-discipline holds.
+discipline holds. The reason also names the PEP 20 lines and the documentation
+sections read against the rule, and why none of them grounds it.
+
+The five construct sigils, CODE.LOOP, CODE.IMPORT, CODE.COLLECTION, CODE.FLOW
+and CODE.VARIABLE, also read 18 preview rules. The archetype runs ruff without
+preview rules, so the house holds none of the 18.
 
 The command reads each tool's own rule list under the archetype's own flags.
 It then checks that list against the six rules.json files and unplaced.json,

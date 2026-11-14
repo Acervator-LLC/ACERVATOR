@@ -143,12 +143,17 @@ CARD: dict[str, object] = {
     "disciplines": {name: f"dev_harness/disciplines/{name}" for name in DISCIPLINES},
     "files": {"placed": f"<discipline>/{RULES_FILE}", "unplaced": UNPLACED_FILE},
     "standard": "ISO/IEC 5055:2021, CWE lists from https://www.omg.org/spec/ASCQM/1.0/PDF; "
-    "PEP 8, PEP 257, PEP 484 and https://typing.python.org/en/latest/spec/",
+    "PEP 8, PEP 257, PEP 484 and https://typing.python.org/en/latest/spec/; "
+    "PEP 20, https://docs.python.org/3.14/ and each framework's own documentation",
     "grounds": [
         "cwe: a CWE id the discipline's rules.json lists, or one the tool attaches to the rule",
         "term: a quote of the tool's own text naming an ISO/IEC 25010 characteristic",
-        "pep: a quoted section of PEP 8, PEP 257 or PEP 484 that states the rule's check",
+        "pep: a quoted section of PEP 8, PEP 257 or PEP 484 that states the rule's check, "
+        "or a PEP 20 line whose concern the rule's quoted text names",
         "spec: a quoted section of the typing specification that states the rule's check",
+        "docs: a quoted section of the Python 3.14 documentation that states the failure, "
+        "cost, idiom or type of the construct the rule detects",
+        "framework: a quoted section of a framework's own documentation that states the same",
     ],
     "listings": LISTINGS,
     "outputs": ["per tool: run, placed, unplaced", "per discipline: placements"],
