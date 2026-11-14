@@ -324,6 +324,11 @@ and exits 1 on any fault. `--root` names the tree, and `--card` prints the card.
     }
 ```
 
+The archetype does not run every rule on every input. The input decides which
+rules run, before any rule runs. [Rule run partitioning](16-sigil-project/rule-partition.md)
+states the inputs, the four keys each rule carries, the run rule, and the proof
+on `src/`.
+
 ## Progress
 
 Every sigil, its owner and where it stands. A built sigil's count comes from

@@ -127,6 +127,7 @@ rules. [16-sigil-project.md](16-sigil-project.md) links every one.
 | [16-sigil-project/code-flow.md](16-sigil-project/code-flow.md) | CODE.FLOW@1: 39 ruff rules for if, try, with, return, raise, assert, pass and del |
 | [16-sigil-project/code-variable.md](16-sigil-project/code-variable.md) | CODE.VARIABLE@1: 54 ruff rules for names, assignments and function arguments |
 | [16-sigil-project/ta-audit.md](16-sigil-project/ta-audit.md) | TA.AUDIT@1: whether an indicator module defines the name an audit line ranks |
+| [16-sigil-project/rule-partition.md](16-sigil-project/rule-partition.md) | Rule run partitioning: which of the Coding Archetype's rules run on one input, and the proof on src/ |
 
 ## Figures
 
