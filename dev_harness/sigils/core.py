@@ -1,4 +1,4 @@
-"""`judge` runs a `Sigil` through three tiers, and `main` prints one row per input."""
+"""`judge` runs `discipline_fault` and three tiers; `main` prints one row per input."""
 
 import argparse
 import json
@@ -25,7 +25,10 @@ class Flag(Enum):
 FLAGS: dict[Flag, dict[str, str]] = {
     Flag.BLOCK: {
         "side": "input",
-        "when": "a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK",
+        "when": (
+            "a tier 0 refusal of a discipline whose skill omits the owner, "
+            "a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK"
+        ),
         "follows": "the work does not start",
     },
     Flag.HOLD: {
@@ -138,7 +141,7 @@ def discipline_fault(sigil: Sigil) -> str | None:
 
 
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
-    """Run `text` through tiers 1, 2 and 3 of `sigil`, stopping at the first refusal."""
+    """Run `discipline_fault`, then tiers 1, 2 and 3 on `text`, until one refuses."""
     fault = discipline_fault(sigil)
     if fault:
         return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)

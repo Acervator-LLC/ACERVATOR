@@ -76,7 +76,7 @@ ast module must find the construct the sigil reads, or the input is refused.
 
 ```python
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
-    """Run `text` through tiers 1, 2 and 3 of `sigil`, stopping at the first refusal."""
+    """Run `discipline_fault`, then tiers 1, 2 and 3 on `text`, until one refuses."""
     fault = discipline_fault(sigil)
     if fault:
         return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
@@ -98,6 +98,7 @@ The path of one input line, from the tiers to its flag:
 ```mermaid
 flowchart TD
     IN["one input line"]
+    T0{"the disciplines the card names"}
     T1{"tier 1: data type"}
     T2{"tier 2: content compatibility"}
     T3["tier 3: required processing functions"]
@@ -108,7 +109,9 @@ flowchart TD
     FIX["FIX: the merge proceeds, the fault is fixed at once"]
     HOLD["HOLD: the merge waits until it is fixed"]
 
-    IN --> T1
+    IN --> T0
+    T0 -->|refuses| BLOCK
+    T0 -->|accepts| T1
     T1 -->|refuses| BLOCK
     T1 -->|accepts| T2
     T2 -->|refuses| BLOCK
@@ -187,7 +190,7 @@ rule yet.
 
 | Flag | Side | When | What follows |
 | ---- | ---- | ---- | ------------ |
-| BLOCK | input | a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK | the work does not start |
+| BLOCK | input | a tier 0 refusal of a discipline whose skill omits the owner, a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK | the work does not start |
 | HOLD | output | a fault in application source code | the merge waits until it is fixed |
 | FIX | output | a fault anywhere else, such as a document | the merge proceeds, and the fault is fixed at once |
 | OPTIMIZE | output | a named optimization rule fires | the merge proceeds |
