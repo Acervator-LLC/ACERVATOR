@@ -43,6 +43,22 @@ tool reports none. semgrep downloads both of its rule sets from its registry on
 each run. A tool that exits with any other code, reports an error, or did not
 read the file stops the run.
 
+Semgrep runs with `--timeout=0`, so no rule stops at a per-rule time limit.
+Semgrep's own default limit is 5 seconds a rule. The OCIR case C1 restores the
+828,372-byte `src/trading/scrumming_bot.py` from before its fix. On a quiet
+machine, with RAM between 38 and 42 percent, one or two rules passed that
+default on that file in each run, and the sigil refused the file. With no
+per-rule limit, the same file reads in 36 seconds, and its slowest rule,
+dangerous-system-call-tainted-env-args, takes 13 seconds. The whole semgrep run
+keeps its 180-second limit, which stops a run that hangs.
+
+`dev_harness/sigils/code_secure.py, in SEMGREP_NO_RULE_TIMEOUT`:
+
+```python
+SEMGREP_TIMEOUT_S = 180
+SEMGREP_NO_RULE_TIMEOUT = "--timeout=0"
+```
+
 `dev_harness/sigils/code_secure.py, in BANDIT_SEVERITY` and `in SEMGREP_SEVERITY`,
 the grades each tool's severity takes:
 
