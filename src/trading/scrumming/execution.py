@@ -91,6 +91,10 @@ REFUSAL_HOLD_MOVE_FRACTION: float = 0.001
 #: The ``_execute_buy`` paths spending the dollars their own tranche holds.
 OWN_TRANCHE_PATHS = ("fold_rebuy", "manual_tranche_fire")
 
+#: The sale bookers that queue fold tranches, named by a resting record's ``booker``
+#: or its context's ``path_booker``.
+BUY_BACK_SALE_BOOKERS = ("_book_scrum_fill", "_book_dist_fill", "_book_manual_sale")
+
 #: The buy paths held to the venue's coin count, which refuse an omitted coin and
 #: answer ``_unbooked_coin_refusal``.
 BOOK_COMPARED_PATHS = ("cartridge_fold", "zero_balance_initial_entry")
@@ -103,6 +107,16 @@ QUEUE_WAIVED_PATHS = ("fold_rebuy", "hedge_replenish")
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+
+def queues_buy_back(record: dict) -> bool:
+    """True for a resting sell ``record`` whose ``booker`` or ``path_booker`` is in
+    ``BUY_BACK_SALE_BOOKERS``."""
+    context = record.get("context") or {}
+    return record.get("side") == "sell" and (
+        record.get("booker") in BUY_BACK_SALE_BOOKERS
+        or context.get("path_booker") in BUY_BACK_SALE_BOOKERS
+    )
 
 
 def waives_queue_cap_by_path(
@@ -276,6 +290,7 @@ class ExecutionEngineMixin:
     _order_asked_units: Callable[..., float]
     _preview_fold_growth: Callable[..., Any]
     _quote_to_usd: float
+    _read_resting_orders: Callable[..., Any]
     _read_settled_order: Callable[..., Any]
     _reconcile_holdings: Callable[..., Any]
     _record_audited_venue_units: Callable[..., float]
@@ -859,15 +874,17 @@ class ExecutionEngineMixin:
             "paid_events": paid_events,
         }
 
-    def _held_for_other_bots(self) -> Optional[float]:
-        """What ``sum_sibling_held_usd`` of the attached ``_bot_manager`` answers for
+    async def _held_for_other_bots(self) -> Optional[float]:
+        """What ``read_sibling_held_usd`` of the attached ``_bot_manager`` answers for
         this wallet, 0.0 with no fleet to ask and None where it cannot read a bot."""
         reader = getattr(
-            getattr(self, "_bot_manager", None), "sum_sibling_held_usd", None
+            getattr(self, "_bot_manager", None), "read_sibling_held_usd", None
         )
         if not callable(reader):
             return 0.0
-        held = reader(self.bot_id, self.config.exchange_id, self._wallet_currency())
+        held = await reader(
+            self.bot_id, self.config.exchange_id, self._wallet_currency()
+        )
         return None if held is None else float(held)
 
     def resting_tranche_usd(self) -> float:
@@ -888,12 +905,41 @@ class ExecutionEngineMixin:
                 )
         return total
 
+    async def read_buy_back_sales(self) -> Optional[dict]:
+        """The venue's order body for each ``_resting_orders`` sale ``queues_buy_back``
+        names, by order id, or None where one read answered nothing."""
+        bodies: dict = {}
+        for record, body in await self._read_resting_orders(
+            [r for r in self._resting_orders if queues_buy_back(r)]
+        ):
+            if body is None:
+                return None
+            bodies[record["order_id"]] = body
+        return bodies
+
+    def unbooked_sale_usd(self, bodies: dict) -> float:
+        """The dollars of each piece ``bodies`` reports sold past its record's
+        ``booked`` count, at the price ``resting_piece`` gives that piece."""
+        from ..bot_container import resting_piece
+
+        total = 0.0
+        for record in self._resting_orders:
+            body = bodies.get(record.get("order_id"))
+            if body is None or not queues_buy_back(record):
+                continue
+            _, units, fill_price, _ = resting_piece(record, body)
+            rules = self._market_rules_cache.get(record.get("symbol"))
+            total += fill_price * units_for_contracts(
+                units, getattr(rules, "contract_size", None)
+            )
+        return total
+
     async def _spends_held_dollars(self, cost: float, price: float) -> bool:
         """True where ``cost`` does not fit the free balance less other bots' in-flight
         orders, ``_held_for_other_bots`` and this bot's wire credits, and its whole queue
         while another bot holds dollars, after a refusal line ``_refusal_is_new`` admits.
         """
-        held = self._held_for_other_bots()
+        held = await self._held_for_other_bots()
         own_usd = float(getattr(self, "_pending_wire_credits", 0.0) or 0.0)
         own_usd += math.fsum(
             float(t.get("usd", 0.0) or 0.0) if held != 0.0 else held_wire_usd(t)
@@ -1554,7 +1600,7 @@ class ExecutionEngineMixin:
                         quote_free = float(getattr(b, "free", 0) or 0)
                 except Exception as exc2:
                     _bal_err = exc2
-            _others_hold = self._held_for_other_bots()
+            _others_hold = await self._held_for_other_bots()
             if _others_hold is None:
                 if _announce_every_refusal or self._refusal_is_new(
                     "manual_held_unread", price

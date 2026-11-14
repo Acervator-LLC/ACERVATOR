@@ -135,6 +135,23 @@ def order_filled_and_average(order: object) -> tuple[float, float]:
     )
 
 
+def resting_piece(record: dict, body: object) -> tuple[float, float, float, float]:
+    """``body``'s ``filled`` count, the units past ``record['booked']``, their own
+    price, and the order's cost so far; zero units where ``FILL_DUST_UNITS`` covers it.
+    """
+    filled, average = order_filled_and_average(body)
+    units = filled - float(record.get("booked", 0.0) or 0.0)
+    held_cost = float(record.get("booked_cost", 0.0) or 0.0)
+    if units <= FILL_DUST_UNITS:
+        return filled, 0.0, 0.0, held_cost
+    limit = float(record.get("price", 0.0) or 0.0)
+    cost = filled * average if average > 0.0 else held_cost + units * limit
+    fill_price = (cost - held_cost) / units
+    if not math.isfinite(fill_price) or fill_price <= 0.0:
+        fill_price = average or limit
+    return filled, units, fill_price, cost
+
+
 def held_order_side(record: dict) -> str:
     """The upper-case ``side`` of a ``_resting_orders`` record, or "ORDER" when it is
     not one of ``RESTING_SIDES``.
@@ -555,17 +572,18 @@ class BotContainer:
                 return record
         return None
 
-    async def _reconcile_resting_orders(self) -> int:
-        """Book each piece of a ``_resting_orders`` order the venue filled since the
-        last read, and drop each order the venue closed.
+    async def _read_resting_orders(
+        self, records: list[dict]
+    ) -> list[tuple[dict, object]]:
+        """Each of ``records`` with the order body the venue answers for it now, None
+        where no read answered.
 
-        Asks ``get_open_orders`` once per held symbol and ``get_order`` for each held
-        order that list no longer names.
+        Asks ``get_open_orders`` once per symbol and ``get_order`` for each record that
+        list no longer names.
         """
-        if not self._resting_orders:
-            return 0
-        booked = 0
-        for symbol in sorted({str(r.get("symbol", "")) for r in self._resting_orders}):
+        answers: list[tuple[dict, object]] = []
+        for symbol in sorted({str(r.get("symbol", "")) for r in records}):
+            held = [r for r in records if r.get("symbol") == symbol]
             try:
                 listed = await self.exchange.get_open_orders(symbol)
             except Exception as exc:
@@ -576,11 +594,10 @@ class BotContainer:
                     type(exc).__name__,
                     exc,
                 )
+                answers.extend((record, None) for record in held)
                 continue
             open_by_id = {str(getattr(o, "id", "") or ""): o for o in (listed or [])}
-            for record in [
-                r for r in self._resting_orders if r.get("symbol") == symbol
-            ]:
+            for record in held:
                 body = open_by_id.get(record["order_id"])
                 if body is None:
                     try:
@@ -593,10 +610,22 @@ class BotContainer:
                             type(exc).__name__,
                             exc,
                         )
-                        continue
-                booked += await self._book_resting_progress(record, body)
-                if order_status_text(body) in CLOSED_ORDER_STATUSES:
-                    self._retire_resting_order(record)
+                answers.append((record, body))
+        return answers
+
+    async def _reconcile_resting_orders(self) -> int:
+        """Book each piece of a ``_resting_orders`` order the venue filled since the
+        last read, and drop each order the venue closed.
+
+        ``_read_resting_orders`` reads every held order once, before any piece books.
+        """
+        booked = 0
+        for record, body in await self._read_resting_orders(list(self._resting_orders)):
+            if body is None:
+                continue
+            booked += await self._book_resting_progress(record, body)
+            if order_status_text(body) in CLOSED_ORDER_STATUSES:
+                self._retire_resting_order(record)
         return booked
 
     async def _book_resting_progress(self, record: dict, body: object) -> int:
@@ -606,17 +635,10 @@ class BotContainer:
         Each piece ends the balance window of ``record['symbol']`` through
         ``_invalidate_symbol_balances`` before it books.
         """
-        filled, average = order_filled_and_average(body)
-        held = float(record.get("booked", 0.0) or 0.0)
-        units = filled - held
-        if units <= FILL_DUST_UNITS:
+        filled, units, fill_price, cost = resting_piece(record, body)
+        if units <= 0.0:
             return 0
-        held_cost = float(record.get("booked_cost", 0.0) or 0.0)
-        limit = float(record.get("price", 0.0) or 0.0)
-        cost = filled * average if average > 0.0 else held_cost + units * limit
-        fill_price = (cost - held_cost) / units
-        if not math.isfinite(fill_price) or fill_price <= 0.0:
-            fill_price = average or limit
+        held = float(record.get("booked", 0.0) or 0.0)
         fee_total = finite_reading(getattr(body, "fee", 0))
         held_fee = float(record.get("booked_fee", 0.0) or 0.0)
         fee = max(0.0, fee_total - held_fee)
