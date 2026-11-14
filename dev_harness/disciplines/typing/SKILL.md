@@ -1,6 +1,6 @@
 ---
 name: typing
-description: The Coding Archetype rules whose check PEP 484 or the Python typing specification states, each with the quoted section. Load to read code for type annotations and type checks with the coding or gui archetype.
+description: The Coding Archetype rules whose check PEP 484, the Python typing specification or the Python documentation states, each with the quoted section. Load to read code for type annotations and type checks with the coding or gui archetype.
 archetypes: [coding, gui]
 ---
 
@@ -21,6 +21,11 @@ rules.json is empty.
 - [PEP 484](https://peps.python.org/pep-0484/)
 - [The Python typing specification](https://typing.python.org/en/latest/spec/)
 
+The [Python 3.14 documentation](https://docs.python.org/3.14/) also grounds a
+rule, where a section about the construct the rule detects states the type a
+value must have or the use of an annotation. The `sources` field of rules.json
+names each one in use.
+
 ## How a rule is read
 
 rules.json holds one row per rule: the tool, the rule id, and its grounds. A
@@ -34,6 +39,7 @@ states its rule.
 | ------ | -------- | -------- |
 | pep, definition, quote | PEP 484, the section heading and URL, a quote of the section, and a quote of the rule | the section states the check the rule makes |
 | spec, definition, quote | the specification, the section heading and URL, a quote of the section, and a quote of the rule | the section states the check the rule makes |
+| docs, definition, quote | the documentation book, the section heading and URL, a quote of the section, and a quote of the rule | the section states the type the rule checks |
 
 A rule with no ground is in `dev_harness/disciplines/unplaced.json` with its
 reason. One rule can sit under more than one discipline.

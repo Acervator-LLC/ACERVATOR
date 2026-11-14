@@ -1,6 +1,6 @@
 ---
 name: performance-efficiency
-description: The Coding Archetype rules that report a performance efficiency weakness, each with its ground in ISO/IEC 5055. Load to read code for performance with the coding, gui or ta archetype.
+description: The Coding Archetype rules that report a performance efficiency weakness, each with its ground in ISO/IEC 5055 or in a documentation section that states the cost. Load to read code for performance with the coding, gui or ta archetype.
 archetypes: [coding, gui, ta]
 ---
 
@@ -18,10 +18,15 @@ ISO/IEC 5055:2021 counts performance efficiency as 18 CWE weaknesses. The list
 is Table 2 and clause 7.2 of the [OMG ASCQM 1.0 specification](https://www.omg.org/spec/ASCQM/1.0/PDF).
 The `cwe` field of rules.json holds the 18 ids.
 
+The [Python 3.14 documentation](https://docs.python.org/3.14/) also grounds a
+rule, where a section about the construct the rule detects states a speed or
+memory cost. A framework's own documentation grounds a framework rule the same
+way. The `sources` field of rules.json names each one in use.
+
 ## How a rule is read
 
 rules.json holds one row per rule: the tool, the rule id, and its grounds. Each
-ground is one of four kinds.
+ground is one of six kinds.
 
 | Ground | It holds | It means |
 | ------ | -------- | -------- |
@@ -29,6 +34,8 @@ ground is one of four kinds.
 | cwe, quote | a CWE id from the list and a quote | the tool's own text names that weakness |
 | cwe, definition, quote | a CWE id from the list, its MITRE description and a quote | the CWE's definition describes what the rule's text says it detects |
 | term, quote | an ISO/IEC 25010 word and a quote | the tool's own text names performance or efficiency |
+| docs, definition, quote | the documentation book, the section heading and URL, a quote of the section, and a quote of the rule | the section states the speed or memory cost the rule reports |
+| framework, definition, quote | the framework, the section heading and URL, a quote of the section, and a quote of the rule | the framework's documentation states that cost |
 
 A rule with no ground is in `dev_harness/disciplines/unplaced.json` with its
 reason. One rule can sit under more than one discipline.
