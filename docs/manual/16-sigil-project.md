@@ -231,7 +231,7 @@ does not measure: conventions, grounded in PEP 8 and PEP 257, and typing,
 grounded in PEP 484 and the Python typing specification. Each is a skill folder
 shaped like the four.
 
-Every rule the archetype runs on a Python file sits under each discipline whose
+Every rule the archetype can run on a Python file sits under each discipline whose
 weakness it reports, or in unplaced.json with its reason. One rule can sit under
 more than one discipline. Each placement names its ground: a CWE id that the
 discipline's ISO/IEC 5055 list holds, or the tool's own words naming the
@@ -256,15 +256,16 @@ Django. Each such placement quotes both texts, with the section's address.
 | Discipline | CWE ids in its list | Rules it holds | Compatible archetypes |
 | ---------- | ------------------- | -------------- | --------------------- |
 | security | 74 | 389 | coding, gui, docs, ta |
-| reliability | 74 | 108 | coding, gui, docs |
-| performance efficiency | 18 | 47 | coding, gui, ta |
+| reliability | 74 | 110 | coding, gui, docs |
+| performance efficiency | 18 | 48 | coding, gui, ta |
 | maintainability | 29 | 30 | coding, gui |
-| conventions | 0 | 250 | coding, gui, ta |
+| conventions | 0 | 254 | coding, gui, ta |
 | typing | 0 | 76 | coding, gui |
 
-| Tool | Rules it runs | Placed | Unplaced |
+| Tool | Rules it can run | Placed | Unplaced |
 | ---- | ------------- | ------ | -------- |
 | ruff, with every rule selected | 810 | 484 | 326 |
+| ruff preview rules the sigils run | 18 | 7 | 11 |
 | semgrep | 216 | 216 | 0 |
 | bandit | 75 | 75 | 0 |
 | mypy | 58 | 34 | 24 |
@@ -272,7 +273,7 @@ Django. Each such placement quotes both texts, with the section's address.
 | pylint | 12 | 1 | 11 |
 | vulture | 1 | 1 | 0 |
 | the six rule modules | 19 | 4 | 15 |
-| all | 1,233 | 846 | 387 |
+| all | 1,251 | 853 | 398 |
 
 Each rule left in unplaced.json carries its reason: no listed CWE definition and
 no PEP or specification section describes it, or its text names a PEP that no
@@ -281,7 +282,31 @@ sections read against the rule, and why none of them grounds it.
 
 The five construct sigils, CODE.LOOP, CODE.IMPORT, CODE.COLLECTION, CODE.FLOW
 and CODE.VARIABLE, also read 18 preview rules. The archetype runs ruff without
-preview rules, so the house holds none of the 18.
+preview rules, so the house holds none of the 18 from the archetype's own call.
+
+The house also reads the card each built coding sigil prints, and counts every
+rule a card runs that no call of the archetype enables. A card that names
+preview rules runs ruff with preview on, so its 18 preview rules join the count:
+7 are placed and 11 are in unplaced.json with their reasons.
+
+| Sigil | Preview rules it runs | Placed | Unplaced |
+| ----- | --------------------- | ------ | -------- |
+| CODE.LOOP | 3 | 2 | 1 |
+| CODE.COLLECTION | 3 | 2 | 1 |
+| CODE.FLOW | 7 | 3 | 4 |
+| CODE.VARIABLE | 5 | 0 | 5 |
+
+CODE.IMPORT and CODE.OPTIMIZE select only rules the archetype already runs.
+CODE.SECURE, CODE.TYPE and CODE.REACH run bandit, semgrep, mypy, pyright and
+vulture, and the house counts those under the archetype's own lists.
+
+`dev_harness/sigils/coding_house.py, in _card_ruff`:
+
+```python
+    preview = ["--preview"] if settings.get("preview_rules") else []
+    flags = [sys.executable, "-m", "ruff", "check", "--no-cache", *preview]
+    return _enabled([*flags, "--select", ",".join(codes)], root)
+```
 
 The command reads each tool's own rule list under the archetype's own flags.
 It then checks that list against the six rules.json files and unplaced.json,
