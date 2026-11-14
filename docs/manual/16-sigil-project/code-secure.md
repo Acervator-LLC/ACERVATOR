@@ -29,11 +29,12 @@ SEMGREP = hold("semgrep", house_rules("semgrep"), DISCIPLINES)
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module, and this sigil
-adds no condition to tier 2. Tier 3 runs both scanners with the rule sets the
-coding archetype runs. For a function or class, only the findings inside its
+adds no condition to tier 2. Tier 3 runs each scanner whose rules the selection keeps, with the rule sets the
+coding archetype runs. Bandit runs only the selected tests, and semgrep skips
+each rule of the card that the selection leaves out. For a function or class, only the findings inside its
 lines count.
 
-A finding counts only under a rule the card holds. A rule the registry adds
+A finding counts only under a rule the card holds and the selection keeps. A rule the registry adds
 after the house counted its rules is outside the scope, and its finding moves
 no verdict.
 
@@ -51,17 +52,48 @@ BANDIT_SEVERITY = {"LOW": "low", "MEDIUM": "medium", "HIGH": "high"}
 SEMGREP_SEVERITY = {"INFO": "low", "WARNING": "medium", "ERROR": "high"}
 ```
 
-`dev_harness/sigils/code_secure.py, in _functions_verdict`, the findings that
+`dev_harness/sigils/code_secure.py, in findings`, the findings that
 count:
 
 ```python
-    findings = [
+    kept = [
         finding
-        for finding in [*_bandit_findings(source), *semgrep_found]
-        if finding.rule in HELD[finding.tool]
+        for finding in found
+        if f"{finding.tool} {finding.rule}" in to_run
         and (not is_narrowed or first <= finding.line <= last)
     ]
 ```
+
+## The selection
+
+For each input, CODE.SECURE@1 runs only those of its 291 rules that the run
+rule selects for the input's facts. Bandit runs the selected tests and no
+other. Semgrep runs its two rule sets with each rule of the card that the
+selection leaves out excluded. A scanner with no selected rule does not run.
+[Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
+states the run rule and the proof.
+
+`dev_harness/sigils/code_secure.py, in _functions_verdict`:
+
+```python
+    versions, found = findings(text, root, selection(text, root, CAN_RUN))
+```
+
+`dev_harness/sigils/code_secure.py, in findings`, the tests bandit runs and the
+rules semgrep runs:
+
+```python
+    tests = tuple(rule for rule in BANDIT.rules if f"{BANDIT.tool} {rule}" in to_run)
+    rules = [rule for rule in SEMGREP.rules if f"{SEMGREP.tool} {rule}" in to_run]
+```
+
+Measured on every tracked Python file of `src/` and every def and class in
+them, for each input that tier 2 accepts:
+
+| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
+| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
+| file | 503 | 291 | 18 | 187 | 202 | 24 | 24 |
+| def or class | 13,885 | 291 | 34 | 176 | 198 | 38 | 38 |
 
 ## Outputs and flags
 
@@ -99,8 +131,8 @@ ran.
 
 | Tool | Version on the card | How the card runs it | Rule set |
 | ---- | ------------------- | -------------------- | -------- |
-| bandit | 1.9.4 | `python -P -m bandit -f json -q -`, with the file's bytes on standard input | bandit's default tests |
-| semgrep | 1.171.0 | `semgrep scan` with `--json --quiet --no-git-ignore`, in an empty temporary folder that holds a copy of the file under its own name | `p/python` and `p/security-audit` |
+| bandit | 1.9.4 | `python -P -m bandit -f json -q -t <tests> -`, with the file's bytes on standard input | the selected tests |
+| semgrep | 1.171.0 | `semgrep scan` with `--json --quiet --no-git-ignore` and an `--exclude-rule` for each rule the selection leaves out, in an empty temporary folder that holds a copy of the file under its own name | `p/python` and `p/security-audit` |
 
 ## Rules
 

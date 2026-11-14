@@ -26,7 +26,7 @@ TAKEN = take("loop", DISCIPLINES)
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module. Tier 3 runs ruff
-with the 18 rules the card can run and with preview rules on. The file goes to ruff
+with the selected rules of the 18 the card can run and with preview rules on. The file goes to ruff
 on standard input, from the folder of the file. For a function or class, only
 the findings inside its lines count.
 
@@ -37,9 +37,13 @@ class, and its published faulty and corrected forms. The card records ruff
 `dev_harness/sigils/code_loop.py, in _ruff_findings`:
 
 ```python
-def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
-    """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+def _ruff_findings(
+    source: bytes, folder: Path, rules: tuple[str, ...]
+) -> list[tuple[str, int]]:
+    """Return each code and line of `rules` for `source` on stdin, run from `folder`; none when `rules` is empty."""
+    if not rules:
+        return []
+    rows = check(source, folder, rules, preview=bool(PREVIEW))
     return [(row.code, row.line) for row in rows]
 ```
 
@@ -60,6 +64,34 @@ LOOP_NODES = (
     ast.GeneratorExp,
 )
 ```
+
+## The selection
+
+For each input, CODE.LOOP@1 runs only those of its 18 rules that the run rule
+selects for the input's facts. A rule whose subject the input lacks does not
+run, and an input that selects no rule runs no ruff.
+[Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
+states the run rule and the proof.
+
+`dev_harness/sigils/code_loop.py, in _functions_verdict`:
+
+```python
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+```
+
+`dev_harness/sigils/code_loop.py, in findings`, the rules ruff gets:
+
+```python
+    rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
+```
+
+Measured on every tracked Python file of `src/` and every def and class in
+them, for each input that tier 2 accepts:
+
+| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
+| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
+| file | 416 | 18 | 10 | 13 | 17 | 56 | 56 |
+| def or class | 3,763 | 18 | 4 | 13 | 17 | 89 | 89 |
 
 ## Outputs and flags
 

@@ -1,6 +1,7 @@
 """`SIGIL` is CODE.OPTIMIZE on the `core` card; `optimize` judges one input line."""
 
 import sys
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from .coding_input import (
     data_type_fault,
     locate,
 )
+from .coding_partition import SELECTION, selection
 from .construct_rules import LEFT_BECAUSE, TOOL, hold
 from .core import FLAGS, Flag, FlagRow, Sigil, Verdict, judge, main
 from .fix_class import BY_FIX_CLASS, FOLLOW_ON
@@ -41,6 +43,7 @@ HELD = hold(TOOL, SCOPE, DISCIPLINES)
 RULES = HELD.rules
 PREVIEW = tuple(code for code in RULES if listing()[code].preview)
 STABLE = tuple(code for code in RULES if code not in PREVIEW)
+CAN_RUN = tuple(f"{TOOL} {code}" for code in RULES)
 
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
@@ -52,6 +55,8 @@ SETTINGS: dict[str, str] = {
     "and ruff has not removed",
     "rules": " ".join(RULES),
     "preview_rules": " ".join(PREVIEW),
+    "selection": SELECTION,
+    "can_run": str(len(CAN_RUN)),
     "ruff_config": "the one ruff finds from the folder of the file: "
     "its target version, preview and complexity limit",
 }
@@ -67,33 +72,41 @@ class Finding:
     fix: str
 
 
-def _ruff_findings(source: bytes, folder: Path) -> list[Finding]:
-    """Return each `RULES` `Finding` for `source` on stdin, run from `folder`, by line."""
-    rows = check(source, folder, STABLE, preview=False)
-    if PREVIEW:
-        rows += check(source, folder, PREVIEW, preview=True)
+def _ruff_findings(source: bytes, folder: Path, rules: tuple[str, ...]) -> list[Finding]:
+    """Return each `Finding` of `rules` for `source` on stdin, run from `folder`, by line; none when `rules` is empty."""
+    stable = tuple(code for code in rules if code in STABLE)
+    preview = tuple(code for code in rules if code in PREVIEW)
+    rows = check(source, folder, stable, preview=False) if stable else []
+    if preview:
+        rows += check(source, folder, preview, preview=True)
     return [
         Finding(row.code, row.name, row.line, fix_class(row.code))
         for row in sorted(rows, key=lambda row: row.line)
     ]
 
 
-def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
-    """Return `CLEAN`, or `OPTIMIZABLE` with each `Finding` in the `locate` span."""
+def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[Finding]]:
+    """Return the ruff version and each `Finding` of the `to_run` rules inside the input `text` names."""
     located = locate(text, root)
     if isinstance(located, str):
         raise ToolFault(f"{text}: {located}, after tier 2 accepted it")
     file, source, (first, last) = located
-    findings = [
+    rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
+    found = [
         finding
-        for finding in _ruff_findings(source, file.parent)
+        for finding in _ruff_findings(source, file.parent, rules)
         if first <= finding.line <= last
     ]
-    version = f"ruff {ruff_version()}"
-    if not findings:
+    return f"ruff {ruff_version()}", found
+
+
+def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
+    """Return `CLEAN`, or `OPTIMIZABLE` with each `Finding` of the `selection` rules in the `locate` span."""
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+    if not found:
         return CLEAN, f"{version}: no rule on the list fires"
     rows = "; ".join(
-        f"{item.code} {item.name} line {item.line} fix {item.fix}" for item in findings
+        f"{item.code} {item.name} line {item.line} fix {item.fix}" for item in found
     )
     return OPTIMIZABLE, f"{version}: {rows}"
 
@@ -110,10 +123,12 @@ SIGIL = Sigil(
         CONTENT_TIER,
         {
             "runs": [
-                "python -m ruff check --select with the rules that are not "
+                "the selection: the rules of the card that coding_partition.select "
+                "gives for the input's facts; no rule selected, no ruff run",
+                "python -m ruff check --select with the selected rules that are not "
                 "preview_rules, the file on standard input, from the folder of the file",
-                "python -m ruff check --preview --select with the preview_rules, "
-                "the same way, when the card holds any",
+                "python -m ruff check --preview --select with the selected preview_rules, "
+                "the same way, when the selection holds any",
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule --all, for the fix class of each rule",
             ],

@@ -27,7 +27,7 @@ TAKEN = take("import", DISCIPLINES)
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module. Tier 3 runs ruff
-with the 25 rules the card can run. No rule on the list is a preview rule, so ruff
+with the selected rules of the 25 the card can run. No rule on the list is a preview rule, so ruff
 runs with preview rules off. The file goes to ruff on standard input, from the
 folder of the file. For a function or class, only the findings inside its lines
 count.
@@ -39,9 +39,13 @@ class, and its published faulty and corrected forms. The card records ruff
 `dev_harness/sigils/code_import.py, in _ruff_findings`:
 
 ```python
-def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
-    """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+def _ruff_findings(
+    source: bytes, folder: Path, rules: tuple[str, ...]
+) -> list[tuple[str, int]]:
+    """Return each code and line of `rules` for `source` on stdin, run from `folder`; none when `rules` is empty."""
+    if not rules:
+        return []
+    rows = check(source, folder, rules, preview=bool(PREVIEW))
     return [(row.code, row.line) for row in rows]
 ```
 
@@ -55,6 +59,35 @@ at tier 2.
 IMPORT_NODES = (ast.Import, ast.ImportFrom)
 NO_IMPORT = "no import or from-import statement"
 ```
+
+## The selection
+
+For each input, CODE.IMPORT@1 runs only those of its 25 rules that the run rule
+selects for the input's facts. Each of the 25 needs an import statement in the
+input, and tier 2 already refuses an input that holds none, so every input it
+accepts selects all 25.
+[Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
+states the run rule and the proof.
+
+`dev_harness/sigils/code_import.py, in _functions_verdict`:
+
+```python
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+```
+
+`dev_harness/sigils/code_import.py, in findings`, the rules ruff gets:
+
+```python
+    rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
+```
+
+Measured on every tracked Python file of `src/` and every def and class in
+them, for each input that tier 2 accepts:
+
+| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
+| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
+| file | 490 | 25 | 25 | 25 | 25 | 4,199 | 4,199 |
+| def or class | 1,016 | 25 | 25 | 25 | 25 | 3,041 | 3,041 |
 
 ## Outputs and flags
 

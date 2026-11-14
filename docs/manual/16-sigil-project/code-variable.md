@@ -33,7 +33,7 @@ TAKEN = take("variable", DISCIPLINES)
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module. Tier 3 runs ruff
-with the 38 rules the card can run. No rule on the list is a preview rule, so
+with the selected rules of the 38 the card can run. No rule on the list is a preview rule, so
 ruff runs with preview rules off. The file goes to ruff on standard input, from the folder
 of the file. For a function or class, only the findings inside its lines count.
 
@@ -44,9 +44,13 @@ class, and its published faulty and corrected forms. The card records ruff
 `dev_harness/sigils/code_variable.py, in _ruff_findings`:
 
 ```python
-def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
-    """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+def _ruff_findings(
+    source: bytes, folder: Path, rules: tuple[str, ...]
+) -> list[tuple[str, int]]:
+    """Return each code and line of `rules` for `source` on stdin, run from `folder`; none when `rules` is empty."""
+    if not rules:
+        return []
+    rows = check(source, folder, rules, preview=bool(PREVIEW))
     return [(row.code, row.line) for row in rows]
 ```
 
@@ -70,6 +74,34 @@ def _content_fault(text: str, root: Path) -> str | None:
     )
     return None if has_binding else NO_BINDING
 ```
+
+## The selection
+
+For each input, CODE.VARIABLE@1 runs only those of its 38 rules that the run
+rule selects for the input's facts. A rule whose subject the input lacks does
+not run, and an input that selects no rule runs no ruff.
+[Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
+states the run rule and the proof.
+
+`dev_harness/sigils/code_variable.py, in _functions_verdict`:
+
+```python
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+```
+
+`dev_harness/sigils/code_variable.py, in findings`, the rules ruff gets:
+
+```python
+    rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
+```
+
+Measured on every tracked Python file of `src/` and every def and class in
+them, for each input that tier 2 accepts:
+
+| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
+| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
+| file | 491 | 38 | 16 | 33 | 35 | 5,792 | 5,792 |
+| def or class | 13,313 | 38 | 12 | 32 | 35 | 8,625 | 8,625 |
 
 ## Outputs and flags
 

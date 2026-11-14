@@ -37,12 +37,12 @@ HELD = hold(TOOL, SCOPE, DISCIPLINES)
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module, and this sigil
-adds no condition to tier 2. Tier 3 runs ruff with the 85 rules the card can
+adds no condition to tier 2. Tier 3 runs ruff with the selected rules of the 85 the card can
 run. The file goes to ruff on standard input, from the folder of the file.
 For a function or class, only the findings inside its lines count.
 
 Three of the 85 are preview rules: FURB101, FURB103 and FURB140. They run in a
-second ruff call with preview rules on. The ruff settings the tree keeps beside
+second ruff call with preview rules on, when the selection keeps one. The ruff settings the tree keeps beside
 the file set the Python version, the preview setting of the other 82 rules and
 the complexity limit. The card records ruff 0.16.0, and the command prints the
 ruff version it ran.
@@ -53,16 +53,47 @@ ruff version it ran.
 FAMILIES = ("PERF", "SIM", "C4", "UP", "FURB", "PLR17", "C901")
 
 
-def _ruff_findings(source: bytes, folder: Path) -> list[Finding]:
-    """Return each `RULES` `Finding` for `source` on stdin, run from `folder`, by line."""
-    rows = check(source, folder, STABLE, preview=False)
-    if PREVIEW:
-        rows += check(source, folder, PREVIEW, preview=True)
+def _ruff_findings(source: bytes, folder: Path, rules: tuple[str, ...]) -> list[Finding]:
+    """Return each `Finding` of `rules` for `source` on stdin, run from `folder`, by line; none when `rules` is empty."""
+    stable = tuple(code for code in rules if code in STABLE)
+    preview = tuple(code for code in rules if code in PREVIEW)
+    rows = check(source, folder, stable, preview=False) if stable else []
+    if preview:
+        rows += check(source, folder, preview, preview=True)
     return [
         Finding(row.code, row.name, row.line, fix_class(row.code))
         for row in sorted(rows, key=lambda row: row.line)
     ]
 ```
+
+## The selection
+
+For each input, CODE.OPTIMIZE@1 runs only those of its 85 rules that the run
+rule selects for the input's facts. The selected rules that are not preview
+rules go to one ruff call, and the selected preview rules to a second. A call
+with no selected rule does not run.
+[Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
+states the run rule and the proof.
+
+`dev_harness/sigils/code_optimize.py, in _functions_verdict`:
+
+```python
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+```
+
+`dev_harness/sigils/code_optimize.py, in findings`, the rules ruff gets:
+
+```python
+    rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
+```
+
+Measured on every tracked Python file of `src/` and every def and class in
+them, for each input that tier 2 accepts:
+
+| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
+| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
+| file | 503 | 85 | 4 | 71 | 81 | 2,827 | 2,827 |
+| def or class | 13,885 | 85 | 7 | 61 | 81 | 3,884 | 3,884 |
 
 ## Outputs and flags
 

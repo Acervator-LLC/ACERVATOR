@@ -29,12 +29,12 @@ PYRIGHT = hold("pyright", house_rules("pyright"), DISCIPLINES)
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module, and this sigil
-adds no condition to tier 2. Tier 3 runs both type checkers from the root of
+adds no condition to tier 2. Tier 3 runs each type checker whose rules the selection keeps from the root of
 the target tree, with the settings each tool finds there. Only errors count,
 and only those in the input file. For a function or class, only the errors
 inside its lines count.
 
-An error counts only under a rule the card holds. An error under any other
+An error counts only under a rule the card holds and the selection keeps. An error under any other
 code, or with no code, moves no verdict.
 
 A plugin or interpreter that the tree's own mypy or pyright settings name runs
@@ -44,16 +44,27 @@ installed packages, never from the tree's own list of files to check.
 `dev_harness/sigils/code_type.py, in _mypy_findings`:
 
 ```python
-def _mypy_findings(path: str, root: Path, file: Path) -> list[Finding]:
-    """Return each mypy error in `file`, run on `path` from `root` with no cache."""
-    with contextlib.chdir(root):
-        stdout, stderr, status = mypy.api.run(
-            ["--output", "json", "--cache-dir", os.devnull, path]
-        )
-    if status not in MYPY_FINISHED:
-        raise ToolFault(f"mypy exited {status}: {tool_text(stderr or stdout)}")
+def _mypy_findings(
+    path: str, root: Path, file: Path, disabled: tuple[str, ...]
+) -> list[Finding]:
+    """Return each mypy error in `file`, run on `path` from `root` with no cache and no `disabled` code run."""
+    argv = [sys.executable, "-P", "-m", "mypy", "--output", "json", "--cache-dir", os.devnull]
     try:
-        rows = [json.loads(line) for line in stdout.splitlines() if line.strip()]
+        proc = subprocess.run(
+            [*argv, *_code_flags(disabled), path],
+            cwd=root,
+            capture_output=True,
+            timeout=MYPY_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ToolFault(f"mypy: {exc}") from exc
+    if proc.returncode not in MYPY_FINISHED:
+        said = tool_text(proc.stderr or proc.stdout)
+        raise ToolFault(f"mypy exited {proc.returncode}: {said}")
+    try:
+        lines = tool_text(proc.stdout).splitlines()
+        rows = [json.loads(line) for line in lines if line.strip()]
         return [
             Finding("mypy", row["code"] or NO_CODE, row["line"])
             for row in rows
@@ -63,16 +74,72 @@ def _mypy_findings(path: str, root: Path, file: Path) -> list[Finding]:
         raise ToolFault(f"mypy printed an unreadable row: {exc}") from exc
 ```
 
-`dev_harness/sigils/code_type.py, in _functions_verdict`, the errors that count:
+`dev_harness/sigils/code_type.py, in findings`, the errors that count:
 
 ```python
-    findings = [
+    kept = [
         finding
-        for finding in [*_mypy_findings(path, root, file), *pyright_found]
-        if finding.code in HELD[finding.tool]
+        for finding in errors
+        if f"{finding.tool} {finding.code}" in to_run
         and (not is_narrowed or first <= finding.line <= last)
     ]
 ```
+
+## The selection
+
+For each input, CODE.TYPE@1 keeps only those of its 62 rules that the run rule
+selects for the input's facts. Mypy runs when the selection keeps a mypy code,
+and pyright when it keeps a pyright rule. Each checker reads the whole program
+from the root of the tree, so a rule that reads the project fits a file or a
+function too. The sigil counts only the errors under the selected rules.
+[Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
+states the run rule and the proof.
+
+Mypy is told which codes not to run. Each mypy code of the card that the
+selection leaves out goes to mypy as a disabled error code, so mypy does not
+report it. A selected sub code of a left-out code, such as method-assign under
+assignment, is named as enabled, so it still runs. Every pyright rule fits every
+source file, so pyright runs all 29 on each input of `src/`.
+
+`dev_harness/sigils/code_type.py, in _functions_verdict`:
+
+```python
+    versions, found = findings(text, root, selection(text, root, CAN_RUN))
+```
+
+`dev_harness/sigils/code_type.py, in findings`, when mypy runs:
+
+```python
+    mypy_run = [rule for rule in MYPY.rules if f"{MYPY.tool} {rule}" in to_run]
+    if mypy_run:
+        disabled = tuple(rule for rule in MYPY.rules if rule not in mypy_run)
+        ran.append(f"mypy {mypy.version.__version__}")
+        errors += _mypy_findings(path, root, file, disabled)
+```
+
+`dev_harness/sigils/code_type.py, in _code_flags`:
+
+```python
+    kept = [
+        code
+        for code, item in mypy.errorcodes.error_codes.items()
+        if item.sub_code_of is not None
+        and item.sub_code_of.code in disabled
+        and code not in disabled
+    ]
+    return [
+        *(flag for code in disabled for flag in ("--disable-error-code", code)),
+        *(flag for code in kept for flag in ("--enable-error-code", code)),
+    ]
+```
+
+Measured on every tracked Python file of `src/` and every def and class in
+them, for each input that tier 2 accepts:
+
+| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
+| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
+| file | 503 | 62 | 32 | 61 | 62 | 6,020 | 6,020 |
+| def or class | 13,885 | 62 | 41 | 59 | 62 | 11,505 | 11,505 |
 
 ## Outputs and flags
 
@@ -109,8 +176,8 @@ settings and tier 3. The command prints the versions it ran.
 
 | Tool | Version on the card | How the card runs it | What counts |
 | ---- | ------------------- | -------------------- | ----------- |
-| mypy | 2.1.0 | `mypy.api.run` from the root of the target tree, with `--output json` and the null device as its cache folder | each error in the input file under one of the 33 mypy codes the card can run |
-| pyright | 1.1.411 | `pyright.run` from the root of the target tree, with `--outputjson` | each error in the input file under one of the 29 pyright rules the card can run |
+| mypy | 2.1.0 | `python -P -m mypy` from the root of the target tree, with `--output json`, the null device as its cache folder, and `--disable-error-code` for each mypy code the selection leaves out | each error in the input file under one of the 33 mypy codes the card can run that the selection keeps |
+| pyright | 1.1.411 | `pyright.run` from the root of the target tree, with `--outputjson` | each error in the input file under one of the 29 pyright rules the card can run that the selection keeps |
 
 ## Rules
 

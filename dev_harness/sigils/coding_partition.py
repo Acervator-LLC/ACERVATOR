@@ -2,22 +2,28 @@
 
 import argparse
 import ast
+import importlib
 import json
 import statistics
 import subprocess
 import sys
-from collections.abc import Iterator
+import tempfile
+from collections import Counter
+from collections.abc import Iterable, Iterator
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from fnmatch import fnmatch
+from functools import cache
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 from unittest import mock
 
 from dev_harness.harness import coding_archetype, report
 
 from . import coding_house
-from .coding_input import _SCOPES, _scope, data_type_fault, locate
-from .core import repository_root, tool_text
+from .coding_input import _SCOPES, OWNER, _scope, data_type_fault, locate
+from .core import discipline_fault, repository_root, tool_text
 from .partition_measure import KEYS_FILE, KINDS, SIZES
 
 TOOL_TIMEOUT_S = 1800
@@ -26,10 +32,30 @@ PROOF_TREE = "src"
 CONTROL_MODULE = "control_module_no_input_imports"
 KEY_NAMES = ("reach", "nodes", "imports", "file")
 RANK = {size: rank for rank, size in enumerate(SIZES)}
+TOOL_SCOPE = "scope"
+SELECTION = (
+    "for each input, only the rules the card can run that coding_partition.select "
+    "gives for the input's facts, by the keys in dev_harness/disciplines/partition.json"
+)
+FILE_CALLS = (
+    "locate",
+    "_ruff_findings",
+    "_mypy_findings",
+    "_pyright_findings",
+    "_bandit_findings",
+    "_semgrep_findings",
+)
+TREE_CALLS = ("_vulture_scan",)
+PROOF_WORKERS = 3
+FILES_PER_WORKER = 2
 
 Finding = tuple[str, str, int]
 Rules = dict[str, dict[str, Any]]
 ScopeNode = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
+
+
+class FactsFault(Exception):
+    """`facts_of` refused an input that a sigil's tier 2 accepted."""
 
 
 @dataclass(frozen=True)
@@ -162,10 +188,17 @@ def reach_of(keys: dict[str, Any]) -> str:
     return keys["reach"]["value"] if binds(keys["reach"]) else SIZES[0]
 
 
+def reach_fits(keys: dict[str, Any], facts: Facts) -> bool:
+    """Report whether the rule's reach is no larger than `facts.size`; a `TOOL_SCOPE` reach fits every input."""
+    if keys["reach"].get("ground") == TOOL_SCOPE:
+        return True
+    return RANK[reach_of(keys)] <= RANK[facts.size]
+
+
 def left_out_by(keys: dict[str, Any], facts: Facts) -> list[str]:
     """Return each of `KEY_NAMES` whose grounded value `facts` does not meet."""
     out = []
-    if RANK[reach_of(keys)] > RANK[facts.size]:
+    if not reach_fits(keys, facts):
         out.append("reach")
     nodes = keys["nodes"].get("value")
     if nodes and not facts.nodes.intersection(nodes):
@@ -183,9 +216,12 @@ def runs(keys: dict[str, Any], facts: Facts) -> bool:
     return not left_out_by(keys, facts)
 
 
-def select(rules: Rules, facts: Facts) -> list[str]:
-    """Return the rules whose keys `runs` accepts for `facts`."""
-    return sorted(name for name, keys in rules.items() if runs(keys, facts))
+def select(rules: Rules, facts: Facts, among: Iterable[str] | None = None) -> list[str]:
+    """Return the rules, of `among` when given, that `runs` accepts for `facts`; a rule `rules` lacks runs."""
+    names = rules if among is None else among
+    return sorted(
+        name for name in names if name not in rules or runs(rules[name], facts)
+    )
 
 
 def load(path: Path = KEYS_FILE) -> Rules:
@@ -193,6 +229,21 @@ def load(path: Path = KEYS_FILE) -> Rules:
     data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     rules: Rules = data["rules"]
     return rules
+
+
+@cache
+def keys() -> Rules:
+    """Return `load` of `KEYS_FILE`, read once per process."""
+    return load()
+
+
+def selection(text: str, root: Path, held: Iterable[str]) -> list[str]:
+    """Return the `held` rules that `select` gives over `keys` for the `facts_of` input `text` under `root`."""
+    facts = facts_of(text, root)
+    if isinstance(facts, str):
+        message = f"{text}: {facts}"
+        raise FactsFault(message)
+    return select(keys(), facts, held)
 
 
 def _patched_run(real: Any) -> Any:
@@ -323,11 +374,11 @@ def tree_inputs(root: Path, tree: Path) -> list[Input]:
 
 
 def _held(item: Input, finding: Finding, keys: dict[str, Any]) -> bool:
-    """Report whether `finding` is one `item` must carry: the project holds all, else non-project rules in its span."""
+    """Report whether `item` must carry `finding`: the project holds all, else rules whose reach fits, in its span."""
     if item.facts.size == "project":
         return True
     in_span = finding[1] == item.file and item.span[0] <= finding[2] <= item.span[1]
-    return in_span and reach_of(keys) != "project"
+    return in_span and reach_fits(keys, item.facts)
 
 
 def _label(facts: Facts) -> str:
@@ -380,15 +431,19 @@ def coverage(rules: Rules) -> dict[str, dict[str, int]]:
     }
 
 
+def _spread(counts: list[int]) -> dict[str, float]:
+    """Return the lowest, median and highest of `counts`."""
+    return {
+        "lowest": min(counts),
+        "median": statistics.median(counts),
+        "highest": max(counts),
+    }
+
+
 def table(compared: dict[str, Any], rules: Rules) -> dict[str, Any]:
     """Return the rules run per input kind, and per key the rules it left out of at least one input."""
     runs_table = {
-        label: {
-            "inputs": len(counts),
-            "lowest": min(counts),
-            "median": statistics.median(counts),
-            "highest": max(counts),
-        }
+        label: {"inputs": len(counts), **_spread(counts)}
         for label, counts in sorted(compared["runs"].items())
     }
     return {
@@ -449,6 +504,178 @@ def prove(root: Path, keys_path: Path, saved: Path | None) -> dict[str, Any]:
     }
 
 
+def coding_sigils() -> list[ModuleType]:
+    """Return each module beside this one whose `SIGIL` the `OWNER` archetype owns."""
+    found = []
+    for path in sorted(Path(__file__).parent.glob("*.py")):
+        if path.stem.startswith("_"):
+            continue
+        module = importlib.import_module(f"{__package__}.{path.stem}")
+        if getattr(getattr(module, "SIGIL", None), "owner", None) == OWNER:
+            found.append(module)
+    return found
+
+
+def _cache_tool_calls() -> None:
+    """Hold each `FILE_CALLS` and `TREE_CALLS` function of every `coding_sigils` module in `cache`."""
+    for module in coding_sigils():
+        for name in (*FILE_CALLS, *TREE_CALLS):
+            call = getattr(module, name, None)
+            if call is not None:
+                setattr(module, name, cache(call))
+
+
+def _clear_file_calls(sigils: list[ModuleType]) -> None:
+    """Empty the cache of each `FILE_CALLS` function of `sigils`, once one file's inputs are read."""
+    for module in sigils:
+        for name in FILE_CALLS:
+            clear = getattr(getattr(module, name, None), "cache_clear", None)
+            if clear is not None:
+                clear()
+
+
+def tracked_files(root: Path, tree: str) -> list[str]:
+    """Return each `.py` file under `tree` that git tracks in `root`, as a posix path, largest first."""
+    proc = subprocess.run(
+        ["git", "ls-files", "-z", "--", f"{tree}/*.py"],
+        cwd=root,
+        capture_output=True,
+        timeout=TOOL_TIMEOUT_S,
+        check=True,
+    )
+    names = [name for name in tool_text(proc.stdout).split("\0") if name]
+    return sorted(names, key=lambda name: (-(root / name).stat().st_size, name))
+
+
+def prove_file(
+    root: Path, relative: str, keys_path: Path, names: tuple[str, ...]
+) -> list[dict[str, Any]]:
+    """Return a row per input of `relative` and per `names` sigil whose tier 2 accepts it: rules run, findings both ways."""
+    rules = load(keys_path)
+    sigils = [m for m in coding_sigils() if m.SIGIL.name in names]
+    faults = (*{m.ToolFault for m in sigils}, FactsFault, OSError, subprocess.SubprocessError)
+    rows: list[dict[str, Any]] = []
+    for text in dict.fromkeys(item.text for item in module_inputs(root, relative)):
+        facts = facts_of(text, root)
+        if isinstance(facts, str):
+            rows.append({"input": text, "fault": facts})
+            continue
+        for module in sigils:
+            sigil = module.SIGIL
+            if sigil.data_type(text) or sigil.content(text, root):
+                continue
+            selected = select(rules, facts, module.CAN_RUN)
+            try:
+                chosen = [str(f) for f in module.findings(text, root, selected)[1]]
+                every = [str(f) for f in module.findings(text, root, module.CAN_RUN)[1]]
+            except faults as exc:
+                rows.append({"input": text, "sigil": sigil.name, "fault": repr(exc)})
+                continue
+            rows.append(
+                {
+                    "input": text,
+                    "sigil": sigil.name,
+                    "size": facts.size,
+                    "runs": len(selected),
+                    "with selection": len(chosen),
+                    "with every rule": len(every),
+                    "equal": chosen == every,
+                    "lost": sorted((Counter(every) - Counter(chosen)).elements()),
+                    "added": sorted((Counter(chosen) - Counter(every)).elements()),
+                }
+            )
+    _clear_file_calls(sigils)
+    return rows
+
+
+def _summary(sigils: list[ModuleType], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return per sigil and input size the inputs, rules run before and after, and findings both ways."""
+    summary: dict[str, Any] = {}
+    for module in sigils:
+        name = module.SIGIL.name
+        mine = [row for row in rows if row.get("sigil") == name and "size" in row]
+        sizes: dict[str, Any] = {}
+        for size in ("module", "scope"):
+            sized = [row for row in mine if row["size"] == size]
+            if not sized:
+                continue
+            sizes[size] = {
+                "inputs": len(sized),
+                "before": len(module.CAN_RUN),
+                "after": _spread([row["runs"] for row in sized]),
+                "findings with selection": sum(row["with selection"] for row in sized),
+                "findings with every rule": sum(row["with every rule"] for row in sized),
+            }
+        summary[name] = {"can run": len(module.CAN_RUN), **sizes}
+    return summary
+
+
+def _saved_rows(saved: Path | None) -> dict[str, list[dict[str, Any]]]:
+    """Return the rows `saved` holds per file, one JSON line per file, or none when it is absent."""
+    if saved is None or not saved.is_file():
+        return {}
+    lines = saved.read_text(encoding="utf-8").splitlines()
+    return {entry["file"]: entry["rows"] for entry in map(json.loads, lines) if entry}
+
+
+def prove_sigils(
+    root: Path,
+    keys_path: Path,
+    control: str | None = None,
+    saved: Path | None = None,
+    only: str | None = None,
+    workers: int = PROOF_WORKERS,
+) -> dict[str, Any]:
+    """Return the proof that each coding sigil's findings on `PROOF_TREE` equal with and without the selection."""
+    sigils = coding_sigils()
+    missing = [m.SIGIL.name for m in sigils if not hasattr(m, "CAN_RUN")]
+    blocked = {m.SIGIL.name: discipline_fault(m.SIGIL) for m in sigils}
+    sigils = [m for m in sigils if m.SIGIL.name not in missing and not blocked[m.SIGIL.name]]
+    if control:
+        sigils = [m for m in sigils if control in m.CAN_RUN]
+    if only:
+        sigils = [m for m in sigils if m.SIGIL.name == only]
+    names = tuple(m.SIGIL.name for m in sigils)
+    files = tracked_files(root, PROOF_TREE)
+    done = _saved_rows(saved)
+    with tempfile.TemporaryDirectory() as folder:
+        used = keys_path
+        if control:
+            used = Path(folder, "partition_control.json")
+            broken_copy(keys_path, control, used)
+        todo = [f for f in files if f not in done]
+        batch = workers * FILES_PER_WORKER
+        for start in range(0, len(todo), batch):
+            with ProcessPoolExecutor(
+                max_workers=workers, initializer=_cache_tool_calls
+            ) as pool:
+                jobs = [
+                    (f, pool.submit(prove_file, root, f, used, names))
+                    for f in todo[start : start + batch]
+                ]
+                for file, job in jobs:
+                    done[file] = job.result()
+                    print(f"{len(done)}/{len(files)} {file}", file=sys.stderr, flush=True)
+                    if saved is not None:
+                        with saved.open("a", encoding="utf-8") as out:
+                            out.write(json.dumps({"file": file, "rows": done[file]}) + "\n")
+    rows = [row for file in files for row in done.get(file, [])]
+    return {
+        "tree": PROOF_TREE,
+        "files": len(files),
+        "control": control,
+        "sigils without CAN_RUN": missing,
+        "sigils refused by a discipline": {k: v for k, v in blocked.items() if v},
+        "inputs": {
+            size: len({row["input"] for row in rows if row.get("size") == size})
+            for size in ("module", "scope")
+        },
+        "sigils": _summary(sigils, rows),
+        "differ": [row for row in rows if "size" in row and not row["equal"]],
+        "faults": [row for row in rows if "fault" in row],
+    }
+
+
 def broken_copy(keys_path: Path, rule: str, target: Path) -> None:
     """Write to `target` a copy of `keys_path` whose `rule` needs `CONTROL_MODULE`, which no input imports."""
     data = json.loads(keys_path.read_text(encoding="utf-8"))
@@ -500,16 +727,21 @@ CARD: dict[str, object] = {
     },
     "run rule": "a rule runs when its reach is no larger than the input, the input's file kind is one "
     "it names, the input holds one node type it names, and the file imports one module it names; "
-    "an open key binds nothing",
+    "an open key binds nothing, and a reach grounded on the tool's own scope fits every input, "
+    "because that tool reads the project whatever the input",
+    "selection": f"each coding sigil runs {SELECTION}",
     "proof": f"every .py file of {PROOF_TREE}/ as a module input, every def and class in it as a scope "
     "input, and the folder as the project input: no finding of a rule the input must carry is left "
     "out by the selection, read once from the archetype's own calls",
+    "sigil proof": f"every tracked .py file of {PROOF_TREE}/ as a module input and every def and class "
+    "in it as a scope input: each coding sigil whose tier 2 accepts the input gives the same findings "
+    "with the selection as with every rule it can run",
     "keys": str(KEYS_FILE.relative_to(report.REPO_ROOT)).replace("\\", "/"),
 }
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Print `CARD`, one input's facts and rules, or the proof; exit 1 on a fault or a lost finding."""
+    """Print `CARD`, one input's facts and rules, or a proof; exit 1 on a fault, a lost or a changed finding."""
     parser = argparse.ArgumentParser(
         description="Select the Coding Archetype rules an input can hold."
     )
@@ -526,19 +758,34 @@ def main(argv: list[str] | None = None) -> int:
         "--prove", action="store_true", help=f"prove the run rule on {PROOF_TREE}/"
     )
     parser.add_argument(
+        "--sigils",
+        action="store_true",
+        help=f"prove the selection at each coding sigil's own findings on {PROOF_TREE}/",
+    )
+    parser.add_argument(
+        "--sigil", help="with --sigils, prove only the sigil named, such as CODE.TYPE"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=PROOF_WORKERS,
+        help=f"with --sigils, the worker processes; default {PROOF_WORKERS}",
+    )
+    parser.add_argument(
         "--keys", type=Path, default=KEYS_FILE, help="the keys file to read"
     )
     parser.add_argument(
         "--findings",
         type=Path,
-        help="a file the proof saves its tool findings to, or reads them from",
+        help="a file the proof saves its tool findings, or the sigil proof its rows, to, "
+        "or reads them from",
     )
     parser.add_argument(
         "--control",
         help="'<tool> <rule>': prove on a copy of the keys where it needs a module no input imports",
     )
     args = parser.parse_args(argv)
-    if args.card or (args.input is None and not args.prove):
+    if args.card or (args.input is None and not args.prove and not args.sigils):
         print(json.dumps(CARD, indent=2))
         return 0
     root = args.root if args.root is not None else repository_root(Path.cwd())
@@ -549,6 +796,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     root = root.resolve()
+    if args.sigils:
+        proved = prove_sigils(
+            root, args.keys, args.control, args.findings, args.sigil, args.workers
+        )
+        print(json.dumps(proved, indent=2))
+        failed = proved["differ"] or proved["faults"] or proved["sigils without CAN_RUN"]
+        return 1 if failed else 0
     if not args.prove:
         shown = show(args.input, root, load(args.keys))
         print(json.dumps(shown, indent=2) if isinstance(shown, dict) else shown)
