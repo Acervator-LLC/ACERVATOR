@@ -1,15 +1,20 @@
 """`take` gives a construct sigil, and `hold` a tool sigil, the rules its disciplines house in its scope."""
 
 import json
+import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import cache
+from itertools import takewhile
 from pathlib import Path
 from typing import Any, ClassVar
 
 HOUSE = Path(__file__).resolve().parent.parent / "disciplines"
 SCOPE_FILE = Path(__file__).with_name("construct_scope.json")
 RULES_FILE = "rules.json"
+SKILL_FILE = "SKILL.md"
+FRONT_MATTER = "---"
+ARCHETYPES_LINE = re.compile(r"archetypes:\s*\[(?P<listed>[^\]]*)\]\s*")
 UNPLACED_FILE = "unplaced.json"
 TOOL = "ruff"
 ERROR_CLASS = "PLE"
@@ -82,6 +87,26 @@ def _load(path: Path) -> dict[str, Any]:
 def disciplines() -> tuple[str, ...]:
     """Return the name of each `HOUSE` folder holding a `RULES_FILE`."""
     return tuple(sorted(path.parent.name for path in HOUSE.glob(f"*/{RULES_FILE}")))
+
+
+@cache
+def archetypes(name: str) -> tuple[str, ...]:
+    """Return each archetype the `ARCHETYPES_LINE` of discipline `name`'s `SKILL_FILE` front matter lists."""
+    path = HOUSE / name / SKILL_FILE
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        message = f"cannot read {name}/{SKILL_FILE}: {exc}"
+        raise HouseFault(message) from exc
+    if not lines or lines[0] != FRONT_MATTER:
+        return ()
+    for line in takewhile(lambda line: line != FRONT_MATTER, lines[1:]):
+        found = ARCHETYPES_LINE.fullmatch(line)
+        if found:
+            return tuple(
+                entry.strip() for entry in found["listed"].split(",") if entry.strip()
+            )
+    return ()
 
 
 @cache

@@ -154,6 +154,7 @@ SIGIL = Sigil(
     name="CODE.REACH",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(

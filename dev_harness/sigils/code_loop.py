@@ -121,6 +121,7 @@ SIGIL = Sigil(
     name="CODE.LOOP",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(

@@ -102,6 +102,7 @@ SIGIL = Sigil(
     name="CODE.OPTIMIZE",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(

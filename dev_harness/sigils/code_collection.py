@@ -133,6 +133,7 @@ SIGIL = Sigil(
     name="CODE.COLLECTION",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(

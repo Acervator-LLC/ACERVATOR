@@ -110,6 +110,7 @@ SIGIL = Sigil(
     name="CODE.IMPORT",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(

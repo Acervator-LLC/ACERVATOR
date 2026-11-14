@@ -127,6 +127,7 @@ SIGIL = Sigil(
     name="CODE.VARIABLE",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(
