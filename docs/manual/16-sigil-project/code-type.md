@@ -44,16 +44,27 @@ installed packages, never from the tree's own list of files to check.
 `dev_harness/sigils/code_type.py, in _mypy_findings`:
 
 ```python
-def _mypy_findings(path: str, root: Path, file: Path) -> list[Finding]:
-    """Return each mypy error in `file`, run on `path` from `root` with no cache."""
-    with contextlib.chdir(root):
-        stdout, stderr, status = mypy.api.run(
-            ["--output", "json", "--cache-dir", os.devnull, path]
-        )
-    if status not in MYPY_FINISHED:
-        raise ToolFault(f"mypy exited {status}: {tool_text(stderr or stdout)}")
+def _mypy_findings(
+    path: str, root: Path, file: Path, disabled: tuple[str, ...]
+) -> list[Finding]:
+    """Return each mypy error in `file`, run on `path` from `root` with no cache and no `disabled` code run."""
+    argv = [sys.executable, "-P", "-m", "mypy", "--output", "json", "--cache-dir", os.devnull]
     try:
-        rows = [json.loads(line) for line in stdout.splitlines() if line.strip()]
+        proc = subprocess.run(
+            [*argv, *_code_flags(disabled), path],
+            cwd=root,
+            capture_output=True,
+            timeout=MYPY_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ToolFault(f"mypy: {exc}") from exc
+    if proc.returncode not in MYPY_FINISHED:
+        said = tool_text(proc.stderr or proc.stdout)
+        raise ToolFault(f"mypy exited {proc.returncode}: {said}")
+    try:
+        lines = tool_text(proc.stdout).splitlines()
+        rows = [json.loads(line) for line in lines if line.strip()]
         return [
             Finding("mypy", row["code"] or NO_CODE, row["line"])
             for row in rows
@@ -84,6 +95,12 @@ function too. The sigil counts only the errors under the selected rules.
 [Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
 states the run rule and the proof.
 
+Mypy is told which codes not to run. Each mypy code of the card that the
+selection leaves out goes to mypy as a disabled error code, so mypy does not
+report it. A selected sub code of a left-out code, such as method-assign under
+assignment, is named as enabled, so it still runs. Every pyright rule fits every
+source file, so pyright runs all 29 on each input of `src/`.
+
 `dev_harness/sigils/code_type.py, in _functions_verdict`:
 
 ```python
@@ -93,9 +110,27 @@ states the run rule and the proof.
 `dev_harness/sigils/code_type.py, in findings`, when mypy runs:
 
 ```python
-    if any(f"{MYPY.tool} {rule}" in to_run for rule in MYPY.rules):
+    mypy_run = [rule for rule in MYPY.rules if f"{MYPY.tool} {rule}" in to_run]
+    if mypy_run:
+        disabled = tuple(rule for rule in MYPY.rules if rule not in mypy_run)
         ran.append(f"mypy {mypy.version.__version__}")
-        errors += _mypy_findings(path, root, file)
+        errors += _mypy_findings(path, root, file, disabled)
+```
+
+`dev_harness/sigils/code_type.py, in _code_flags`:
+
+```python
+    kept = [
+        code
+        for code, item in mypy.errorcodes.error_codes.items()
+        if item.sub_code_of is not None
+        and item.sub_code_of.code in disabled
+        and code not in disabled
+    ]
+    return [
+        *(flag for code in disabled for flag in ("--disable-error-code", code)),
+        *(flag for code in kept for flag in ("--enable-error-code", code)),
+    ]
 ```
 
 Measured on every tracked Python file of `src/` and every def and class in
@@ -141,7 +176,7 @@ settings and tier 3. The command prints the versions it ran.
 
 | Tool | Version on the card | How the card runs it | What counts |
 | ---- | ------------------- | -------------------- | ----------- |
-| mypy | 2.1.0 | `mypy.api.run` from the root of the target tree, with `--output json` and the null device as its cache folder | each error in the input file under one of the 33 mypy codes the card can run that the selection keeps |
+| mypy | 2.1.0 | `python -P -m mypy` from the root of the target tree, with `--output json`, the null device as its cache folder, and `--disable-error-code` for each mypy code the selection leaves out | each error in the input file under one of the 33 mypy codes the card can run that the selection keeps |
 | pyright | 1.1.411 | `pyright.run` from the root of the target tree, with `--outputjson` | each error in the input file under one of the 29 pyright rules the card can run that the selection keeps |
 
 ## Rules

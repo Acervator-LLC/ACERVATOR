@@ -1,6 +1,5 @@
 """`SIGIL` is CODE.TYPE on the `core` card; `type_check` judges one input line."""
 
-import contextlib
 import json
 import os
 import subprocess
@@ -9,7 +8,6 @@ from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-import mypy.api
 import mypy.errorcodes
 import mypy.version
 import pyright
@@ -46,6 +44,7 @@ REJECTED = "REJECTED"
 
 MYPY_BUILT = "2.1.0"
 PYRIGHT_BUILT = "1.1.411"
+MYPY_TIMEOUT_S = 300
 PYRIGHT_TIMEOUT_S = 120
 MYPY_FINISHED = (0, 1)
 PYRIGHT_FINISHED = (0, 1)
@@ -100,16 +99,42 @@ def _same_file(reported: Path, file: Path) -> bool:
     return reported.resolve() == file.resolve()
 
 
-def _mypy_findings(path: str, root: Path, file: Path) -> list[Finding]:
-    """Return each mypy error in `file`, run on `path` from `root` with no cache."""
-    with contextlib.chdir(root):
-        stdout, stderr, status = mypy.api.run(
-            ["--output", "json", "--cache-dir", os.devnull, path]
-        )
-    if status not in MYPY_FINISHED:
-        raise ToolFault(f"mypy exited {status}: {tool_text(stderr or stdout)}")
+def _code_flags(disabled: tuple[str, ...]) -> list[str]:
+    """Return mypy's --disable-error-code for each `disabled` code, and --enable-error-code for each sub code it would hide."""
+    kept = [
+        code
+        for code, item in mypy.errorcodes.error_codes.items()
+        if item.sub_code_of is not None
+        and item.sub_code_of.code in disabled
+        and code not in disabled
+    ]
+    return [
+        *(flag for code in disabled for flag in ("--disable-error-code", code)),
+        *(flag for code in kept for flag in ("--enable-error-code", code)),
+    ]
+
+
+def _mypy_findings(
+    path: str, root: Path, file: Path, disabled: tuple[str, ...]
+) -> list[Finding]:
+    """Return each mypy error in `file`, run on `path` from `root` with no cache and no `disabled` code run."""
+    argv = [sys.executable, "-P", "-m", "mypy", "--output", "json", "--cache-dir", os.devnull]
     try:
-        rows = [json.loads(line) for line in stdout.splitlines() if line.strip()]
+        proc = subprocess.run(
+            [*argv, *_code_flags(disabled), path],
+            cwd=root,
+            capture_output=True,
+            timeout=MYPY_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ToolFault(f"mypy: {exc}") from exc
+    if proc.returncode not in MYPY_FINISHED:
+        said = tool_text(proc.stderr or proc.stdout)
+        raise ToolFault(f"mypy exited {proc.returncode}: {said}")
+    try:
+        lines = tool_text(proc.stdout).splitlines()
+        rows = [json.loads(line) for line in lines if line.strip()]
         return [
             Finding("mypy", row["code"] or NO_CODE, row["line"])
             for row in rows
@@ -163,9 +188,11 @@ def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[
     is_narrowed = bool(separator)
     ran: list[str] = []
     errors: list[Finding] = []
-    if any(f"{MYPY.tool} {rule}" in to_run for rule in MYPY.rules):
+    mypy_run = [rule for rule in MYPY.rules if f"{MYPY.tool} {rule}" in to_run]
+    if mypy_run:
+        disabled = tuple(rule for rule in MYPY.rules if rule not in mypy_run)
         ran.append(f"mypy {mypy.version.__version__}")
-        errors += _mypy_findings(path, root, file)
+        errors += _mypy_findings(path, root, file, disabled)
     if any(f"{PYRIGHT.tool} {rule}" in to_run for rule in PYRIGHT.rules):
         version, found = _pyright_findings(path, root, file)
         ran.append(f"pyright {version}")
@@ -203,9 +230,11 @@ SIGIL = Sigil(
                 "the selection: the rules of the card that coding_partition.select "
                 "gives for the input's facts",
                 (
-                    "mypy, through mypy.api.run from the root of the target tree, "
-                    "with --output json and the null device as its cache folder, "
-                    "when the selection holds a mypy rule"
+                    "mypy, as python -P -m mypy from the root of the target tree, "
+                    "with --output json, the null device as its cache folder, and "
+                    "--disable-error-code for each mypy rule of the card the selection "
+                    "leaves out, when the selection holds a mypy rule; a selected sub "
+                    "code of a left-out code gets --enable-error-code"
                 ),
                 (
                     "pyright, through pyright.run from the root of the target tree, "

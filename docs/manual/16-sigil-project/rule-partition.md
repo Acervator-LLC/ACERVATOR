@@ -216,8 +216,10 @@ Each of the nine coding sigils applies the run rule to its input before its
 tool runs. It keeps the rules of its own card that the run rule selects, and
 passes only those to its tool. Ruff gets them as its rule list, bandit as its
 tests, and semgrep excludes each rule of the card that the selection leaves
-out. Mypy, pyright and vulture count only the selected codes. A tool with no
-selected rule does not run.
+out. Mypy gets a disabled error code for each mypy rule of the card that the
+selection leaves out. Pyright and vulture count only the selected codes, and
+every one of their rules fits every source file. A tool with no selected rule
+does not run.
 
 `dev_harness/sigils/coding_partition.py, in selection`:
 
@@ -280,6 +282,7 @@ python -m dev_harness.sigils.coding_partition --root . --prove --findings <file>
 python -m dev_harness.sigils.partition_measure --sources <folder> --proof <proof file>
 python -m dev_harness.sigils.coding_partition --root . --sigils --findings <file>
 python -m dev_harness.sigils.coding_partition --root . --sigils --control "ruff B007"
+python -m dev_harness.sigils.coding_partition --root . --sigils --sigil CODE.TYPE --findings <file>
 ```
 
 The first prints an input's facts and the rules that run on it: 809 of 1,251
@@ -291,4 +294,5 @@ published sources that its `--card` lists.
 The fifth runs the sigil proof. It saves each file's rows to the named file as
 it goes, and a run started again on the same file reads them and goes on from
 there. The sixth runs the sigil proof on a copy of the keys with one rule's key
-made wrong, for the sigils that can run that rule.
+made wrong, for the sigils that can run that rule. The seventh runs the sigil
+proof for one sigil alone.

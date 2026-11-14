@@ -553,6 +553,7 @@ def prove_file(
     """Return a row per input of `relative` and per `names` sigil whose tier 2 accepts it: rules run, findings both ways."""
     rules = load(keys_path)
     sigils = [m for m in coding_sigils() if m.SIGIL.name in names]
+    faults = (*{m.ToolFault for m in sigils}, FactsFault, OSError, subprocess.SubprocessError)
     rows: list[dict[str, Any]] = []
     for text in dict.fromkeys(item.text for item in module_inputs(root, relative)):
         facts = facts_of(text, root)
@@ -567,7 +568,7 @@ def prove_file(
             try:
                 chosen = [str(f) for f in module.findings(text, root, selected)[1]]
                 every = [str(f) for f in module.findings(text, root, module.CAN_RUN)[1]]
-            except Exception as exc:  # noqa: BLE001
+            except faults as exc:
                 rows.append({"input": text, "sigil": sigil.name, "fault": repr(exc)})
                 continue
             rows.append(
@@ -622,6 +623,8 @@ def prove_sigils(
     keys_path: Path,
     control: str | None = None,
     saved: Path | None = None,
+    only: str | None = None,
+    workers: int = PROOF_WORKERS,
 ) -> dict[str, Any]:
     """Return the proof that each coding sigil's findings on `PROOF_TREE` equal with and without the selection."""
     sigils = coding_sigils()
@@ -630,6 +633,8 @@ def prove_sigils(
     sigils = [m for m in sigils if m.SIGIL.name not in missing and not blocked[m.SIGIL.name]]
     if control:
         sigils = [m for m in sigils if control in m.CAN_RUN]
+    if only:
+        sigils = [m for m in sigils if m.SIGIL.name == only]
     names = tuple(m.SIGIL.name for m in sigils)
     files = tracked_files(root, PROOF_TREE)
     done = _saved_rows(saved)
@@ -639,10 +644,10 @@ def prove_sigils(
             used = Path(folder, "partition_control.json")
             broken_copy(keys_path, control, used)
         todo = [f for f in files if f not in done]
-        batch = PROOF_WORKERS * FILES_PER_WORKER
+        batch = workers * FILES_PER_WORKER
         for start in range(0, len(todo), batch):
             with ProcessPoolExecutor(
-                max_workers=PROOF_WORKERS, initializer=_cache_tool_calls
+                max_workers=workers, initializer=_cache_tool_calls
             ) as pool:
                 jobs = [
                     (f, pool.submit(prove_file, root, f, used, names))
@@ -758,6 +763,15 @@ def main(argv: list[str] | None = None) -> int:
         help=f"prove the selection at each coding sigil's own findings on {PROOF_TREE}/",
     )
     parser.add_argument(
+        "--sigil", help="with --sigils, prove only the sigil named, such as CODE.TYPE"
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=PROOF_WORKERS,
+        help=f"with --sigils, the worker processes; default {PROOF_WORKERS}",
+    )
+    parser.add_argument(
         "--keys", type=Path, default=KEYS_FILE, help="the keys file to read"
     )
     parser.add_argument(
@@ -783,7 +797,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     root = root.resolve()
     if args.sigils:
-        proved = prove_sigils(root, args.keys, args.control, args.findings)
+        proved = prove_sigils(
+            root, args.keys, args.control, args.findings, args.sigil, args.workers
+        )
         print(json.dumps(proved, indent=2))
         failed = proved["differ"] or proved["faults"] or proved["sigils without CAN_RUN"]
         return 1 if failed else 0
