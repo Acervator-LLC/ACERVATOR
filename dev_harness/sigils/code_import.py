@@ -16,6 +16,7 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .construct_rules import take
 from .core import (
     APPLICATION_SOURCE,
     FLAGS,
@@ -35,74 +36,22 @@ CLEAN = "CLEAN"
 FINDINGS = "FINDINGS"
 REJECTED = "REJECTED"
 
-CANDIDATES = (
-    "A004",
-    "ICN001",
-    "TID252",
-    "TC001",
-    "TC002",
-    "TC003",
-    "TC004",
-    "N811",
-    "N812",
-    "N813",
-    "N814",
-    "N817",
-    "E401",
-    "E402",
-    "F401",
-    "F403",
-    "F404",
-    "F406",
-    "F811",
-    "PLC0414",
-    "PLC0415",
-    "PLC2403",
-    "PLR0402",
-    "UP010",
-    "UP023",
-    "UP026",
-    "UP029",
-    "UP035",
+FUNCTION = (
+    "reads each import statement for an import that fails, slows the start, hides "
+    "the name it binds, or departs from Python's ordering, naming and typing practice"
 )
-LEFT_OFF: dict[str, str] = {
-    "ICN001": "faulty: vulture unused import 'pandas'; mypy import-untyped pandas",
-    "TID252": "faulty: vulture unused import 'foo'",
-    "TC002": "faulty: mypy import-untyped pandas",
-    "N811": "faulty: vulture unused import 'ConstantValue'",
-    "N812": "faulty: vulture unused import 'MyClassName'",
-    "N813": "faulty: vulture unused import 'myclassname'",
-    "N814": "faulty: vulture unused import 'MY_CLASS_NAME'",
-    "N817": "faulty: vulture unused import 'MCN'",
-    "E401": "faulty: vulture unused import 'os'",
-    "E402": "faulty: vulture unused import 'os' and 'x'",
-    "F401": "faulty: vulture unused import 'np'",
-    "F404": "faulty: vulture unused import 'Path'",
-    "F406": "faulty: pyright, wildcard import not allowed within a class or function",
-    "F811": "faulty: vulture unused import 'foo' and 'bar'",
-    "PLC0414": "corrected: vulture unused import 'np'",
-    "PLC2403": "faulty: vulture unused import 'bár'",
-    "PLR0402": "faulty: vulture unused import 'futures'",
-    "UP023": "faulty: vulture unused import 'ET'; semgrep use-defused-xml",
-    "UP026": "faulty: vulture unused import 'mock'",
-    "UP035": "faulty: vulture unused import 'Sequence'",
-}
-RULES = tuple(code for code in CANDIDATES if code not in LEFT_OFF)
-ERROR_CLASS = "PLE"
-UNDEFINED_NAME = "F821"
-HOLDING = tuple(
-    code for code in RULES if code.startswith(ERROR_CLASS) or code == UNDEFINED_NAME
-)
+DISCIPLINES = ("conventions", "performance-efficiency", "reliability", "typing")
+TAKEN = take("import", DISCIPLINES)
+RULES = TAKEN.rules
+PREVIEW = TAKEN.preview
+HOLDING = TAKEN.holding
 IMPORT_NODES = (ast.Import, ast.ImportFrom)
 NO_IMPORT = "no import or from-import statement"
 
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "ruff_version": RUFF_BUILT,
-    "rules": " ".join(RULES),
-    "holding_rules": " ".join(HOLDING),
-    "error_class": ERROR_CLASS,
-    "undefined_name": UNDEFINED_NAME,
+    **TAKEN.settings(FUNCTION),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
     "in application_source and one of holding_rules fires",
     "ruff_config": "the one ruff finds from the folder of the file",
@@ -111,7 +60,8 @@ SETTINGS: dict[str, str] = {
 
 def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
     """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    return [(row.code, row.line) for row in check(source, folder, RULES, preview=False)]
+    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+    return [(row.code, row.line) for row in rows]
 
 
 def _content_fault(text: str, root: Path) -> str | None:
@@ -172,8 +122,15 @@ SIGIL = Sigil(
         },
         {
             "runs": [
-                "python -m ruff check --select with the rules, "
-                "the file on standard input, from the folder of the file",
+                (
+                    "python -m ruff check --preview --select with the rules, "
+                    "the file on standard input, from the folder of the file"
+                )
+                if PREVIEW
+                else (
+                    "python -m ruff check --select with the rules, "
+                    "the file on standard input, from the folder of the file"
+                ),
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule <code> --output-format json, for each rule "
                 "that fires: its name, fix class, and the code under Example, "
@@ -189,12 +146,14 @@ SIGIL = Sigil(
                 "corrected form",
             ],
             "fix_classes": list(FOLLOW_ON),
-            "preview": "no rule on the list is a preview rule, so ruff runs "
-            "without --preview",
-            "left_off": LEFT_OFF,
-            "left_off_because": "the write gate refused that rule's faulty or "
-            "corrected sample, because the coding archetype grades the named "
-            "finding high",
+            "preview": (
+                "the preview_rules fire only with --preview"
+                if PREVIEW
+                else "no rule on the list is a preview rule, so ruff runs without --preview"
+            ),
+            "left": TAKEN.left,
+            "left_because": "each is a rule the scope places on this construct that "
+            "no discipline houses; its text is the unplaced.json row",
             "not_read": "a ruff setting matched on the file name, such as "
             "per-file-ignores, because the file reaches ruff on standard input",
             "refuses": "ruff exits otherwise, or prints a finding or a rule page "

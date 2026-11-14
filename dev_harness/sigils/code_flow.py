@@ -16,6 +16,7 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .construct_rules import take
 from .core import (
     APPLICATION_SOURCE,
     FLAGS,
@@ -35,98 +36,22 @@ CLEAN = "CLEAN"
 FINDINGS = "FINDINGS"
 REJECTED = "REJECTED"
 
-CANDIDATES = (
-    "ASYNC100",
-    "S101",
-    "S110",
-    "S112",
-    "B012",
-    "B029",
-    "B901",
-    "B904",
-    "G201",
-    "G202",
-    "PIE790",
-    "RET501",
-    "RET502",
-    "RET505",
-    "RET506",
-    "RET507",
-    "RET508",
-    "SIM102",
-    "SIM103",
-    "SIM105",
-    "SIM107",
-    "SIM108",
-    "SIM114",
-    "SIM116",
-    "SIM117",
-    "SIM401",
-    "TC005",
-    "PERF203",
-    "PERF401",
-    "E701",
-    "E722",
-    "F631",
-    "F707",
-    "PLE0101",
-    "PLE0704",
-    "PLE1205",
-    "PLE1206",
-    "PLR1708",
-    "PLR1711",
-    "PLR1712",
-    "PLR1730",
-    "PLR5501",
-    "PLW0717",
-    "FURB101",
-    "FURB103",
-    "FURB131",
-    "FURB132",
-    "RUF047",
-    "RUF050",
-    "RUF051",
-    "RUF072",
-    "TRY004",
-    "TRY203",
-    "TRY300",
-    "TRY301",
-    "TRY400",
+FUNCTION = (
+    "reads each if, try, with, return, raise, assert, pass and del statement for a "
+    "control path that fails, hides an error, opens a hole, wastes work, or reads "
+    "harder than Python's own form"
 )
-LEFT_OFF: dict[str, str] = {
-    "S101": "faulty: bandit B101 and ruff S101 use of assert",
-    "S110": "faulty: ruff S110 try-except-pass",
-    "S112": "faulty: ruff S112 try-except-continue",
-    "B012": "faulty: pyright, a return cannot exit a finally block",
-    "B904": "faulty: vulture unreachable else block",
-    "PIE790": "corrected: reads PIE790",
-    "SIM103": "corrected: reads SIM103",
-    "SIM107": "faulty: pyright, a return cannot exit a finally block",
-    "SIM108": "corrected: reads SIM108",
-    "SIM401": "corrected: reads SIM401",
-    "PERF203": "faulty: reads no PERF203, which ruff reads only below Python 3.11",
-    "F631": "faulty: bandit B101 and ruff S101 use of assert",
-    "F707": "faulty: pyright, a named except clause after a catch-all except clause",
-    "PLE0704": "faulty: mypy return and pyright reportReturnType, missing return",
-    "PLR1712": "faulty: bandit B101 and ruff S101 use of assert",
-    "PLW0717": "faulty: ruff S311 pseudo-random generator",
-    "RUF051": "faulty and corrected: mypy var-annotated, dictionary",
-}
-RULES = tuple(code for code in CANDIDATES if code not in LEFT_OFF)
-PREVIEW_CANDIDATES = (
-    "B901",
-    "PLR1712",
-    "PLW0717",
-    "FURB101",
-    "FURB103",
-    "FURB131",
-    "RUF047",
-    "RUF050",
-    "RUF072",
+DISCIPLINES = (
+    "conventions",
+    "maintainability",
+    "performance-efficiency",
+    "reliability",
+    "security",
 )
-PREVIEW = tuple(code for code in RULES if code in PREVIEW_CANDIDATES)
-PYLINT_ERRORS = ("PLE0101", "PLE0704", "PLE1205", "PLE1206")
-HOLDING = tuple(code for code in RULES if code in PYLINT_ERRORS)
+TAKEN = take("flow", DISCIPLINES)
+RULES = TAKEN.rules
+PREVIEW = TAKEN.preview
+HOLDING = TAKEN.holding
 FLOW_NODES = (
     ast.If,
     ast.Try,
@@ -144,10 +69,7 @@ NO_FLOW = "no if, try, with, return, raise, assert, pass or del statement"
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "ruff_version": RUFF_BUILT,
-    "rules": " ".join(RULES),
-    "preview_rules": " ".join(PREVIEW),
-    "holding_rules": " ".join(HOLDING),
-    "pylint_errors": " ".join(PYLINT_ERRORS),
+    **TAKEN.settings(FUNCTION),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
     "in application_source and one of holding_rules fires",
     "ruff_config": "the one ruff finds from the folder of the file",
@@ -218,8 +140,15 @@ SIGIL = Sigil(
         },
         {
             "runs": [
-                "python -m ruff check --preview --select with the rules, "
-                "the file on standard input, from the folder of the file",
+                (
+                    "python -m ruff check --preview --select with the rules, "
+                    "the file on standard input, from the folder of the file"
+                )
+                if PREVIEW
+                else (
+                    "python -m ruff check --select with the rules, "
+                    "the file on standard input, from the folder of the file"
+                ),
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule <code> --output-format json, for each rule "
                 "that fires: its name, fix class, and the code under Example, "
@@ -235,12 +164,14 @@ SIGIL = Sigil(
                 "corrected form",
             ],
             "fix_classes": list(FOLLOW_ON),
-            "preview": "the preview_rules fire only with --preview",
-            "left_off": LEFT_OFF,
-            "left_off_because": "faulty or corrected names the sample; a tool and its "
-            "finding mean the write gate refused that sample, because the coding "
-            "archetype grades the finding high; reads names what ruff reads on that "
-            "published form, run from the sample tree",
+            "preview": (
+                "the preview_rules fire only with --preview"
+                if PREVIEW
+                else "no rule on the list is a preview rule, so ruff runs without --preview"
+            ),
+            "left": TAKEN.left,
+            "left_because": "each is a rule the scope places on this construct that "
+            "no discipline houses; its text is the unplaced.json row",
             "not_read": "a ruff setting matched on the file name, such as "
             "per-file-ignores, because the file reaches ruff on standard input",
             "refuses": "ruff exits otherwise, or prints a finding or a rule page "

@@ -1,67 +1,31 @@
 # Read with --root harness_fixtures/sigil_code_variable/sample_tree
 # Each file names its rule on line 1, then holds the Example block python -m ruff rule <id> prints.
-# For BLE001 B007 B031 PIE794 F602 PLR6104 FURB148 TRY401, the lines between define the names the block uses and never defines.
-# The 35 rules left off are on the card, under left_off, each with its reason.
+# The write gate refuses a file holding the faulty form of ANN001 ANN401 ASYNC109 DJ006 DJ007 DJ012
+# F823 N803 N804 N805 PLE0117 PLE0604 PT019 PYI032 PYI041 PYI063 PYI064 RUF013 RUF036 UP044,
+# so each is read from its published form in a temporary tree.
 
 # FINDINGS, FIX: each file reads its own rule id
-known_bad_ble001.py
-known_bad_b003.py
-known_bad_b007.py
-known_bad_b020.py
-known_bad_b023.py
-known_bad_a001.py
-known_bad_a002.py
-known_bad_log002.py
-known_bad_pie794.py
-known_bad_pie796.py
-known_bad_ret504.py
-known_bad_sim113.py
-known_bad_sim115.py
+known_bad_e731.py
+known_bad_e741.py
 known_bad_n815.py
 known_bad_n816.py
 known_bad_perf403.py
-known_bad_e731.py
-known_bad_e741.py
-known_bad_f405.py
-known_bad_f602.py
-known_bad_f841.py
-known_bad_f901.py
-known_bad_plc0105.py
-known_bad_plc0131.py
-known_bad_plc0205.py
 known_bad_plc2401.py
-known_bad_ple0237.py
 known_bad_ple0605.py
-known_bad_plr1704.py
-known_bad_plr6104.py
-known_bad_plw0127.py
-known_bad_plw0128.py
-known_bad_plw0131.py
-known_bad_plw0602.py
-known_bad_plw0603.py
-known_bad_up001.py
-known_bad_up006.py
+known_bad_ruf059.py
+known_bad_sim113.py
 known_bad_up013.py
 known_bad_up014.py
-known_bad_up019.py
-known_bad_furb148.py
-known_bad_furb189.py
-known_bad_ruf007.py
-known_bad_ruf052.py
-known_bad_ruf059.py
-known_bad_ruf070.py
-known_bad_try401.py
+known_bad_up040.py
 
-# FINDINGS, FIX: each file reads its own rule id and another: ASYNC230's and ASYNC250's read F841,
-# B031's reads B007, N806's reads RET504, PLE0118's reads PLW0603, PLW0642's reads PLR6104 and RET504,
-# FURB187's reads E741
-known_bad_async230.py
-known_bad_async250.py
-known_bad_b031.py
-known_bad_n806.py
-known_bad_ple0118.py
-known_bad_plw0642.py
+# FINDINGS, FIX: each file reads its own rule id and another: A001's reads ANN001, A002's reads
+# ANN001, FURB187's reads E741, N806's reads ANN001, PLE0237's reads ANN001, PLW0642's reads ANN001
+known_bad_a001.py
+known_bad_a002.py
 known_bad_furb187.py
+known_bad_n806.py
+known_bad_ple0237.py
+known_bad_plw0642.py
 
 # FINDINGS, FIX: narrowed to the one function holding the unused unpacked name
 known_bad_ruf059.py, in foo

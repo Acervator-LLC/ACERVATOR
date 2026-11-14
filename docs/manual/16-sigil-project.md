@@ -265,7 +265,7 @@ Django. Each such placement quotes both texts, with the section's address.
 | Tool | Rules it can run | Placed | Unplaced |
 | ---- | ------------- | ------ | -------- |
 | ruff, with every rule selected | 810 | 484 | 326 |
-| ruff preview rules the sigils run | 18 | 7 | 11 |
+| ruff preview rules the sigils run | 7 | 7 | 0 |
 | semgrep | 216 | 216 | 0 |
 | bandit | 75 | 75 | 0 |
 | mypy | 58 | 34 | 24 |
@@ -273,7 +273,7 @@ Django. Each such placement quotes both texts, with the section's address.
 | pylint | 12 | 1 | 11 |
 | vulture | 1 | 1 | 0 |
 | the six rule modules | 19 | 4 | 15 |
-| all | 1,251 | 853 | 398 |
+| all | 1,240 | 853 | 387 |
 
 Each rule left in unplaced.json carries its reason: no listed CWE definition and
 no PEP or specification section describes it, or its text names a PEP that no
@@ -281,22 +281,22 @@ discipline holds. The reason also names the PEP 20 lines and the documentation
 sections read against the rule, and why none of them grounds it.
 
 The five construct sigils, CODE.LOOP, CODE.IMPORT, CODE.COLLECTION, CODE.FLOW
-and CODE.VARIABLE, also read 18 preview rules. The archetype runs ruff without
-preview rules, so the house holds none of the 18 from the archetype's own call.
+and CODE.VARIABLE, also read 7 preview rules. The archetype runs ruff without
+preview rules, so the house holds none of the 7 from the archetype's own call.
 
 The house also reads the card each built coding sigil prints, and counts every
 rule a card runs that no call of the archetype enables. A card that names
-preview rules runs ruff with preview on, so its 18 preview rules join the count:
-7 are placed and 11 are in unplaced.json with their reasons.
+preview rules runs ruff with preview on, so its 7 preview rules join the count:
+all 7 are placed.
 
 | Sigil | Preview rules it runs | Placed | Unplaced |
 | ----- | --------------------- | ------ | -------- |
-| CODE.LOOP | 3 | 2 | 1 |
-| CODE.COLLECTION | 3 | 2 | 1 |
-| CODE.FLOW | 7 | 3 | 4 |
-| CODE.VARIABLE | 5 | 0 | 5 |
+| CODE.LOOP | 2 | 2 | 0 |
+| CODE.COLLECTION | 2 | 2 | 0 |
+| CODE.FLOW | 3 | 3 | 0 |
 
-CODE.IMPORT and CODE.OPTIMIZE select only rules the archetype already runs.
+CODE.IMPORT, CODE.VARIABLE and CODE.OPTIMIZE select only rules the archetype
+already runs.
 CODE.SECURE, CODE.TYPE and CODE.REACH run bandit, semgrep, mypy, pyright and
 vulture, and the house counts those under the archetype's own lists.
 
@@ -329,6 +329,61 @@ rules run, before any rule runs. [Rule run partitioning](16-sigil-project/rule-p
 states the inputs, the four keys each rule carries, the run rule, and the proof
 on `src/`.
 
+## The construct scope
+
+The five construct sigils hold no rule list of their own. Each one takes the
+ruff rules that its disciplines house inside its construct's scope. A rule sits
+on a construct where its own published faulty example raises its finding on that
+construct.
+
+The scope command reads each example, the ruff run over it and the finding's
+node through the partition reading. It then climbs from that node to the first
+node that a construct sigil's tier 2 names. The climb stops outside every
+construct when it enters a statement through a part the construct does not own,
+such as an assignment's value, or when it reaches a def, class, lambda or module
+first. A for header and a while test belong to their loop.
+
+The rule partition keys answer three more questions. A rule whose finding sits
+on an import statement sits on the import construct. A rule that reads text the
+AST does not hold, or fires on stub files only, sits on none. A rule whose page
+publishes no corrected form stays off every card, because a finding carries both
+forms.
+
+`dev_harness/sigils/construct_scope.py, in owners`:
+
+```python
+def owners(chain: list[ast.AST]) -> tuple[frozenset[str], ast.AST]:
+    """Return the `CONSTRUCTS` holding the first node of `chain`, and the node the climb stops on."""
+    previous: ast.AST | None = None
+    for node in chain:
+        if previous is not None:
+            slot = _slot(node, previous)
+            header = any(isinstance(node, kind) and slot == field for kind, field in HEADERS)
+            holder = isinstance(node, HOLDERS) and not isinstance(node, ast.Expr)
+            if holder and not header and slot not in OWNED_SLOTS:
+                return frozenset(), node
+        found = frozenset(name for name, holds in CONSTRUCTS.items() if holds(node))
+        if found or isinstance(node, BOUNDARY):
+            return found, node
+        previous = node
+    return frozenset(), chain[-1]
+```
+
+One command writes the scope beside the sigils, and each sigil reads it when it
+loads.
+
+```
+python -m dev_harness.sigils.construct_scope
+```
+
+| Construct | Rules the scope places on it | Rules its sigil can run |
+| --------- | ---------------------------- | ----------------------- |
+| loop | 27 | 18 |
+| import | 32 | 25 |
+| collection | 50 | 23 |
+| flow | 62 | 33 |
+| variable | 73 | 38 |
+
 ## Progress
 
 Every sigil, its owner and where it stands. A built sigil's count comes from
@@ -341,11 +396,11 @@ the card its command prints. A sigil that is not built has no card yet.
 | CODE.TYPE@1 | coding | no rule list: every mypy and pyright error | built | `dev_harness/sigils/code_type.py, in SIGIL` |
 | CODE.SECURE@1 | coding | no rule list: every bandit and semgrep finding | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
 | CODE.REACH@1 | coding | no rule list: every vulture item | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
-| CODE.LOOP@1 | coding | 19 ruff rules | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
-| CODE.IMPORT@1 | coding | 8 of 28 ruff rules | built | `dev_harness/sigils/code_import.py, in SIGIL` |
-| CODE.COLLECTION@1 | coding | 34 of 39 ruff rules | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
-| CODE.FLOW@1 | coding | 39 of 56 ruff rules | built | `dev_harness/sigils/code_flow.py, in SIGIL` |
-| CODE.VARIABLE@1 | coding | 54 of 89 ruff rules | built | `dev_harness/sigils/code_variable.py, in SIGIL` |
+| CODE.LOOP@1 | coding | 18 ruff rules it can run | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
+| CODE.IMPORT@1 | coding | 25 ruff rules it can run | built | `dev_harness/sigils/code_import.py, in SIGIL` |
+| CODE.COLLECTION@1 | coding | 23 ruff rules it can run | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
+| CODE.FLOW@1 | coding | 33 ruff rules it can run | built | `dev_harness/sigils/code_flow.py, in SIGIL` |
+| CODE.VARIABLE@1 | coding | 38 ruff rules it can run | built | `dev_harness/sigils/code_variable.py, in SIGIL` |
 | TA.AUDIT@1 | ta | no rule list: its tiers decide | built | `dev_harness/sigils/ta_audit.py, in SIGIL` |
 | ROW.CLOSE@1 | not named yet | no card yet | unbuilt | not in the tree |
 

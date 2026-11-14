@@ -1,6 +1,8 @@
 # Rule run partitioning
 
-Reference. The Coding Archetype can run 1,251 rules. For one input it runs only
+Reference. The Coding Archetype can run 1,240 rules. The keys below were
+measured over 1,251, and the 11 more are preview rules no sigil runs now.
+For one input it runs only
 the rules that input can hold, and that choice is made before any rule runs.
 This page states the inputs, the facts read from each one, the four keys every
 rule carries, the run rule, and the table measured on `src/`. It is part of

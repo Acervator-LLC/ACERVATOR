@@ -16,6 +16,7 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .construct_rules import take
 from .core import (
     APPLICATION_SOURCE,
     FLAGS,
@@ -35,30 +36,15 @@ CLEAN = "CLEAN"
 FINDINGS = "FINDINGS"
 REJECTED = "REJECTED"
 
-RULES = (
-    "ASYNC110",
-    "B035",
-    "C416",
-    "C419",
-    "C420",
-    "SIM911",
-    "PERF102",
-    "PERF402",
-    "PLC0206",
-    "PLE4703",
-    "PLR1733",
-    "PLR1736",
-    "PLW0120",
-    "UP028",
-    "FURB122",
-    "FURB129",
-    "FURB140",
-    "FURB142",
-    "RUF006",
+FUNCTION = (
+    "reads each loop and comprehension for the faults that give a wrong result, "
+    "waste work, or write by hand what Python's own forms already state"
 )
-PREVIEW = ("PLE4703", "FURB140", "FURB142")
-ERROR_CLASS = "PLE"
-HOLDING = tuple(code for code in RULES if code.startswith(ERROR_CLASS))
+DISCIPLINES = ("conventions", "performance-efficiency", "reliability")
+TAKEN = take("loop", DISCIPLINES)
+RULES = TAKEN.rules
+PREVIEW = TAKEN.preview
+HOLDING = TAKEN.holding
 LOOP_NODES = (
     ast.For,
     ast.AsyncFor,
@@ -76,10 +62,7 @@ NO_LOOP = (
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "ruff_version": RUFF_BUILT,
-    "rules": " ".join(RULES),
-    "preview_rules": " ".join(PREVIEW),
-    "holding_rules": " ".join(HOLDING),
-    "error_class": ERROR_CLASS,
+    **TAKEN.settings(FUNCTION),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
     "in application_source and one of holding_rules fires",
     "ruff_config": "the one ruff finds from the folder of the file",
@@ -88,7 +71,8 @@ SETTINGS: dict[str, str] = {
 
 def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
     """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    return [(row.code, row.line) for row in check(source, folder, RULES, preview=True)]
+    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+    return [(row.code, row.line) for row in rows]
 
 
 def _content_fault(text: str, root: Path) -> str | None:
@@ -149,8 +133,15 @@ SIGIL = Sigil(
         },
         {
             "runs": [
-                "python -m ruff check --preview --select with the rules, "
-                "the file on standard input, from the folder of the file",
+                (
+                    "python -m ruff check --preview --select with the rules, "
+                    "the file on standard input, from the folder of the file"
+                )
+                if PREVIEW
+                else (
+                    "python -m ruff check --select with the rules, "
+                    "the file on standard input, from the folder of the file"
+                ),
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule <code> --output-format json, for each rule "
                 "that fires: its name, fix class, and the code under Example, "
@@ -166,7 +157,14 @@ SIGIL = Sigil(
                 "corrected form",
             ],
             "fix_classes": list(FOLLOW_ON),
-            "preview": "the preview_rules fire only with --preview",
+            "preview": (
+                "the preview_rules fire only with --preview"
+                if PREVIEW
+                else "no rule on the list is a preview rule, so ruff runs without --preview"
+            ),
+            "left": TAKEN.left,
+            "left_because": "each is a rule the scope places on this construct that "
+            "no discipline houses; its text is the unplaced.json row",
             "not_read": "a ruff setting matched on the file name, such as "
             "per-file-ignores, because the file reaches ruff on standard input",
             "refuses": "ruff exits otherwise, or prints a finding or a rule page "
@@ -175,7 +173,7 @@ SIGIL = Sigil(
     ),
     outputs={
         CLEAN: FlagRow(Flag.PASS),
-        FINDINGS: FlagRow(Flag.FIX, holds_in_source=True),
+        FINDINGS: FlagRow(Flag.FIX, holds_in_source=bool(HOLDING)),
     },
     refusal=REJECTED,
     follows={

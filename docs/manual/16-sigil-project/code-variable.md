@@ -1,15 +1,40 @@
 # CODE.VARIABLE@1
 
 Reference. CODE.VARIABLE@1 reads the names, assignments and function arguments
-in one Python file against 54 ruff rules. The Coding Archetype owns it. It is
+in one Python file against the 38 ruff rules it can run. The Coding Archetype owns it. It is
 one sigil of [the sigil project](../16-sigil-project.md).
+
+## Function and disciplines
+
+CODE.VARIABLE@1 reads each binding, from an assignment to a function argument,
+for a name that is wrong, unsafe, wasteful, untyped, or against Python's naming
+conventions. It draws on five disciplines: conventions, performance efficiency,
+reliability, security and typing.
+
+The card holds no rule list of its own. It takes each ruff rule that the
+construct scope places on the variable construct and that one of its disciplines
+houses. [The construct scope](../16-sigil-project.md#the-construct-scope)
+states how a rule is placed.
+
+`dev_harness/sigils/code_variable.py, in TAKEN`:
+
+```python
+DISCIPLINES = (
+    "conventions",
+    "performance-efficiency",
+    "reliability",
+    "security",
+    "typing",
+)
+TAKEN = take("variable", DISCIPLINES)
+```
 
 ## What it reads
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module. Tier 3 runs ruff
-with the 54 rules on the card. Five of them are preview rules, so ruff runs
-with preview rules on. The file goes to ruff on standard input, from the folder
+with the 38 rules the card can run. No rule on the list is a preview rule, so
+ruff runs with preview rules off. The file goes to ruff on standard input, from the folder
 of the file. For a function or class, only the findings inside its lines count.
 
 For each rule that fires, ruff's own rule page gives the rule's name, its fix
@@ -56,15 +81,16 @@ def _content_fault(text: str, root: Path) -> str | None:
 
 CLEAN means no rule on the list fires. FINDINGS carries, for each finding, the
 rule id, the rule name, the line, the fix class, and both published forms.
-FINDINGS reads HOLD only when the file sits in application source and PLE0118,
-PLE0237 or PLE0605 fires. These are the pylint error rules for a name used
-before its global statement, an assignment to an attribute that the class slots
-do not list, and an export list that is not a list or a tuple. Every other
+FINDINGS reads HOLD only when the file sits in application source and PLE0117,
+PLE0237, PLE0604, PLE0605 or F823 fires. The four pylint error rules are for a
+nonlocal name with no binding, an assignment to an attribute that the class
+slots do not list, an export list holding something other than a string, and
+an export list that is not a list or a tuple. Every other
 finding reads FIX, and the merge proceeds.
 
-F821 and F823 are the pyflakes rules for an undefined name and an undefined
-local. The card lists both in its undefined_names setting, as rules that would
-hold a merge. Both are left off the card, so neither can fire.
+F821, F822 and F823 are the pyflakes rules for an undefined name, an undefined
+export and an undefined local. The card lists all three in its undefined_names
+setting, as rules that hold a merge. F823 is on the card, so it can fire.
 
 ## The command
 
@@ -86,108 +112,88 @@ rules on.
 
 | Rule | ruff name | What it catches | Fix | Preview |
 | ---- | --------- | --------------- | --- | ------- |
-| ASYNC230 | blocking-open-call-in-async-function | Checks that async functions do not open files with blocking methods like `open`. | none | no |
-| ASYNC250 | blocking-input-in-async-function | Checks that async functions do not contain blocking usage of input from user. | none | no |
-| BLE001 | blind-except | Checks for `except` clauses that catch all exceptions.  This includes `except BaseException` and `except Exception`. | none | no |
-| B003 | assignment-to-os-environ | Checks for assignments to `os.environ`. | none | no |
-| B007 | unused-loop-control-variable | Checks for unused variables in loops (e.g., `for` and `while` statements). | sometimes | no |
-| B020 | loop-variable-overrides-iterator | Checks for loop control variables that override the loop iterable. | none | no |
-| B023 | function-uses-loop-variable | Checks for function definitions that use a loop variable. | none | no |
-| B031 | reuse-of-groupby-generator | Checks for multiple usage of the generator returned from `itertools.groupby()`. | none | no |
 | A001 | builtin-variable-shadowing | Checks for variable (and function) assignments that use the same names as builtins. | none | no |
 | A002 | builtin-argument-shadowing | Checks for function arguments that use the same names as builtins. | none | no |
-| LOG002 | invalid-get-logger-argument | Checks for any usage of `__cached__` and `__file__` as an argument to `logging.getLogger()`. | sometimes | no |
-| PIE794 | duplicate-class-field-definition | Checks for duplicate field definitions in classes. | always | no |
-| PIE796 | non-unique-enums | Checks for enums that contain duplicate values. | none | no |
-| RET504 | unnecessary-assign | Checks for variable assignments that immediately precede a `return` of the assigned variable. | always | no |
-| SIM113 | enumerate-for-loop | Checks for `for` loops with explicit loop-index variables that can be replaced with `enumerate()`. | none | no |
-| SIM115 | open-file-with-context-handler | Checks for cases where files are opened (e.g., using the builtin `open()` function) without using a context manager. | none | no |
+| ANN001 | missing-type-function-argument | Checks that function arguments have type annotations. | none | no |
+| ANN401 | any-type | Checks that function arguments are annotated with a more specific type than `Any`. | none | no |
+| ASYNC109 | async-function-with-timeout | Checks for `async` function definitions with `timeout` parameters. | none | no |
+| DJ006 | django-exclude-with-model-form | Checks for the use of `exclude` in Django `ModelForm` classes. | none | no |
+| DJ007 | django-all-with-model-form | Checks for the use of `fields = "__all__"` in Django `ModelForm` classes. | none | no |
+| DJ012 | django-unordered-body-content-in-model | Checks for the order of Model's inner classes, methods, and fields as per the [Django Style Guide]. | none | no |
+| E731 | lambda-assignment | Checks for lambda expressions which are assigned to a variable. | sometimes | no |
+| E741 | ambiguous-variable-name | Checks for the use of the characters 'l', 'O', or 'I' as variable names. | none | no |
+| F823 | undefined-local | Checks for undefined local variables. | none | no |
+| FURB187 | list-reverse-copy | Checks for list reversals that can be performed in-place in lieu of creating a new list. | always | no |
+| N803 | invalid-argument-name | Checks for argument names that do not follow the `snake_case` convention. | none | no |
+| N804 | invalid-first-argument-name-for-class-method | Checks for class methods that use a name other than `cls` for their first argument. | sometimes | no |
+| N805 | invalid-first-argument-name-for-method | Checks for instance methods that use a name other than `self` for their first argument. | sometimes | no |
 | N806 | non-lowercase-variable-in-function | Checks for the use of non-lowercase variable names in functions. | none | no |
 | N815 | mixed-case-variable-in-class-scope | Checks for class variable names that follow the `mixedCase` convention. | none | no |
 | N816 | mixed-case-variable-in-global-scope | Checks for global variable names that follow the `mixedCase` convention. | none | no |
 | PERF403 | manual-dict-comprehension | Checks for `for` loops that can be replaced by a dictionary comprehension. | sometimes | no |
-| E731 | lambda-assignment | Checks for lambda expressions which are assigned to a variable. | sometimes | no |
-| E741 | ambiguous-variable-name | Checks for the use of the characters 'l', 'O', or 'I' as variable names. | none | no |
-| F405 | undefined-local-with-import-star-usage | Checks for names that might be undefined, but may also be defined in a wildcard import. | none | no |
-| F602 | multi-value-repeated-key-variable | Checks for dictionary keys that are repeated with different values. | sometimes | no |
-| F841 | unused-variable | Checks for the presence of unused variables in function scopes. | sometimes | no |
-| F901 | raise-not-implemented | Checks for `raise` statements that raise `NotImplemented`. | sometimes | no |
-| PLC0105 | type-name-incorrect-variance | Checks for type names that do not match the variance of their associated type parameter. | none | no |
-| PLC0131 | type-bivariance | Checks for `TypeVar` and `ParamSpec` definitions in which the type is both covariant and contravariant. | none | no |
-| PLC0205 | single-string-slots | Checks for single strings assigned to `__slots__`. | none | no |
 | PLC2401 | non-ascii-name | Checks for the use of non-ASCII characters in variable names. | none | no |
-| PLE0118 | load-before-global-declaration | Checks for uses of names that are declared as `global` prior to the relevant `global` declaration. | none | no |
+| PLE0117 | nonlocal-without-binding | Checks for `nonlocal` names without bindings. | none | no |
 | PLE0237 | non-slot-assignment | Checks for assignments to attributes that are not defined in `__slots__`. | none | no |
+| PLE0604 | invalid-all-object | Checks for the inclusion of invalid objects in `__all__`. | none | no |
 | PLE0605 | invalid-all-format | Checks for invalid assignments to `__all__`. | none | no |
-| PLR1704 | redefined-argument-from-local | Checks for variables defined in `for`, `try`, `with` statements that redefine function parameters. | none | no |
-| PLR6104 | non-augmented-assignment | Checks for assignments that can be replaced with augmented assignment statements. | always | yes |
-| PLW0127 | self-assigning-variable | Checks for self-assignment of variables. | none | no |
-| PLW0128 | redeclared-assigned-name | Checks for declared assignments to the same variable multiple times in the same assignment. | none | no |
-| PLW0131 | named-expr-without-context | Checks for uses of named expressions (e.g., `a := 42`) that can be replaced by regular assignment statements (e.g., `a = 42`). | none | no |
-| PLW0602 | global-variable-not-assigned | Checks for `global` variables that are not assigned a value in the current scope. | none | no |
-| PLW0603 | global-statement | Checks for the use of `global` statements to update identifiers. | none | no |
 | PLW0642 | self-or-cls-assignment | Checks for assignment of `self` and `cls` in instance and class methods respectively. | none | no |
-| UP001 | useless-metaclass-type | Checks for the use of `__metaclass__ = type` in class definitions. | always | no |
-| UP006 | non-pep585-annotation | Checks for the use of generics that can be replaced with standard library variants based on [PEP 585]. | sometimes | no |
+| PT019 | pytest-fixture-param-without-value | Checks for `pytest` test functions that should be decorated with `@pytest.mark.usefixtures`. | none | no |
+| PYI032 | any-eq-ne-annotation | Checks for `__eq__` and `__ne__` implementations that use `typing.Any` as the type annotation for their second parameter. | always | no |
+| PYI041 | redundant-numeric-union | Checks for parameter annotations that contain redundant unions between builtin numeric types (e.g., `int \| float`). | sometimes | no |
+| PYI063 | pep484-style-positional-only-parameter | Checks for the presence of [PEP 484]-style positional-only parameters. | none | no |
+| PYI064 | redundant-final-literal | Checks for redundant `Final[Literal[...]]` annotations. | sometimes | no |
+| RUF013 | implicit-optional | Checks for the use of implicit `Optional` in type annotations when the default parameter value is `None`. | sometimes | no |
+| RUF036 | none-not-at-end-of-union | Checks for type annotations where `None` is not at the end of a union. | sometimes | no |
+| RUF059 | unused-unpacked-variable | Checks for the presence of unused variables in unpacked assignments. | sometimes | no |
+| SIM113 | enumerate-for-loop | Checks for `for` loops with explicit loop-index variables that can be replaced with `enumerate()`. | none | no |
 | UP013 | convert-typed-dict-functional-to-class | Checks for `TypedDict` declarations that use functional syntax. | sometimes | no |
 | UP014 | convert-named-tuple-functional-to-class | Checks for `NamedTuple` declarations that use functional syntax. | sometimes | no |
-| UP019 | typing-text-str-alias | Checks for uses of `typing.Text` and `typing_extensions.Text`. | sometimes | no |
-| FURB148 | unnecessary-enumerate | Checks for uses of `enumerate` that discard either the index or the value when iterating over a sequence. | sometimes | yes |
-| FURB187 | list-reverse-copy | Checks for list reversals that can be performed in-place in lieu of creating a new list. | always | no |
-| FURB189 | subclass-builtin | Checks for subclasses of `dict`, `list` or `str`. | always | yes |
-| RUF007 | zip-instead-of-pairwise | Checks for use of `zip()` to iterate over successive pairs of elements. | sometimes | no |
-| RUF052 | used-dummy-variable | Checks for "dummy variables" (variables that are named as if to indicate they are unused) that are in fact used. | sometimes | yes |
-| RUF059 | unused-unpacked-variable | Checks for the presence of unused variables in unpacked assignments. | sometimes | no |
-| RUF070 | unnecessary-assign-before-yield | Checks for variable assignments that immediately precede a `yield` (or `yield from`) of the assigned variable, where the variable is not referenced anywhere else. | always | yes |
-| TRY401 | verbose-log-message | Checks for excessive logging of exception objects. | none | no |
+| UP040 | non-pep695-type-alias | Checks for use of `TypeAlias` annotations and `TypeAliasType` assignments for declaring type aliases. | always | no |
+| UP044 | non-pep646-unpack | Checks for uses of `Unpack[]` on Python 3.11 and above, and suggests using `*` instead. | always | no |
 
 ## Rules left off
 
-The card leaves 35 of the 89 variable rules off. A reason that starts with
-faulty or corrected names the sample. A tool and its finding mean the write
-gate refused that sample, because the coding archetype grades the finding high.
-Reads names what ruff reads on that published form. Refused at tier 2 means the
-published faulty form holds no binding that tier 2 accepts, so the sigil cannot
-read it. The reason column is the card's own text.
+The card does not run the rules below, though its own rule list once named
+them. Each reason comes from the construct scope and the six disciplines. The
+card's left setting names every rule on the variable construct that no discipline
+houses, with its unplaced.json text.
 
-Fourteen reasons name vulture. In thirteen of them, the published form leaves a
-function argument unused, and the coding archetype grades an unused argument
-high.
-
-| Rule | ruff name | Reason on the card |
-| ---- | --------- | ------------------ |
-| ANN001 | missing-type-function-argument | faulty: vulture unused variable 'x' |
-| ANN401 | any-type | faulty: vulture unused variable 'x' |
-| S509 | snmp-weak-cryptography | faulty: refused at tier 2, the published form holds no binding |
-| B025 | duplicate-try-block-exception | faulty: refused at tier 2, the published form holds no binding |
-| B032 | unintentional-type-annotation | faulty: mypy valid-type and pyright reportInvalidTypeForm |
-| ARG001 | unused-function-argument | faulty: vulture unused variable 'baz' |
-| ARG002 | unused-method-argument | faulty: vulture unused variable 'arg2' |
-| ARG003 | unused-class-method-argument | faulty: vulture unused variable 'cls' and 'arg2' |
-| ARG004 | unused-static-method-argument | faulty: vulture unused variable 'arg2' |
-| ARG005 | unused-lambda-argument | faulty: vulture unused variable 'y' |
-| PTH123 | builtin-open | faulty: refused at tier 2, the published form holds no binding |
-| N803 | invalid-argument-name | faulty: vulture unused variable 'A' and 'myArg' |
-| N804 | invalid-first-argument-name-for-class-method | faulty: vulture unused variable 'data' |
-| N805 | invalid-first-argument-name-for-method | faulty: vulture unused variable 'cls' and 'data' |
-| F402 | import-shadowed-by-loop-var | corrected: vulture unused import 'path' |
-| F633 | invalid-print-syntax | faulty: refused at tier 2, the published form holds no binding |
-| F821 | undefined-name | faulty: refused at tier 2, the published form holds no binding |
-| F823 | undefined-local | faulty: pyright reportUnboundVariable, 'x' is unbound |
-| PLE0115 | nonlocal-and-global | faulty: pyright, 'counter' declared global and nonlocal |
-| PLE0117 | nonlocal-without-binding | faulty: pyright reportUndefinedVariable and no binding for nonlocal 'bar' |
-| PLE0241 | duplicate-bases | faulty: refused at tier 2, the published form holds no binding |
-| PLE0604 | invalid-all-object | faulty: mypy list-item, list items 1 and 2 |
-| PLE1141 | dict-iter-missing-items | faulty: mypy str-unpack, unpacking a string |
-| PLR1722 | sys-exit-alias | faulty: refused at tier 2, the published form holds no binding |
-| PLW0211 | bad-staticmethod-argument | corrected: vulture unused variable 'sheep' |
-| PLW0245 | super-without-brackets | faulty: pyright reportIncompatibleMethodOverride, method 'speak' |
-| PLW1514 | unspecified-encoding | faulty: refused at tier 2, the published form holds no binding |
-| UP004 | useless-object-inheritance | faulty: refused at tier 2, the published form holds no binding |
-| UP024 | os-error-alias | faulty: refused at tier 2, the published form holds no binding |
-| UP037 | quoted-annotation | corrected: reads UP037 |
-| RUF013 | implicit-optional | faulty: vulture unused variable 'arg' |
-| RUF018 | assignment-in-assert | corrected: reads RUF018 |
-| RUF020 | never-union | faulty: refused at tier 2, the published form holds no binding |
-| RUF036 | none-not-at-end-of-union | faulty: vulture unused variable 'arg' |
-| TRY201 | verbose-raise | faulty: refused at tier 2, the published form holds no binding |
+| Rule | Reason |
+| ---- | ------ |
+| ASYNC230 | Its finding sits on a part of the withitem that no construct owns. |
+| ASYNC250 | Its finding sits on a part of the Assign that no construct owns. |
+| BLE001 | Its finding sits on a part of the ExceptHandler that no construct owns. |
+| B003 | No discipline houses it. |
+| B007 | Its finding sits on the loop construct, so CODE.LOOP runs it. |
+| B020 | Its finding sits on the loop construct, and no discipline houses it. |
+| B023 | The climb from its finding reaches the Lambda before any construct. |
+| B031 | Its finding sits on the loop construct, so CODE.LOOP runs it. |
+| LOG002 | Its finding sits on a part of the Assign that no construct owns. |
+| PIE794 | No discipline houses it. |
+| PIE796 | No discipline houses it. |
+| RET504 | Its finding sits on a part of the Return that no construct owns. |
+| SIM115 | Its finding sits on a part of the Assign that no construct owns. |
+| F405 | Its finding sits on a part of the Return that no construct owns. |
+| F602 | Its finding sits on the collection construct, and no discipline houses it. |
+| F841 | No discipline houses it. |
+| F901 | Its finding sits on a part of the Raise that no construct owns. |
+| PLC0105 | Its finding sits on a part of the Assign that no construct owns. |
+| PLC0131 | Its finding sits on a part of the Assign that no construct owns. |
+| PLC0205 | No discipline houses it. |
+| PLE0118 | The climb from its finding reaches the FunctionDef before any construct. |
+| PLR1704 | Its finding sits on the loop construct, and no discipline houses it. |
+| PLR6104 | No discipline houses it, and no sigil runs this preview rule now, so it left the house too. |
+| PLW0127 | No discipline houses it. |
+| PLW0128 | No discipline houses it. |
+| PLW0131 | No discipline houses it. |
+| PLW0602 | No discipline houses it. |
+| PLW0603 | No discipline houses it. |
+| UP001 | No discipline houses it. |
+| UP006 | Its finding sits on a part of the AnnAssign that no construct owns. |
+| UP019 | Its finding sits on a part of the AnnAssign that no construct owns. |
+| FURB148 | Its finding sits on the loop construct, and no discipline houses it. |
+| FURB189 | The climb from its finding reaches the ClassDef before any construct. |
+| RUF007 | The climb from its finding reaches the Module before any construct. |
+| RUF052 | No discipline houses it, and no sigil runs this preview rule now, so it left the house too. |
+| RUF070 | The climb from its finding reaches the FunctionDef before any construct. |
+| TRY401 | Its finding sits on the flow construct, and no discipline houses it. |
