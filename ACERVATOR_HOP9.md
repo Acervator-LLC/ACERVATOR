@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-13 against `f18888d8`. **Every claim here names one command that
+Written 2026-11-14 against `992d1bef`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,57 +18,50 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running, between units. The 17 commits
-since `bee1a42b` are pull requests 1698 to 1710; 1698 merged as a merge commit
-and carries four branch commits. Three are #1695 units, five are #1656 units, two
-are #1622 units and three are #1633 units.
+The session that wrote this was still running, between units. The 15 pull
+requests since `0016f4b0` are #1712 to #1726: four on #1622 and eleven on #1633.
+On 2026-11-13 he moved the work to #1633: "We should be focusing on the
+development and testing of the Coding Archetype." #1622, #1656 and #1695 are
+paused until he points back to them or the Coding Archetype work is done.
 
 ```bash
-git log --oneline --first-parent bee1a42b..f18888d8   # the 13 pull requests
-gh issue view 1695 --comments            # rows 1 to 3, each with its "Unit closed"
-gh issue view 1656 --comments            # rows 6 to 9, and row 9's double booking
-gh issue view 1622 --comments            # rows 10 and 19 closed; row 20's six answers
-gh issue view 1633 --comments            # TA.AUDIT@1, the citation module, two page sentences
+git log --oneline --first-parent 0016f4b0..992d1bef   # the 15 pull requests
+gh issue view 1633 --comments            # each step's result and referee close, newest last
 gh release view                          # what is published
 gh pr list --state open                  # what is still landing
 ```
 
-- **In flight when written:** #1622 row 20, the holdings audit booking a lost
-  order at the venue's own fill and fee. Its six answers are the issue's newest
-  comment, and no pull request is open for it yet. Pull request #1663, five
-  routine dependency updates, is open, and auto-merge is not armed.
-- **Built on #1695:** every row. A Max Cartridge fold, a fold rebuy and a hedge
-  top-up wait their turn in the venue call queue, and a buy goes out only when the
-  venue holds the quote it spends.
-- **Built on #1656:** every row, each waiting on his app. Rows 6 to 9 write new
-  log lines for Settings routes, command bar presses, venue removals and lost
-  orders. Row 9 also repairs a lost order that booked twice when the venue
-  answered after an audit took its units in.
-- **Built on #1622:** row 10, a wallet read a gate trusts is newer than the last
-  fill, on spot and contract markets; row 19, a send the venue refused gives its id
-  back on a rate limit, a refused nonce and a closed connector.
-- **Built on #1633:** TA.AUDIT@1, the first sigil the TA Quant owns. It and
-  CITE.SYMBOL@3 share one citation module, `dev_harness/sigils/citation.py`, and
-  TA.AUDIT@1 holds by the indicator file a line names. Pull request #1710
-  corrected the two sigil-page sentences that the shared module made false.
-- **The release and both trees** hold the same application code. His app runs an
-  older build:
+- **In flight when written:** #1633 step 2, its first unit, on branch
+  `1633-step2-ocir-cases` and not yet pushed. It restores the code from before
+  and after each fix that an OCIR catalogue row names, and runs the nine coding
+  sigils on both sides. Its six answers are comment 6883684227. The branch also
+  runs CODE.SECURE's semgrep with `--timeout=0`, because the per-rule limit made
+  the verdict depend on machine load.
+- **Built on #1633:** steps 1a to 1c in the step table of the body section "The
+  Coding Archetype's mind". Each coding sigil takes its rules from its discipline
+  skills and runs only the rules its input selects. Step 1c's result is comment
+  6883381301 and its referee close is 6883651850.
+- **Repaired on #1633:** the reply hooks read the session transcript from its
+  end, through `dev_harness/hooks/transcript_tail.py` (#1726, result comment
+  6884607329). Before, three hooks each read the whole 695 MB transcript at every
+  reply's end, about 6.5 GB each, and RAM reached 98%. The loaded copies in the
+  Claude Code user folder equal `992d1bef`.
+- **The release and both trees** hold the same application code, and his app
+  runs it:
 
 ```
-release      0.2.0-20261113.1537.gcd3af6d10095, from cd3af6d1, which merges 0baa95f0 into main
+release      0.2.0-20261113.1928.g5dbab0790e57, from 5dbab079
              gh release view
-both trees   built both variants at cd3af6d1
-             gh issue view 1622 --comments, the comment "Unit closed: row 19"
-since        67290aba and f18888d8 change sigil, fixture, manual and PDF files; nothing in src,
-             desktop, tools, main.py or the two spec files
-             git diff --stat cd3af6d1 origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec
-his app      0.2.0-20261112.2246.g3480ce51b7d6, a Qt build, holding none of the 13 pull requests
-             gh issue view 1656 --comments, row 7's six answers
-             git merge-base --is-ancestor cf54c0b7 3480ce51      # exit 1: not in his build
+both trees   at 992d1bef; the newest dist/ pair in each is the 1928 build
+since        5dbab079: nothing changed in src, desktop, tools, main.py or the two spec files
+             git diff --stat 5dbab079 origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec
+his app      0.2.0-20261113.1928.g5dbab0790e57, a Qt build, from the Documents tree's dist/
+             git merge-base --is-ancestor 7e0ddb97 5dbab079      # exit 0: the newest #1622 repair is in it
 ```
 
-- **Held for him:** the unruled rows of the Decisions tables on #1643 and #1622.
-  Do not raise them as a round.
+- **Held for him:** the unruled rows of the Decisions tables on #1643 and #1622,
+  and moving the Coding Archetype's own ruff call onto the step 1c selection,
+  which is a change in `dev_harness/harness/`. Do not raise them as a round.
 
 ---
 
@@ -110,6 +103,7 @@ python -m tools.queue_state                      # exit 0
 python -m tools.conversion_state                 # exit 0
 python -m tools.comment_audit count src          # exit 0
 python -m tools.check_added_comments             # exit 0, per branch
+python -m dev_harness.sigils.coding_house --root .   # exit 0, the rule house has no fault
 ```
 
 Four rulings, answered from `dev_harness/skills/`, before any work:
@@ -135,7 +129,7 @@ under THE QUEUE.
 His ruling of 2026-11-13: the session sets the work order across items and rows
 unless he prompts otherwise. Live faults on the Trading path go first, then each
 issue's own row order, and a report states the order and its ground in one line.
-An order he gives wins.
+An order he gives wins, and his focus on #1633 is such an order.
 
 ```bash
 grep -n "prompt otherwise" ~/.claude/projects/*/memory/feedback_sequencing_is_mine.md
@@ -163,7 +157,8 @@ grep -n "prompt otherwise" ~/.claude/projects/*/memory/feedback_sequencing_is_mi
 - No absolute or user-specific path in anything committed.
 - Never edit `harness_fixtures/`. In `dev_harness/` a session may only ADD a
   hardening rule; weakening one goes to him first.
-- Respect the RAM guard: a hook refuses heavy runs above 70% RAM while he trades.
+- Respect the RAM guard: a hook refuses heavy runs above 70% RAM while he trades,
+  and a unit stops its own run at 70%.
 
 ---
 
@@ -200,7 +195,9 @@ the six questions (who, what, where, when, why, how), a reading shown to fail, t
 work. `Workflow` meets the same checks through `gate_workflow_script.py`, and after a
 context boundary `block_unloaded_skills.py` holds work until every skill loads. The
 hooks that run sit in the Claude Code user folder; `dev_harness/hooks/` holds their
-copies and `dev_harness/hooks/settings_hooks.json` their wiring.
+copies and `dev_harness/hooks/settings_hooks.json` their wiring. A merge that
+changes `dev_harness/hooks/` reaches nothing until the referee copies the files
+there; compare each with `git hash-object` against the merge commit.
 
 ---
 
@@ -222,15 +219,26 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
-- **#1622, buy-back short in units, first.** Row 20 is running: the holdings
-  audit books a lost order at the price the send read and with no fee. Its six
-  answers are the issue's newest comment, and they name the change. Then the
-  body's other unbuilt rows, in row order: 12, 13, 14, 18, 21, 22, 24 to 27, 29
-  to 31, 33, 35, 36 and 38. Rows 28, 32, 34 and 37 are blocked on his answers in
-  the Decisions table.
-- **#1695 and #1656 wait on his app.** Every row of both is built, and his app
-  runs a build that holds none of them. When his logs name a build that holds
-  cd3af6d1, read them, read only, for each row's lines:
+- **#1633, the Coding Archetype, first, by his focus ruling.** His plan,
+  verbatim: "1) focus on completing the Coding Archetype's mind by building it
+  from Sigils, 2) use OCIR entries for initial testing and refinement as well as
+  to verify our hypotheses even work, and 3) audit the existing code base using
+  the fully evolved Sigil-Based Coding Archetype." Steps 1a to 1c are built.
+  Step 2's first unit is in flight, as above. When it merges, each catalogue row
+  no sigil reads goes back to step 1, with the rule that would read it or "no
+  tool has one", as the result comment lists. Step 3 runs every coding sigil over
+  `src/`.
+
+```bash
+gh issue view 1633          # "## The Coding Archetype's mind": the step table and its Status column
+grep -c '| built |' docs/manual/16-sigil-project.md      # 11 sigil pages
+```
+
+- **#1622, #1656 and #1695, the money path, are paused.** When work returns to
+  them: #1622's unbuilt rows in row order are 14, 18, 21, 22, 24 to 27, 29 to 31,
+  33, 35, 36, 38 and 39; rows 28, 32, 34 and 37 wait on his answers in the
+  Decisions table; row 20 is partial. Every row of #1656 and #1695 is built and
+  is in the build he runs, so read his logs, read only, for each row's lines:
 
 ```
 #1695 rows 1 and 3   no Max Cartridge fold, fold rebuy or hedge top-up line names CCXTQueueFullError
@@ -245,20 +253,7 @@ wrong far more often than right.
 #1656 row 8          VENUE KEPT, VENUE REMOVED, VENUE KEPT AT CLOSE or VENUE DROPPED AT CLOSE
 #1656 row 9          ORDER LOST, LOST ORDER UNMATCHED, LOST ORDER ENDED and LOST ORDER ANSWERED
                      gh issue view 1695 and gh issue view 1656, the Status column
-```
-
-- **#1633, Sigil-based Vernacular Condensate.** Eleven sigils are built,
-  TA.AUDIT@1 the newest, and ROW.CLOSE@1 is unbuilt. The Product Manual carries
-  the project as Part 10, in `docs/manual/16-sigil-project.md` with one page per
-  built sigil. The body holds Units 2 to 11; the comment headed "Unit closed:
-  TA.AUDIT@1" names the trial's task set, Unit 7 in Layer 2, as next. Each Unit
-  closes in one pull request and changes no application file. TA.AUDIT@1's
-  reasons "file unreadable" and "file does not parse" have no sample line yet, as
-  the result comment for pull request 1709 states.
-
-```bash
-grep -c '| built |' docs/manual/16-sigil-project.md      # 11
-gh issue view 1633 --comments                            # "Unit closed: TA.AUDIT@1", then the 1709 result
+                     git merge-base --is-ancestor cd3af6d1 5dbab079      # exit 0
 ```
 
 - **#1657, public text that breaks the writing rules.** Read the body before
@@ -315,14 +310,16 @@ an outside program          new code may run one on a path a caller passes in; r
                             dev_harness/harness/coding_archetype.py, in RUFF_SEVERITY_OVERRIDES
 the manual                  his sentences verbatim; one cited "Now:" line; no dated reading
 issue comments              every claim about the code cites "path, in symbol"
+a coding rule               runs only where the input's file type, constructs and imports
+                            select it; the house says "can run" for its count, #1633 step 1c
+                            dev_harness/sigils/coding_partition.py, in selection
 ```
 
 ---
 
 ## OPEN DEFECTS
 
-Live on his running build and repaired on `current`; each waits on his next build
-to show in his logs:
+Repaired in the build he runs; each waits on his logs to show it:
 
 ```
 a Max Cartridge fold, fold rebuy or hedge top-up refused on a full call queue
@@ -339,16 +336,18 @@ a refused send held as lost, so a same-size withdrawal books a sale that never h
 
 Open on `current`:
 
-- The holdings audit books a lost order at the price the send read and with no
-  fee, never at the venue's own fill
-  (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._settle_lost_order`).
-  Row 20's six answers on #1622 measure it on the paper backend.
+- A Gemini lost order that filled is still not booked; #1622 row 20 is partial
+  (`gh issue view 1622`, row 20's Status).
 - The React Bot Swarm page's layer buttons do nothing when pressed
   (`src/gui/web/bot_visualizer.js`, in `LayerHeader`); recorded on #23.
 - Paper and the Simulator judge the vote at the plain floor
   (`src/simulator/back_test.py`, in `ta_direction`); recorded on #433.
 - The Extractor reads the vote's direction alone; it takes the three-indicator line
   in its release work.
+- Two hook docstrings name functions their files do not define: the docstring of
+  `dev_harness/hooks/block_unanchored_claim.py` names a quote-removing step the
+  code lacks, and the docstring of `dev_harness/hooks/block_long_reply.py` names a
+  word-count function it lacks (`git grep -n "def " dev_harness/hooks/block_unanchored_claim.py`).
 
 ---
 
@@ -367,6 +366,13 @@ Open on `current`:
 - A manual brief carries the no-deletion clause, and names unit-written readings,
   never his text, as what may go.
 - One branch update at a time, and at most three open unit branches.
+- The session transcript grows all session; it passed 695 MB on 2026-11-14. Code
+  that reads it reads from the end, through `dev_harness/hooks/transcript_tail.py`.
+- A RAM rise outside a unit's own process tree is named before the unit runs
+  again: record the largest processes on the machine, with their parents and
+  command lines, at every sample.
+- An absolute scratchpad path in a brief is refused as grounding outside the
+  repository; name the scratch folder only.
 
 ---
 
