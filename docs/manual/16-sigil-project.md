@@ -487,6 +487,14 @@ def hold(tool: str, rules: Iterable[str], named: Sequence[str]) -> Held:
 | CODE.SECURE | each bandit test and semgrep rule the house holds | 291 | 291 | security |
 | CODE.REACH | the vulture rule the house holds | 1 | 1 | maintainability |
 
+## The defects this tree had
+
+Each OCIR catalogue row that names a code defect this tree had, with the commit
+that fixed it, is a case. All nine coding sigils read each case's code before
+and after its fix, and git restores both sides on each run.
+[The OCIR cases](16-sigil-project/ocir-cases.md) states the case list, how a
+case is restored and read, and which rows the sigils read.
+
 ## Progress
 
 Every sigil, its owner and where it stands. A built sigil's count comes from

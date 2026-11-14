@@ -46,6 +46,7 @@ BANDIT_BUILT = "1.9.4"
 SEMGREP_BUILT = "1.171.0"
 BANDIT_TIMEOUT_S = 120
 SEMGREP_TIMEOUT_S = 180
+SEMGREP_NO_RULE_TIMEOUT = "--timeout=0"
 BANDIT_FINISHED = (0, 1)
 SEMGREP_FINISHED = (0,)
 BANDIT_STDIN = "<stdin>"
@@ -170,6 +171,7 @@ def _semgrep_findings(
                     "--json",
                     "--quiet",
                     "--no-git-ignore",
+                    SEMGREP_NO_RULE_TIMEOUT,
                     *(f"--exclude-rule={rule}" for rule in excluded),
                     ".",
                 ],
@@ -276,7 +278,8 @@ SIGIL = Sigil(
                 (
                     "semgrep, through semgrep.console_scripts.entrypoint, "
                     "as semgrep scan --config=p/python --config=p/security-audit "
-                    "--json --quiet --no-git-ignore, with --exclude-rule for each "
+                    "--json --quiet --no-git-ignore --timeout=0, so no rule stops "
+                    "on a per-rule time limit, with --exclude-rule for each "
                     "semgrep rule of the card the selection leaves out, in an empty "
                     "temporary folder holding a copy of the file under its own name, "
                     "when the selection holds a semgrep rule"
