@@ -226,8 +226,8 @@ FOLLOW_ON = {
 
 ## The shared modules
 
-Six modules hold the steps that sigils share: every sigil builds its card with
-`dev_harness/sigils/core.py, in Sigil`, and each of the other five serves only
+Seven modules hold the steps that sigils share: every sigil builds its card with
+`dev_harness/sigils/core.py, in Sigil`, and each of the other six serves only
 some sigils. Each step has one body. No sigil module imports from another sigil
 module.
 
@@ -237,6 +237,7 @@ module.
 | `dev_harness/sigils/coding_input.py` | the Coding Archetype's input: tier 1 in `DATA_TYPE_TIER`, tier 2 in `CONTENT_TIER`, and the file readers in `READERS` |
 | `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, each rule's fix class and its preview and removed marks in `listing`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
 | `dev_harness/sigils/construct_rules.py` | the rules a coding sigil holds from its disciplines: `take` for a construct sigil, `hold` for a tool sigil, and the reason each other scope rule left in `why_left` |
+| `dev_harness/sigils/coding_partition.py` | the rules a coding sigil runs on one input: the input's facts in `facts_of`, the run rule in `runs`, and the held rules it keeps in `selection` |
 | `dev_harness/sigils/fix_class.py` | the follow-on rule of each fix class, in `FOLLOW_ON` |
 | `dev_harness/sigils/citation.py` | the citation form that CITE.SYMBOL@3 and TA.AUDIT@1 share: tier 1 in `data_type_fault`, and the definition search in `definition_verdict` |
 
@@ -390,8 +391,9 @@ and exits 1 on any fault. `--root` names the tree, and `--card` prints the card.
     }
 ```
 
-The archetype does not run every rule on every input. The input decides which
-rules run, before any rule runs. [Rule run partitioning](16-sigil-project/rule-partition.md)
+The archetype's coding sigils do not run every rule on every input. The input
+decides which rules run, before any rule runs. The archetype's own ruff call
+still runs every rule it enables. [Rule run partitioning](16-sigil-project/rule-partition.md)
 states the inputs, the four keys each rule carries, the run rule, and the proof
 on `src/`.
 

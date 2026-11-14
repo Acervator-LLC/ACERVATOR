@@ -117,7 +117,7 @@ module it names, and the file kind is one it names.
 
 ```python
     out = []
-    if RANK[reach_of(keys)] > RANK[facts.size]:
+    if not reach_fits(keys, facts):
         out.append("reach")
     nodes = keys["nodes"].get("value")
     if nodes and not facts.nodes.intersection(nodes):
@@ -130,8 +130,22 @@ module it names, and the file kind is one it names.
     return out
 ```
 
-A rule with reach project runs on the project input only. Module and scope
-inputs never run it, and the proof reads its findings at the project.
+A reach whose ground is the tool's own scope fits every input. Mypy, pyright,
+vulture, the eight hallucination rules and four pylint messages read the whole
+project to give a finding, so their reach is project. The finding still sits
+on a line of one file, and a sigil that runs one of these tools runs it over
+the project from the root of the tree, whatever the input. Pylint F0011 has
+reach project on its own documentation, so it runs on the project input only.
+
+`dev_harness/sigils/coding_partition.py, in reach_fits`:
+
+```python
+def reach_fits(keys: dict[str, Any], facts: Facts) -> bool:
+    """Report whether the rule's reach is no larger than `facts.size`; a `TOOL_SCOPE` reach fits every input."""
+    if keys["reach"].get("ground") == TOOL_SCOPE:
+        return True
+    return RANK[reach_of(keys)] <= RANK[facts.size]
+```
 
 ## Measured keys
 
@@ -163,16 +177,16 @@ Why each open key stays open:
 
 | Input | Inputs | Rules run, lowest | Median | Highest |
 | ----- | ------ | ----------------- | ------ | ------- |
-| scope | 13,893 | 236 | 672 | 835 |
-| module, source | 502 | 132 | 774 | 866 |
-| module, test | 1 | 792 | 792 | 792 |
+| scope | 13,893 | 310 | 771 | 942 |
+| module, source | 502 | 194 | 880 | 973 |
+| module, test | 1 | 899 | 899 | 899 |
 | project | 1 | 1,061 | 1,061 | 1,061 |
 
 How many rules each key left out of at least one of those inputs:
 
 | Key | Rules it partitions |
 | --- | ------------------- |
-| reach | 134 |
+| reach | 21 |
 | nodes | 1,051 |
 | imports | 369 |
 | file | 31 |
@@ -183,7 +197,8 @@ The proof reads every archetype call once over `src/`: ruff, mypy, pyright,
 bandit, vulture, semgrep, pylint, the sigils' preview rules, and the six rule
 modules. Those calls give 48,865 findings of 234 rules. For every module, scope
 and project input, each finding the input must carry is checked against the
-rules selected for it.
+rules selected for it. A module or scope input carries each finding inside its
+lines whose rule's reach fits it, and the project carries every finding.
 
 | Reading | Result |
 | ------- | ------ |
@@ -195,6 +210,67 @@ The control copies the keys and makes bandit B404 need a module no input
 imports. The proof then reports both B404 findings in `src/` by file and line,
 at each module input and at the project input.
 
+## The selection each sigil runs
+
+Each of the nine coding sigils applies the run rule to its input before its
+tool runs. It keeps the rules of its own card that the run rule selects, and
+passes only those to its tool. Ruff gets them as its rule list, bandit as its
+tests, and semgrep excludes each rule of the card that the selection leaves
+out. Mypy, pyright and vulture count only the selected codes. A tool with no
+selected rule does not run.
+
+`dev_harness/sigils/coding_partition.py, in selection`:
+
+```python
+def selection(text: str, root: Path, held: Iterable[str]) -> list[str]:
+    """Return the `held` rules that `select` gives over `keys` for the `facts_of` input `text` under `root`."""
+    facts = facts_of(text, root)
+    if isinstance(facts, str):
+        message = f"{text}: {facts}"
+        raise FactsFault(message)
+    return select(keys(), facts, held)
+```
+
+The keys are read once per process. No sigil reads `partition.json` itself,
+and no sigil holds a run rule of its own.
+
+### The sigil proof
+
+The sigil proof reads every tracked Python file of `src/` as a file input, and
+every def and class in them as a scope input: 503 files and 13,885 defs and
+classes. Each sigil whose tier 2 accepts the input runs twice, once with the
+selection and once with every rule it can run. The two lists of findings must
+be equal, in the same order.
+
+| Sigil | Can run | Files: rules run now, lowest, median, highest | Defs and classes: rules run now, lowest, median, highest | Findings with the selection | Findings with every rule |
+| ----- | ------- | --------------------------------------------- | -------------------------------------------------------- | --------------------------- | ------------------------ |
+| CODE.LOOP | 18 | 10, 13, 17 | 4, 13, 17 | 145 | 145 |
+| CODE.IMPORT | 25 | 25, 25, 25 | 25, 25, 25 | 7,240 | 7,240 |
+| CODE.COLLECTION | 23 | 14, 18, 21 | 3, 17, 21 | 652 | 652 |
+| CODE.FLOW | 33 | 9, 22, 29 | 3, 12, 29 | 533 | 533 |
+| CODE.VARIABLE | 38 | 16, 33, 35 | 12, 32, 35 | 14,417 | 14,417 |
+| CODE.OPTIMIZE | 85 | 4, 71, 81 | 7, 61, 81 | 6,711 | 6,711 |
+| CODE.TYPE | 62 | 32, 61, 62 | 41, 59, 62 | 17,525 | 17,525 |
+| CODE.SECURE | 291 | 18, 187, 202 | 34, 176, 198 | 62 | 62 |
+| CODE.REACH | 1 | 1, 1, 1 | 1, 1, 1 | 2,822 | 2,822 |
+
+Without the selection, a sigil runs every rule it can run on every input: the
+count in the second column. Each sigil page gives its own rows by input size.
+CODE.IMPORT stays at 25 because each of its rules needs an import statement and
+its tier 2 already refuses an input without one. CODE.REACH stays at 1 because
+its one rule fits every source file.
+
+| Reading | Result |
+| ------- | ------ |
+| findings that differ with and without the selection | 0 |
+| sigils that refused an input after tier 2 accepted it | 0 |
+| control: one rule's imports key made wrong | 46 lost findings reported, exit 1 |
+
+The control copies the keys and makes ruff B007 need a module no input
+imports. The proof then runs CODE.LOOP@1, the one sigil that can run B007. It
+reports every B007 finding as lost, each with its line: 16 at 9 files and 30 at
+19 defs and classes. No other finding moves.
+
 ## Commands
 
 ```text
@@ -202,10 +278,17 @@ python -m dev_harness.sigils.coding_partition --root . "src/core/log_paths.py, i
 python -m dev_harness.sigils.coding_partition --root . --prove --findings <file>
 python -m dev_harness.sigils.coding_partition --root . --prove --findings <file> --control "bandit B404"
 python -m dev_harness.sigils.partition_measure --sources <folder> --proof <proof file>
+python -m dev_harness.sigils.coding_partition --root . --sigils --findings <file>
+python -m dev_harness.sigils.coding_partition --root . --sigils --control "ruff B007"
 ```
 
-The first prints an input's facts and the rules that run on it: 707 of 1,251
-for that function, 791 for its file. The second runs every archetype call over
+The first prints an input's facts and the rules that run on it: 809 of 1,251
+for that function, 897 for its file. The second runs every archetype call over
 `src/` once and checks every input. The third runs the same check on a copy of
 the keys with one key made wrong. The fourth measures the keys from the
 published sources that its `--card` lists.
+
+The fifth runs the sigil proof. It saves each file's rows to the named file as
+it goes, and a run started again on the same file reads them and goes on from
+there. The sixth runs the sigil proof on a copy of the keys with one rule's key
+made wrong, for the sigils that can run that rule.

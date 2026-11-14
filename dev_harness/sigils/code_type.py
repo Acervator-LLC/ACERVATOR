@@ -5,7 +5,7 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +26,7 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .coding_partition import SELECTION, selection
 from .construct_rules import LEFT_BECAUSE, hold, house_rules
 from .core import (
     APPLICATION_SOURCE,
@@ -49,6 +50,7 @@ PYRIGHT_TIMEOUT_S = 120
 MYPY_FINISHED = (0, 1)
 PYRIGHT_FINISHED = (0, 1)
 NO_CODE = "no code"
+NO_CHECKER = "no type checker ran: the selection holds no rule of either"
 
 FUNCTION = (
     "reads each value against the type its annotation, assignment or call gives it, "
@@ -58,7 +60,7 @@ FUNCTION = (
 DISCIPLINES = ("conventions", "reliability", "typing")
 MYPY = hold("mypy", sorted(mypy.errorcodes.error_codes), DISCIPLINES)
 PYRIGHT = hold("pyright", house_rules("pyright"), DISCIPLINES)
-HELD = {held.tool: frozenset(held.rules) for held in (MYPY, PYRIGHT)}
+CAN_RUN = tuple(f"{held.tool} {rule}" for held in (MYPY, PYRIGHT) for rule in held.rules)
 
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
@@ -71,6 +73,8 @@ SETTINGS: dict[str, str] = {
     "pyright reports as an error with no configuration",
     "mypy_rules": " ".join(MYPY.rules),
     "pyright_rules": " ".join(PYRIGHT.rules),
+    "selection": SELECTION,
+    "can_run": str(len(CAN_RUN)),
     "type_config": "the mypy and pyright settings each tool finds "
     "from the root of the target tree",
     "fault_file": "the file the input line names: HOLD when it sits "
@@ -149,25 +153,38 @@ def _pyright_findings(path: str, root: Path, file: Path) -> tuple[str, list[Find
         raise ToolFault(f"pyright printed an unreadable report: {exc}") from exc
 
 
-def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
-    """Return `SOUND`, or `UNSOUND` with each `HELD` `Finding` inside the `locate` span."""
+def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[Finding]]:
+    """Return the checkers run and each error of the `to_run` rules inside the input `text` names."""
     located = locate(text, root)
     if isinstance(located, str):
         raise ToolFault(f"{text}: {located}, after tier 2 accepted it")
     file, _, (first, last) = located
     path, separator, _ = text.partition(SETTINGS["separator"])
     is_narrowed = bool(separator)
-    pyright_ran, pyright_found = _pyright_findings(path, root, file)
-    findings = [
+    ran: list[str] = []
+    errors: list[Finding] = []
+    if any(f"{MYPY.tool} {rule}" in to_run for rule in MYPY.rules):
+        ran.append(f"mypy {mypy.version.__version__}")
+        errors += _mypy_findings(path, root, file)
+    if any(f"{PYRIGHT.tool} {rule}" in to_run for rule in PYRIGHT.rules):
+        version, found = _pyright_findings(path, root, file)
+        ran.append(f"pyright {version}")
+        errors += found
+    kept = [
         finding
-        for finding in [*_mypy_findings(path, root, file), *pyright_found]
-        if finding.code in HELD[finding.tool]
+        for finding in errors
+        if f"{finding.tool} {finding.code}" in to_run
         and (not is_narrowed or first <= finding.line <= last)
     ]
-    versions = f"mypy {mypy.version.__version__}, pyright {pyright_ran}"
-    if not findings:
+    return ", ".join(ran) or NO_CHECKER, kept
+
+
+def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
+    """Return `SOUND`, or `UNSOUND` with each error of the `selection` rules inside the `locate` span."""
+    versions, found = findings(text, root, selection(text, root, CAN_RUN))
+    if not found:
         return SOUND, f"{versions}: neither tool reports an error under a rule on the card"
-    rows = "; ".join(f"{item.tool} {item.code} line {item.line}" for item in findings)
+    rows = "; ".join(f"{item.tool} {item.code} line {item.line}" for item in found)
     return UNSOUND, f"{versions}: {rows}"
 
 
@@ -183,15 +200,18 @@ SIGIL = Sigil(
         CONTENT_TIER,
         {
             "runs": [
+                "the selection: the rules of the card that coding_partition.select "
+                "gives for the input's facts",
                 (
                     "mypy, through mypy.api.run from the root of the target tree, "
-                    "with --output json and the null device as its cache folder"
+                    "with --output json and the null device as its cache folder, "
+                    "when the selection holds a mypy rule"
                 ),
                 (
                     "pyright, through pyright.run from the root of the target tree, "
-                    "with --outputjson"
+                    "with --outputjson, when the selection holds a pyright rule"
                 ),
-                "only the errors under mypy_rules and pyright_rules",
+                "only the errors under the selected rules",
                 "for a symbol, only the errors inside its lines",
             ],
             "sound": "neither tool reports an error under a rule on the card",

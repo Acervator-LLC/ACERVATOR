@@ -3,7 +3,7 @@
 import json
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .coding_partition import SELECTION, selection
 from .construct_rules import LEFT_BECAUSE, hold, house_rules
 from .core import (
     APPLICATION_SOURCE,
@@ -40,6 +41,9 @@ REJECTED = "REJECTED"
 
 VULTURE_BUILT = "2.16"
 VULTURE_TIMEOUT_S = 120
+WHOLE_TREE = "."
+TREE_FILES = ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.py"]
+NO_RULE = "vulture did not run: the selection holds no rule"
 
 FUNCTION = (
     "reads each def, class, name and import for code that nothing in the tree "
@@ -47,6 +51,7 @@ FUNCTION = (
 )
 DISCIPLINES = ("maintainability",)
 VULTURE = hold("vulture", house_rules("vulture"), DISCIPLINES)
+CAN_RUN = tuple(f"{VULTURE.tool} {rule}" for rule in VULTURE.rules)
 
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
@@ -56,6 +61,11 @@ SETTINGS: dict[str, str] = {
     "scope": "each vulture rule a discipline houses or unplaced.json lists: "
     "dead-code, the one rule id every vulture item carries",
     "vulture_rules": " ".join(VULTURE.rules),
+    "selection": SELECTION,
+    "can_run": str(len(CAN_RUN)),
+    "tree_files": "the .py files "
+    + " ".join(TREE_FILES[1:])
+    + " lists from the root of the target tree, else the whole tree outside git",
     "confidence_floor": "100",
     "fault_file": "the file the input line names: UNREACHED reads HOLD when it sits "
     "in application_source and an item reaches confidence_floor",
@@ -76,8 +86,25 @@ class Finding:
     line: int
 
 
+def _tree_files(root: Path) -> list[str]:
+    """Return the `TREE_FILES` paths under `root` that exist, or `WHOLE_TREE` when git lists none."""
+    try:
+        proc = subprocess.run(
+            TREE_FILES,
+            cwd=root,
+            capture_output=True,
+            timeout=VULTURE_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return [WHOLE_TREE]
+    listed = tool_text(proc.stdout).split("\0") if proc.returncode == 0 else []
+    files = [name for name in listed if name and (root / name).is_file()]
+    return files or [WHOLE_TREE]
+
+
 def _vulture_scan(root: Path) -> tuple[str, list[tuple[Path, Finding]]]:
-    """Return the vulture version and each item's file and `Finding` under `root`."""
+    """Return the vulture version and each item's file and `Finding` over the `_tree_files` of `root`."""
     try:
         proc = subprocess.run(
             [
@@ -85,9 +112,9 @@ def _vulture_scan(root: Path) -> tuple[str, list[tuple[Path, Finding]]]:
                 "-P",
                 "-c",
                 (
-                    "import json, vulture; "
+                    "import json, sys, vulture; "
                     "scan = vulture.Vulture(); "
-                    "scan.scavenge(['.']); "
+                    "scan.scavenge(json.load(sys.stdin)); "
                     "print(json.dumps({'version': vulture.__version__, "
                     "'exit_code': int(scan.exit_code), "
                     "'items': [[str(item.filename), item.typ, item.name, "
@@ -95,6 +122,7 @@ def _vulture_scan(root: Path) -> tuple[str, list[tuple[Path, Finding]]]:
                     "for item in scan.get_unused_code()]}))"
                 ),
             ],
+            input=json.dumps(_tree_files(root)).encode("utf-8"),
             cwd=root,
             capture_output=True,
             timeout=VULTURE_TIMEOUT_S,
@@ -122,32 +150,38 @@ def _vulture_scan(root: Path) -> tuple[str, list[tuple[Path, Finding]]]:
         raise ToolFault(message) from exc
 
 
-def _functions_verdict(text: str, root: Path) -> Reading:
-    """Return `REACHED`, or `UNREACHED` holding if an item hits `confidence_floor`."""
+def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[Finding]]:
+    """Return the vulture version and each item of the `to_run` rules inside the input `text` names."""
     located = locate(text, root)
     if isinstance(located, str):
         message = f"{text}: {located}, after tier 2 accepted it"
         raise ToolFault(message)
     file, _, (first, last) = located
     is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
+    if not any(name in to_run for name in CAN_RUN):
+        return NO_RULE, []
     version, items = _vulture_scan(root)
     target = file.resolve()
-    findings = [
+    found = [
         finding
         for path, finding in items
-        if VULTURE.rules
-        and path == target
-        and (not is_narrowed or first <= finding.line <= last)
+        if path == target and (not is_narrowed or first <= finding.line <= last)
     ]
-    if not findings:
-        return Reading(REACHED, f"vulture {version}: no item in the file", holds=False)
+    return f"vulture {version}", found
+
+
+def _functions_verdict(text: str, root: Path) -> Reading:
+    """Return `REACHED`, or `UNREACHED` holding if an item of the `selection` rules hits `confidence_floor`."""
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+    if not found:
+        return Reading(REACHED, f"{version}: no item in the file", holds=False)
     floor = int(SETTINGS["confidence_floor"])
-    holds = any(finding.confidence >= floor for finding in findings)
+    holds = any(finding.confidence >= floor for finding in found)
     rows = "; ".join(
         f"{item.kind} {item.name} confidence {item.confidence} line {item.line}"
-        for item in findings
+        for item in found
     )
-    return Reading(UNREACHED, f"vulture {version}: {rows}", holds)
+    return Reading(UNREACHED, f"{version}: {rows}", holds)
 
 
 SIGIL = Sigil(
@@ -162,16 +196,17 @@ SIGIL = Sigil(
         CONTENT_TIER,
         {
             "runs": [
+                "the selection: the rules of the card that coding_partition.select "
+                "gives for the input's facts; no rule selected, no vulture run",
                 (
                     "vulture's programmatic use as its README shows it, "
-                    "Vulture().scavenge(['.']) then get_unused_code(), "
+                    "Vulture().scavenge(<the tree_files>) then get_unused_code(), "
                     "in python -P -c from the root of the target tree"
                 ),
                 (
                     "only the items in the input file, so a name used in another "
                     "file of the tree is not called unused"
                 ),
-                "only while vulture_rules holds dead-code",
                 "for a symbol, only the items inside its lines",
             ],
             "reached": "vulture reports no item in the file",

@@ -34,7 +34,7 @@ TAKEN = take("collection", DISCIPLINES)
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module. Tier 3 runs ruff
-with the 23 rules the card can run. Two of them are preview rules, so ruff runs
+with the selected rules of the 23 the card can run. Two of them are preview rules, so ruff runs
 with preview rules on. The file goes to ruff on standard input, from the folder
 of the file. For a function or class, only the findings inside its lines count.
 
@@ -45,9 +45,13 @@ class, and its published faulty and corrected forms. The card records ruff
 `dev_harness/sigils/code_collection.py, in _ruff_findings`:
 
 ```python
-def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
-    """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+def _ruff_findings(
+    source: bytes, folder: Path, rules: tuple[str, ...]
+) -> list[tuple[str, int]]:
+    """Return each code and line of `rules` for `source` on stdin, run from `folder`; none when `rules` is empty."""
+    if not rules:
+        return []
+    rows = check(source, folder, rules, preview=bool(PREVIEW))
     return [(row.code, row.line) for row in rows]
 ```
 
@@ -68,6 +72,34 @@ def _is_collection(node: ast.expr) -> bool:
         return isinstance(node.func, ast.Name) and node.func.id in BUILDERS
     return isinstance(node, COLLECTION_NODES)
 ```
+
+## The selection
+
+For each input, CODE.COLLECTION@1 runs only those of its 23 rules that the run
+rule selects for the input's facts. A rule whose subject the input lacks does
+not run, and an input that selects no rule runs no ruff.
+[Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
+states the run rule and the proof.
+
+`dev_harness/sigils/code_collection.py, in _functions_verdict`:
+
+```python
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+```
+
+`dev_harness/sigils/code_collection.py, in findings`, the rules ruff gets:
+
+```python
+    rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
+```
+
+Measured on every tracked Python file of `src/` and every def and class in
+them, for each input that tier 2 accepts:
+
+| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
+| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
+| file | 470 | 23 | 14 | 18 | 21 | 288 | 288 |
+| def or class | 6,720 | 23 | 3 | 17 | 21 | 364 | 364 |
 
 ## Outputs and flags
 

@@ -2,7 +2,7 @@
 
 import ast
 import sys
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 
 from .coding_input import (
@@ -16,7 +16,8 @@ from .coding_input import (
     fault_file,
     locate,
 )
-from .construct_rules import take
+from .coding_partition import SELECTION, selection
+from .construct_rules import TOOL, take
 from .core import (
     APPLICATION_SOURCE,
     FLAGS,
@@ -45,6 +46,7 @@ TAKEN = take("import", DISCIPLINES)
 RULES = TAKEN.rules
 PREVIEW = TAKEN.preview
 HOLDING = TAKEN.holding
+CAN_RUN = tuple(f"{TOOL} {code}" for code in RULES)
 IMPORT_NODES = (ast.Import, ast.ImportFrom)
 NO_IMPORT = "no import or from-import statement"
 
@@ -52,16 +54,41 @@ SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "ruff_version": RUFF_BUILT,
     **TAKEN.settings(FUNCTION),
+    "selection": SELECTION,
+    "can_run": str(len(CAN_RUN)),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
     "in application_source and one of holding_rules fires",
     "ruff_config": "the one ruff finds from the folder of the file",
 }
 
 
-def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
-    """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+def _ruff_findings(
+    source: bytes, folder: Path, rules: tuple[str, ...]
+) -> list[tuple[str, int]]:
+    """Return each code and line of `rules` for `source` on stdin, run from `folder`; none when `rules` is empty."""
+    if not rules:
+        return []
+    rows = check(source, folder, rules, preview=bool(PREVIEW))
     return [(row.code, row.line) for row in rows]
+
+
+def findings(
+    text: str, root: Path, to_run: Collection[str]
+) -> tuple[str, list[tuple[str, int]]]:
+    """Return the ruff version and each code and line of the `to_run` rules inside the input `text` names."""
+    located = locate(text, root)
+    if isinstance(located, str):
+        message = f"{text}: {located}, after tier 2 accepted it"
+        raise ToolFault(message)
+    file, source, (first, last) = located
+    is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
+    rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
+    found = [
+        (code, line)
+        for code, line in _ruff_findings(source, file.parent, rules)
+        if not is_narrowed or first <= line <= last
+    ]
+    return f"ruff {ruff_version()}", found
 
 
 def _content_fault(text: str, root: Path) -> str | None:
@@ -78,25 +105,14 @@ def _content_fault(text: str, root: Path) -> str | None:
 
 
 def _functions_verdict(text: str, root: Path) -> Reading:
-    """Return `CLEAN`, or `FINDINGS` holding when a `HOLDING` rule fires."""
-    located = locate(text, root)
-    if isinstance(located, str):
-        message = f"{text}: {located}, after tier 2 accepted it"
-        raise ToolFault(message)
-    file, source, (first, last) = located
-    is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
-    findings = [
-        (code, line)
-        for code, line in _ruff_findings(source, file.parent)
-        if not is_narrowed or first <= line <= last
-    ]
-    version = f"ruff {ruff_version()}"
-    if not findings:
+    """Return `CLEAN`, or `FINDINGS` holding when a `HOLDING` rule fires, from the `selection` rules."""
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+    if not found:
         return Reading(CLEAN, f"{version}: no rule on the list fires", holds=False)
-    pages = {code: rule_page(code) for code, _ in findings}
+    pages = {code: rule_page(code) for code, _ in found}
     rows = "; ".join(
         f"{code} {pages[code].name} line {line} fix {pages[code].fix}"
-        for code, line in findings
+        for code, line in found
     )
     forms = "".join(
         f"\n{code} faulty:\n{page.faulty}{code} corrected:\n{page.corrected}"
@@ -123,13 +139,15 @@ SIGIL = Sigil(
         },
         {
             "runs": [
+                "the selection: the rules of the card that coding_partition.select "
+                "gives for the input's facts; no rule selected, no ruff run",
                 (
-                    "python -m ruff check --preview --select with the rules, "
+                    "python -m ruff check --preview --select with the selected rules, "
                     "the file on standard input, from the folder of the file"
                 )
                 if PREVIEW
                 else (
-                    "python -m ruff check --select with the rules, "
+                    "python -m ruff check --select with the selected rules, "
                     "the file on standard input, from the folder of the file"
                 ),
                 "for a symbol, only the findings inside its lines",
