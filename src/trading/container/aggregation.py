@@ -105,6 +105,49 @@ def held_amount(figure: Any) -> Optional[float]:
     return usd if math.isfinite(usd) and usd >= 0.0 else None
 
 
+def held_usd(rows: Any, credit: Any, rested: Any = 0.0) -> Optional[float]:
+    """The ``usd`` of fold tranche ``rows`` past ``rested``, plus ``credit``, each read
+    through ``held_amount``; None where one figure is no amount."""
+    queued = [held_amount(row.get("usd", 0.0)) for row in rows]
+    credit_usd = held_amount(credit)
+    rested_usd = held_amount(rested)
+    if credit_usd is None or rested_usd is None or None in queued:
+        return None
+    return max(0.0, sum(queued) - rested_usd) + credit_usd
+
+
+def saved_record_hold(
+    record: Any, exchange_id: str, currency: str
+) -> tuple[Optional[float], str]:
+    """``held_usd`` of a saved bot record's ``scrumming_state`` on ``exchange_id`` and
+    ``currency``, 0.0 for another pool's record. None and the reason where its figures,
+    or the pool of a record holding dollars, cannot be read."""
+    try:
+        config = record["config"]
+        pool: Optional[tuple] = (
+            config["exchange_id"],
+            wallet_currency(config.get("symbol", ""), config.get("base_currency", "")),
+        )
+    except Exception:
+        pool = None
+    if pool is not None and not pool[0]:
+        pool = None
+    if pool is not None and pool != (exchange_id, currency):
+        return 0.0, ""
+    try:
+        saved = record.get("scrumming_state") or {}
+        held = held_usd(
+            saved.get("fold_tranches", ()), saved.get("pending_wire_credits", 0.0)
+        )
+    except Exception as _read_exc:
+        return None, f"its saved record could not be read ({_read_exc})"
+    if held is None:
+        return None, "a held figure in its saved record is no amount"
+    if pool is None and held > 0.0:
+        return None, f"its saved record holds {held:.2f} and names no exchange"
+    return held, ""
+
+
 def accrued_growth_usd(
     target_balance: Any, anchor_target_balance: Any
 ) -> Optional[float]:
@@ -192,6 +235,7 @@ class FleetAggregationMixin:
 
     # Annotation only, supplied by BotManager at runtime: no attribute is
     # created and the runtime base stays `object`.
+    _boot_state_records: dict
     _bots: dict
 
     #: The marked totals the last pass logged. The dashboard asks every two
@@ -484,17 +528,15 @@ class FleetAggregationMixin:
         return total
 
     def _one_sibling_hold(self, other_bot: Any) -> Optional[float]:
-        """The dollars one other bot's ``_fold_tranches`` and
-        ``_pending_wire_credits`` hold, past the unfilled dollars of its resting tranche
-        buys, or None where one figure is no amount."""
+        """``held_usd`` of one other bot's ``_fold_tranches`` and
+        ``_pending_wire_credits``, past its ``resting_tranche_usd``."""
         rows = getattr(other_bot, "_fold_tranches", ()) or ()
         resting = getattr(other_bot, "resting_tranche_usd", None)
-        queued = [held_amount(row.get("usd", 0.0)) for row in rows]
-        credit = held_amount(getattr(other_bot, "_pending_wire_credits", 0.0))
-        rested = held_amount(resting() if callable(resting) else 0.0)
-        if credit is None or rested is None or None in queued:
-            return None
-        return max(0.0, sum(queued) - rested) + credit
+        return held_usd(
+            rows,
+            getattr(other_bot, "_pending_wire_credits", 0.0),
+            resting() if callable(resting) else 0.0,
+        )
 
     def sum_sibling_held_usd(
         self,
@@ -506,13 +548,29 @@ class FleetAggregationMixin:
         fold tranches and parked wire credits, in that currency's units.
 
         ``sum_sibling_base_currency_claims`` reads a bot's allocation, and this reads
-        the dollars its buy-backs wait on. Every run state counts. Returns ``None``,
-        never a partial sum, when one bot cannot be read, and a caller that gets
-        ``None`` must refuse to spend.
+        the dollars its buy-backs wait on. Every run state counts, and a
+        ``_boot_state_records`` bot absent from ``_bots`` counts through
+        ``saved_record_hold``. Returns ``None``, never a partial sum, when one bot
+        cannot be read, and a caller that gets ``None`` must refuse to spend.
         """
         currency_norm = (currency or "").upper()
         total = 0.0
         unread: list[str] = []
+        try:
+            unloaded = [
+                (record_id, record)
+                for record_id, record in self._boot_state_records.items()
+                if record_id != bot_id and record_id not in self._bots
+            ]
+        except Exception as _records_exc:
+            unloaded = []
+            unread.append(f"the saved records ({_records_exc})")
+        for record_id, record in unloaded:
+            saved, why = saved_record_hold(record, exchange_id, currency_norm)
+            if saved is None:
+                unread.append(f"{record_id}, not loaded ({why})")
+                continue
+            total += saved
         for other_id, other_bot in self._bots.items():
             if other_id == bot_id:
                 continue
