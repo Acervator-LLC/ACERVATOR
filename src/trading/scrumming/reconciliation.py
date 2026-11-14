@@ -1410,8 +1410,9 @@ class ReconciliationEngineMixin:
         self, send: Any, side: str, units: float
     ) -> tuple[Optional[tuple[Any, float, float, float]], str]:
         """``((order, filled, average, moved), "")`` for the order
-        ``get_order_by_client_id`` reads under ``send.coid``, closed at a price, whose
-        ``order_units_moved`` on ``side`` matches ``units``; else ``(None, why)``."""
+        ``get_order_by_client_id`` reads under ``send.coid`` since ``send.issued_at``,
+        closed at a price, whose ``order_units_moved`` on ``side`` matches ``units``;
+        else ``(None, why)``."""
         from ..bot_container import (
             CLOSED_ORDER_STATUSES,
             finite_reading,
@@ -1422,15 +1423,13 @@ class ReconciliationEngineMixin:
 
         try:
             order = await self.exchange.get_order_by_client_id(
-                send.coid, self.config.symbol
+                send.coid, self.config.symbol, send.issued_at
             )
         except Exception as exc:
             return None, (
                 f"the venue's order under this id could not be read "
                 f"({type(exc).__name__}: {exc})"
             )
-        raw = getattr(order, "raw", None)
-        named = str((raw if isinstance(raw, dict) else {}).get("clientOrderId") or "")
         filled, price = order_filled_and_average(order)
         moved = order_units_moved(
             side,
@@ -1439,8 +1438,6 @@ class ReconciliationEngineMixin:
             str(getattr(order, "fee_currency", "") or ""),
             self.config.target_asset,
         )
-        if named and named != send.coid:
-            return None, f"the venue answered with the order under {named}"
         if (
             order_status_text(order) not in CLOSED_ORDER_STATUSES
             and self._order_asked_units(order, filled) - filled > FILL_DUST_UNITS

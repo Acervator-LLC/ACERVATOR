@@ -1468,7 +1468,9 @@ class BotContainer:
 
         try:
             if _read_only:
-                order = await self.exchange.get_order_by_client_id(_coid, symbol)
+                order = await self.exchange.get_order_by_client_id(
+                    _coid, symbol, _idem.issued_at(_coid)
+                )
             else:
                 order = await self.exchange.send_order(
                     symbol,
