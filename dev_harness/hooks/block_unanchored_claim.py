@@ -8,9 +8,10 @@ its limit.
 """
 
 import json
-import pathlib
 import re
 import sys
+
+from transcript_tail import last_reply
 
 CAP = 12
 
@@ -29,33 +30,6 @@ ANCHORED = re.compile(
     r"|`[^`]*\.(?:py|js|md|json)`|\b[0-9a-f]{7,40}\b|\b\d+ of \d+\b",
     re.IGNORECASE,
 )
-
-
-def last_reply(path):
-    """Returns the assistant's final text block from the transcript."""
-    try:
-        lines = pathlib.Path(path).read_text(
-            encoding="utf-8", errors="replace"
-        ).splitlines()
-    except OSError:
-        return ""
-    for line in reversed(lines):
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if row.get("type") != "assistant":
-            continue
-        content = (row.get("message") or {}).get("content") or []
-        parts = [
-            block.get("text", "")
-            for block in content
-            if isinstance(block, dict) and block.get("type") == "text"
-        ]
-        text = "\n".join(part for part in parts if part).strip()
-        if text:
-            return text
-    return ""
 
 
 def main():

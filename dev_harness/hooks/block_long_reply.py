@@ -10,6 +10,8 @@ import pathlib
 import re
 import sys
 
+from transcript_tail import last_reply, rows_from_end
+
 LOCK = pathlib.Path.home() / ".claude" / "item_lock.json"
 CAP = 40
 STEPS = re.compile(
@@ -38,50 +40,13 @@ ASKED = re.compile(
 
 def user_asked(path):
     """True when the operator's last message requests a report."""
-    try:
-        lines = pathlib.Path(path).read_text(
-            encoding="utf-8", errors="replace"
-        ).splitlines()
-    except OSError:
-        return False
-    for line in reversed(lines):
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
+    for row in rows_from_end(path):
         if row.get("type") != "user":
             continue
         content = (row.get("message") or {}).get("content")
         text = content if isinstance(content, str) else json.dumps(content)
         return ASKED.search(text) is not None
     return False
-
-
-def last_reply(path):
-    """Returns the assistant's final text block from the transcript."""
-    try:
-        lines = pathlib.Path(path).read_text(
-            encoding="utf-8", errors="replace"
-        ).splitlines()
-    except OSError:
-        return ""
-    for line in reversed(lines):
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if row.get("type") != "assistant":
-            continue
-        content = (row.get("message") or {}).get("content") or []
-        parts = [
-            block.get("text", "")
-            for block in content
-            if isinstance(block, dict) and block.get("type") == "text"
-        ]
-        text = "\n".join(part for part in parts if part).strip()
-        if text:
-            return text
-    return ""
 
 
 def main():
