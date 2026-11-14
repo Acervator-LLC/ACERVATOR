@@ -37,6 +37,7 @@ class Sigil:
     content: Content
     functions: Functions
     fault_file: FaultFile | None = None
+    disciplines: tuple[str, ...] = ()
 ```
 
 ## The scope test
@@ -76,6 +77,9 @@ ast module must find the construct the sigil reads, or the input is refused.
 ```python
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
     """Run `text` through tiers 1, 2 and 3 of `sigil`, stopping at the first refusal."""
+    fault = discipline_fault(sigil)
+    if fault:
+        return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
     fault = sigil.data_type(text)
     if fault:
         return Verdict(sigil.refusal, f"{DATA_TYPE}: {fault}", 1, Flag.BLOCK)
@@ -115,6 +119,62 @@ flowchart TD
     OUT -->|a fault outside application source| FIX
     OUT -->|a fault in application source| HOLD
     OUT -->|an output the card flags BLOCK| BLOCK
+```
+
+### The disciplines a card names
+
+A card names the disciplines it takes its rules from. Each discipline's SKILL.md
+lists the archetypes compatible with it, on its archetypes line. Before tier 1,
+the core reads that line for each discipline the card names.
+
+When the line does not name the card's owner, the sigil does not run with that
+discipline. Every input reads REJECTED with the flag BLOCK, and its tier reads
+0, because no tier ran. The reason names the discipline, the archetypes its
+skill lists, and the owner.
+
+`dev_harness/sigils/core.py, in discipline_fault`:
+
+```python
+def discipline_fault(sigil: Sigil) -> str | None:
+    """Return each `sigil.disciplines` entry whose `archetypes` omit `sigil.owner`, or None."""
+    faults = []
+    for name in sigil.disciplines:
+        try:
+            listed = archetypes(name)
+        except HouseFault as exc:
+            faults.append(f"{name}: {exc}")
+            continue
+        if sigil.owner not in listed:
+            named = ", ".join(listed) or "no archetype"
+            faults.append(f"{name} lists {named}, not the owner {sigil.owner}")
+    return "; ".join(faults) or None
+```
+
+The archetypes line is read in one place, in the module that reads the
+discipline folders. A skill with no such line lists no archetype, so every card
+that names it is refused.
+
+`dev_harness/sigils/construct_rules.py, in archetypes`:
+
+```python
+@cache
+def archetypes(name: str) -> tuple[str, ...]:
+    """Return each archetype the `ARCHETYPES_LINE` of discipline `name`'s `SKILL_FILE` front matter lists."""
+    path = HOUSE / name / SKILL_FILE
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        message = f"cannot read {name}/{SKILL_FILE}: {exc}"
+        raise HouseFault(message) from exc
+    if not lines or lines[0] != FRONT_MATTER:
+        return ()
+    for line in takewhile(lambda line: line != FRONT_MATTER, lines[1:]):
+        found = ARCHETYPES_LINE.fullmatch(line)
+        if found:
+            return tuple(
+                entry.strip() for entry in found["listed"].split(",") if entry.strip()
+            )
+    return ()
 ```
 
 ## Flags and follow-on rules

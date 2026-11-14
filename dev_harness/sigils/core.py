@@ -9,6 +9,8 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Literal, NamedTuple
 
+from .construct_rules import HouseFault, archetypes
+
 
 class Flag(Enum):
     """`FLAGS` holds the side, when and follow-on rule of each `Flag` name."""
@@ -52,6 +54,7 @@ GATED = frozenset({Flag.BLOCK, Flag.HOLD})
 
 APPLICATION_SOURCE = ("src", "desktop", "main.py")
 
+CARD_DISCIPLINES = "the disciplines the card names"
 DATA_TYPE = "tier 1 data type"
 CONTENT = "tier 2 content compatibility"
 FUNCTIONS = "tier 3 required processing functions"
@@ -100,6 +103,7 @@ class Sigil:
     content: Content
     functions: Functions
     fault_file: FaultFile | None = None
+    disciplines: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -118,8 +122,26 @@ def flag_of(sigil: Sigil, output: str, *, in_source: bool) -> Flag:
     return Flag.HOLD if in_source and row.holds_in_source else row.flag
 
 
+def discipline_fault(sigil: Sigil) -> str | None:
+    """Return each `sigil.disciplines` entry whose `archetypes` omit `sigil.owner`, or None."""
+    faults = []
+    for name in sigil.disciplines:
+        try:
+            listed = archetypes(name)
+        except HouseFault as exc:
+            faults.append(f"{name}: {exc}")
+            continue
+        if sigil.owner not in listed:
+            named = ", ".join(listed) or "no archetype"
+            faults.append(f"{name} lists {named}, not the owner {sigil.owner}")
+    return "; ".join(faults) or None
+
+
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
     """Run `text` through tiers 1, 2 and 3 of `sigil`, stopping at the first refusal."""
+    fault = discipline_fault(sigil)
+    if fault:
+        return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
     fault = sigil.data_type(text)
     if fault:
         return Verdict(sigil.refusal, f"{DATA_TYPE}: {fault}", 1, Flag.BLOCK)

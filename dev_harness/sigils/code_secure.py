@@ -235,6 +235,7 @@ SIGIL = Sigil(
     name="CODE.SECURE",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(

@@ -128,6 +128,7 @@ SIGIL = Sigil(
     name="CODE.FLOW",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(
