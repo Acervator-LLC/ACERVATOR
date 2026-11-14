@@ -4,6 +4,7 @@
   "cwe_source": "https://www.omg.org/spec/ASCQM/1.0/PDF",
   "cwe_table": "Table 2 and clause 7.2",
   "cwe": ["CWE-401", "CWE-404", "CWE-424", "CWE-772", "CWE-775", "CWE-1042", "CWE-1043", "CWE-1046", "CWE-1049", "CWE-1050", "CWE-1057", "CWE-1060", "CWE-1067", "CWE-1072", "CWE-1073", "CWE-1089", "CWE-1091", "CWE-1094"],
+  "cwe_definitions": "MITRE CWE List 5.0, https://cwe.mitre.org/data/xml/cwec_latest.xml.zip",
   "rules": [
     {"tool": "ruff", "rule": "ASYNC110", "grounds": [{"term": "efficiency", "quote": "Busy-waiting for a condition in a loop forces a tradeoff between efficiency and latency: shorter sleep times improve responsiveness but waste more CPU cycles, while longer sleep times reduce CPU usage but delay reaction to state changes."}]},
     {"tool": "ruff", "rule": "B019", "grounds": [{"cwe": "CWE-401", "quote": "Use of `functools.lru_cache` or `functools.cache` on methods can lead to memory leaks."}]},
@@ -41,6 +42,7 @@
     {"tool": "ruff", "rule": "FURB187", "grounds": [{"term": "efficient", "quote": "When reversing a list, it's more efficient to use the in-place method `.reverse()` instead of creating a new list, if the original list is no longer needed."}]},
     {"tool": "ruff", "rule": "FURB188", "grounds": [{"term": "efficient", "quote": "The methods [`str.removeprefix()`](https://docs.python.org/3/library/stdtypes.html#str.removeprefix) and [`str.removesuffix()`](https://docs.python.org/3/library/stdtypes.html#str.removesuffix), introduced in Python 3.9, have the same behavior while being more readable and efficient."}]},
     {"tool": "ruff", "rule": "FURB192", "grounds": [{"term": "inefficient", "quote": "Using `sorted()` to compute the minimum or maximum value in a sequence is inefficient and less readable than using `min()` or `max()` directly."}]},
-    {"tool": "ruff", "rule": "RUF005", "grounds": [{"term": "efficiently", "quote": "However, collections can be concatenated more efficiently using the unpacking operator (e.g., `[*x, *y]` to concatenate `x` and `y`)."}]}
+    {"tool": "ruff", "rule": "RUF005", "grounds": [{"term": "efficiently", "quote": "However, collections can be concatenated more efficiently using the unpacking operator (e.g., `[*x, *y]` to concatenate `x` and `y`)."}]},
+    {"tool": "ruff", "rule": "ISC003", "grounds": [{"cwe": "CWE-1046", "definition": "The product creates an immutable text string using string concatenation operations.", "quote": "Checks for string literals that are explicitly concatenated (using the `+` operator)."}]}
   ]
 }

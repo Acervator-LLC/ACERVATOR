@@ -23,7 +23,14 @@ from dev_harness.harness.report import REPO_ROOT
 from .core import repository_root, tool_text
 
 HOUSE = Path(__file__).resolve().parents[1] / "disciplines"
-DISCIPLINES = ("security", "reliability", "performance-efficiency", "maintainability")
+DISCIPLINES = (
+    "security",
+    "reliability",
+    "performance-efficiency",
+    "maintainability",
+    "conventions",
+    "typing",
+)
 RULES_FILE = "rules.json"
 UNPLACED_FILE = "unplaced.json"
 
@@ -135,10 +142,13 @@ CARD: dict[str, object] = {
     "default: the repository holding the working folder",
     "disciplines": {name: f"dev_harness/disciplines/{name}" for name in DISCIPLINES},
     "files": {"placed": f"<discipline>/{RULES_FILE}", "unplaced": UNPLACED_FILE},
-    "standard": "ISO/IEC 5055:2021, CWE lists from https://www.omg.org/spec/ASCQM/1.0/PDF",
+    "standard": "ISO/IEC 5055:2021, CWE lists from https://www.omg.org/spec/ASCQM/1.0/PDF; "
+    "PEP 8, PEP 257, PEP 484 and https://typing.python.org/en/latest/spec/",
     "grounds": [
         "cwe: a CWE id the discipline's rules.json lists, or one the tool attaches to the rule",
         "term: a quote of the tool's own text naming an ISO/IEC 25010 characteristic",
+        "pep: a quoted section of PEP 8, PEP 257 or PEP 484 that states the rule's check",
+        "spec: a quoted section of the typing specification that states the rule's check",
     ],
     "listings": LISTINGS,
     "outputs": ["per tool: run, placed, unplaced", "per discipline: placements"],

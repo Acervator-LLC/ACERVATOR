@@ -4,6 +4,7 @@
   "cwe_source": "https://www.omg.org/spec/ASCQM/1.0/PDF",
   "cwe_table": "Table 1 and clause 7.1",
   "cwe": ["CWE-407", "CWE-478", "CWE-480", "CWE-484", "CWE-561", "CWE-570", "CWE-571", "CWE-783", "CWE-1041", "CWE-1045", "CWE-1047", "CWE-1048", "CWE-1051", "CWE-1052", "CWE-1054", "CWE-1055", "CWE-1062", "CWE-1064", "CWE-1074", "CWE-1075", "CWE-1079", "CWE-1080", "CWE-1084", "CWE-1085", "CWE-1086", "CWE-1087", "CWE-1090", "CWE-1095", "CWE-1121"],
+  "cwe_definitions": "MITRE CWE List 5.0, https://cwe.mitre.org/data/xml/cwec_latest.xml.zip",
   "rules": [
     {"tool": "ruff", "rule": "ERA001", "grounds": [{"cwe": "CWE-561", "quote": "Commented-out code is dead code, and is often included inadvertently."}, {"cwe": "CWE-1085", "quote": "Found commented-out code."}]},
     {"tool": "ruff", "rule": "B014", "grounds": [{"cwe": "CWE-561", "quote": "Including the same exception multiple times in the same handler is redundant, as the first exception will catch the exception, making the second exception unreachable."}]},
@@ -25,6 +26,15 @@
     {"tool": "vulture", "rule": "dead-code", "grounds": [{"cwe": "CWE-561", "quote": "Find dead code"}]},
     {"tool": "pylint", "rule": "R0801", "grounds": [{"cwe": "CWE-1041", "quote": ":duplicate-code (R0801): *Similar lines in %s files* Indicates that a set of similar lines has been detected among multiple file."}]},
     {"tool": "slop", "rule": "SL001", "grounds": [{"cwe": "CWE-1041", "quote": "Signals defensive-scaffolding buildup where the same \"swallow anything\" pattern got copy-pasted instead of factored into a helper."}]},
-    {"tool": "slop", "rule": "SL003", "grounds": [{"cwe": "CWE-1080", "quote": "FILE TOO BIG Module spanning >3000 lines."}]}
+    {"tool": "slop", "rule": "SL003", "grounds": [{"cwe": "CWE-1080", "quote": "FILE TOO BIG Module spanning >3000 lines."}]},
+    {"tool": "ruff", "rule": "B002", "grounds": [{"cwe": "CWE-480", "definition": "The product accidentally uses the wrong operator, which changes the logic in security-relevant ways.", "quote": "Checks for the attempted use of the unary prefix increment (`++`) or decrement operator (`--`)."}]},
+    {"tool": "ruff", "rule": "PLW0711", "grounds": [{"cwe": "CWE-480", "definition": "The product accidentally uses the wrong operator, which changes the logic in security-relevant ways.", "quote": "A binary operation will not catch multiple exceptions."}]},
+    {"tool": "ruff", "rule": "B029", "grounds": [{"cwe": "CWE-561", "definition": "The product contains dead code, which can never be executed.", "quote": "An exception handler that catches an empty tuple will not catch anything, and is indicative of a mistake."}]},
+    {"tool": "ruff", "rule": "PLW0129", "grounds": [{"cwe": "CWE-570", "definition": "The product contains an expression that will always evaluate to false.", "quote": "An `assert` on a non-empty string literal will always pass, while an `assert` on an empty string literal will always fail."}, {"cwe": "CWE-571", "definition": "The product contains an expression that will always evaluate to true.", "quote": "An `assert` on a non-empty string literal will always pass, while an `assert` on an empty string literal will always fail."}]},
+    {"tool": "ruff", "rule": "SIM222", "grounds": [{"cwe": "CWE-571", "definition": "The product contains an expression that will always evaluate to true.", "quote": "If the expression is used as a condition, it can be replaced in-full with `True`."}]},
+    {"tool": "ruff", "rule": "SIM223", "grounds": [{"cwe": "CWE-570", "definition": "The product contains an expression that will always evaluate to false.", "quote": "If the expression is used as a condition, it can be replaced in-full with `False`."}]},
+    {"tool": "ruff", "rule": "RUF060", "grounds": [{"cwe": "CWE-570", "definition": "The product contains an expression that will always evaluate to false.", "quote": "Checks for membership tests on empty collections (such as `list`, `tuple`, `set`, or `dict`)."}, {"cwe": "CWE-571", "definition": "The product contains an expression that will always evaluate to true.", "quote": "Checks for membership tests on empty collections (such as `list`, `tuple`, `set`, or `dict`)."}]},
+    {"tool": "ruff", "rule": "RUF017", "grounds": [{"cwe": "CWE-407", "definition": "An algorithm in a product has an inefficient worst-case computational complexity that may be detrimental to system performance and can be triggered by an attacker, typically using crafted manipulations that ensure that the worst case is being reached.", "quote": "Checks for the use of `sum()` to flatten lists of lists, which has quadratic complexity."}]},
+    {"tool": "ruff", "rule": "SLF001", "grounds": [{"cwe": "CWE-1090", "definition": "A method for a class performs an operation that directly accesses a member element from another class.", "quote": "Checks for accesses on \"private\" class members."}]}
   ]
 }
