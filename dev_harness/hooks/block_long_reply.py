@@ -1,9 +1,4 @@
-"""Refuses a reply that is longer than the operator's per-file report format.
-
-`last_reply` reads the assistant's final text from the transcript, and `words`
-counts it. While `item_lock.json` names an open item, a reply over `CAP` words
-that carries no six-step block is refused with exit 2.
-"""
+"""Exits 2 only while `locked`, on a reply over `CAP` words or with `BANNED` lines."""
 
 import json
 import pathlib
