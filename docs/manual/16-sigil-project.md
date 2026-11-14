@@ -226,6 +226,11 @@ discipline is a skill folder under `dev_harness/disciplines`, with a SKILL.md
 and a rules.json. Only an archetype that runs a rule the discipline holds is
 compatible with it, and SKILL.md names those archetypes as data.
 
+Two more disciplines hold Python's own published standards, which ISO/IEC 5055
+does not measure: conventions, grounded in PEP 8 and PEP 257, and typing,
+grounded in PEP 484 and the Python typing specification. Each is a skill folder
+shaped like the four.
+
 Every rule the archetype runs on a Python file sits under each discipline whose
 weakness it reports, or in unplaced.json with its reason. One rule can sit under
 more than one discipline. Each placement names its ground: a CWE id that the
@@ -234,27 +239,38 @@ concern. The CWE lists come from the
 [OMG ASCQM 1.0 specification](https://www.omg.org/spec/ASCQM/1.0/PDF), Tables 1
 to 4.
 
+A placement by definition quotes the CWE's description from the MITRE CWE list
+beside the rule's own text, and the CWE must be in the discipline's list. A
+conventions or typing placement quotes the PEP or specification section that
+states the rule's check, beside the rule's own text.
+
 | Discipline | CWE ids in its list | Rules it holds | Compatible archetypes |
 | ---------- | ------------------- | -------------- | --------------------- |
-| security | 74 | 365 | coding, gui, docs |
-| reliability | 74 | 17 | coding, gui, docs |
-| performance efficiency | 18 | 37 | coding, gui, ta |
-| maintainability | 29 | 21 | coding, gui |
+| security | 74 | 389 | coding, gui, docs, ta |
+| reliability | 74 | 39 | coding, gui, docs |
+| performance efficiency | 18 | 38 | coding, gui, ta |
+| maintainability | 29 | 30 | coding, gui |
+| conventions | 0 | 75 | coding, gui |
+| typing | 0 | 58 | coding, gui |
 
 | Tool | Rules it runs | Placed | Unplaced |
 | ---- | ------------- | ------ | -------- |
-| ruff, with every rule selected | 810 | 113 | 697 |
+| ruff, with every rule selected | 810 | 240 | 570 |
 | semgrep | 216 | 216 | 0 |
 | bandit | 75 | 75 | 0 |
-| mypy | 58 | 2 | 56 |
-| pyright | 42 | 4 | 38 |
+| mypy | 58 | 23 | 35 |
+| pyright | 42 | 24 | 18 |
 | pylint | 12 | 1 | 11 |
 | vulture | 1 | 1 | 0 |
-| the six rule modules | 19 | 3 | 16 |
-| all | 1,233 | 415 | 818 |
+| the six rule modules | 19 | 4 | 15 |
+| all | 1,233 | 584 | 649 |
+
+Each rule left in unplaced.json carries its reason: no listed CWE definition and
+no PEP or specification section describes it, or its text names a PEP that no
+discipline holds.
 
 The command reads each tool's own rule list under the archetype's own flags.
-It then checks that list against the four rules.json files and unplaced.json,
+It then checks that list against the six rules.json files and unplaced.json,
 and exits 1 on any fault. `--root` names the tree, and `--card` prints the card.
 
 `dev_harness/sigils/coding_house.py, in count`:

@@ -21,12 +21,13 @@ The `cwe` field of rules.json holds the 18 ids.
 ## How a rule is read
 
 rules.json holds one row per rule: the tool, the rule id, and its grounds. Each
-ground is one of three kinds.
+ground is one of four kinds.
 
 | Ground | It holds | It means |
 | ------ | -------- | -------- |
 | cwe, attached | a CWE id and the tool | the tool attaches that CWE id to the rule |
 | cwe, quote | a CWE id from the list and a quote | the tool's own text names that weakness |
+| cwe, definition, quote | a CWE id from the list, its MITRE description and a quote | the CWE's definition describes what the rule's text says it detects |
 | term, quote | an ISO/IEC 25010 word and a quote | the tool's own text names performance or efficiency |
 
 A rule with no ground is in `dev_harness/disciplines/unplaced.json` with its
