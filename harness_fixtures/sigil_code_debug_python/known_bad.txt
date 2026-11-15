@@ -1,0 +1,7 @@
+# Read from the repository root, the default --root
+
+# UNSOUND, FIX: the Coding Archetype's own known-bad file; it reads passed=False
+harness_fixtures/coding_archetype/known_bad.py
+
+# UNSOUND, FIX: the assert in check_positive is S101 for ruff and B101 for bandit, both high
+harness_fixtures/coding_archetype/known_bad.py, in check_positive
