@@ -65,11 +65,12 @@ TIER_NAMES = (DATA_TYPE, CONTENT, FUNCTIONS)
 
 
 class Reading(NamedTuple):
-    """Tier 3 `output` and `reason`; `holds` False keeps `Flag.HOLD` off this fault."""
+    """Tier 3 `output` and `reason`; `holds` False keeps `Flag.HOLD` off; `main` prints `detail`."""
 
     output: str
     reason: str
     holds: bool
+    detail: Mapping[str, object] | None = None
 
 
 OutputFlag = Literal[Flag.PASS, Flag.FIX, Flag.OPTIMIZE, Flag.BLOCK]
@@ -111,12 +112,13 @@ class Sigil:
 
 @dataclass(frozen=True)
 class Verdict:
-    """One input's `output`, `reason` naming its tier, `tier` number and `flag`."""
+    """One input's `output`, `reason` naming its tier, `tier` number, `flag` and tier 3 `detail`."""
 
     output: str
     reason: str
     tier: int
     flag: Flag
+    detail: Mapping[str, object] | None = None
 
 
 def flag_of(sigil: Sigil, output: str, *, in_source: bool) -> Flag:
@@ -153,9 +155,10 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
         return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
     reading = sigil.functions(text, root)
     holds = not isinstance(reading, Reading) or reading.holds
+    detail = reading.detail if isinstance(reading, Reading) else None
     output, reason = reading[0], reading[1]
     flag = flag_of(sigil, output, in_source=in_source and holds)
-    return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag)
+    return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag, detail)
 
 
 def render_card(sigil: Sigil) -> dict[str, object]:
@@ -302,6 +305,7 @@ def main(sigil: Sigil, argv: list[str] | None = None) -> int:
             "reason": verdict.reason,
             "tier": verdict.tier,
             "flag": verdict.flag.name,
+            **(verdict.detail or {}),
         }
         print(json.dumps(row))
     if not flags:

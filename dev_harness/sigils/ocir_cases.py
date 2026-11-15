@@ -1,4 +1,4 @@
-"""`main` reads each `CASES_FILE` case through every `coding_sigils` module, before and after its fix commit."""
+"""`main` reads each `CASES_FILE` case through each `coding_sigils` module holding `CAN_RUN`, before and after its fix commit."""
 
 import argparse
 import json
@@ -49,7 +49,8 @@ CARD: dict[str, object] = {
     "edition": 1,
     "owner": "coding",
     "cases": "harness_fixtures/ocir_cases/cases.txt: row, fix commit, path, symbol",
-    "reads": "each case through every coding sigil, on the fix commit and on its parent",
+    "reads": "each case through every coding sigil that holds CAN_RUN, on the fix "
+    "commit and on its parent",
     "outputs": [READ, UNREAD, FAULT],
     "command": "python -m dev_harness.sigils.ocir_cases",
 }
@@ -280,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, CaseFault) as exc:
         print(f"cannot read the case list: {exc}", file=sys.stderr)
         return 1
-    sigils = coding_sigils()
+    sigils = [module for module in coding_sigils() if hasattr(module, "CAN_RUN")]
     verdicts: Counter[str] = Counter()
     for case in cases:
         started = time.monotonic()

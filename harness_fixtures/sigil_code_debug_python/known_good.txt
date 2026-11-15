@@ -1,0 +1,7 @@
+# Read from the repository root, the default --root
+
+# SOUND, PASS: the Coding Archetype's own known-good file; it reads passed=True
+harness_fixtures/coding_archetype/known_good.py
+
+# SOUND, PASS: the lines of broken_types hold no high or critical finding
+harness_fixtures/coding_archetype/known_bad.py, in broken_types

@@ -153,6 +153,11 @@ def unplaced(tool: str = TOOL) -> dict[str, str]:
     return {rule: reason for (owner, rule), reason in _unplaced().items() if owner == tool}
 
 
+def places(tool: str, rule: str) -> tuple[Place, ...]:
+    """Return each (discipline, characteristic) `Place` a `RULES_FILE` gives `tool` rule `rule`."""
+    return _housed().get((tool, rule), ())
+
+
 def house_rules(tool: str) -> tuple[str, ...]:
     """Return each `tool` rule a `RULES_FILE` houses or `UNPLACED_FILE` lists, sorted."""
     return tuple(sorted(set(housing(tool)) | set(unplaced(tool))))

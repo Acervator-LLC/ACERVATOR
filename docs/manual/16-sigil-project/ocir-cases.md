@@ -8,6 +8,9 @@ case's code before its fix and after it. This page is part of
 [Which OCIR rows are cases](ocir-qualify.md) lists every catalogue entry with yes
 or no and its reason.
 
+CODE.DEBUG.PYTHON@1 is a tenth coding sigil. It holds no rule list, so the case
+reading leaves it out.
+
 ```mermaid
 flowchart LR
     L[case list: row, commit, path, symbol] --> R[git restores the fix commit and its parent]

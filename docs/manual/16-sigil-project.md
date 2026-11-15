@@ -55,6 +55,9 @@ owner     an archetype reads the result without asking the model
 decision  the model makes one named choice; with no choice, it is an ordinary function
 ```
 
+CODE.DEBUG.PYTHON@1 reads no on the decision line: its card names the decision
+as none.
+
 ## The three input tiers
 
 A sigil filters each input in three tiers, in this order. A tier runs only
@@ -69,8 +72,9 @@ tier 3  required processing functions  the function set that does the sigil's wo
 
 Tier 2 comes from the owning archetype. A sigil with no owning archetype has no
 tier 2 and is not admitted. Every Coding sigil takes tiers 1 and 2 from one
-module. Each Coding sigil built after the first four narrows tier 2: Python's
-ast module must find the construct the sigil reads, or the input is refused.
+module. Each Coding sigil built after the first four, except CODE.DEBUG.PYTHON@1,
+narrows tier 2: Python's ast module must find the construct the sigil reads, or
+the input is refused.
 
 `dev_harness/sigils/core.py, in judge`, the three tiers in order:
 
@@ -88,9 +92,10 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
         return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
     reading = sigil.functions(text, root)
     holds = not isinstance(reading, Reading) or reading.holds
+    detail = reading.detail if isinstance(reading, Reading) else None
     output, reason = reading[0], reading[1]
     flag = flag_of(sigil, output, in_source=in_source and holds)
-    return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag)
+    return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag, detail)
 ```
 
 The path of one input line, from the tiers to its flag:
@@ -244,6 +249,10 @@ module.
 
 CITE.SYMBOL@3 keeps its own tiers 1 and 2. Its input form differs, and the
 Truth Archetype owns it.
+
+CODE.DEBUG.PYTHON@1 reads the places that house a rule through
+`dev_harness/sigils/construct_rules.py, in places`. Its findings reach the
+printed row through the detail field of `dev_harness/sigils/core.py, in Reading`.
 
 ## Portability
 
@@ -427,11 +436,16 @@ An ungrounded fault names a CWE ground that its characteristic's list does not
 hold and the tool did not attach, a ground with no quote, or a rule row whose
 characteristics are not those of its grounds.
 
-The archetype's coding sigils do not run every rule on every input. The input
+The archetype's coding sigils, except CODE.DEBUG.PYTHON@1, do not run every rule
+on every input. The input
 decides which rules run, before any rule runs. The archetype's own ruff call
 still runs every rule it enables. [Rule run partitioning](16-sigil-project/rule-partition.md)
 states the inputs, the four keys each rule carries, the run rule, and the proof
 on `src/`.
+
+CODE.DEBUG.PYTHON@1 is the one coding sigil that selects no rules. It runs the
+archetype's own command, so every rule that the archetype enables runs on every
+input. [CODE.DEBUG.PYTHON@1](16-sigil-project/code-debug-python.md) states how.
 
 ## The construct scope
 
@@ -539,6 +553,9 @@ and after its fix, and git restores both sides on each run.
 [The OCIR cases](16-sigil-project/ocir-cases.md) states the case list, how a
 case is restored and read, and which rows the sigils read.
 
+CODE.DEBUG.PYTHON@1 is a tenth coding sigil. It holds no rule list, so the case
+reading leaves it out.
+
 ## Progress
 
 Every sigil, its owner and where it stands. A built sigil's count comes from
@@ -556,6 +573,7 @@ the card its command prints. A sigil that is not built has no card yet.
 | CODE.COLLECTION@1 | coding | 23 ruff rules it can run | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
 | CODE.FLOW@1 | coding | 33 ruff rules it can run | built | `dev_harness/sigils/code_flow.py, in SIGIL` |
 | CODE.VARIABLE@1 | coding | 38 ruff rules it can run | built | `dev_harness/sigils/code_variable.py, in SIGIL` |
+| CODE.DEBUG.PYTHON@1 | coding | no rule list: every rule the Coding Archetype runs | built | `dev_harness/sigils/code_debug_python.py, in SIGIL` |
 | TA.AUDIT@1 | ta | no rule list: its tiers decide | built | `dev_harness/sigils/ta_audit.py, in SIGIL` |
 | ROW.CLOSE@1 | not named yet | no card yet | unbuilt | not in the tree |
 
@@ -668,4 +686,5 @@ condition, its outputs and flags, the command that runs it, and its rules.
 - [CODE.COLLECTION@1](16-sigil-project/code-collection.md)
 - [CODE.FLOW@1](16-sigil-project/code-flow.md)
 - [CODE.VARIABLE@1](16-sigil-project/code-variable.md)
+- [CODE.DEBUG.PYTHON@1](16-sigil-project/code-debug-python.md)
 - [TA.AUDIT@1](16-sigil-project/ta-audit.md)
