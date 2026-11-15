@@ -235,6 +235,9 @@ selection leaves out. Pyright and vulture count only the selected codes, and
 every one of their rules fits every source file. A tool with no selected rule
 does not run. CODE.TYPE runs its own rule only when the selection keeps it.
 
+CODE.DEBUG.PYTHON@1 applies no run rule. It reports every finding of the Coding
+Archetype's own run, and the proof lists it among the sigils without CAN_RUN.
+
 `dev_harness/sigils/coding_partition.py, in selection`:
 
 ```python
