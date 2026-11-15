@@ -172,6 +172,7 @@ SETTINGS: dict[str, str] = {
     f"and {UNUSED_RESULT}, the one rule this module runs itself",
     "mypy_rules": " ".join(MYPY.rules),
     "pyright_rules": " ".join(PYRIGHT.rules),
+    "own_tool": OWN.tool,
     "own_rules": " ".join(OWN.rules),
     "value_only_builtins": " ".join(sorted(VALUE_ONLY_BUILTINS)),
     "left_out_builtins": "; ".join(

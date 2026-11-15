@@ -1117,7 +1117,7 @@ def all_rules(root: Path) -> tuple[dict[str, set[str]], frozenset[str]]:
         message = f"coding_house could not read {sorted({**unread, **sigil_unread})}"
         raise MeasureFault(message)
     preview = frozenset(
-        rule for _tools, only in sigils.values() for _tool, rule in only
+        rule for _tools, only in sigils.values() for tool, rule in only if tool == "ruff"
     )
     return run, preview
 
