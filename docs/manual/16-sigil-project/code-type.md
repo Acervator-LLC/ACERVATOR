@@ -30,9 +30,9 @@ PYRIGHT = hold("pyright", house_rules("pyright"), DISCIPLINES)
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module, and this sigil
 adds no condition to tier 2. Tier 3 runs each type checker whose rules the selection keeps from the root of
-the target tree, with the settings each tool finds there. Only errors count,
-and only those in the input file. For a function or class, only the errors
-inside its lines count.
+the target tree, with the settings each tool finds there. Only mypy errors and
+pyright errors and warnings count, and only those in the input file. For a
+function or class, only the findings inside its lines count.
 
 An error counts only under a rule the card holds and the selection keeps. An error under any other
 code, or with no code, moves no verdict.
@@ -85,13 +85,49 @@ def _mypy_findings(
     ]
 ```
 
+## The levels that count
+
+Pyright gives each finding a level: error, warning or information. CODE.TYPE@1
+reports a pyright finding at error or at warning. It does not report a finding
+at information.
+
+`dev_harness/sigils/code_type.py, in PYRIGHT_SEVERITIES`:
+
+```python
+PYRIGHT_SEVERITIES = ("error", "warning")
+```
+
+`dev_harness/sigils/code_type.py, in _pyright_findings`, the rows that count:
+
+```python
+            for diagnostic in report["generalDiagnostics"]
+            if diagnostic["severity"] in PYRIGHT_SEVERITIES
+            and _same_file(Path(diagnostic["file"]), file)
+```
+
+The house reads the standard column of pyright's Diagnostic Settings Defaults
+table. That column turns 34 of the 42 house rules on at error and 8 at warning.
+The card holds five of the eight, and pyright gives each of them at warning:
+
+```text
+reportInvalidStringEscapeSequence
+reportInvalidTypeVarUse
+reportSelfClsParameterName
+reportUnsupportedDunderAll
+reportWildcardImportFromLibrary
+```
+
+Mypy gives each row as an error or a note. A note is not a rule finding, so
+CODE.TYPE@1 reports only mypy errors. The `_mypy_findings` block above keeps
+only the rows whose severity is "error".
+
 ## The selection
 
 For each input, CODE.TYPE@1 keeps only those of its 62 rules that the run rule
 selects for the input's facts. Mypy runs when the selection keeps a mypy code,
 and pyright when it keeps a pyright rule. Each checker reads the whole program
 from the root of the tree, so a rule that reads the project fits a file or a
-function too. The sigil counts only the errors under the selected rules.
+function too. The sigil counts only the findings under the selected rules.
 [Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
 states the run rule and the proof.
 
@@ -138,8 +174,8 @@ them, for each input that tier 2 accepts:
 
 | Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
 | ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
-| file | 503 | 62 | 32 | 61 | 62 | 6,020 | 6,020 |
-| def or class | 13,885 | 62 | 41 | 59 | 62 | 11,505 | 11,505 |
+| file | 503 | 62 | 32 | 61 | 62 | 6,024 | 6,024 |
+| def or class | 13,885 | 62 | 41 | 59 | 62 | 11,513 | 11,513 |
 
 ## Outputs and flags
 
@@ -149,8 +185,9 @@ them, for each input that tier 2 accepts:
 | UNSOUND | FIX | HOLD |
 | REJECTED | BLOCK | BLOCK |
 
-SOUND means neither tool reports an error under a rule the card holds. UNSOUND
-carries, for each error, the tool, its error code and the line. UNSOUND reads
+SOUND means mypy reports no error, and pyright no error or warning, under a rule
+the card holds. UNSOUND carries, for each finding, the tool, its error code and
+the line. UNSOUND reads
 HOLD when the file the input line names sits in application source. Anywhere
 else it reads FIX, and the merge proceeds.
 
@@ -170,14 +207,15 @@ python -m dev_harness.sigils.code_type --card
 
 ## Tools and rules
 
-The card names two tools, and each error either tool reports in the input file
-under a rule the card holds is an output. One row per tool, from the card's
+The card names two tools, and each mypy error, and each pyright error or
+warning, in the input file under a rule the card holds is an output. One row
+per tool, from the card's
 settings and tier 3. The command prints the versions it ran.
 
 | Tool | Version on the card | How the card runs it | What counts |
 | ---- | ------------------- | -------------------- | ----------- |
 | mypy | 2.1.0 | `python -P -m mypy` from the root of the target tree, with `--output json`, the null device as its cache folder, and `--disable-error-code` for each mypy code the selection leaves out | each error in the input file under one of the 33 mypy codes the card can run that the selection keeps |
-| pyright | 1.1.411 | `pyright.run` from the root of the target tree, with `--outputjson` | each error in the input file under one of the 29 pyright rules the card can run that the selection keeps |
+| pyright | 1.1.411 | `pyright.run` from the root of the target tree, with `--outputjson` | each error or warning in the input file under one of the 29 pyright rules the card can run that the selection keeps |
 
 ## Rules
 
