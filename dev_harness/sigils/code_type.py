@@ -1,7 +1,9 @@
 """`SIGIL` is CODE.TYPE on the `core` card; `type_check` judges one input line."""
 
+import ast
 import json
 import os
+import platform
 import subprocess
 import sys
 from collections.abc import Collection, Sequence
@@ -50,21 +52,113 @@ MYPY_FINISHED = (0, 1)
 PYRIGHT_FINISHED = (0, 1)
 PYRIGHT_SEVERITIES = ("error", "warning")
 NO_CODE = "no code"
-NO_CHECKER = "no type checker ran: the selection holds no rule of either"
+NO_CHECKER = "no checker ran: the selection holds no rule of the card"
 SOUND_MEANS = (
-    f"mypy reports no error, and pyright no {' or '.join(PYRIGHT_SEVERITIES)}, "
-    "under a rule on the card"
+    f"mypy reports no error, pyright no {' or '.join(PYRIGHT_SEVERITIES)}, and no "
+    "statement throws away a listed builtin's value, under a rule on the card"
 )
+
+OWN_TOOL = "code_type"
+UNUSED_RESULT = "unused-builtin-result"
+VALUE_ONLY_BUILTINS = frozenset(
+    {
+        "abs",
+        "aiter",
+        "ascii",
+        "bin",
+        "bool",
+        "callable",
+        "chr",
+        "complex",
+        "divmod",
+        "enumerate",
+        "filter",
+        "float",
+        "format",
+        "globals",
+        "hash",
+        "hex",
+        "int",
+        "isinstance",
+        "issubclass",
+        "iter",
+        "len",
+        "map",
+        "object",
+        "oct",
+        "ord",
+        "pow",
+        "range",
+        "repr",
+        "reversed",
+        "round",
+        "slice",
+        "str",
+        "super",
+        "zip",
+    }
+)
+LEFT_OUT_BUILTINS: dict[str, tuple[str, ...]] = {
+    "its page names an effect of its own": (
+        "__import__",
+        "breakpoint",
+        "delattr",
+        "eval",
+        "exec",
+        "help",
+        "input",
+        "open",
+        "print",
+        "setattr",
+    ),
+    "it advances an iterator": ("anext", "next"),
+    "it iterates its argument, and iterating an iterator uses it up": (
+        "all",
+        "any",
+        "bytearray",
+        "bytes",
+        "dict",
+        "frozenset",
+        "list",
+        "max",
+        "min",
+        "set",
+        "sorted",
+        "sum",
+        "tuple",
+    ),
+    "it reads an attribute, which runs a property's getter": (
+        "classmethod",
+        "dir",
+        "getattr",
+        "hasattr",
+        "property",
+        "staticmethod",
+        "vars",
+    ),
+    "it raises an auditing event, which runs each audit hook": ("compile", "id"),
+    "before Python 3.13 it refreshes the mapping an earlier call returned": ("locals",),
+    "its buffer is released through __release_buffer__ when the view is freed": (
+        "memoryview",
+    ),
+    "its three-argument form makes a class, which runs __init_subclass__": ("type",),
+}
+HANDLED_BODIES = (ast.Try, ast.TryStar, ast.With, ast.AsyncWith)
+DEFERRED_BODIES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 
 FUNCTION = (
     "reads each value against the type its annotation, assignment or call gives it, "
     "for a type fault that fails at run time, breaks the typing standard, or leaves "
-    "implicit what Python's conventions ask to state"
+    "implicit what Python's conventions ask to state, or for a builtin's value "
+    "that no code reads"
 )
 DISCIPLINES = ("conventions", "reliability", "typing")
 MYPY = hold("mypy", sorted(mypy.errorcodes.error_codes), DISCIPLINES)
 PYRIGHT = hold("pyright", house_rules("pyright"), DISCIPLINES)
-CAN_RUN = tuple(f"{held.tool} {rule}" for held in (MYPY, PYRIGHT) for rule in held.rules)
+OWN = hold(OWN_TOOL, (UNUSED_RESULT,), DISCIPLINES)
+CAN_RUN = tuple(
+    f"{held.tool} {rule}" for held in (MYPY, PYRIGHT, OWN) for rule in held.rules
+)
 
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
@@ -74,9 +168,15 @@ SETTINGS: dict[str, str] = {
     "disciplines": " ".join(DISCIPLINES),
     "scope": "each code on mypy's own error code list, mypy.errorcodes.error_codes, "
     "and each pyright rule a discipline houses or unplaced.json lists: the rules "
-    f"pyright reports as an {' or a '.join(PYRIGHT_SEVERITIES)} with no configuration",
+    f"pyright reports as an {' or a '.join(PYRIGHT_SEVERITIES)} with no configuration; "
+    f"and {UNUSED_RESULT}, the one rule this module runs itself",
     "mypy_rules": " ".join(MYPY.rules),
     "pyright_rules": " ".join(PYRIGHT.rules),
+    "own_rules": " ".join(OWN.rules),
+    "value_only_builtins": " ".join(sorted(VALUE_ONLY_BUILTINS)),
+    "left_out_builtins": "; ".join(
+        f"{' '.join(names)}: {reason}" for reason, names in LEFT_OUT_BUILTINS.items()
+    ),
     "selection": SELECTION,
     "can_run": str(len(CAN_RUN)),
     "type_config": "the mypy and pyright settings each tool finds "
@@ -183,12 +283,69 @@ def _pyright_findings(path: str, root: Path, file: Path) -> tuple[str, list[Find
         raise ToolFault(f"pyright printed an unreadable report: {exc}") from exc
 
 
+def _bound_names(tree: ast.Module) -> frozenset[str] | None:
+    """Return each name `tree` binds, or None when a star import can bind any name."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.alias):
+            if node.name == "*":
+                return None
+            names.add(node.asname or node.name.partition(".")[0])
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            names.add(node.id)
+        elif isinstance(node, ast.arg):
+            names.add(node.arg)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            names.update(node.names)
+        elif isinstance(name := getattr(node, "name", None), str):
+            names.add(name)
+        elif isinstance(rest := getattr(node, "rest", None), str):
+            names.add(rest)
+    return frozenset(names)
+
+
+def _in_handled_body(node: ast.stmt, parents: dict[ast.AST, ast.AST]) -> bool:
+    """Report whether `node` sits in a `HANDLED_BODIES` body before any `DEFERRED_BODIES` parent."""
+    child: ast.AST = node
+    parent = parents.get(child)
+    while parent is not None and not isinstance(parent, DEFERRED_BODIES):
+        if isinstance(parent, HANDLED_BODIES) and any(child is s for s in parent.body):
+            return True
+        child, parent = parent, parents.get(parent)
+    return False
+
+
+def _unused_builtin_results(source: bytes) -> tuple[int, ...]:
+    """Return the line of each statement throwing away a `VALUE_ONLY_BUILTINS` call's value, outside a try body or with suite."""
+    tree = ast.parse(source)
+    bound = _bound_names(tree)
+    if bound is None:
+        return ()
+    names = VALUE_ONLY_BUILTINS - bound
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    return tuple(
+        sorted(
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+            and node.value.func.id in names
+            and not _in_handled_body(node, parents)
+        )
+    )
+
+
 def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[Finding]]:
     """Return the checkers run and each `Finding` of the `to_run` rules inside the input `text` names."""
     located = locate(text, root)
     if isinstance(located, str):
         raise ToolFault(f"{text}: {located}, after tier 2 accepted it")
-    file, _, (first, last) = located
+    file, source, (first, last) = located
     path, separator, _ = text.partition(SETTINGS["separator"])
     is_narrowed = bool(separator)
     ran: list[str] = []
@@ -202,6 +359,12 @@ def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[
         version, found = _pyright_findings(path, root, file)
         ran.append(f"pyright {version}")
         errors += found
+    if f"{OWN.tool} {UNUSED_RESULT}" in to_run:
+        ran.append(f"{OWN.tool} on Python {platform.python_version()}")
+        errors += [
+            Finding(OWN.tool, UNUSED_RESULT, line)
+            for line in _unused_builtin_results(source)
+        ]
     kept = [
         finding
         for finding in errors
@@ -245,13 +408,23 @@ SIGIL = Sigil(
                     "pyright, through pyright.run from the root of the target tree, "
                     "with --outputjson, when the selection holds a pyright rule"
                 ),
+                (
+                    f"{UNUSED_RESULT}, when the selection holds it: Python's ast module "
+                    "parses the file, and each expression statement whose whole value is "
+                    "a call to a value_only_builtins name the module never binds is a "
+                    "finding, unless it sits in a try body or a with suite"
+                ),
                 "only the mypy errors, and the pyright rows at "
                 f"{' or '.join(PYRIGHT_SEVERITIES)}, under the selected rules",
                 "for a symbol, only the findings inside its lines",
             ],
             "sound": SOUND_MEANS,
             "unsound": ["tool", "error code", "line"],
-            "left": {MYPY.tool: MYPY.left, PYRIGHT.tool: PYRIGHT.left},
+            "left": {
+                MYPY.tool: MYPY.left,
+                PYRIGHT.tool: PYRIGHT.left,
+                OWN.tool: OWN.left,
+            },
             "left_because": LEFT_BECAUSE,
             "not_held": "an error under a code outside the scope, or with no code, "
             "moves no verdict",

@@ -44,6 +44,7 @@ FILE_CALLS = (
     "_pyright_findings",
     "_bandit_findings",
     "_semgrep_findings",
+    "_unused_builtin_results",
 )
 TREE_CALLS = ("_vulture_scan",)
 PROOF_WORKERS = 3

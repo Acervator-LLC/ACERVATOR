@@ -897,6 +897,33 @@ VULTURE_KEYS: Keys = {
     },
 }
 
+UNUSED_RESULT_RULE = "code_type unused-builtin-result"
+UNUSED_RESULT_NOTE = (
+    "code_type.py, in _unused_builtin_results: 'Return the line of each statement "
+    "throwing away a `VALUE_ONLY_BUILTINS` call's value, outside a try body or with suite.'"
+)
+UNUSED_RESULT_KEYS: Keys = {
+    "reach": {"value": "statement", "ground": "docs", "note": UNUSED_RESULT_NOTE},
+    "nodes": {
+        "value": ["Expr"],
+        "ground": "docs",
+        "note": "Python 3.14 ast documentation, ast.Expr: 'When an expression, such as a "
+        "function call, appears as a statement by itself with its return value not used "
+        "or stored, it is wrapped in this container.'",
+    },
+    "imports": {
+        "value": [],
+        "ground": "docs",
+        "note": "Python 3.14 Built-in Functions: 'The Python interpreter has a number of "
+        "functions and types built into it that are always available.'",
+    },
+    "file": {
+        "value": ["source", "test"],
+        "ground": "docs",
+        "note": "coding_input.READERS reads .py files alone; " + UNUSED_RESULT_NOTE,
+    },
+}
+
 
 def pylint_keys(rule: str) -> Keys:
     """Return the keys of one pylint message the archetype's call enables, from pylint --list-msgs."""
@@ -1124,6 +1151,7 @@ def measure(root: Path, sources: Path) -> dict[str, Keys]:
     keys.update({f"pyright {rule}": dict(PYRIGHT_KEYS) for rule in run["pyright"]})
     keys.update({f"vulture {rule}": dict(VULTURE_KEYS) for rule in run["vulture"]})
     keys.update({f"pylint {rule}": pylint_keys(rule) for rule in run["pylint"]})
+    keys[UNUSED_RESULT_RULE] = dict(UNUSED_RESULT_KEYS)
     modules = {tool for tool, _path in coding_archetype._PY_RULE_MODULES}
     module_rules = {rule: tool for tool in modules for rule in run[tool]}
     for rule, value in measured(RuleModules(), sources, module_rules).items():
