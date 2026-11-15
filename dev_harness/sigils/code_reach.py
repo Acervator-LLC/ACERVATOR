@@ -49,8 +49,9 @@ FUNCTION = (
     "reads each def, class, name and import for code that nothing in the tree "
     "reaches, which a maintainer must still read and keep"
 )
-DISCIPLINES = ("maintainability",)
-VULTURE = hold("vulture", house_rules("vulture"), DISCIPLINES)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("maintainability",)
+VULTURE = hold("vulture", house_rules("vulture"), DISCIPLINES, CHARACTERISTICS)
 CAN_RUN = tuple(f"{VULTURE.tool} {rule}" for rule in VULTURE.rules)
 
 SETTINGS: dict[str, str] = {
@@ -58,6 +59,7 @@ SETTINGS: dict[str, str] = {
     "vulture_version": VULTURE_BUILT,
     "function": FUNCTION,
     "disciplines": " ".join(DISCIPLINES),
+    "characteristics": " ".join(CHARACTERISTICS),
     "scope": "each vulture rule a discipline houses or unplaced.json lists: "
     "dead-code, the one rule id every vulture item carries",
     "vulture_rules": " ".join(VULTURE.rules),

@@ -8,25 +8,27 @@ owns it. It is one sigil of [the sigil project](../16-sigil-project.md).
 
 CODE.FLOW@1 reads each if, try, with, return, raise, assert, pass and del
 statement for a control path that fails, hides an error, opens a hole, wastes
-work, or reads harder than Python's own form. It draws on five disciplines:
-conventions, maintainability, performance efficiency, reliability and security.
+work, or reads harder than Python's own form. It draws on the Python discipline,
+under five characteristics: conventions, maintainability, performance efficiency,
+reliability and security.
 
 The card holds no rule list of its own. It takes each ruff rule that the
-construct scope places on the flow construct and that one of its disciplines
-houses. [The construct scope](../16-sigil-project.md#the-construct-scope)
+construct scope places on the flow construct and that the Python discipline
+houses under one of its characteristics. [The construct scope](../16-sigil-project.md#the-construct-scope)
 states how a rule is placed.
 
 `dev_harness/sigils/code_flow.py, in TAKEN`:
 
 ```python
-DISCIPLINES = (
+DISCIPLINES = ("python",)
+CHARACTERISTICS = (
     "conventions",
     "maintainability",
     "performance-efficiency",
     "reliability",
     "security",
 )
-TAKEN = take("flow", DISCIPLINES)
+TAKEN = take("flow", DISCIPLINES, CHARACTERISTICS)
 ```
 
 ## What it reads
@@ -174,7 +176,7 @@ rules on.
 ## Rules left off
 
 The card does not run the rules below, though its own rule list once named
-them. Each reason comes from the construct scope and the six disciplines. The
+them. Each reason comes from the construct scope and the Python discipline. The
 card's left setting names every rule on the flow construct that no discipline
 houses, with its unplaced.json text.
 

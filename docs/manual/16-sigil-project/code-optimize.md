@@ -9,12 +9,12 @@ same code. The Coding Archetype owns it. It is one sigil of
 
 CODE.OPTIMIZE@1 reads each statement for a published rewrite that makes the code
 faster, simpler, or current with Python's own forms and annotations. It draws on
-four disciplines: conventions, maintainability, performance efficiency and
-typing.
+the Python discipline, under four characteristics: conventions, maintainability,
+performance efficiency and typing.
 
 Its scope is each rule in the seven families that ruff lists and has not
-removed, 149 rules. The card holds each scope rule that one of its disciplines
-houses, so it can run 85 rules. A rule housed only under reliability or security
+removed, 149 rules. The card holds each scope rule that the Python discipline
+houses under one of its characteristics, so it can run 85 rules. A rule housed only under reliability or security
 names a fault, not an optimization, and leaves this card.
 [The tool scope](../16-sigil-project.md#the-tool-scope) states how a rule is
 held.
@@ -22,7 +22,8 @@ held.
 `dev_harness/sigils/code_optimize.py, in HELD`:
 
 ```python
-DISCIPLINES = ("conventions", "maintainability", "performance-efficiency", "typing")
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("conventions", "maintainability", "performance-efficiency", "typing")
 SCOPE = tuple(
     sorted(
         code
@@ -30,7 +31,7 @@ SCOPE = tuple(
         if code.startswith(FAMILIES) and not listed.removed
     )
 )
-HELD = hold(TOOL, SCOPE, DISCIPLINES)
+HELD = hold(TOOL, SCOPE, DISCIPLINES, CHARACTERISTICS)
 ```
 
 ## What it reads
@@ -146,13 +147,13 @@ C901 is one rule, complex-structure, which ruff states has no automatic fix.
 ## Rules
 
 Each line comes from `python -m ruff rule --all` for ruff 0.16.0. The fix
-column is the fix class ruff states. The last column names each discipline that
-houses the rule, from the rules.json files under `dev_harness/disciplines/`.
+column is the fix class ruff states. The last column names each characteristic
+under which the Python discipline houses the rule, from `dev_harness/disciplines/python/rules.json`.
 
 `dev_harness/sigils/code_optimize.py, in SETTINGS`: the card prints them as
 rules, and the three preview rules again as preview_rules.
 
-| Rule | ruff name | What it catches | Fix | Preview | Housed by |
+| Rule | ruff name | What it catches | Fix | Preview | Characteristics |
 | ---- | --------- | --------------- | --- | ------- | --------- |
 | C400 | unnecessary-generator-list | Checks for unnecessary generators that can be rewritten as list comprehensions (or with `list()` directly). | always | no | conventions |
 | C413 | unnecessary-call-around-sorted | Checks for unnecessary `list()` or `reversed()` calls around `sorted()` calls. | always | no | performance efficiency |
@@ -244,20 +245,23 @@ rules, and the three preview rules again as preview_rules.
 
 The card does not run the 64 scope rules below, though its rule families named
 each of them before it took its rules from its disciplines. 47 sit in
-unplaced.json, 3 are housed only by a discipline the card does not name, and 14
+unplaced.json, 3 are housed by the Python discipline only under a characteristic
+the card does not name, and 14
 are preview rules the house holds no row for. The card's left setting names
 every one with its full text.
 
 `dev_harness/sigils/construct_rules.py, in why_left`, the reason each rule left:
 
 ```python
-def why_left(tool: str, rule: str, named: Sequence[str]) -> str | None:
-    """Return why no `named` discipline houses `tool` rule `rule`, or None when one does."""
-    housed_by = _housed().get((tool, rule), ())
-    if set(housed_by) & set(named):
+def why_left(
+    tool: str, rule: str, named: Sequence[str], characteristics: Sequence[str]
+) -> str | None:
+    """Return why no `named` discipline houses `tool` rule `rule` under one of `characteristics`, or None when one does."""
+    places = _housed().get((tool, rule), ())
+    if any(name in named and found in characteristics for name, found in places):
         return None
-    if housed_by:
-        return NOT_NAMED.format(housing=", ".join(housed_by))
+    if places:
+        return NOT_NAMED.format(housing=_housing_text(places))
     return _unplaced().get((tool, rule), UNHOUSED)
 ```
 
@@ -297,10 +301,10 @@ def why_left(tool: str, rule: str, named: Sequence[str]) -> str | None:
 | FURB189 | No discipline houses it, and neither the archetype nor a sigil runs this preview rule, so the house holds no row for it. |
 | PLR1702 | No discipline houses it, and neither the archetype nor a sigil runs this preview rule, so the house holds no row for it. |
 | PLR1704 | No discipline houses it. |
-| PLR1708 | Housed by reliability, which the card does not name. |
+| PLR1708 | Housed by python under reliability, which the card does not name. |
 | PLR1711 | No discipline houses it. |
 | PLR1712 | No discipline houses it, and neither the archetype nor a sigil runs this preview rule, so the house holds no row for it. |
-| PLR1722 | Housed by reliability, which the card does not name. |
+| PLR1722 | Housed by python under reliability, which the card does not name. |
 | SIM101 | No discipline houses it. |
 | SIM103 | No discipline houses it. |
 | SIM105 | No discipline houses it. |
@@ -312,7 +316,7 @@ def why_left(tool: str, rule: str, named: Sequence[str]) -> str | None:
 | SIM910 | No discipline houses it. |
 | UP001 | No discipline houses it. |
 | UP004 | No discipline houses it. |
-| UP005 | Housed by security, which the card does not name. |
+| UP005 | Housed by python under security, which the card does not name. |
 | UP010 | No discipline houses it. |
 | UP011 | No discipline houses it. |
 | UP012 | No discipline houses it. |

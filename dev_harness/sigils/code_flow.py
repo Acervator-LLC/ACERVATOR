@@ -42,14 +42,15 @@ FUNCTION = (
     "control path that fails, hides an error, opens a hole, wastes work, or reads "
     "harder than Python's own form"
 )
-DISCIPLINES = (
+DISCIPLINES = ("python",)
+CHARACTERISTICS = (
     "conventions",
     "maintainability",
     "performance-efficiency",
     "reliability",
     "security",
 )
-TAKEN = take("flow", DISCIPLINES)
+TAKEN = take("flow", DISCIPLINES, CHARACTERISTICS)
 RULES = TAKEN.rules
 PREVIEW = TAKEN.preview
 HOLDING = TAKEN.holding

@@ -8,18 +8,20 @@ sigil of [the sigil project](../16-sigil-project.md).
 
 CODE.COLLECTION@1 reads each tuple, list, set and dictionary, written out, built
 or called, for contents that are wrong, wasteful, unsafe, unclear, untyped or
-against convention. It draws on six disciplines: conventions, maintainability,
-performance efficiency, reliability, security and typing.
+against convention. It draws on the Python discipline, under six characteristics:
+conventions, maintainability, performance efficiency, reliability, security and
+typing.
 
 The card holds no rule list of its own. It takes each ruff rule that the
-construct scope places on the collection construct and that one of its disciplines
-houses. [The construct scope](../16-sigil-project.md#the-construct-scope)
+construct scope places on the collection construct and that the Python discipline
+houses under one of its characteristics. [The construct scope](../16-sigil-project.md#the-construct-scope)
 states how a rule is placed.
 
 `dev_harness/sigils/code_collection.py, in TAKEN`:
 
 ```python
-DISCIPLINES = (
+DISCIPLINES = ("python",)
+CHARACTERISTICS = (
     "conventions",
     "maintainability",
     "performance-efficiency",
@@ -27,7 +29,7 @@ DISCIPLINES = (
     "security",
     "typing",
 )
-TAKEN = take("collection", DISCIPLINES)
+TAKEN = take("collection", DISCIPLINES, CHARACTERISTICS)
 ```
 
 ## What it reads
@@ -162,7 +164,7 @@ rules on.
 ## Rules left off
 
 The card does not run the rules below, though its own rule list once named
-them. Each reason comes from the construct scope and the six disciplines. The
+them. Each reason comes from the construct scope and the Python discipline. The
 card's left setting names every rule on the collection construct that no discipline
 houses, with its unplaced.json text.
 

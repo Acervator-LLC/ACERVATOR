@@ -8,19 +8,20 @@ with vulture. The Coding Archetype owns it. It is one sigil of
 
 CODE.REACH@1 reads each def, class, name and import for code that nothing in the
 tree reaches, which a maintainer must still read and keep. It draws on one
-discipline: maintainability.
+discipline, Python, under one characteristic: maintainability.
 
 Its scope is the one vulture rule the house holds, dead-code, the rule id every
-vulture item carries. Maintainability houses it, under CWE-561, so the card can
-run 1 rule and leaves none off.
+vulture item carries. The Python discipline houses it under maintainability, on
+CWE-561, so the card can run 1 rule and leaves none off.
 [The tool scope](../16-sigil-project.md#the-tool-scope) states how a rule is
 held.
 
 `dev_harness/sigils/code_reach.py, in VULTURE`:
 
 ```python
-DISCIPLINES = ("maintainability",)
-VULTURE = hold("vulture", house_rules("vulture"), DISCIPLINES)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("maintainability",)
+VULTURE = hold("vulture", house_rules("vulture"), DISCIPLINES, CHARACTERISTICS)
 ```
 
 ## What it reads
@@ -49,6 +50,7 @@ SETTINGS: dict[str, str] = {
     "vulture_version": VULTURE_BUILT,
     "function": FUNCTION,
     "disciplines": " ".join(DISCIPLINES),
+    "characteristics": " ".join(CHARACTERISTICS),
     "scope": "each vulture rule a discipline houses or unplaced.json lists: "
     "dead-code, the one rule id every vulture item carries",
     "vulture_rules": " ".join(VULTURE.rules),

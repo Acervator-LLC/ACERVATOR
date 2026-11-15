@@ -31,7 +31,8 @@ FUNCTION = (
     "reads each statement for a published rewrite that makes the code faster, "
     "simpler, or current with Python's own forms and annotations"
 )
-DISCIPLINES = ("conventions", "maintainability", "performance-efficiency", "typing")
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("conventions", "maintainability", "performance-efficiency", "typing")
 SCOPE = tuple(
     sorted(
         code
@@ -39,7 +40,7 @@ SCOPE = tuple(
         if code.startswith(FAMILIES) and not listed.removed
     )
 )
-HELD = hold(TOOL, SCOPE, DISCIPLINES)
+HELD = hold(TOOL, SCOPE, DISCIPLINES, CHARACTERISTICS)
 RULES = HELD.rules
 PREVIEW = tuple(code for code in RULES if listing()[code].preview)
 STABLE = tuple(code for code in RULES if code not in PREVIEW)
@@ -50,6 +51,7 @@ SETTINGS: dict[str, str] = {
     "ruff_version": RUFF_BUILT,
     "function": FUNCTION,
     "disciplines": " ".join(DISCIPLINES),
+    "characteristics": " ".join(CHARACTERISTICS),
     "rule_families": ", ".join(FAMILIES),
     "scope": "each ruff rule in rule_families that python -m ruff rule --all lists "
     "and ruff has not removed",

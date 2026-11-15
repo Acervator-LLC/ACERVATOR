@@ -41,14 +41,15 @@ FUNCTION = (
     "reads each binding, from an assignment to a function argument, for a name that "
     "is wrong, unsafe, wasteful, untyped, or against Python's naming conventions"
 )
-DISCIPLINES = (
+DISCIPLINES = ("python",)
+CHARACTERISTICS = (
     "conventions",
     "performance-efficiency",
     "reliability",
     "security",
     "typing",
 )
-TAKEN = take("variable", DISCIPLINES)
+TAKEN = take("variable", DISCIPLINES, CHARACTERISTICS)
 RULES = TAKEN.rules
 PREVIEW = TAKEN.preview
 HOLDING = TAKEN.holding

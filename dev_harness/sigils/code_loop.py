@@ -41,8 +41,9 @@ FUNCTION = (
     "reads each loop and comprehension for the faults that give a wrong result, "
     "waste work, or write by hand what Python's own forms already state"
 )
-DISCIPLINES = ("conventions", "performance-efficiency", "reliability")
-TAKEN = take("loop", DISCIPLINES)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("conventions", "performance-efficiency", "reliability")
+TAKEN = take("loop", DISCIPLINES, CHARACTERISTICS)
 RULES = TAKEN.rules
 PREVIEW = TAKEN.preview
 HOLDING = TAKEN.holding

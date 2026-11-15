@@ -41,7 +41,8 @@ FUNCTION = (
     "reads each tuple, list, set and dictionary, written out, built or called, for "
     "contents that are wrong, wasteful, unsafe, unclear, untyped or against convention"
 )
-DISCIPLINES = (
+DISCIPLINES = ("python",)
+CHARACTERISTICS = (
     "conventions",
     "maintainability",
     "performance-efficiency",
@@ -49,7 +50,7 @@ DISCIPLINES = (
     "security",
     "typing",
 )
-TAKEN = take("collection", DISCIPLINES)
+TAKEN = take("collection", DISCIPLINES, CHARACTERISTICS)
 RULES = TAKEN.rules
 PREVIEW = TAKEN.preview
 HOLDING = TAKEN.holding

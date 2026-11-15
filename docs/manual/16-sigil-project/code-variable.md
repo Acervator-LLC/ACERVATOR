@@ -8,25 +8,26 @@ one sigil of [the sigil project](../16-sigil-project.md).
 
 CODE.VARIABLE@1 reads each binding, from an assignment to a function argument,
 for a name that is wrong, unsafe, wasteful, untyped, or against Python's naming
-conventions. It draws on five disciplines: conventions, performance efficiency,
-reliability, security and typing.
+conventions. It draws on the Python discipline, under five characteristics:
+conventions, performance efficiency, reliability, security and typing.
 
 The card holds no rule list of its own. It takes each ruff rule that the
-construct scope places on the variable construct and that one of its disciplines
-houses. [The construct scope](../16-sigil-project.md#the-construct-scope)
+construct scope places on the variable construct and that the Python discipline
+houses under one of its characteristics. [The construct scope](../16-sigil-project.md#the-construct-scope)
 states how a rule is placed.
 
 `dev_harness/sigils/code_variable.py, in TAKEN`:
 
 ```python
-DISCIPLINES = (
+DISCIPLINES = ("python",)
+CHARACTERISTICS = (
     "conventions",
     "performance-efficiency",
     "reliability",
     "security",
     "typing",
 )
-TAKEN = take("variable", DISCIPLINES)
+TAKEN = take("variable", DISCIPLINES, CHARACTERISTICS)
 ```
 
 ## What it reads
@@ -186,7 +187,7 @@ rules on.
 ## Rules left off
 
 The card does not run the rules below, though its own rule list once named
-them. Each reason comes from the construct scope and the six disciplines. The
+them. Each reason comes from the construct scope and the Python discipline. The
 card's left setting names every rule on the variable construct that no discipline
 houses, with its unplaced.json text.
 
