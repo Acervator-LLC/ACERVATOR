@@ -62,9 +62,10 @@ FUNCTION = (
     "reads each call, query, secret, parse and path for a weakness an attacker "
     "can use, with the CWE id each tool attaches to it"
 )
-DISCIPLINES = ("security",)
-BANDIT = hold("bandit", house_rules("bandit"), DISCIPLINES)
-SEMGREP = hold("semgrep", house_rules("semgrep"), DISCIPLINES)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("security",)
+BANDIT = hold("bandit", house_rules("bandit"), DISCIPLINES, CHARACTERISTICS)
+SEMGREP = hold("semgrep", house_rules("semgrep"), DISCIPLINES, CHARACTERISTICS)
 CAN_RUN = tuple(f"{held.tool} {rule}" for held in (BANDIT, SEMGREP) for rule in held.rules)
 
 SETTINGS: dict[str, str] = {
@@ -73,6 +74,7 @@ SETTINGS: dict[str, str] = {
     "semgrep_version": SEMGREP_BUILT,
     "function": FUNCTION,
     "disciplines": " ".join(DISCIPLINES),
+    "characteristics": " ".join(CHARACTERISTICS),
     "scope": "each bandit test and semgrep rule a discipline houses or unplaced.json "
     "lists: the tests python -m bandit --help lists, and the rules p/python and "
     "p/security-audit hold",

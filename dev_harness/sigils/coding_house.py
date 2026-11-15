@@ -24,14 +24,7 @@ from .core import repository_root, tool_text
 
 SIGILS = Path(__file__).resolve().parent
 HOUSE = SIGILS.parent / "disciplines"
-DISCIPLINES = (
-    "security",
-    "reliability",
-    "performance-efficiency",
-    "maintainability",
-    "conventions",
-    "typing",
-)
+DISCIPLINES = ("python",)
 RULES_FILE = "rules.json"
 UNPLACED_FILE = "unplaced.json"
 
@@ -153,7 +146,8 @@ CARD: dict[str, object] = {
     "PEP 8, PEP 257, PEP 484 and https://typing.python.org/en/latest/spec/; "
     "PEP 20, https://docs.python.org/3.14/ and each framework's own documentation",
     "grounds": [
-        "cwe: a CWE id the discipline's rules.json lists, or one the tool attaches to the rule",
+        "cwe: a CWE id the rules.json lists for the ground's characteristic, or one the tool "
+        "attaches to the rule",
         "term: a quote of the tool's own text naming an ISO/IEC 25010 characteristic",
         "pep: a quoted section of PEP 8, PEP 257 or PEP 484 that states the rule's check, "
         "or a PEP 20 line whose concern the rule's quoted text names",
@@ -174,7 +168,9 @@ CARD: dict[str, object] = {
         "unplaced.json holds",
         "stale": "a rule the files hold that no tool and no coding sigil runs",
         "both": "a rule placed and also unplaced",
-        "ungrounded": "a CWE ground its discipline does not list and the tool did not attach",
+        "ungrounded": "a CWE ground its characteristic does not list and the tool did not "
+        "attach, a ground with no quote, or a row whose characteristics and standards are "
+        "not those of its grounds",
         "unread": "a tool or a coding sigil card whose listing could not be read",
     },
 }
@@ -523,18 +519,24 @@ def house(folder: Path = HOUSE) -> tuple[Placements, set[tuple[str, str]]]:
 
 
 def ungrounded(folder: Path = HOUSE) -> list[str]:
-    """Return each ground in a `RULES_FILE` with no quote, or a CWE it neither lists nor the tool attached."""
+    """Return each `RULES_FILE` ground with no quote or an unlisted, unattached CWE, and each row its grounds do not match."""
     faults = []
     for name in DISCIPLINES:
         data = _load(folder / name / RULES_FILE)
-        listed = set(data["cwe"])
+        blocks = data["characteristics"]
         for row in data["rules"]:
+            rule = f"{row['tool']} {row['rule']}"
+            grounded = {ground.get("characteristic") for ground in row["grounds"]}
+            standards = {key: blocks[key]["standard"] for key in grounded if key in blocks}
+            if row["characteristics"] != standards or grounded - set(blocks):
+                faults.append(f"{name}: {rule} names {row['characteristics']}, grounds {grounded}")
             for ground in row["grounds"]:
+                listed = blocks.get(ground.get("characteristic"), {}).get("cwe", ())
                 cwe = ground.get("cwe")
                 if cwe and cwe not in listed and ground.get("attached") != row["tool"]:
-                    faults.append(f"{name}: {row['tool']} {row['rule']} {cwe}")
+                    faults.append(f"{name} {ground.get('characteristic')}: {rule} {cwe}")
                 if not ground.get("attached") and not ground.get("quote"):
-                    faults.append(f"{name}: {row['tool']} {row['rule']} has no quote")
+                    faults.append(f"{name}: {rule} has no quote")
     return faults
 
 

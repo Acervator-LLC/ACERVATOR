@@ -41,8 +41,9 @@ FUNCTION = (
     "reads each import statement for an import that fails, slows the start, hides "
     "the name it binds, or departs from Python's ordering, naming and typing practice"
 )
-DISCIPLINES = ("conventions", "performance-efficiency", "reliability", "typing")
-TAKEN = take("import", DISCIPLINES)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("conventions", "performance-efficiency", "reliability", "typing")
+TAKEN = take("import", DISCIPLINES, CHARACTERISTICS)
 RULES = TAKEN.rules
 PREVIEW = TAKEN.preview
 HOLDING = TAKEN.holding

@@ -152,10 +152,11 @@ FUNCTION = (
     "implicit what Python's conventions ask to state, or for a builtin's value "
     "that no code reads"
 )
-DISCIPLINES = ("conventions", "reliability", "typing")
-MYPY = hold("mypy", sorted(mypy.errorcodes.error_codes), DISCIPLINES)
-PYRIGHT = hold("pyright", house_rules("pyright"), DISCIPLINES)
-OWN = hold(OWN_TOOL, (UNUSED_RESULT,), DISCIPLINES)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("conventions", "reliability", "typing")
+MYPY = hold("mypy", sorted(mypy.errorcodes.error_codes), DISCIPLINES, CHARACTERISTICS)
+PYRIGHT = hold("pyright", house_rules("pyright"), DISCIPLINES, CHARACTERISTICS)
+OWN = hold(OWN_TOOL, (UNUSED_RESULT,), DISCIPLINES, CHARACTERISTICS)
 CAN_RUN = tuple(
     f"{held.tool} {rule}" for held in (MYPY, PYRIGHT, OWN) for rule in held.rules
 )
@@ -166,6 +167,7 @@ SETTINGS: dict[str, str] = {
     "pyright_version": PYRIGHT_BUILT,
     "function": FUNCTION,
     "disciplines": " ".join(DISCIPLINES),
+    "characteristics": " ".join(CHARACTERISTICS),
     "scope": "each code on mypy's own error code list, mypy.errorcodes.error_codes, "
     "and each pyright rule a discipline houses or unplaced.json lists: the rules "
     f"pyright reports as an {' or a '.join(PYRIGHT_SEVERITIES)} with no configuration; "
