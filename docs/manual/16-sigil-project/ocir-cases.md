@@ -229,11 +229,11 @@ to step 1, and CODE.TYPE now reads it with a rule of its own.
 | C7 | a test reads caplog from a logger that does not pass records up | no tool has one |
 | C11 | a test asserts that the host has no fonts | no tool has one |
 | C20 | a layout built on a group box the window then dropped | no tool has one |
-| C47 | a call whose value is thrown away | CODE.TYPE's own rule unused-builtin-result, which reliability houses under CWE-252; ruff B018 reads a bare expression and leaves calls out, by its own rule page |
+| C47 | a call whose value is thrown away | CODE.TYPE's own rule unused-builtin-result, which the Python discipline houses under reliability, on CWE-252; ruff B018 reads a bare expression and leaves calls out, by its own rule page |
 | C60 | a test asserts that one import sits next to another | no tool has one |
 | C80 | a test rewrites a shipped file in two steps while a page reads it | no tool has one |
 | C130 | a repeating share held as a decimal | no tool has one |
-| C143 | a tie-break that takes the first sorted name | no tool has one for the tie-break; ruff FURB192 reads a sorted list indexed in one expression, and this code takes two statements; performance efficiency houses FURB192, and CODE.OPTIMIZE holds it |
+| C143 | a tie-break that takes the first sorted name | no tool has one for the tie-break; ruff FURB192 reads a sorted list indexed in one expression, and this code takes two statements; the Python discipline houses FURB192 under performance efficiency, and CODE.OPTIMIZE holds it |
 | C144 | a docstring example the code answers wrongly | no tool has one |
 | C149 | two buttons pinned to a number beside a row height | the GUI Archetype's GUI011 in `dev_harness/harness/gui_archetype.py`; the Coding Archetype does not run it, no discipline houses it, and no coding sigil holds it |
 | C151 | a wait on a condition that almost never holds | no tool has one |

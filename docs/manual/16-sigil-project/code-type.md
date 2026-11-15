@@ -10,12 +10,13 @@ code uses. The Coding Archetype owns it. It is one sigil of
 CODE.TYPE@1 reads each value against the type its annotation, assignment or
 call gives it, for a type fault that fails at run time, breaks the typing
 standard, or leaves implicit what Python's conventions ask to state, or for a
-builtin's value that no code reads. It draws on three disciplines: conventions,
-reliability and typing.
+builtin's value that no code reads. It draws on the Python discipline, under
+three characteristics: conventions, reliability and typing.
 
 Its scope is each code on mypy's own error code list, 78 codes, each of the 42
 pyright rules that the house holds, and the one rule it runs itself. The card
-holds each scope rule that one of its disciplines houses, so it can run 63
+holds each scope rule that the Python discipline houses under one of its
+characteristics, so it can run 63
 rules: 33 mypy codes, 29 pyright rules and its own rule.
 [The tool scope](../16-sigil-project.md#the-tool-scope) states how a rule is
 held.
@@ -23,9 +24,10 @@ held.
 `dev_harness/sigils/code_type.py, in MYPY` and `in PYRIGHT`:
 
 ```python
-DISCIPLINES = ("conventions", "reliability", "typing")
-MYPY = hold("mypy", sorted(mypy.errorcodes.error_codes), DISCIPLINES)
-PYRIGHT = hold("pyright", house_rules("pyright"), DISCIPLINES)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("conventions", "reliability", "typing")
+MYPY = hold("mypy", sorted(mypy.errorcodes.error_codes), DISCIPLINES, CHARACTERISTICS)
+PYRIGHT = hold("pyright", house_rules("pyright"), DISCIPLINES, CHARACTERISTICS)
 ```
 
 The card holds its own rule the same way. A discipline must house it, or it
@@ -34,7 +36,7 @@ leaves the card with its reason.
 `dev_harness/sigils/code_type.py, in OWN` and `in CAN_RUN`:
 
 ```python
-OWN = hold(OWN_TOOL, (UNUSED_RESULT,), DISCIPLINES)
+OWN = hold(OWN_TOOL, (UNUSED_RESULT,), DISCIPLINES, CHARACTERISTICS)
 CAN_RUN = tuple(
     f"{held.tool} {rule}" for held in (MYPY, PYRIGHT, OWN) for rule in held.rules
 )
@@ -146,8 +148,8 @@ Ruff B018 leaves calls out, by its own rule page. Pyright's
 reportUnusedCallResult reads every call that returns a value, and pyright sets
 it to none in its basic, standard and strict modes.
 
-Reliability houses the rule under CWE-252. The rule's row in
-`dev_harness/disciplines/reliability/rules.json` quotes MITRE's description:
+The Python discipline houses the rule under reliability, on CWE-252. The rule's row in
+`dev_harness/disciplines/python/rules.json` quotes MITRE's description:
 
 ```text
 CWE-252  The product does not check the return value from a method or function.
@@ -552,13 +554,13 @@ settings and tier 3. The command prints the versions it ran.
 
 ## Rules
 
-The card can run the 63 rules below. The last column names each discipline
-that houses the rule, from the rules.json files under `dev_harness/disciplines/`.
+The card can run the 63 rules below. The last column names each characteristic
+under which the Python discipline houses the rule, from `dev_harness/disciplines/python/rules.json`.
 
 `dev_harness/sigils/code_type.py, in SETTINGS`: the card prints them as
 mypy_rules, pyright_rules and own_rules.
 
-| Rule | Tool | Housed by |
+| Rule | Tool | Characteristics |
 | ---- | ---- | --------- |
 | abstract | mypy | typing |
 | arg-type | mypy | typing |
@@ -628,19 +630,21 @@ mypy_rules, pyright_rules and own_rules.
 
 The card does not run the 58 scope rules below, though it read every error
 under them before it took its rules from its disciplines. An error under one of
-them moves no verdict. Each reason comes from the six disciplines and
+them moves no verdict. Each reason comes from the Python discipline and
 unplaced.json, and the card's left setting names every one with its full text.
 
 `dev_harness/sigils/construct_rules.py, in why_left`, the reason each rule left:
 
 ```python
-def why_left(tool: str, rule: str, named: Sequence[str]) -> str | None:
-    """Return why no `named` discipline houses `tool` rule `rule`, or None when one does."""
-    housed_by = _housed().get((tool, rule), ())
-    if set(housed_by) & set(named):
+def why_left(
+    tool: str, rule: str, named: Sequence[str], characteristics: Sequence[str]
+) -> str | None:
+    """Return why no `named` discipline houses `tool` rule `rule` under one of `characteristics`, or None when one does."""
+    places = _housed().get((tool, rule), ())
+    if any(name in named and found in characteristics for name, found in places):
         return None
-    if housed_by:
-        return NOT_NAMED.format(housing=", ".join(housed_by))
+    if places:
+        return NOT_NAMED.format(housing=_housing_text(places))
     return _unplaced().get((tool, rule), UNHOUSED)
 ```
 
@@ -681,7 +685,7 @@ def why_left(tool: str, rule: str, named: Sequence[str]) -> str | None:
 | syntax | mypy | No discipline houses it. |
 | top-level-await | mypy | No discipline houses it. |
 | truthy-bool | mypy | No discipline houses it. The archetype's mypy flags leave this optional check off, so the house holds no row for it. |
-| truthy-function | mypy | Housed by maintainability, security, which the card does not name. |
+| truthy-function | mypy | Housed by python under maintainability, security, which the card does not name. |
 | truthy-iterable | mypy | No discipline houses it. The archetype's mypy flags leave this optional check off, so the house holds no row for it. |
 | type-abstract | mypy | No discipline houses it. |
 | type-arg | mypy | No discipline houses it. The archetype's mypy flags leave this optional check off, so the house holds no row for it. |
@@ -691,7 +695,7 @@ def why_left(tool: str, rule: str, named: Sequence[str]) -> str | None:
 | unused-awaitable | mypy | No discipline houses it. The archetype's mypy flags leave this optional check off, so the house holds no row for it. |
 | unused-ignore | mypy | No discipline houses it. |
 | valid-type | mypy | No discipline houses it. |
-| reportAssertAlwaysTrue | pyright | Housed by maintainability, security, which the card does not name. |
+| reportAssertAlwaysTrue | pyright | Housed by python under maintainability, security, which the card does not name. |
 | reportFunctionMemberAccess | pyright | No discipline houses it. |
 | reportGeneralTypeIssues | pyright | No discipline houses it. |
 | reportIncompatibleMethodOverride | pyright | No discipline houses it. |
@@ -702,5 +706,5 @@ def why_left(tool: str, rule: str, named: Sequence[str]) -> str | None:
 | reportMissingModuleSource | pyright | No discipline houses it. |
 | reportOverlappingOverload | pyright | No discipline houses it. |
 | reportRedeclaration | pyright | No discipline houses it. |
-| reportUnusedExcept | pyright | Housed by maintainability, which the card does not name. |
+| reportUnusedExcept | pyright | Housed by python under maintainability, which the card does not name. |
 | reportUnusedExpression | pyright | No discipline houses it. |

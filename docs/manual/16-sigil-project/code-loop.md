@@ -8,18 +8,20 @@ rules it can run. The Coding Archetype owns it. It is one sigil of
 
 CODE.LOOP@1 reads each loop and comprehension for the faults that give a wrong
 result, waste work, or write by hand what Python's own forms already state. It
-draws on three disciplines: conventions, performance efficiency and reliability.
+draws on the Python discipline, under three characteristics: conventions,
+performance efficiency and reliability.
 
 The card holds no rule list of its own. It takes each ruff rule that the
-construct scope places on the loop construct and that one of its disciplines
-houses. [The construct scope](../16-sigil-project.md#the-construct-scope)
+construct scope places on the loop construct and that the Python discipline
+houses under one of its characteristics. [The construct scope](../16-sigil-project.md#the-construct-scope)
 states how a rule is placed.
 
 `dev_harness/sigils/code_loop.py, in TAKEN`:
 
 ```python
-DISCIPLINES = ("conventions", "performance-efficiency", "reliability")
-TAKEN = take("loop", DISCIPLINES)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("conventions", "performance-efficiency", "reliability")
+TAKEN = take("loop", DISCIPLINES, CHARACTERISTICS)
 ```
 
 ## What it reads
@@ -149,7 +151,7 @@ rules on.
 ## Rules left off
 
 The card does not run the rules below, though its own rule list once named
-them. Each reason comes from the construct scope and the six disciplines. The
+them. Each reason comes from the construct scope and the Python discipline. The
 card's left setting names every rule on the loop construct that no discipline
 houses, with its unplaced.json text.
 

@@ -9,20 +9,22 @@ reports for it. The Coding Archetype owns it. It is one sigil of
 
 CODE.SECURE@1 reads each call, query, secret, parse and path for a weakness an
 attacker can use, with the CWE id each tool attaches to it. It draws on one
-discipline: security.
+discipline, Python, under one characteristic: security.
 
 Its scope is each bandit test and semgrep rule the house holds: the 75 tests
-bandit lists and the 216 rules its two semgrep rule sets give. Security houses
-every one, so the card can run 291 rules and leaves none off.
+bandit lists and the 216 rules its two semgrep rule sets give. The Python
+discipline houses every one under security, so the card can run 291 rules and
+leaves none off.
 [The tool scope](../16-sigil-project.md#the-tool-scope) states how a rule is
 held.
 
 `dev_harness/sigils/code_secure.py, in BANDIT` and `in SEMGREP`:
 
 ```python
-DISCIPLINES = ("security",)
-BANDIT = hold("bandit", house_rules("bandit"), DISCIPLINES)
-SEMGREP = hold("semgrep", house_rules("semgrep"), DISCIPLINES)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("security",)
+BANDIT = hold("bandit", house_rules("bandit"), DISCIPLINES, CHARACTERISTICS)
+SEMGREP = hold("semgrep", house_rules("semgrep"), DISCIPLINES, CHARACTERISTICS)
 ```
 
 ## What it reads
@@ -153,13 +155,13 @@ ran.
 ## Rules
 
 The card can run the 75 bandit tests and the 216 semgrep rules below. Each test
-name comes from `python -m bandit --help`. The last column names each discipline
-that houses the test, from the rules.json files under `dev_harness/disciplines/`.
+name comes from `python -m bandit --help`. The last column names each characteristic
+under which the Python discipline houses the test, from `dev_harness/disciplines/python/rules.json`.
 
 `dev_harness/sigils/code_secure.py, in SETTINGS`: the card prints them as
 bandit_rules and semgrep_rules.
 
-| Test | bandit name | Housed by |
+| Test | bandit name | Characteristics |
 | ---- | ----------- | --------- |
 | B101 | assert_used | reliability, security |
 | B102 | exec_used | security |
@@ -237,7 +239,7 @@ bandit_rules and semgrep_rules.
 | B703 | django_mark_safe | security |
 | B704 | markupsafe_markup_xss | security |
 
-Security houses each semgrep rule below. Reliability also houses three of them:
+The Python discipline houses each semgrep rule below under security. It also houses three of them under reliability:
 the Django and Flask nan-injection rules, and the Flask tainted-sql-string rule.
 
 ```

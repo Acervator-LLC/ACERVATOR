@@ -126,7 +126,8 @@ flowchart TD
 
 ### The disciplines a card names
 
-A card names the disciplines it takes its rules from. Each discipline's SKILL.md
+A card names the disciplines it takes its rules from. A coding card names one
+discipline, Python, and the characteristics it draws on inside it. Each discipline's SKILL.md
 lists the archetypes compatible with it, on its archetypes line. Before tier 1,
 the core reads that line for each discipline the card names.
 
@@ -284,28 +285,40 @@ layer stays with the owning archetype or a licensed reviewer.
 
 ## The Coding Archetype's disciplines
 
-The Coding Archetype reviews source code. ISO/IEC 5055:2021 measures source
-code on four characteristics, and those four are the archetype's disciplines:
+The Coding Archetype reviews source code. Its disciplines are by programming
+language and its syntax. It has one discipline today, Python, in the skill
+folder `dev_harness/disciplines/python`, which covers Python source in .py files
+as the ast module of Python 3.14 parses it.
+
+ISO/IEC 5055:2021 measures source
+code on four characteristics, and those four are characteristics of the
+archetype's Python discipline:
 security, reliability, performance efficiency and maintainability. Each
 discipline is a skill folder under `dev_harness/disciplines`, with a SKILL.md
 and a rules.json. Only an archetype that runs a rule the discipline holds is
 compatible with it, and SKILL.md names those archetypes as data.
 
-Two more disciplines hold Python's own published standards, which ISO/IEC 5055
+Two more characteristics hold Python's own published standards, which ISO/IEC 5055
 does not measure: conventions, grounded in PEP 8 and PEP 257, and typing,
-grounded in PEP 484 and the Python typing specification. Each is a skill folder
-shaped like the four.
+grounded in PEP 484 and the Python typing specification. Each is an entry in the
+Python discipline's rules.json shaped like the four.
 
-Every rule the archetype can run on a Python file sits under each discipline whose
+Every rule the archetype can run on a Python file sits in the Python discipline,
+under each characteristic whose
 weakness it reports, or in unplaced.json with its reason. One rule can sit under
-more than one discipline. Each placement names its ground: a CWE id that the
-discipline's ISO/IEC 5055 list holds, or the tool's own words naming the
+more than one characteristic. Each placement names its ground: a CWE id that the
+characteristic's ISO/IEC 5055 list holds, or the tool's own words naming the
 concern. The CWE lists come from the
 [OMG ASCQM 1.0 specification](https://www.omg.org/spec/ASCQM/1.0/PDF), Tables 1
 to 4.
 
+Each rule row names the characteristics it sits under, with each one's
+standard, and each ground names the characteristic it grounds. The Python
+discipline holds 854 rules: 804 under one characteristic, 46 under two and 4
+under three.
+
 A placement by definition quotes the CWE's description from the MITRE CWE list
-beside the rule's own text, and the CWE must be in the discipline's list. A
+beside the rule's own text, and the CWE must be in the characteristic's list. A
 conventions or typing placement quotes the PEP or specification section that
 states the rule's check, beside the rule's own text.
 
@@ -314,12 +327,15 @@ line of PEP 20, the Zen of Python, grounds a rule whose own text names that
 line's concern, such as "Readability counts." or "Flat is better than nested."
 A section of the [Python 3.14 documentation](https://docs.python.org/3.14/)
 grounds a rule where it states the failure, cost, idiom or type of the construct
-the rule detects, and the rule sits under that concern's discipline. A framework
+the rule detects, and the rule sits under that concern's characteristic. A framework
 rule rests the same way on the framework's own documentation, such as pytest or
 Django. Each such placement quotes both texts, with the section's address.
 
-| Discipline | CWE ids in its list | Rules it holds | Compatible archetypes |
-| ---------- | ------------------- | -------------- | --------------------- |
+The Python discipline's SKILL.md lists the coding, gui, docs and ta archetypes,
+each one compatible with at least one characteristic below.
+
+| Characteristic | CWE ids in its list | Rules it holds | Compatible archetypes |
+| -------------- | ------------------- | -------------- | --------------------- |
 | security | 74 | 389 | coding, gui, docs, ta |
 | reliability | 74 | 111 | coding, gui, docs |
 | performance efficiency | 18 | 48 | coding, gui, ta |
@@ -370,7 +386,7 @@ vulture, and the house counts those under the archetype's own lists.
 
 CODE.TYPE also runs one rule of its own, unused-builtin-result, which no call of
 the archetype runs. Its card names that rule and its tool, and the house counts
-the rule as the sigil's own. Reliability places it.
+the rule as the sigil's own. The Python discipline places it under reliability.
 
 `dev_harness/sigils/coding_house.py, in _card_own`:
 
@@ -392,7 +408,7 @@ def _card_own(card: dict[str, Any]) -> set[tuple[str, str]]:
 ```
 
 The command reads each tool's own rule list under the archetype's own flags.
-It then checks that list against the six rules.json files and unplaced.json,
+It then checks that list against the Python discipline's rules.json and unplaced.json,
 and exits 1 on any fault. `--root` names the tree, and `--card` prints the card.
 
 `dev_harness/sigils/coding_house.py, in count`:
@@ -407,6 +423,10 @@ and exits 1 on any fault. `--root` names the tree, and `--card` prints the card.
     }
 ```
 
+An ungrounded fault names a CWE ground that its characteristic's list does not
+hold and the tool did not attach, a ground with no quote, or a rule row whose
+characteristics are not those of its grounds.
+
 The archetype's coding sigils do not run every rule on every input. The input
 decides which rules run, before any rule runs. The archetype's own ruff call
 still runs every rule it enables. [Rule run partitioning](16-sigil-project/rule-partition.md)
@@ -416,7 +436,7 @@ on `src/`.
 ## The construct scope
 
 The five construct sigils hold no rule list of their own. Each one takes the
-ruff rules that its disciplines house inside its construct's scope. A rule sits
+ruff rules that its disciplines house, under its characteristics, inside its construct's scope. A rule sits
 on a construct where its own published faulty example raises its finding on that
 construct.
 
@@ -477,32 +497,39 @@ and neither runs it. Eight preview rules leave the construct sigils this way.
 The four tool sigils, CODE.OPTIMIZE, CODE.TYPE, CODE.SECURE and CODE.REACH,
 hold no rule list of their own either, except the one rule CODE.TYPE runs
 itself, which a discipline must still house. Each one holds the rules its disciplines
-house inside its tool's scope. A finding under any other rule moves no verdict,
+house, under its characteristics, inside its tool's scope. A finding under any other rule moves no verdict,
 and each sigil's page lists the rules it holds and the rules that left.
 
 `dev_harness/sigils/construct_rules.py, in hold`:
 
 ```python
-def hold(tool: str, rules: Iterable[str], named: Sequence[str]) -> Held:
-    """Return the `Held` scope `rules` of `tool` that the `named` disciplines house."""
-    _check_named(named)
+def hold(
+    tool: str, rules: Iterable[str], named: Sequence[str], characteristics: Sequence[str]
+) -> Held:
+    """Return the `Held` scope `rules` of `tool` that the `named` disciplines house under `characteristics`."""
+    _check_named(named, characteristics)
     held: list[str] = []
     left: dict[str, str] = {}
     for rule in rules:
-        why = why_left(tool, rule, named)
+        why = why_left(tool, rule, named, characteristics)
         if why is None:
             held.append(rule)
         else:
             left[rule] = why
-    return Held(tool, tuple(named), tuple(held), left)
+    return Held(tool, tuple(named), tuple(characteristics), tuple(held), left)
 ```
 
-| Sigil | Scope | Rules in scope | Rules it can run | Disciplines |
-| ----- | ----- | -------------- | ---------------- | ----------- |
-| CODE.OPTIMIZE | each ruff rule in its seven families | 149 | 85 | conventions, maintainability, performance efficiency, typing |
-| CODE.TYPE | each mypy error code, each pyright rule the house holds, and its own rule | 121 | 63 | conventions, reliability, typing |
-| CODE.SECURE | each bandit test and semgrep rule the house holds | 291 | 291 | security |
-| CODE.REACH | the vulture rule the house holds | 1 | 1 | maintainability |
+| Sigil | Scope | Rules in scope | Rules it can run | Disciplines | Characteristics |
+| ----- | ----- | -------------- | ---------------- | ----------- | --------------- |
+| CODE.OPTIMIZE | each ruff rule in its seven families | 149 | 85 | python | conventions, maintainability, performance efficiency, typing |
+| CODE.TYPE | each mypy error code, each pyright rule the house holds, and its own rule | 121 | 63 | python | conventions, reliability, typing |
+| CODE.SECURE | each bandit test and semgrep rule the house holds | 291 | 291 | python | security |
+| CODE.REACH | the vulture rule the house holds | 1 | 1 | python | maintainability |
+
+A tool sigil names its characteristics so that a rule the Python discipline
+houses only under another characteristic stays off its card. CODE.OPTIMIZE
+leaves 3 rules this way and CODE.TYPE leaves 3; with every characteristic named,
+they would run 88 and 66 rules.
 
 ## The defects this tree had
 
