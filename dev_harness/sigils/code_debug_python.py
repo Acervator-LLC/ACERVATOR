@@ -1,4 +1,4 @@
-"""`SIGIL` is CODE.DEBUG.PYTHON on the `core` card; `run` prints one row per input line."""
+"""`SIGIL` is CODE.DEBUG.PYTHON on the `core` card; `run` prints one row per input."""
 
 import json
 import subprocess
@@ -57,8 +57,8 @@ CANON: dict[str, str] = {
     "ruff": "https://docs.astral.sh/ruff/rules/",
     "mypy": "https://github.com/python/mypy/blob/v2.1.0/docs/source/"
     "error_code_list.rst and error_code_list2.rst",
-    "pyright": "https://github.com/microsoft/pyright/blob/1.1.411/"
-    "docs/configuration.md",
+    "pyright": "https://github.com/microsoft/pyright/blob/1.1.411/docs/"
+    "configuration.md",
     "bandit": "https://bandit.readthedocs.io/en/latest/plugins/index.html",
     "vulture": "https://github.com/jendrikseipp/vulture/blob/v2.16/README.md",
     "semgrep": "https://semgrep.dev/r",
@@ -148,7 +148,7 @@ def archetype_report(file: Path) -> dict[str, Any]:
 
 
 def bind(item: Mapping[str, Any], path: str) -> dict[str, object]:
-    """Return the archetype finding `item` in `FINDING_FIELDS` order, bound by tool and rule."""
+    """Return finding `item` in `FINDING_FIELDS` order, bound by its tool and rule."""
     tool, rule = str(item["tool"]), str(item["rule_id"])
     housed = [found for name, found in places(tool, rule) if name == DISCIPLINE]
     reason = unplaced(tool).get(rule)

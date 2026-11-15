@@ -75,7 +75,7 @@ rule pages of each tool as its canon.
 | -------- | ----------------- |
 | ruff | https://docs.astral.sh/ruff/rules/ |
 | mypy | error_code_list.rst and error_code_list2.rst of mypy 2.1.0 |
-| pyright | docs/configuration.md of pyright 1.1.411 |
+| pyright | https://github.com/microsoft/pyright/blob/1.1.411/docs/configuration.md |
 | bandit | https://bandit.readthedocs.io/en/latest/plugins/index.html |
 | vulture | README.md of vulture 2.16 |
 | semgrep | https://semgrep.dev/r |
