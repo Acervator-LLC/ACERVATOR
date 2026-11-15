@@ -321,7 +321,7 @@ Django. Each such placement quotes both texts, with the section's address.
 | Discipline | CWE ids in its list | Rules it holds | Compatible archetypes |
 | ---------- | ------------------- | -------------- | --------------------- |
 | security | 74 | 389 | coding, gui, docs, ta |
-| reliability | 74 | 110 | coding, gui, docs |
+| reliability | 74 | 111 | coding, gui, docs |
 | performance efficiency | 18 | 48 | coding, gui, ta |
 | maintainability | 29 | 30 | coding, gui |
 | conventions | 0 | 254 | coding, gui, ta |
@@ -338,7 +338,8 @@ Django. Each such placement quotes both texts, with the section's address.
 | pylint | 12 | 1 | 11 |
 | vulture | 1 | 1 | 0 |
 | the six rule modules | 19 | 4 | 15 |
-| all | 1,240 | 853 | 387 |
+| the rule CODE.TYPE runs itself | 1 | 1 | 0 |
+| all | 1,241 | 854 | 387 |
 
 Each rule left in unplaced.json carries its reason: no listed CWE definition and
 no PEP or specification section describes it, or its text names a PEP that no
@@ -366,6 +367,21 @@ CODE.OPTIMIZE runs the same 3 preview rules that CODE.LOOP and CODE.FLOW run, so
 the 7 stay 7.
 CODE.SECURE, CODE.TYPE and CODE.REACH run bandit, semgrep, mypy, pyright and
 vulture, and the house counts those under the archetype's own lists.
+
+CODE.TYPE also runs one rule of its own, unused-builtin-result, which no call of
+the archetype runs. Its card names that rule and its tool, and the house counts
+the rule as the sigil's own. Reliability places it.
+
+`dev_harness/sigils/coding_house.py, in _card_own`:
+
+```python
+def _card_own(card: dict[str, Any]) -> set[tuple[str, str]]:
+    """Return an (own_tool, rule) pair for each rule the `card` settings name in own_rules."""
+    settings = card.get("settings", {})
+    tool = str(settings.get("own_tool") or "")
+    rules = str(settings.get("own_rules") or "").split()
+    return {(tool, rule) for rule in rules} if tool else set()
+```
 
 `dev_harness/sigils/coding_house.py, in _card_ruff`:
 
@@ -459,7 +475,8 @@ and neither runs it. Eight preview rules leave the construct sigils this way.
 ## The tool scope
 
 The four tool sigils, CODE.OPTIMIZE, CODE.TYPE, CODE.SECURE and CODE.REACH,
-hold no rule list of their own either. Each one holds the rules its disciplines
+hold no rule list of their own either, except the one rule CODE.TYPE runs
+itself, which a discipline must still house. Each one holds the rules its disciplines
 house inside its tool's scope. A finding under any other rule moves no verdict,
 and each sigil's page lists the rules it holds and the rules that left.
 
@@ -483,7 +500,7 @@ def hold(tool: str, rules: Iterable[str], named: Sequence[str]) -> Held:
 | Sigil | Scope | Rules in scope | Rules it can run | Disciplines |
 | ----- | ----- | -------------- | ---------------- | ----------- |
 | CODE.OPTIMIZE | each ruff rule in its seven families | 149 | 85 | conventions, maintainability, performance efficiency, typing |
-| CODE.TYPE | each mypy error code, and each pyright rule the house holds | 120 | 62 | conventions, reliability, typing |
+| CODE.TYPE | each mypy error code, each pyright rule the house holds, and its own rule | 121 | 63 | conventions, reliability, typing |
 | CODE.SECURE | each bandit test and semgrep rule the house holds | 291 | 291 | security |
 | CODE.REACH | the vulture rule the house holds | 1 | 1 | maintainability |
 
@@ -504,7 +521,7 @@ the card its command prints. A sigil that is not built has no card yet.
 | ----- | ----- | ----------------- | ------ | ------ |
 | CITE.SYMBOL@3 | truth | no rule list: its tiers decide | built | `dev_harness/sigils/cite_symbol.py, in SIGIL` |
 | CODE.OPTIMIZE@1 | coding | 85 ruff rules it can run | built | `dev_harness/sigils/code_optimize.py, in SIGIL` |
-| CODE.TYPE@1 | coding | 62 mypy and pyright rules it can run | built | `dev_harness/sigils/code_type.py, in SIGIL` |
+| CODE.TYPE@1 | coding | 63 rules it can run: 62 mypy and pyright rules and its own | built | `dev_harness/sigils/code_type.py, in SIGIL` |
 | CODE.SECURE@1 | coding | 291 bandit and semgrep rules it can run | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
 | CODE.REACH@1 | coding | 1 vulture rule it can run | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
 | CODE.LOOP@1 | coding | 18 ruff rules it can run | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
