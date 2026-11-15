@@ -48,8 +48,13 @@ MYPY_TIMEOUT_S = 300
 PYRIGHT_TIMEOUT_S = 120
 MYPY_FINISHED = (0, 1)
 PYRIGHT_FINISHED = (0, 1)
+PYRIGHT_SEVERITIES = ("error", "warning")
 NO_CODE = "no code"
 NO_CHECKER = "no type checker ran: the selection holds no rule of either"
+SOUND_MEANS = (
+    f"mypy reports no error, and pyright no {' or '.join(PYRIGHT_SEVERITIES)}, "
+    "under a rule on the card"
+)
 
 FUNCTION = (
     "reads each value against the type its annotation, assignment or call gives it, "
@@ -69,7 +74,7 @@ SETTINGS: dict[str, str] = {
     "disciplines": " ".join(DISCIPLINES),
     "scope": "each code on mypy's own error code list, mypy.errorcodes.error_codes, "
     "and each pyright rule a discipline houses or unplaced.json lists: the rules "
-    "pyright reports as an error with no configuration",
+    f"pyright reports as an {' or a '.join(PYRIGHT_SEVERITIES)} with no configuration",
     "mypy_rules": " ".join(MYPY.rules),
     "pyright_rules": " ".join(PYRIGHT.rules),
     "selection": SELECTION,
@@ -87,7 +92,7 @@ class ToolFault(Exception):
 
 @dataclass(frozen=True)
 class Finding:
-    """One error: the `tool`, its error `code` and its `line`."""
+    """One finding: the `tool`, its error `code` and its `line`."""
 
     tool: str
     code: str
@@ -145,7 +150,7 @@ def _mypy_findings(
 
 
 def _pyright_findings(path: str, root: Path, file: Path) -> tuple[str, list[Finding]]:
-    """Return the pyright version and each pyright error in `file`, run from `root`."""
+    """Return the pyright version and each pyright row in `file` at a `PYRIGHT_SEVERITIES` level, run from `root`."""
     try:
         proc = pyright.run(
             "--outputjson",
@@ -171,7 +176,7 @@ def _pyright_findings(path: str, root: Path, file: Path) -> tuple[str, list[Find
                 diagnostic["range"]["start"]["line"] + 1,
             )
             for diagnostic in report["generalDiagnostics"]
-            if diagnostic["severity"] == "error"
+            if diagnostic["severity"] in PYRIGHT_SEVERITIES
             and _same_file(Path(diagnostic["file"]), file)
         ]
     except (ValueError, KeyError, TypeError) as exc:
@@ -179,7 +184,7 @@ def _pyright_findings(path: str, root: Path, file: Path) -> tuple[str, list[Find
 
 
 def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[Finding]]:
-    """Return the checkers run and each error of the `to_run` rules inside the input `text` names."""
+    """Return the checkers run and each `Finding` of the `to_run` rules inside the input `text` names."""
     located = locate(text, root)
     if isinstance(located, str):
         raise ToolFault(f"{text}: {located}, after tier 2 accepted it")
@@ -207,10 +212,10 @@ def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[
 
 
 def _functions_verdict(text: str, root: Path) -> tuple[str, str]:
-    """Return `SOUND`, or `UNSOUND` with each error of the `selection` rules inside the `locate` span."""
+    """Return `SOUND`, or `UNSOUND` with each `Finding` of the `selection` rules inside the `locate` span."""
     versions, found = findings(text, root, selection(text, root, CAN_RUN))
     if not found:
-        return SOUND, f"{versions}: neither tool reports an error under a rule on the card"
+        return SOUND, f"{versions}: {SOUND_MEANS}"
     rows = "; ".join(f"{item.tool} {item.code} line {item.line}" for item in found)
     return UNSOUND, f"{versions}: {rows}"
 
@@ -240,10 +245,11 @@ SIGIL = Sigil(
                     "pyright, through pyright.run from the root of the target tree, "
                     "with --outputjson, when the selection holds a pyright rule"
                 ),
-                "only the errors under the selected rules",
-                "for a symbol, only the errors inside its lines",
+                "only the mypy errors, and the pyright rows at "
+                f"{' or '.join(PYRIGHT_SEVERITIES)}, under the selected rules",
+                "for a symbol, only the findings inside its lines",
             ],
-            "sound": "neither tool reports an error under a rule on the card",
+            "sound": SOUND_MEANS,
             "unsound": ["tool", "error code", "line"],
             "left": {MYPY.tool: MYPY.left, PYRIGHT.tool: PYRIGHT.left},
             "left_because": LEFT_BECAUSE,
