@@ -8,3 +8,8 @@ known_good_union_attr.py
 known_good_call_arg.py
 known_good_index.py
 known_good_union_attr.py, in func
+
+# SOUND: the float value bound and read, a float call in a try body, an int call in a with suite
+known_good_unused_builtin_result.py
+known_good_unused_builtin_result.py, in refuses
+known_good_unused_builtin_result.py, in parses

@@ -1,7 +1,7 @@
 # Rule run partitioning
 
-Reference. The Coding Archetype can run 1,240 rules. The keys below were
-measured over 1,251, and the 11 more are preview rules no sigil runs now.
+Reference. The Coding Archetype can run 1,241 rules. The keys below were
+measured over 1,252, and the 11 more are preview rules no sigil runs now.
 For one input it runs only
 the rules that input can hold, and that choice is made before any rule runs.
 This page states the inputs, the facts read from each one, the four keys every
@@ -103,6 +103,20 @@ publishes no example per rule, so its nodes and imports stay open. A rule
 module with no finding on the calibration files takes its keys from its own
 module docstring.
 
+The one rule a sigil runs itself, CODE.TYPE's unused-builtin-result, takes its
+keys from its own docstring and the Python documentation. The measuring command
+writes them from one constant.
+
+`dev_harness/sigils/partition_measure.py, in UNUSED_RESULT_KEYS`, as
+`partition.json` holds them:
+
+```text
+reach    statement      code_type.py, in _unused_builtin_results: the statement's line
+nodes    Expr           ast.Expr: an expression that appears as a statement by itself
+imports  none           Built-in Functions: the builtins are always available
+file     source, test   coding_input.READERS reads .py files alone
+```
+
 The proof can open a key. When a real finding in `src/` falls outside a
 measured value, the measuring command opens that key and names the input that
 holds the finding.
@@ -151,10 +165,10 @@ def reach_fits(keys: dict[str, Any], facts: Facts) -> bool:
 
 | Key | Grounded | Open |
 | --- | -------- | ---- |
-| reach | 1,193 | 58 |
-| nodes | 1,051 | 200 |
-| imports | 1,104 | 147 |
-| file | 1,176 | 75 |
+| reach | 1,194 | 58 |
+| nodes | 1,052 | 200 |
+| imports | 1,105 | 147 |
+| file | 1,177 | 75 |
 
 Why each open key stays open:
 
@@ -177,17 +191,17 @@ Why each open key stays open:
 
 | Input | Inputs | Rules run, lowest | Median | Highest |
 | ----- | ------ | ----------------- | ------ | ------- |
-| scope | 13,893 | 310 | 771 | 942 |
-| module, source | 502 | 194 | 880 | 973 |
-| module, test | 1 | 899 | 899 | 899 |
-| project | 1 | 1,061 | 1,061 | 1,061 |
+| scope | 13,893 | 310 | 772 | 943 |
+| module, source | 502 | 194 | 881 | 974 |
+| module, test | 1 | 900 | 900 | 900 |
+| project | 1 | 1,062 | 1,062 | 1,062 |
 
 How many rules each key left out of at least one of those inputs:
 
 | Key | Rules it partitions |
 | --- | ------------------- |
 | reach | 21 |
-| nodes | 1,051 |
+| nodes | 1,052 |
 | imports | 369 |
 | file | 31 |
 
@@ -219,7 +233,7 @@ tests, and semgrep excludes each rule of the card that the selection leaves
 out. Mypy gets a disabled error code for each mypy rule of the card that the
 selection leaves out. Pyright and vulture count only the selected codes, and
 every one of their rules fits every source file. A tool with no selected rule
-does not run.
+does not run. CODE.TYPE runs its own rule only when the selection keeps it.
 
 `dev_harness/sigils/coding_partition.py, in selection`:
 
@@ -252,7 +266,7 @@ be equal, in the same order.
 | CODE.FLOW | 33 | 9, 22, 29 | 3, 12, 29 | 533 | 533 |
 | CODE.VARIABLE | 38 | 16, 33, 35 | 12, 32, 35 | 14,417 | 14,417 |
 | CODE.OPTIMIZE | 85 | 4, 71, 81 | 7, 61, 81 | 6,711 | 6,711 |
-| CODE.TYPE | 62 | 32, 61, 62 | 41, 59, 62 | 17,537 | 17,537 |
+| CODE.TYPE | 63 | 32, 62, 63 | 41, 59, 63 | 17,537 | 17,537 |
 | CODE.SECURE | 291 | 18, 187, 202 | 34, 176, 198 | 62 | 62 |
 | CODE.REACH | 1 | 1, 1, 1 | 1, 1, 1 | 2,822 | 2,822 |
 
@@ -285,8 +299,8 @@ python -m dev_harness.sigils.coding_partition --root . --sigils --control "ruff 
 python -m dev_harness.sigils.coding_partition --root . --sigils --sigil CODE.TYPE --findings <file>
 ```
 
-The first prints an input's facts and the rules that run on it: 809 of 1,251
-for that function, 897 for its file. The second runs every archetype call over
+The first prints an input's facts and the rules that run on it: 810 of 1,252
+for that function, 898 for its file. The second runs every archetype call over
 `src/` once and checks every input. The third runs the same check on a copy of
 the keys with one key made wrong. The fourth measures the keys from the
 published sources that its `--card` lists.

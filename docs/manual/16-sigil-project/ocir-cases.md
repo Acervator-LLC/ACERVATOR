@@ -177,15 +177,19 @@ for that reason:
 python -m dev_harness.sigils.ocir_cases
 python -m dev_harness.sigils.ocir_cases --row C54
 python -m dev_harness.sigils.ocir_cases --same-commit
+python -m dev_harness.sigils.ocir_cases --card
 ```
 
 It prints one JSON line per case and a count of the verdicts. It exits 1 when a
 case faults. With `--same-commit`, both sides come from the fix commit, so no
 row can read, and the command also exits 1 when a row reads.
 
+With the card flag, it prints its card and reads no case. The house count reads
+the card of every module beside the sigils, so it reads this one too.
+
 ## The rows read and unread
 
-Three of the 16 rows read. The column "Found before, not after" lists each rule
+Four of the 16 rows read. The column "Found before, not after" lists each rule
 the command reports, with the sigil that ran it.
 
 | Row | Commit | Found before, not after | The finding is the defect | Reading |
@@ -194,7 +198,7 @@ the command reports, with the sigil that ran it.
 | C7 | `a17b274a` | none | no finding | unread |
 | C11 | `3ec415d1` | none | no finding | unread |
 | C20 | `864f9ac5` | none | no finding | unread |
-| C47 | `78dbb615` | none | no finding | unread |
+| C47 | `78dbb615` | CODE.TYPE: code_type unused-builtin-result | yes: the float call whose value the fix bound to a name | read |
 | C54 | `0f951fe3` | CODE.SECURE: bandit B105 | yes: a password name set to a string | read |
 | C60 | `ae9d147a` | CODE.FLOW: ruff S101; CODE.SECURE: bandit B101 | no: the fix deleted the assert, and both rules read any assert | unread |
 | C61 | `16162214` | CODE.TYPE: pyright reportOptionalCall 13 times, reportOptionalMemberAccess once | yes: the 13 calls on names the fallback set to None | read |
@@ -212,11 +216,12 @@ fix commit names thirteen calls on them; the sigil reports those 13 calls. The
 three names the fallback never bound give no finding that the fix removed, so
 that part of the row stays unread.
 
-## The rows no sigil reads
+## The shape of each row, and the rule that reads it
 
 Each unread row goes back to step 1 of the Coding Archetype's mind. The table
 names the rule that reads the shape where a tool the Coding Archetype runs has
-one, the discipline that houses it, and the sigil that holds it.
+one, the discipline that houses it, and the sigil that holds it. C47 went back
+to step 1, and CODE.TYPE now reads it with a rule of its own.
 
 | Row | The shape | The rule that reads it |
 | --- | --------- | ---------------------- |
@@ -224,7 +229,7 @@ one, the discipline that houses it, and the sigil that holds it.
 | C7 | a test reads caplog from a logger that does not pass records up | no tool has one |
 | C11 | a test asserts that the host has no fonts | no tool has one |
 | C20 | a layout built on a group box the window then dropped | no tool has one |
-| C47 | a call whose value is thrown away | no tool has one; ruff B018 reads a bare expression and leaves calls out, by its own rule page |
+| C47 | a call whose value is thrown away | CODE.TYPE's own rule unused-builtin-result, which reliability houses under CWE-252; ruff B018 reads a bare expression and leaves calls out, by its own rule page |
 | C60 | a test asserts that one import sits next to another | no tool has one |
 | C80 | a test rewrites a shipped file in two steps while a page reads it | no tool has one |
 | C130 | a repeating share held as a decimal | no tool has one |
@@ -238,17 +243,19 @@ one, the discipline that houses it, and the sigil that holds it.
 
 With `--same-commit`, both sides of each case come from its fix commit, so the
 before side and the after side hold the same code. All 16 cases read unread.
-That includes C54, C61 and C74, which read when the before side comes from the
-parent commit. So a reading comes from the code the fix changed, and not from
-the comparison itself.
+That includes C47, C54, C61 and C74, which read when the before side comes from
+the parent commit. So a reading comes from the code the fix changed, and not
+from the comparison itself.
 
 | Run | Cases | Read by the command | Unread | Seconds |
 | --- | ----- | ------------------- | ------ | ------- |
-| before against after | 16 | 5 | 11 | 933 |
-| `--same-commit` | 16 | 0 | 16 | 452 |
+| before against after | 16 | 6 | 10 | 1,071 |
+| `--same-commit` | 16 | 0 | 16 | 526 |
 
-The command reports five cases read in the first run: C54, C60, C61, C74 and
-C152. By the rule used, C60 and C152 count unread, so three rows read.
+Both runs took place while two sigil proofs ran on the same machine.
+
+The command reports six cases read in the first run: C47, C54, C60, C61, C74
+and C152. By the rule used, C60 and C152 count unread, so four rows read.
 
 ## CODE.SECURE on C1
 

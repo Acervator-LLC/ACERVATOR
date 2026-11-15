@@ -44,6 +44,15 @@ HUNK = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 READ = "read"
 UNREAD = "unread"
 FAULT = "fault"
+CARD: dict[str, object] = {
+    "house": "coding",
+    "edition": 1,
+    "owner": "coding",
+    "cases": "harness_fixtures/ocir_cases/cases.txt: row, fix commit, path, symbol",
+    "reads": "each case through every coding sigil, on the fix commit and on its parent",
+    "outputs": [READ, UNREAD, FAULT],
+    "command": "python -m dev_harness.sigils.ocir_cases",
+}
 
 
 class CaseFault(Exception):
@@ -248,7 +257,7 @@ def read_case(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Print one JSON reading per case; exit 1 on a fault, or on a read row under `--same-commit`."""
+    """Print `CARD`, or one JSON reading per case; exit 1 on a fault, or on a read row under `--same-commit`."""
     parser = argparse.ArgumentParser(
         description="Read each case of the case list, before and after its fix."
     )
@@ -261,7 +270,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="read both sides from the fix commit, so no row can read",
     )
+    parser.add_argument("--card", action="store_true", help="print the card as JSON")
     args = parser.parse_args(argv)
+    if args.card:
+        print(json.dumps(CARD, indent=2))
+        return 0
     try:
         cases = [c for c in load(args.cases) if not args.row or c.row in args.row]
     except (OSError, CaseFault) as exc:

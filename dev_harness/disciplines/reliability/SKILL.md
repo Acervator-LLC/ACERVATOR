@@ -46,6 +46,21 @@ reason. One rule can sit under more than one discipline.
 `python -m dev_harness.sigils.coding_house` prints how many rules each
 discipline holds, and how many each tool runs, places and leaves unplaced.
 
+## A rule a sigil runs itself
+
+The coding sigil CODE.TYPE runs one rule that this project writes:
+unused-builtin-result, with code_type as its tool. This discipline houses it
+under CWE-252, with MITRE's description:
+
+```text
+CWE-252  The product does not check the return value from a method or function.
+```
+
+The rule reports a statement that throws away the value of a call to a listed
+builtin, so no code checks that return value.
+[CODE.TYPE@1](../../../docs/manual/16-sigil-project/code-type.md) lists the
+builtins and the reason each other builtin is left out.
+
 ## Compatible archetypes
 
 An archetype is compatible when it runs a rule this discipline holds. Each

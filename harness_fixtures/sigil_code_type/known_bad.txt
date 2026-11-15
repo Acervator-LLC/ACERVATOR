@@ -9,3 +9,7 @@ known_bad_union_attr.py
 known_bad_call_arg.py
 known_bad_index.py
 known_bad_union_attr.py, in func
+
+# UNSOUND, FIX: a float call whose value no code reads, outside a try body
+known_bad_unused_builtin_result.py
+known_bad_unused_builtin_result.py, in Pool.discharge

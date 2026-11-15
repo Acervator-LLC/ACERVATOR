@@ -138,7 +138,7 @@ LISTINGS: dict[str, str] = {
     "dev_harness.sigils.<module> --card prints: its rules or rule_families, with "
     "--preview when it names preview_rules, as ruff --show-settings on --root enables "
     "them; each other tool a <tool>_version setting names counts under that tool's "
-    "listing above",
+    "listing above; each rule its own_rules setting names counts under its own_tool",
 }
 
 CARD: dict[str, object] = {
@@ -465,6 +465,14 @@ def _card_ruff(settings: dict[str, Any], root: Path) -> set[str]:
     return _enabled([*flags, "--select", ",".join(codes)], root)
 
 
+def _card_own(card: dict[str, Any]) -> set[tuple[str, str]]:
+    """Return an (own_tool, rule) pair for each rule the `card` settings name in own_rules."""
+    settings = card.get("settings", {})
+    tool = str(settings.get("own_tool") or "")
+    rules = str(settings.get("own_rules") or "").split()
+    return {(tool, rule) for rule in rules} if tool else set()
+
+
 SigilRules = dict[str, tuple[list[str], set[tuple[str, str]]]]
 
 
@@ -486,6 +494,7 @@ def sigil_rules(root: Path, run: dict[str, set[str]]) -> tuple[SigilRules, dict[
                     unread[f"{name} ruff"] = str(exc)
                     continue
                 only |= {("ruff", rule) for rule in enabled - run["ruff"]}
+        only |= _card_own(card)
         sigils[name] = (tools, only)
     return sigils, unread
 
