@@ -1,6 +1,6 @@
 """Bot state persistence.
 
-``StateManager`` reads and writes ``bot_state.json`` under ``_DEFAULT_DIR``
+``StateManager`` reads and writes the fleet file ``resolve_fleet_path`` names
 through ``atomic_write_json``. ``save_state`` carries forward every record
 already on disk, and ``delete_bot`` is the only path that removes one.
 ``load_state`` falls back to ``_try_backup`` when the primary will not parse,
@@ -16,10 +16,11 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .io_utils import atomic_write_json
+from .log_paths import resolve_fleet_path, resolve_state_root
 
 logger = logging.getLogger("acervator.state")
 
-_DEFAULT_DIR = Path.home() / ".acervator"
+_DEFAULT_DIR = resolve_state_root()
 
 BOTS_FIELD = "bots"
 
@@ -177,17 +178,17 @@ class StateManager:
     """
 
     def __init__(self, config_dir: Optional[Path] = None) -> None:
-        self._dir = config_dir or _DEFAULT_DIR
+        self._path = resolve_fleet_path(config_dir)
+        self._dir = self._path.parent
         self._dir.mkdir(parents=True, exist_ok=True)
-        self._path = self._dir / "bot_state.json"
-        self._backup_path = self._dir / "bot_state.backup.json"
+        self._backup_path = self._path.with_suffix(".backup.json")
 
     @property
     def config_dir(self) -> Path:
         """The directory this manager reads and writes.
 
-        ``__init__`` sets it from its ``config_dir`` argument or from
-        ``_DEFAULT_DIR``.
+        ``__init__`` sets it to the folder ``resolve_fleet_path`` answers for
+        its ``config_dir`` argument.
         """
         return self._dir
 

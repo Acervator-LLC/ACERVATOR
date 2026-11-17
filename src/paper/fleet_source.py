@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 from ..core.io_utils import atomic_write_json
+from ..core.log_paths import FLEET_FILE_NAME, resolve_fleet_path
 from ..trading.container.config import (
     DETONATION_CONFIDENCE_MIN_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
@@ -62,8 +63,7 @@ from .paper_wire import PaperWireManager
 
 logger = logging.getLogger("acervator.paper.fleet")
 
-BOT_STATE_NAME = "bot_state.json"
-STATE_DIR_NAME = ".acervator"
+BOT_STATE_NAME = FLEET_FILE_NAME
 
 #: The ``saved_at_human`` format ``StateManager.save_state`` writes.
 SAVED_AT_HUMAN_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -1110,21 +1110,21 @@ class PaperFleetSource:
         self, root: Optional[Path] = None, paper_dir: Optional[Path] = None
     ) -> None:
         """Read the paper fleet file from ``paper_dir``, or from
-        ``get_paper_root`` when it is None. ``bot_state.json`` under ``root``,
-        or under ``~/.acervator`` when it is None, is read on
+        ``get_paper_root`` when it is None. The fleet file
+        ``resolve_fleet_path`` names for ``root`` is read on
         ``stored_records`` alone."""
-        self._root = Path(root) if root is not None else Path.home() / STATE_DIR_NAME
+        self._fleet_path = resolve_fleet_path(root)
         self._paper_dir = Path(paper_dir) if paper_dir is not None else get_paper_root()
         self._records: dict[str, dict] = _read_paper_records(self.paper_path())
         self._wires, self._wire_ledgers = _read_paper_wires(self.paper_path())
 
     def root(self) -> Path:
         """The directory holding the ``bot_state.json`` this source reads."""
-        return self._root
+        return self._fleet_path.parent
 
     def path(self) -> Path:
         """The ``bot_state.json`` file itself."""
-        return self._root / BOT_STATE_NAME
+        return self._fleet_path
 
     def paper_dir(self) -> Path:
         """The directory holding the paper fleet file, ``get_paper_root`` by default."""
@@ -1597,7 +1597,6 @@ __all__ = [
     "SAVED_AT_HUMAN_FORMAT",
     "SCRUMMING_MODE",
     "SCRUM_READ_RATE_MIN_DEFAULT",
-    "STATE_DIR_NAME",
     "PaperBot",
     "PaperFleetSource",
     "SendRefused",
