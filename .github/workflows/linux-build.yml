@@ -169,6 +169,19 @@ jobs:
             fi
             echo "$variant  AppRun -> $(readlink "$inside/AppRun")"
             rm -rf "$peek"
+            modules="$RUNNER_TEMP/modules-$variant.txt"
+            pyi-archive_viewer --list --recursive --brief "$appdir/$name" \
+              > "$modules"
+            echo "$variant  archive   $(wc -l < "$modules") entries"
+            grep -F keyring.backends "$modules"
+            for module in keyring.backends.SecretService secretstorage jeepney; do
+              if grep -qF "$module" "$modules"; then
+                echo "$variant  bundles   $module"
+              else
+                echo "MISSING from $name: $module"
+                fail=1
+              fi
+            done
             echo
           done
           exit "$fail"
