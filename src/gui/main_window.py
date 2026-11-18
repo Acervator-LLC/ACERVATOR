@@ -109,6 +109,14 @@ BROKER_SESSION_PAPER = True
 NO_BROKER_CREDENTIAL = "no API credentials are stored"
 VENUE_NOT_STORED = "Settings no longer holds this venue, so the bot stays stopped"
 
+#: The branches ``_on_bot_command`` and ``run_fleet_sequence`` pass for a bot
+#: whose exchange ``api_access_required`` names.
+ACCESS_GATED_BRANCHES = (START_COMMAND, RESTART_COMMAND)
+API_ACCESS_LINE_FORMAT = (
+    "Bot {bot_id}: {required}. {venue} has no stored API keys in Settings, "
+    "so the bot stays as it is."
+)
+
 #: What the status log carries for a venue the sync keeps off ``remove_refusal``.
 VENUE_KEPT_FORMAT = "{why} Its tab and connection stay."
 KEY_WAITS_FORMAT = "{venue}: the new key takes effect at each live bot's next Start."
@@ -1063,13 +1071,7 @@ if _HAS_QT:
                         tab._refresh_privacy_mode_btn_style()
                     try:
                         if self._bot_manager and hasattr(tab, "exchange_id"):
-                            statuses = _class_filter.bots_of_class(
-                                self._bot_manager.list_bots_by_exchange(
-                                    tab.exchange_id
-                                ),
-                                _class_filter.active(),
-                            )
-                            tab.update_bots(statuses)
+                            tab.update_bots(self._venue_statuses(tab.exchange_id))
                             self._tab_bots_fault.note_success()
                     except Exception as tab_bots_exc:
                         self._tab_bots_fault.note_failure(tab_bots_exc)
@@ -1466,14 +1468,14 @@ if _HAS_QT:
                     return
                 agg = self._bot_manager.get_aggregate_stats()
                 self._refresh_header_strip(agg)
+                for eid, name in self._fleet_venues().items():
+                    self._seat_venue(eid, name)
 
                 # Every feed below takes the active asset class's bots only.
                 _class = _class_filter.active()
                 all_statuses = []
                 for eid, tab in self._exchange_tabs.items():
-                    exchange_statuses = _class_filter.bots_of_class(
-                        self._bot_manager.list_bots_by_exchange(eid), _class
-                    )
+                    exchange_statuses = self._venue_statuses(eid)
                     tab.update_bots(exchange_statuses)
                     all_statuses.extend(exchange_statuses)
 
@@ -3509,26 +3511,38 @@ if _HAS_QT:
             )
             return True, msg
 
+        def _api_access_required(self, bot) -> bool:
+            """``api_access_required`` for *bot*'s exchange and ``BotContainer.sector``, read from ``_settings``."""
+            from ..exchange.api_access import api_access_required
+
+            return api_access_required(
+                self._settings,
+                bot.config.exchange_id,
+                str(getattr(bot, "sector", "") or ""),
+            )
+
         def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
             """Reuse the exchange's connector, or build one; returns (ok, message).
 
-            ``BotContainer.sector`` picks the transport: a venue whose
-            ``broker_serves_sector`` holds that sector takes the broker path, a
-            venue ``crypto_connector_class`` names takes the hand-written crypto
-            one, and every other venue takes the ccxt one.
+            ``BotContainer.sector`` picks the transport ``start_transport``
+            names: the broker path, the hand-written crypto one, or the ccxt one.
             """
+            from ..exchange.api_access import (
+                BROKER_TRANSPORT,
+                WRITTEN_TRANSPORT,
+                start_transport,
+            )
             from ..exchange.api_logger import get_api_log
-            from ..exchange.robinhood_connector import crypto_connector_class
-            from ..stocks.alpaca_connector import broker_serves_sector
 
             _log = get_api_log()
             eid = bot.config.exchange_id
             sector = str(getattr(bot, "sector", "") or "")
+            transport = start_transport(eid, sector)
 
-            if broker_serves_sector(eid, sector):
+            if transport == BROKER_TRANSPORT:
                 return self._connect_broker_for_bot(bot)
 
-            if crypto_connector_class(eid) is not None:
+            if transport == WRITTEN_TRANSPORT:
                 return self._connect_written_crypto_for_bot(bot)
 
             _log.record(
@@ -3911,6 +3925,18 @@ if _HAS_QT:
             if not bot:
                 self._status_log.log(f"Bot {bot_id} not found.", "error")
                 return
+            if branch in ACCESS_GATED_BRANCHES and self._api_access_required(bot):
+                from ..exchange.api_access import API_ACCESS_REQUIRED
+
+                self._status_log.log(
+                    API_ACCESS_LINE_FORMAT.format(
+                        bot_id=bot_id,
+                        required=API_ACCESS_REQUIRED,
+                        venue=bot.config.exchange_id.capitalize(),
+                    ),
+                    "warning",
+                )
+                return
 
             from ..exchange.api_logger import get_api_log
 
@@ -4164,7 +4190,8 @@ if _HAS_QT:
             """Move every eligible bot through ``_on_bot_command`` one at a
             time, with the Start All progress window open, waiting for each to
             answer ``start_settled`` before the next, and listing a held bot
-            with its hold.
+            with its hold. A bot ``_api_access_required`` names is passed at
+            once and listed with ``API_ACCESS_REQUIRED`` as its hold.
 
             This is the sequence the application runs at launch: ``main.py``
             calls it after the instance consent gate, and the command bar's
@@ -4229,12 +4256,28 @@ if _HAS_QT:
                     started=idx,
                     bot_id=bot.bot_id,
                 )
+                waits = bot_command_branch(
+                    command
+                ) in ACCESS_GATED_BRANCHES and self._api_access_required(bot)
                 try:
                     self._on_bot_command(bot.bot_id, command, FLEET_SEQUENCE_ROUTE)
                 except Exception as exc:
                     logger.warning(
                         "Fleet %s of bot %s raised: %s", command, bot.bot_id, exc
                     )
+                if waits:
+                    from ..exchange.api_access import API_ACCESS_REQUIRED
+
+                    bus.emit(
+                        FLEET_SEQUENCE_TOPIC,
+                        phase="bot_held",
+                        total=total,
+                        started=idx + 1,
+                        bot_id=bot.bot_id,
+                        reason=API_ACCESS_REQUIRED,
+                    )
+                    QTimer.singleShot(0, lambda: _move_one(idx + 1))
+                    return
 
                 started_at = time.monotonic()
 
@@ -4560,8 +4603,8 @@ if _HAS_QT:
                     logger.info(VENUE_CLOSE_KEPT_LINE_FORMAT.format(kept=words))
             return kept
 
-        def _drop_unlisted_exchange_tabs(self, listed: list) -> int:
-            """Take off each tab neither ``listed`` nor held by ``_keep_unlisted_venues``, and seat Get Started on an emptied bar."""
+        def _drop_unlisted_exchange_tabs(self, listed: list, waiting=()) -> int:
+            """Take off each tab neither ``listed``, ``waiting`` nor held by ``_keep_unlisted_venues``, and seat Get Started on an emptied bar."""
             from .main_tabs.settings_dialog_surface import (
                 resting_orders_at,
                 venue_dropped_line,
@@ -4571,11 +4614,12 @@ if _HAS_QT:
             kept = set(listed)
             seated = {eid for held in layers.values() for eid in held["exchange_tabs"]}
             kept |= self._keep_unlisted_venues(seated - kept)
+            pages_only = set(waiting) - kept
             dropped = 0
             gone: set[str] = set()
             for held in layers.values():
                 store, bar = held["exchange_tabs"], held["tabs"]
-                for eid in [one for one in store if one not in kept]:
+                for eid in [one for one in store if one not in kept | pages_only]:
                     tab = store.pop(eid)
                     at = bar.indexOf(tab)
                     if at >= 0:
@@ -4600,20 +4644,67 @@ if _HAS_QT:
                     venue_dropped_line(eid, resting_orders_at(eid, self._bot_manager))
                 )
                 self._forget_venue(eid)
+            for eid in sorted(pages_only):
+                self._release_venue_link(eid)
             return dropped
 
         def _forget_venue(self, eid: str) -> None:
-            """Take *eid* out of ``TradingTabReact._venues``, `_broker_exchanges` and `_exchange_connectors`."""
+            """Take *eid* out of ``TradingTabReact._venues``, then ``_release_venue_link`` it."""
             drop_venue = getattr(
                 getattr(self, "_trading_tab", None), "drop_venue", None
             )
             if callable(drop_venue):
                 drop_venue(eid)
+            self._release_venue_link(eid)
+
+        def _release_venue_link(self, eid: str) -> None:
+            """Take *eid* out of ``_broker_exchanges`` and ``_exchange_connectors``."""
             self._broker_exchanges.pop(eid, None)
             self._release_connector(eid)
 
+        def _fleet_venues(self) -> dict:
+            """Each exchange a held bot names that ``list_exchanges`` does not, to its tab caption."""
+            from ..exchange.api_access import unstored_venues
+
+            bots = getattr(self._bot_manager, "_bots", None) or {}
+            listed = self._settings.list_exchanges() if self._settings else []
+            named = (bot.config.exchange_id for bot in list(bots.values()))
+            return {
+                eid: exchange_display_name({"exchange_id": eid})
+                for eid in unstored_venues(listed, named)
+            }
+
+        def _seat_venue(self, eid: str, name: str) -> bool:
+            """Seat *eid*'s tab on each served layer that lacks it, logging the layers; False where none lacks it."""
+            layers = getattr(self, "_class_layers", None) or {}
+            unseated = [
+                one
+                for one in self._served_layers(eid)
+                if one in layers and eid not in layers[one]["exchange_tabs"]
+            ]
+            if not unseated:
+                return False
+            self.add_exchange_tab(eid, name)
+            self._status_log.log(
+                f"Exchange tab added: {name} ({', '.join(unseated)} layer)",
+                "success",
+            )
+            return True
+
+        def _venue_statuses(self, eid: str) -> list:
+            """The active class's bots on *eid*, each ``mark_api_access`` names carrying its mark."""
+            from ..exchange.api_access import mark_api_access
+
+            return mark_api_access(
+                _class_filter.bots_of_class(
+                    self._bot_manager.list_bots_by_exchange(eid),
+                    _class_filter.active(),
+                ),
+                self._settings,
+            )
+
         def _sync_exchange_tabs(self) -> None:
-            """Seat and drop tabs until each bar matches ``list_exchanges``, then feed a changed bar through ``_refresh_dashboard``."""
+            """Seat and drop tabs until each bar matches ``list_exchanges`` and ``_fleet_venues``, then feed a changed bar through ``_refresh_dashboard``."""
             if not self._settings:
                 return
             layers = getattr(self, "_class_layers", None) or {}
@@ -4621,26 +4712,15 @@ if _HAS_QT:
             _wanted: list[str] = []
             for exch in self._settings.list_exchanges():
                 eid = exch.get("exchange_id", "")
-                name = exchange_display_name(exch)
                 if not eid:
                     continue
                 _wanted.append(eid)
-                served = self._served_layers(eid)
-                unseated = [
-                    one
-                    for one in served
-                    if one in layers and eid not in layers[one]["exchange_tabs"]
-                ]
-                if unseated:
-                    self.add_exchange_tab(eid, name)
-                    _added += 1
-                    seated_on = ", ".join(unseated)
-                    self._status_log.log(
-                        f"Exchange tab added: {name} ({seated_on} layer)",
-                        "success",
-                    )
+                _added += self._seat_venue(eid, exchange_display_name(exch))
+            _waiting = self._fleet_venues()
+            for eid, name in _waiting.items():
+                _added += self._seat_venue(eid, name)
 
-            _gone = self._drop_unlisted_exchange_tabs(_wanted)
+            _gone = self._drop_unlisted_exchange_tabs(_wanted, _waiting)
             if _added or _gone:
                 self._refresh_dashboard()
 

@@ -1325,8 +1325,10 @@ bot. The save that runs every 60 seconds waits while the first-run screen is
 open, so it cannot write an empty fleet under it.
 
 The import carries no exchange keys, so Settings lists no exchange for the
-imported bots. Their venue page on the Live tab appears when that exchange is
-added in Settings.
+imported bots. Their venue page on the Live tab appears at once, and its API
+ACCESS REQUIRED line stays until that exchange's keys are saved in Settings.
+[A bot whose exchange has no keys](../06-trading-tab.md#a-bot-whose-exchange-has-no-keys)
+says what Start and Start All do with these bots.
 
 ### What the first-run screen was measured doing
 

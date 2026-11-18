@@ -129,6 +129,19 @@ if _HAS_QT:
             self._pool_stopped_lbl.setVisible(False)
             layout.addWidget(self._pool_stopped_lbl)
 
+            from ..main_tabs.exchange_tab_surface import (
+                ACCESS_WAIT_STYLE,
+                ACCESS_WAIT_TOOLTIP,
+            )
+
+            self._access_wait_lbl = QLabel("")
+            self._access_wait_lbl.setWordWrap(True)
+            self._access_wait_lbl.setSizePolicy(_stopped_policy)
+            self._access_wait_lbl.setStyleSheet(ACCESS_WAIT_STYLE)
+            set_description(self._access_wait_lbl, ACCESS_WAIT_TOOLTIP)
+            self._access_wait_lbl.setVisible(False)
+            layout.addWidget(self._access_wait_lbl)
+
             self._pull_rate_timer = QTimer(self)
             self._pull_rate_timer.setInterval(1000)
             self._pull_rate_timer.timeout.connect(self._update_pull_rate_label)
@@ -315,6 +328,14 @@ if _HAS_QT:
             self._pool_stopped_lbl.setText(words)
             self._pool_stopped_lbl.setVisible(True)
 
+        def _draw_access_wait(self, statuses: list[dict]) -> None:
+            """Show ``access_wait_words`` for *statuses* above the bot tables, and hide the line when it is empty."""
+            from ..main_tabs.exchange_tab_surface import access_wait_words
+
+            words = access_wait_words(self._exchange_name, statuses)
+            self._access_wait_lbl.setText(words)
+            self._access_wait_lbl.setVisible(bool(words))
+
         def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt name
             """Redraw the command bar on a Shift key move, and halt the feeds
             when the window holding the tab closes.
@@ -416,6 +437,7 @@ if _HAS_QT:
                 self._on_bot_cmd(bot_id, command)
 
         def update_bots(self, statuses: list[dict]) -> None:
+            self._draw_access_wait(statuses)
             # Read before the re-render: setRowCount/setItem lose which
             # bot the highlight was on.
             _sel_before = (
