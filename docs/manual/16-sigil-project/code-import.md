@@ -37,6 +37,10 @@ For each rule that fires, ruff's own rule page gives the rule's name, its fix
 class, and its published faulty and corrected forms. The card records ruff
 0.16.0, and the command prints the ruff version it ran.
 
+When ruff is missing or its installed version is not 0.16.0,
+`dev_harness/sigils/core.py, in version_fault` refuses the input at tier 3
+before ruff runs.
+
 `dev_harness/sigils/code_import.py, in _ruff_findings`:
 
 ```python

@@ -109,6 +109,47 @@ Each sigil reads the case file as one module input, on each side, with its own
 commit's tree as the root. It runs its tiers first. Then it runs the rules that
 the input selects, the same rules its own command runs.
 
+`dev_harness/sigils/ocir_cases.py, in read_side` refuses a side before any rule
+runs when one of four checks fails: the card's disciplines, tier 1, tier 2, or
+the tool versions the card holds.
+
+The tool version check is `dev_harness/sigils/core.py, in version_fault`, the
+same check that `dev_harness/sigils/core.py, in judge` runs before tier 3.
+
+When a tool that a card names is missing or installed at another version,
+`dev_harness/sigils/ocir_cases.py, in read_side` refuses that sigil on both
+sides of every case, with a reason that names the tool, the installed version
+and the card's version.
+
+A refused side holds no rule ids, so
+`dev_harness/sigils/ocir_cases.py, in compare` gives that sigil no reading, and
+`dev_harness/sigils/ocir_cases.py, in verdict_of` does not count it as a fault.
+
+`dev_harness/sigils/ocir_cases.py, in read_side`:
+
+```python
+def read_side(
+    module: ModuleType, root: Path, path: str, site: set[int]
+) -> dict[str, Any]:
+    """Return `module`'s refusal or fault for `path` under `root`, else its rule ids at `site` and its file count."""
+    sigil = module.SIGIL
+    refusal = (
+        discipline_fault(sigil)
+        or sigil.data_type(path)
+        or sigil.content(path, root)
+        or version_fault(sigil)
+    )
+    if refusal:
+        return {"refused": refusal}
+    faults = (module.ToolFault, FactsFault, OSError, subprocess.SubprocessError)
+    try:
+        found = module.findings(path, root, selection(path, root, module.CAN_RUN))[1]
+    except faults as exc:
+        return {"fault": repr(exc)}
+    at_site = sorted(rule_of(item) for item in found if line_of(item) in site)
+    return {"site": at_site, "file": len(found)}
+```
+
 The site is the lines the fix changed inside the named def or class. On the
 fixed side, where the fix renamed or removed that def or class, the site is every
 line the fix wrote. For each sigil, the command keeps the rules found at the site

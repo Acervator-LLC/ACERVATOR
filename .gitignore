@@ -136,6 +136,10 @@ desktop/node_modules/
 # nothing.
 resources/logos/
 
+# CODE.SECURE reads semgrep's p/python and p/security-audit packs from here. Each
+# is the registry's own file, fetched by hand, and never committed.
+/dev_harness/sigils/semgrep_rule_packs/
+
 # `python -m tools.deps lock` writes a resolved lock here. No build installs
 # from one, so the output is generated and never tracked.
 /requirements/

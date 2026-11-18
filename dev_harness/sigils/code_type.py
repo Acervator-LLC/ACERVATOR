@@ -14,6 +14,7 @@ import mypy.errorcodes
 import mypy.version
 import pyright
 
+from .coding_house import MYPY_BUILT, PYRIGHT_BUILT
 from .coding_input import (
     CONTENT_TIER,
     DATA_TYPE_TIER,
@@ -44,8 +45,6 @@ SOUND = "SOUND"
 UNSOUND = "UNSOUND"
 REJECTED = "REJECTED"
 
-MYPY_BUILT = "2.1.0"
-PYRIGHT_BUILT = "1.1.411"
 MYPY_TIMEOUT_S = 300
 PYRIGHT_TIMEOUT_S = 120
 MYPY_FINISHED = (0, 1)

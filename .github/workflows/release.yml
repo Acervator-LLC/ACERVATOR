@@ -1,11 +1,13 @@
+---
 # Acervator release — the built applications, outside the repository.
 #
 # dist is 12 GB and is gitignored, so the builds cannot be tracked. This
-# workflow builds Windows and macOS on runners, launches every application it
-# built, and attaches four files to one release a visitor downloads.
+# workflow builds Windows, macOS and Linux on runners, launches every
+# application it built, and attaches six files to one release a visitor
+# downloads.
 name: Release
 
-on:
+"on":
   workflow_dispatch:
   push:
     # main is synced once a batch, so one build publishes per batch of merges.
@@ -28,9 +30,13 @@ jobs:
     name: macos
     uses: ./.github/workflows/macos-build.yml
 
+  linux:
+    name: linux
+    uses: ./.github/workflows/linux-build.yml
+
   publish:
     name: publish
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -54,6 +60,11 @@ jobs:
           name: acervator-macos
           path: incoming
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: acervator-linux
+          path: incoming
+
       - name: Name the release after the version the build stamped
         run: |
           set -euo pipefail
@@ -69,8 +80,9 @@ jobs:
           set -uo pipefail
           fail=0
           found=0
-          echo "=== what the two builds handed over ==="
-          for asset in incoming/*-windows.zip incoming/*.dmg; do
+          echo "=== what the three builds handed over ==="
+          for asset in incoming/*-windows.zip incoming/*.dmg \
+            incoming/*.AppImage; do
             [ -f "$asset" ] || continue
             found=$((found + 1))
             printf '%-60s %s bytes\n' "$(basename "$asset")" "$(stat -c%s "$asset")"
@@ -81,8 +93,8 @@ jobs:
             esac
           done
           echo "files to attach: $found"
-          if [ "$found" -ne 4 ]; then
-            echo "REFUSING: 4 files are expected, 2 per platform"
+          if [ "$found" -ne 6 ]; then
+            echo "REFUSING: 6 files are expected, 2 per platform"
             fail=1
           fi
           exit "$fail"
@@ -93,7 +105,7 @@ jobs:
           import os
           from pathlib import Path
 
-          PLATFORM = {".zip": "Windows", ".dmg": "macOS"}
+          PLATFORM = {".zip": "Windows", ".dmg": "macOS", ".AppImage": "Linux"}
           INTERFACE = {"qt": "Qt", "react": "React"}
 
           version = os.environ["version"]
@@ -146,6 +158,22 @@ jobs:
               "the application, choose **Open**, then choose **Open** again in the",
               "dialog. That is once per download.",
               "",
+              "## Linux",
+              "",
+              "For a standard 64-bit PC (x86_64). Download the `.AppImage`",
+              "and mark it as runnable, once per download: right-click it,",
+              "choose **Properties**, open **Permissions**, and tick",
+              "**Allow executing file as program** (in Dolphin,",
+              "**Is executable**). In a terminal, `chmod +x` on the file",
+              "does the same. Then double-click it.",
+              "",
+              "An AppImage opens through FUSE. It needs a `fusermount` or",
+              "`fusermount3` program, which the `fuse3` package installs",
+              "(`sudo apt install fuse3` on Ubuntu and Debian). It does not",
+              "need the older `libfuse2` package. Where FUSE is not",
+              "available, start it from a terminal with",
+              "`--appimage-extract-and-run` after the file name.",
+              "",
               "## What it does on first run",
               "",
               "It opens with no bots and no exchange keys, so it trades nothing",
@@ -167,14 +195,14 @@ jobs:
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" \
               --title "Acervator $version" --notes-file notes.md
             gh release upload "$tag" --repo "$GITHUB_REPOSITORY" --clobber \
-              incoming/*-windows.zip incoming/*.dmg
+              incoming/*-windows.zip incoming/*.dmg incoming/*.AppImage
           else
             gh release create "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "Acervator $version" \
               --notes-file notes.md \
-              incoming/*-windows.zip incoming/*.dmg
+              incoming/*-windows.zip incoming/*.dmg incoming/*.AppImage
           fi
           gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
             --json tagName,name,url,assets

@@ -6,6 +6,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, auto
+from importlib import metadata
 from pathlib import Path
 from typing import Literal, NamedTuple
 
@@ -27,7 +28,8 @@ FLAGS: dict[Flag, dict[str, str]] = {
         "side": "input",
         "when": (
             "a tier 0 refusal of a discipline whose skill omits the owner, "
-            "a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK"
+            "a tier 1 or tier 2 refusal, a tier 3 refusal of an installed tool "
+            "version the card does not hold, or a tier 3 output the card flags BLOCK"
         ),
         "follows": "the work does not start",
     },
@@ -62,6 +64,7 @@ DATA_TYPE = "tier 1 data type"
 CONTENT = "tier 2 content compatibility"
 FUNCTIONS = "tier 3 required processing functions"
 TIER_NAMES = (DATA_TYPE, CONTENT, FUNCTIONS)
+VERSION_KEY = "_version"
 
 
 class Reading(NamedTuple):
@@ -142,8 +145,33 @@ def discipline_fault(sigil: Sigil) -> str | None:
     return "; ".join(faults) or None
 
 
+def card_versions(settings: Mapping[str, str]) -> dict[str, str]:
+    """Return each tool a `VERSION_KEY` key in `settings` names, with its version."""
+    return {
+        key.removesuffix(VERSION_KEY): built
+        for key, built in settings.items()
+        if key.endswith(VERSION_KEY)
+    }
+
+
+def version_fault(sigil: Sigil) -> str | None:
+    """Return each `card_versions` tool not installed at its card version, or None."""
+    faults = []
+    for tool, built in card_versions(sigil.settings).items():
+        try:
+            installed = metadata.version(tool)
+        except metadata.PackageNotFoundError:
+            faults.append(f"no {tool} installed; the card holds {tool} {built}")
+            continue
+        if installed != built:
+            faults.append(
+                f"{tool} {installed} installed; the card holds {tool} {built}",
+            )
+    return "; ".join(faults) or None
+
+
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
-    """Run `discipline_fault`, then tiers 1, 2 and 3 on `text`, until one refuses."""
+    """Run tiers 0 to 3 on `text`, `version_fault` before tier 3, until one refuses."""
     fault = discipline_fault(sigil)
     if fault:
         return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
@@ -153,6 +181,9 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
     fault = sigil.content(text, root)
     if fault:
         return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
+    fault = version_fault(sigil)
+    if fault:
+        return Verdict(sigil.refusal, f"{FUNCTIONS}: {fault}", 3, Flag.BLOCK)
     reading = sigil.functions(text, root)
     holds = not isinstance(reading, Reading) or reading.holds
     detail = reading.detail if isinstance(reading, Reading) else None

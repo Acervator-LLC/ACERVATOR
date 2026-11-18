@@ -20,7 +20,7 @@ from unittest import mock
 from dev_harness.harness import coding_archetype
 from dev_harness.harness.report import REPO_ROOT
 
-from .core import repository_root, tool_text
+from .core import card_versions, repository_root, tool_text
 
 SIGILS = Path(__file__).resolve().parent
 HOUSE = SIGILS.parent / "disciplines"
@@ -32,7 +32,6 @@ TOOL_TIMEOUT_S = 300
 MYPY_BUILT = "2.1.0"
 PYRIGHT_BUILT = "1.1.411"
 VULTURE_RULE = "dead-code"
-VERSION_KEY = "_version"
 SEMGREP_PROBE = "probe.py"
 RULE_ID_SHAPE = re.compile(r"[A-Z]{1,3}[0-9]{3}")
 BANDIT_SELECTORS = frozenset(
@@ -441,12 +440,8 @@ def sigil_cards(folder: Path = SIGILS) -> tuple[list[dict[str, Any]], dict[str, 
 
 
 def _card_tools(card: dict[str, Any]) -> list[str]:
-    """Return each tool a `VERSION_KEY` setting of `card` names."""
-    return sorted(
-        key.removesuffix(VERSION_KEY)
-        for key in card.get("settings", {})
-        if key.endswith(VERSION_KEY)
-    )
+    """Return each tool `card_versions` reads from the `card` settings."""
+    return sorted(card_versions(card.get("settings", {})))
 
 
 def _card_ruff(settings: dict[str, Any], root: Path) -> set[str]:
