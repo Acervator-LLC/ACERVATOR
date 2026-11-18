@@ -81,6 +81,15 @@ def resolve_fleet_path(state_root: Optional[Path] = None) -> Path:
     return root / FLEET_FILE_NAME
 
 
+FLEET_BACKUP_SUFFIX = ".backup.json"
+"""The suffix ``resolve_fleet_backup_path`` puts on ``FLEET_FILE_NAME``."""
+
+
+def resolve_fleet_backup_path(state_root: Optional[Path] = None) -> Path:
+    """Return the backup beside ``resolve_fleet_path(state_root)``, creating nothing."""
+    return resolve_fleet_path(state_root).with_suffix(FLEET_BACKUP_SUFFIX)
+
+
 def get_log_root() -> Path:
     """Return the root ``resolve_log_root`` names, created by ``mkdir`` when missing."""
     root = resolve_log_root()

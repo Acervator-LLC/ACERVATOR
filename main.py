@@ -1836,6 +1836,79 @@ def main() -> int:
 
     crypto_window.set_fleet_start_callback(_start_fleet_after_unlock)
 
+    from src.core.fleet_import import fleet_on_disk
+
+    def _leave_imported_fleet_idle() -> None:
+        """The fleet start ``MainWindow.unlock_fleet`` runs for an imported fleet."""
+        crypto_window._status_log.log(
+            "The imported fleet is open. Every bot is Idle, and none starts "
+            "until you start it.",
+            "info",
+        )
+
+    def _load_imported_fleet() -> None:
+        """Restore the fleet ``import_fleet`` wrote, every bot Idle and none started.
+
+        A sealed import runs ``_hold_fleet_for_unlock`` and ``_ask_for_unlock``,
+        with ``_leave_imported_fleet_idle`` as the start the unlock runs.
+        """
+        if state_mgr.launch_classification() == LAUNCH_LOCKED:
+            crypto_window.set_fleet_start_callback(_leave_imported_fleet_idle)
+            _hold_fleet_for_unlock()
+            _ask_for_unlock()
+            return
+        saved = state_mgr.load_state()
+        restored = bot_manager.restore_bots_from_state(saved)
+        crypto_window._status_log.log(
+            f"Imported fleet: {len(restored)} of {len(saved.get('bots', {}))} "
+            f"bot(s) loaded. Every bot is Idle, and none starts until you "
+            f"start it.",
+            "success",
+        )
+        try:
+            wire_count = bot_manager.restore_smart_wires_from_state(saved)
+        except Exception as _wexc:
+            log_manager.warning(f"Smart Wire restore after import raised: {_wexc}")
+            wire_count = 0
+        if wire_count:
+            crypto_window._status_log.log(
+                f"{wire_count} Smart Wire(s) loaded with the imported fleet.",
+                "info",
+            )
+
+    def _offer_fleet_import() -> None:
+        """Raise the first-run screen while ``fleet_on_disk`` answers False.
+
+        ``save_timer`` stops while the screen is open, so ``periodic_save``
+        writes no empty fleet before the picked file is checked.
+        """
+        if fleet_on_disk():
+            return
+        save_timer.stop()
+        try:
+            from src.gui.fleet_import_dialog import ask_for_import
+
+            outcome = ask_for_import(parent=crypto_window)
+        except Exception as exc:
+            log_manager.warning(f"Fleet import screen raised: {exc}.")
+            outcome = None
+        finally:
+            save_timer.start()
+        if outcome is None:
+            log_manager.info(
+                "New instance: no fleet imported, and the platform runs with "
+                "no bots."
+            )
+            return
+        log_manager.info(outcome.sentence)
+        try:
+            _load_imported_fleet()
+        except Exception as exc:
+            log_manager.warning(
+                f"Imported fleet restore raised: {exc}. The fleet file is "
+                f"written, and the next launch restores it."
+            )
+
     if _fleet_launch == LAUNCH_LOCKED:
         _hold_fleet_for_unlock()
         try:
@@ -1848,6 +1921,11 @@ def main() -> int:
             _splash._on_finished_callback = _trigger_auto_restart
         except Exception:
             QTimer.singleShot(9500, _trigger_auto_restart)
+    elif not fleet_on_disk():
+        try:
+            _splash._on_finished_callback = _offer_fleet_import
+        except Exception:
+            QTimer.singleShot(9500, _offer_fleet_import)
 
     log_manager.info("Application ready — main window displayed")
     result = app.exec()

@@ -181,7 +181,9 @@ class StateManager:
         self._path = resolve_fleet_path(config_dir)
         self._dir = self._path.parent
         self._dir.mkdir(parents=True, exist_ok=True)
-        self._backup_path = self._path.with_suffix(".backup.json")
+        from .log_paths import resolve_fleet_backup_path
+
+        self._backup_path = resolve_fleet_backup_path(config_dir)
 
     @property
     def config_dir(self) -> Path:
