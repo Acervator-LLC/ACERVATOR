@@ -131,6 +131,12 @@ GATEKEEPER_NOTICE = """
   The bundle carries no Apple Developer signature, so
   Gatekeeper blocks a double-click the first time.
 
+  On macOS 15 and later:
+  1. Open System Settings
+  2. Choose Privacy & Security
+  3. Click Open Anyway, then confirm
+
+  On macOS 14 and earlier:
   1. Right-click (or Control-click) the .app
   2. Choose Open
   3. Choose Open again in the dialog

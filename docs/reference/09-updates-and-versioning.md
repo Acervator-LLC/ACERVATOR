@@ -1490,29 +1490,32 @@ log_manager.info("Application ready — main window displayed")   # main.py
 
 ### Which inputs start a platform build
 
-Each platform has a build workflow of its own, and each one watches nine files.
-Six of them decide how a build is made. Three of them decide what a build
-installs.
+Each platform has a build workflow of its own. The macOS and Windows workflows
+each watch nine files, and the Linux workflow watches seven. The Linux build has
+no build script and does not go through the launcher, so those two rows name no
+Linux file.
 
-| what the file decides | macOS | Windows |
-| --- | --- | --- |
-| the build script | `build_mac.sh` | `build_windows.ps1` |
-| the packaging recipe | `Acervator_mac.spec` | `Acervator_win.spec` |
-| which script runs | `tools/build_launcher.py` | `tools/build_launcher.py` |
-| which variants build | `tools/build_variants.py` | `tools/build_variants.py` |
-| what the recipe collects | `tools/spec_common.py` | `tools/spec_common.py` |
-| which groups get installed | `tools/deps.py` | `tools/deps.py` |
-| what each group holds | `pyproject.toml` | `pyproject.toml` |
-| which interpreter | `.python-version` | `.python-version` |
-| the workflow itself | `macos-build.yml` | `windows-build.yml` |
+| what the file decides | macOS | Windows | Linux |
+| --- | --- | --- | --- |
+| the build script | `build_mac.sh` | `build_windows.ps1` | none: the workflow runs PyInstaller itself |
+| the packaging recipe | `Acervator_mac.spec` | `Acervator_win.spec` | `Acervator_linux.spec` |
+| which script runs | `tools/build_launcher.py` | `tools/build_launcher.py` | none: the launcher refuses Linux |
+| which variants build | `tools/build_variants.py` | `tools/build_variants.py` | `tools/build_variants.py` |
+| what the recipe collects | `tools/spec_common.py` | `tools/spec_common.py` | `tools/spec_common.py` |
+| which groups get installed | `tools/deps.py` | `tools/deps.py` | `tools/deps.py` |
+| what each group holds | `pyproject.toml` | `pyproject.toml` | `pyproject.toml` |
+| which interpreter | `.python-version` | `.python-version` | `.python-version` |
+| the workflow itself | `.github/workflows/macos-build.yml` | `.github/workflows/windows-build.yml` | `.github/workflows/linux-build.yml` |
 
-A push that changes one of a platform's nine files builds that platform, on the
-branch the push went to, before any merge. A push that changes anything else
-builds neither platform.
+A push that changes one of a platform's watched files builds that platform, on
+the branch the push went to, before any merge. A push that changes anything else
+builds no platform. A change to the launcher builds macOS and Windows, and not
+Linux.
 
 The release names each platform as a call rather than as a job of its own, so one
-file holds each platform's build and the release holds neither. A call carries no
-watch list, so a release builds both platforms whatever those lists say.
+file holds each platform's build and the release holds none of them. A call
+carries no watch list, so a release builds all three platforms whatever those
+lists say.
 
 ```yaml
 # .github/workflows/release.yml
@@ -1525,23 +1528,16 @@ jobs:
     uses: ./.github/workflows/linux-build.yml
 ```
 
-**Overtaken.** A release calls three platforms, not two. The Linux build is the
-third call, and a release builds all three whatever the watch lists say.
-
-The lock file under `requirements/` is not one of the nine. No build reads it, so
-a change to it builds nothing and ships nothing.
-
-**Overtaken.** The lock file is gone and `requirements/` holds nothing. Each build
-resolves its own install set: `build_windows.ps1` and `build_mac.sh` both call
-`python -m tools.deps requirements build`, which reads `pyproject.toml`, and both
-hand the answer straight to pip. Neither ever installed from the lock. The
-generator stays, as `python -m tools.deps lock`, and `.gitignore` keeps its output
-out of the tree.
+No watch list names the retired lock file under `requirements/`, and no build
+reads it. Each build resolves its own install set from `pyproject.toml` and hands
+the answer straight to pip. The two build scripts and the Linux workflow each run
+the first line below.
 
 ```
 python -m tools.deps requirements build     17 requirement lines
 pip resolves those to                       62 packages
 the retired lock pinned                     48 packages
+python -m tools.deps lock                   the generator; .gitignore keeps its output out of the tree
 ```
 
 ### The macOS watch list, overtaken
@@ -1666,19 +1662,37 @@ NO_ANSWER_NOTICE       # every other non-zero answer from gh api
 ### What the first launch looks like
 
 The bundle carries no Apple Developer signature, so macOS refuses the first
-double-click. The way past it is to right-click the application and choose Open,
-which is needed once per build and not again.
+double-click. On macOS 15 and later, open System Settings, choose Privacy &
+Security, and click Open Anyway. On macOS 14 and earlier, right-click the
+application and choose Open. A person does this once per build, and later
+launches open normally.
+
+Every Mac build prints both steps, from
+`tools/build_launcher.py, in GATEKEEPER_NOTICE`, worded as the release notes
+word them:
 
 ```
 ------------------------------------------------------------
   IF macOS REFUSES TO OPEN THE APP:
+
+  The bundle carries no Apple Developer signature, so
+  Gatekeeper blocks a double-click the first time.
+
+  On macOS 15 and later:
+  1. Open System Settings
+  2. Choose Privacy & Security
+  3. Click Open Anyway, then confirm
+
+  On macOS 14 and earlier:
   1. Right-click (or Control-click) the .app
   2. Choose Open
   3. Choose Open again in the dialog
+
+  That is once per build. Later launches open normally.
 ------------------------------------------------------------
 ```
 
-Signing removes that step and is not set up. It needs a paid Apple Developer
+Signing removes both steps and is not set up. It needs a paid Apple Developer
 account, a Developer ID Application certificate, and that certificate held as a
 repository secret. The build script already accepts the identity.
 
