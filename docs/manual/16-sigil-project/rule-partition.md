@@ -257,9 +257,42 @@ and no sigil holds a run rule of its own.
 
 The sigil proof reads every tracked Python file of `src/` as a file input, and
 every def and class in them as a scope input: 503 files and 13,885 defs and
-classes. Each sigil whose tier 2 accepts the input runs twice, once with the
-selection and once with every rule it can run. The two lists of findings must
-be equal, in the same order.
+classes. Each sigil that `dev_harness/sigils/core.py, in first_refusal` accepts
+the input for runs twice, once with the selection and once with every rule it
+can run. The two lists of findings must be equal, in the same order.
+
+`dev_harness/sigils/coding_partition.py, in prove_sigils` sets a sigil aside
+before it reads any file when `dev_harness/sigils/core.py, in card_refusal`
+refuses the card: a discipline the card names omits its owner, or an installed
+tool differs from the version the card holds.
+
+`dev_harness/sigils/coding_partition.py, in prove_sigils` names each sigil it
+sets aside with the fault, under one key for a discipline and one for a tool
+version.
+
+`dev_harness/sigils/coding_partition.py, in prove_sigils`:
+
+```python
+    refusals = {m.SIGIL.name: card_refusal(m.SIGIL) for m in sigils}
+    sigils = [
+        m
+        for m in sigils
+        if m.SIGIL.name not in missing and not refusals[m.SIGIL.name]
+    ]
+```
+
+`dev_harness/sigils/coding_partition.py, in prove_file` asks
+`dev_harness/sigils/core.py, in first_refusal` about each input for each sigil
+left, so an input that tier 1 or tier 2 refuses is not read.
+
+`dev_harness/sigils/coding_partition.py, in prove_file`:
+
+```python
+        for module in sigils:
+            sigil = module.SIGIL
+            if first_refusal(sigil, text, root) is not None:
+                continue
+```
 
 | Sigil | Can run | Files: rules run now, lowest, median, highest | Defs and classes: rules run now, lowest, median, highest | Findings with the selection | Findings with every rule |
 | ----- | ------- | --------------------------------------------- | -------------------------------------------------------- | --------------------------- | ------------------------ |

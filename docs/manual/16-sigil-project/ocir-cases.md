@@ -110,11 +110,14 @@ commit's tree as the root. It runs its tiers first. Then it runs the rules that
 the input selects, the same rules its own command runs.
 
 `dev_harness/sigils/ocir_cases.py, in read_side` refuses a side before any rule
-runs when one of four checks fails: the card's disciplines, tier 1, tier 2, or
-the tool versions the card holds.
+runs when `dev_harness/sigils/core.py, in first_refusal` returns a refusal.
 
-The tool version check is `dev_harness/sigils/core.py, in version_fault`, the
-same check that `dev_harness/sigils/core.py, in judge` runs before tier 3.
+`dev_harness/sigils/core.py, in judge` calls the same function before tier 3, so
+`dev_harness/sigils/core.py, in first_refusal` decides the refusals of a case
+reading and of a sigil's own command.
+
+`dev_harness/sigils/ocir_cases.py, in read_side` keeps the fault text of that
+refusal and leaves out its tier name.
 
 When a tool that a card names is missing or installed at another version,
 `dev_harness/sigils/ocir_cases.py, in read_side` refuses that sigil on both
@@ -132,15 +135,9 @@ def read_side(
     module: ModuleType, root: Path, path: str, site: set[int]
 ) -> dict[str, Any]:
     """Return `module`'s refusal or fault for `path` under `root`, else its rule ids at `site` and its file count."""
-    sigil = module.SIGIL
-    refusal = (
-        discipline_fault(sigil)
-        or sigil.data_type(path)
-        or sigil.content(path, root)
-        or version_fault(sigil)
-    )
-    if refusal:
-        return {"refused": refusal}
+    refusal = first_refusal(module.SIGIL, path, root)
+    if refusal is not None:
+        return {"refused": refusal.fault}
     faults = (module.ToolFault, FactsFault, OSError, subprocess.SubprocessError)
     try:
         found = module.findings(path, root, selection(path, root, module.CAN_RUN))[1]

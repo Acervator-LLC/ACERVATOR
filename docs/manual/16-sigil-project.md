@@ -76,23 +76,68 @@ module. Each Coding sigil built after the first four, except CODE.DEBUG.PYTHON@1
 narrows tier 2: Python's ast module must find the construct the sigil reads, or
 the input is refused.
 
-`dev_harness/sigils/core.py, in judge`, the three tiers in order:
+`dev_harness/sigils/core.py, in card_refusal` runs the two checks that read
+only the card: its disciplines at tier 0, then the tool versions it holds at
+tier 3.
+
+`dev_harness/sigils/core.py, in first_refusal` calls `card_refusal` first, and
+then runs tier 1 and tier 2 on the input.
+
+`dev_harness/sigils/core.py, in first_refusal` returns the refusal with the
+lowest tier, with its tier number and tier name, or None when every check
+accepts.
+
+`dev_harness/sigils/core.py, in Refusal`:
+
+```python
+class Refusal(NamedTuple):
+    """The `tier`, `tier_name` and `fault` of the refusal `first_refusal` returns."""
+
+    tier: int
+    tier_name: str
+    fault: str
+```
+
+`dev_harness/sigils/core.py, in card_refusal` and `in first_refusal`:
+
+```python
+def card_refusal(sigil: Sigil) -> Refusal | None:
+    """Return `discipline_fault` at tier 0, else `version_fault` at tier 3, or None."""
+    fault = discipline_fault(sigil)
+    if fault:
+        return Refusal(0, CARD_DISCIPLINES, fault)
+    fault = version_fault(sigil)
+    if fault:
+        return Refusal(3, FUNCTIONS, fault)
+    return None
+
+
+def first_refusal(sigil: Sigil, text: str, root: Path) -> Refusal | None:
+    """Return the lowest-tier refusal of `card_refusal`, tier 1 and tier 2, or None."""
+    card = card_refusal(sigil)
+    if card is not None and card.tier == 0:
+        return card
+    fault = sigil.data_type(text)
+    if fault:
+        return Refusal(1, DATA_TYPE, fault)
+    fault = sigil.content(text, root)
+    if fault:
+        return Refusal(2, CONTENT, fault)
+    return card
+```
+
+`dev_harness/sigils/core.py, in judge` gives the card's refusal with the flag
+BLOCK when `dev_harness/sigils/core.py, in first_refusal` returns one.
+
+`dev_harness/sigils/core.py, in judge` runs tier 3 when no check refuses:
 
 ```python
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
-    """Run tiers 0 to 3 on `text`, `version_fault` before tier 3, until one refuses."""
-    fault = discipline_fault(sigil)
-    if fault:
-        return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
-    fault = sigil.data_type(text)
-    if fault:
-        return Verdict(sigil.refusal, f"{DATA_TYPE}: {fault}", 1, Flag.BLOCK)
-    fault = sigil.content(text, root)
-    if fault:
-        return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
-    fault = version_fault(sigil)
-    if fault:
-        return Verdict(sigil.refusal, f"{FUNCTIONS}: {fault}", 3, Flag.BLOCK)
+    """Return `first_refusal` as a `Flag.BLOCK` `Verdict`, else the tier 3 reading."""
+    refusal = first_refusal(sigil, text, root)
+    if refusal is not None:
+        reason = f"{refusal.tier_name}: {refusal.fault}"
+        return Verdict(sigil.refusal, reason, refusal.tier, Flag.BLOCK)
     reading = sigil.functions(text, root)
     holds = not isinstance(reading, Reading) or reading.holds
     detail = reading.detail if isinstance(reading, Reading) else None
@@ -103,8 +148,8 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
 
 ### The tool versions a card holds
 
-`dev_harness/sigils/core.py, in version_fault` runs after tier 2 accepts and
-before the card's functions run.
+`dev_harness/sigils/core.py, in first_refusal` returns the refusal of
+`version_fault` only after tier 2 accepts, and before the card's functions run.
 
 Each card setting whose key ends in `_version` names one installed tool, and
 `dev_harness/sigils/core.py, in card_versions` reads those settings.
@@ -118,6 +163,10 @@ the flag BLOCK.
 
 The reason that `dev_harness/sigils/core.py, in version_fault` writes names the
 tool, the installed version and the version the card holds.
+
+`dev_harness/sigils/coding_partition.py, in prove_sigils` sets such a sigil
+aside before [the sigil proof](16-sigil-project/rule-partition.md#the-sigil-proof)
+reads any file, and its output names the tool and both versions.
 
 `dev_harness/sigils/core.py, in card_versions` and `in version_fault`:
 
@@ -310,7 +359,7 @@ module.
 
 | Module | What it holds |
 | ------ | ------------- |
-| `dev_harness/sigils/core.py` | the card as data in `Sigil`, the tiers in `judge`, the tool version check in `version_fault`, the flags in `FLAGS`, and the command in `main` |
+| `dev_harness/sigils/core.py` | the card as data in `Sigil`, the checks that read only the card in `card_refusal`, the first refusal before tier 3 in `first_refusal`, the tiers in `judge`, the tool version check in `version_fault`, the flags in `FLAGS`, and the command in `main` |
 | `dev_harness/sigils/coding_input.py` | the Coding Archetype's input: tier 1 in `DATA_TYPE_TIER`, tier 2 in `CONTENT_TIER`, and the file readers in `READERS` |
 | `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, each rule's fix class and its preview and removed marks in `listing`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
 | `dev_harness/sigils/construct_rules.py` | the rules a coding sigil holds from its disciplines: `take` for a construct sigil, `hold` for a tool sigil, and the reason each other scope rule left in `why_left` |

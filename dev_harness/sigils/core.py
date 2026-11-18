@@ -1,4 +1,4 @@
-"""`judge` runs `discipline_fault` and three tiers; `main` prints one row per input."""
+"""`judge` runs `first_refusal`, then tier 3; `main` prints one row per input."""
 
 import argparse
 import json
@@ -124,6 +124,14 @@ class Verdict:
     detail: Mapping[str, object] | None = None
 
 
+class Refusal(NamedTuple):
+    """The `tier`, `tier_name` and `fault` of the refusal `first_refusal` returns."""
+
+    tier: int
+    tier_name: str
+    fault: str
+
+
 def flag_of(sigil: Sigil, output: str, *, in_source: bool) -> Flag:
     """Return the flag of `output`; `Flag.HOLD` when `in_source` and its row holds."""
     row = sigil.outputs[output]
@@ -170,20 +178,37 @@ def version_fault(sigil: Sigil) -> str | None:
     return "; ".join(faults) or None
 
 
-def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
-    """Run tiers 0 to 3 on `text`, `version_fault` before tier 3, until one refuses."""
+def card_refusal(sigil: Sigil) -> Refusal | None:
+    """Return `discipline_fault` at tier 0, else `version_fault` at tier 3, or None."""
     fault = discipline_fault(sigil)
     if fault:
-        return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
-    fault = sigil.data_type(text)
-    if fault:
-        return Verdict(sigil.refusal, f"{DATA_TYPE}: {fault}", 1, Flag.BLOCK)
-    fault = sigil.content(text, root)
-    if fault:
-        return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
+        return Refusal(0, CARD_DISCIPLINES, fault)
     fault = version_fault(sigil)
     if fault:
-        return Verdict(sigil.refusal, f"{FUNCTIONS}: {fault}", 3, Flag.BLOCK)
+        return Refusal(3, FUNCTIONS, fault)
+    return None
+
+
+def first_refusal(sigil: Sigil, text: str, root: Path) -> Refusal | None:
+    """Return the lowest-tier refusal of `card_refusal`, tier 1 and tier 2, or None."""
+    card = card_refusal(sigil)
+    if card is not None and card.tier == 0:
+        return card
+    fault = sigil.data_type(text)
+    if fault:
+        return Refusal(1, DATA_TYPE, fault)
+    fault = sigil.content(text, root)
+    if fault:
+        return Refusal(2, CONTENT, fault)
+    return card
+
+
+def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
+    """Return `first_refusal` as a `Flag.BLOCK` `Verdict`, else the tier 3 reading."""
+    refusal = first_refusal(sigil, text, root)
+    if refusal is not None:
+        reason = f"{refusal.tier_name}: {refusal.fault}"
+        return Verdict(sigil.refusal, reason, refusal.tier, Flag.BLOCK)
     reading = sigil.functions(text, root)
     holds = not isinstance(reading, Reading) or reading.holds
     detail = reading.detail if isinstance(reading, Reading) else None

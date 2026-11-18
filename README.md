@@ -24,6 +24,8 @@ Open the newest release and take one file. Choose by the middle column.
 | `-react-windows.zip` | Windows | React |
 | `-qt.dmg` | macOS | Qt |
 | `-react.dmg` | macOS | React |
+| `-qt.AppImage` | Linux | Qt |
+| `-react.AppImage` | Linux | React |
 
 Both interfaces hold the same tabs and trade the same way. They differ only in
 how each one draws its screens.
@@ -38,7 +40,21 @@ Applications folder. macOS refuses the first double-click, because the
 application carries no Apple Developer signature. Right-click the application,
 choose *Open*, then choose *Open* again in the dialog.
 
+On macOS 15 and later, right-clicking no longer opens it. Open *System
+Settings*, choose *Privacy & Security*, click *Open Anyway*, then confirm.
+
 Either warning appears once per download, not every launch.
+
+**On Linux.** The file is for a standard 64-bit PC (x86_64). Right-click the
+file you downloaded and choose *Properties* to mark it as runnable. In GNOME
+Files, turn on *Executable as Program*. In other file managers, open
+*Permissions* and tick the box that lets the file run as a program. In a
+terminal, `chmod +x` on the file does the same. Then double-click it. You mark
+it runnable once per download.
+
+An AppImage opens through FUSE, which the `fuse3` package installs. Where FUSE
+is not available, start the file from a terminal with
+`--appimage-extract-and-run` after its name.
 
 Acervator starts with no bots and no exchange keys, so it trades nothing until
 you add them. The Product Manual under `docs` explains the tabs.

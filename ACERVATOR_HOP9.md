@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-18 against `624dc657`. **Every claim here names one command that
+Written 2026-11-18 against `70d2494b`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,23 +18,26 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running, between units. The 18 pull
-requests since `4bd0012c` are #1728 to #1750: twelve on #1633, four on #1734 and
-two on #1735. #1622, #1656 and #1695 stay paused, by his 2026-11-13 ruling, until
-he points back to them.
+The session that wrote this was still running, with one unit out. The 22 pull
+requests since `4bd0012c` are #1728 to #1754: fifteen on #1633, four on #1734
+and three on #1735. #1622, #1656 and #1695 stay paused, by his 2026-11-13 ruling,
+until he points back to them.
 
 ```bash
-git log --oneline --first-parent 4bd0012c..624dc657   # the 18 pull requests
+git log --oneline --first-parent 4bd0012c..70d2494b   # the 22 pull requests
 gh issue view 1633 --comments            # each record, result and close, newest last
 gh release view                          # what is published
 gh pr list --state open                  # what is still landing
 ```
 
-- **In flight when written:** #1633 step 1d, record comment 6971810622: one
-  function in `dev_harness/sigils/core.py` returns the first refusal before
-  tier 3, and `judge` and `dev_harness/sigils/ocir_cases.py, in read_side` both
-  call it. #1735 rows 2 and 3, the release job and the publish job; their proof
-  is the next release run, after a sync of `main`.
+- **In flight when written:** unit R5 on #1735 row 5, record comment 6974732500:
+  the manual entry on getting and opening the application on Windows, macOS and
+  Linux, the front page's file table, the reference page's release quotes, and
+  the PDF.
+- **Next, recorded and waiting:** #1633 step 2, record comment 6974831108: a
+  follow-on runner in `dev_harness/sigils/fix_class.py`, beside `FOLLOW_ON`,
+  applies ruff's own safe fix and runs `judge` again. It starts after R5 merges,
+  because both units rebuild the PDF.
 - **Every iteration has a record first:** W5H and OCIR, gated by the Truth
   Archetype with `--item`, posted, then acted on. The rule is part 6 of Skill:
   canonized-workflow (#1742).
@@ -45,11 +48,11 @@ gh pr list --state open                  # what is still landing
 - **The release and both trees:**
 
 ```
-release      0.2.0-20261117.2009.g3898481e9e05, from 3898481e, 4 assets
-             gh release list      # 2009 and his running 1928 only, since the 2026-11-18 prune
-both trees   at 624dc657; dist/ holds the 2009 pair and his 1928 pair
-since        3898481e: only Acervator_linux.spec and tools/spec_common.py changed
-             git diff --stat 3898481e origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec Acervator_linux.spec
+release      0.2.0-20261117.2340.g7b9828ed2044, from 7b9828ed, 6 assets, both AppImages labelled Linux
+             gh release list      # 2340 and his running 1928 only
+both trees   at 70d2494b; dist/ holds the 2340 pair and his 1928 pair
+since        7b9828ed: no file the application is built from changed
+             git diff --stat 7b9828ed origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec Acervator_linux.spec
 his app      0.2.0-20261113.1928.g5dbab0790e57, a Qt build, from the Documents tree's dist/
 ```
 
@@ -224,20 +227,26 @@ wrong far more often than right.
   runner built from `dev_harness/sigils/fix_class.py, in FOLLOW_ON`; 3, CODE.LOOP
   holds every loop rule; 4, feedback while code is written. Then experiment 3
   compares the Coding Archetype with and without the sigils, sealed first. Step 1
-  is built in 1b (#1745), 1a (#1748) and 1c (#1750); 1d is in flight, as above.
+  is built in 1b (#1745), 1a (#1748), 1c (#1750), 1d (#1753) and 1e (#1754):
+  every reading path refuses a tool version its card does not hold. Step 2 waits
+  on R5, as above.
 
 ```bash
-gh issue view 1633 --comments      # records 6969302729 (step 1), 6969372179 (split), 6970998818 (1c), 6971810622 (1d)
+gh issue view 1633 --comments      # records 6969302729 (step 1), 6972840542 (1e), 6974831108 (step 2)
 ```
+
+  Found by 1e and not yet changed: the selection proof exits 1 on every run,
+  because `dev_harness/sigils/coding_partition.py, in main` exits 1 while the
+  list of sigils without `CAN_RUN` is not empty; report comment 6974607394.
 
 - **#1734, the fleet import and first-run choice.** Rows 1 to 5 and 7 are built.
   Row 6 is partial: no build workflow presses the import buttons on any system,
   and the macOS launch adds a web view sandbox switch a user does not have, in
   `.github/workflows/macos-build.yml`, job env `QTWEBENGINE_CHROMIUM_FLAGS`.
-- **#1735, the Linux build.** Rows 1 and 4 are built: both AppImages open their
-  main window on a Linux runner with no sandbox switch, with Ubuntu's user
-  namespace restriction off and on. Rows 2 and 3 are in flight, as above. Row 5,
-  the manual entry and the PDF, follows them.
+- **#1735, the Linux build.** Rows 1 to 4 are built: every release run builds
+  both AppImages and attaches them labelled Linux, and both open their main
+  window on a Linux runner with no sandbox switch, with Ubuntu's user namespace
+  restriction off and on. Row 5 is in flight, as above.
 
 - **#1622, #1656 and #1695, the money path, are paused.** When work returns to
   them: #1622's unbuilt rows in row order are 14, 18, 21, 22, 24 to 27, 29 to 31,

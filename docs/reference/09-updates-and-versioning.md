@@ -1490,29 +1490,32 @@ log_manager.info("Application ready — main window displayed")   # main.py
 
 ### Which inputs start a platform build
 
-Each platform has a build workflow of its own, and each one watches nine files.
-Six of them decide how a build is made. Three of them decide what a build
-installs.
+Each platform has a build workflow of its own. The macOS and Windows workflows
+each watch nine files, and the Linux workflow watches seven. The Linux build has
+no build script and does not go through the launcher, so those two rows name no
+Linux file.
 
-| what the file decides | macOS | Windows |
-| --- | --- | --- |
-| the build script | `build_mac.sh` | `build_windows.ps1` |
-| the packaging recipe | `Acervator_mac.spec` | `Acervator_win.spec` |
-| which script runs | `tools/build_launcher.py` | `tools/build_launcher.py` |
-| which variants build | `tools/build_variants.py` | `tools/build_variants.py` |
-| what the recipe collects | `tools/spec_common.py` | `tools/spec_common.py` |
-| which groups get installed | `tools/deps.py` | `tools/deps.py` |
-| what each group holds | `pyproject.toml` | `pyproject.toml` |
-| which interpreter | `.python-version` | `.python-version` |
-| the workflow itself | `macos-build.yml` | `windows-build.yml` |
+| what the file decides | macOS | Windows | Linux |
+| --- | --- | --- | --- |
+| the build script | `build_mac.sh` | `build_windows.ps1` | none: the workflow runs PyInstaller itself |
+| the packaging recipe | `Acervator_mac.spec` | `Acervator_win.spec` | `Acervator_linux.spec` |
+| which script runs | `tools/build_launcher.py` | `tools/build_launcher.py` | none: the launcher refuses Linux |
+| which variants build | `tools/build_variants.py` | `tools/build_variants.py` | `tools/build_variants.py` |
+| what the recipe collects | `tools/spec_common.py` | `tools/spec_common.py` | `tools/spec_common.py` |
+| which groups get installed | `tools/deps.py` | `tools/deps.py` | `tools/deps.py` |
+| what each group holds | `pyproject.toml` | `pyproject.toml` | `pyproject.toml` |
+| which interpreter | `.python-version` | `.python-version` | `.python-version` |
+| the workflow itself | `.github/workflows/macos-build.yml` | `.github/workflows/windows-build.yml` | `.github/workflows/linux-build.yml` |
 
-A push that changes one of a platform's nine files builds that platform, on the
-branch the push went to, before any merge. A push that changes anything else
-builds neither platform.
+A push that changes one of a platform's watched files builds that platform, on
+the branch the push went to, before any merge. A push that changes anything else
+builds no platform. A change to the launcher builds macOS and Windows, and not
+Linux.
 
 The release names each platform as a call rather than as a job of its own, so one
-file holds each platform's build and the release holds neither. A call carries no
-watch list, so a release builds both platforms whatever those lists say.
+file holds each platform's build and the release holds none of them. A call
+carries no watch list, so a release builds all three platforms whatever those
+lists say.
 
 ```yaml
 # .github/workflows/release.yml
@@ -1521,22 +1524,20 @@ jobs:
     uses: ./.github/workflows/windows-build.yml
   macos:
     uses: ./.github/workflows/macos-build.yml
+  linux:
+    uses: ./.github/workflows/linux-build.yml
 ```
 
-The lock file under `requirements/` is not one of the nine. No build reads it, so
-a change to it builds nothing and ships nothing.
-
-**Overtaken.** The lock file is gone and `requirements/` holds nothing. Each build
-resolves its own install set: `build_windows.ps1` and `build_mac.sh` both call
-`python -m tools.deps requirements build`, which reads `pyproject.toml`, and both
-hand the answer straight to pip. Neither ever installed from the lock. The
-generator stays, as `python -m tools.deps lock`, and `.gitignore` keeps its output
-out of the tree.
+No watch list names the retired lock file under `requirements/`, and no build
+reads it. Each build resolves its own install set from `pyproject.toml` and hands
+the answer straight to pip. The two build scripts and the Linux workflow each run
+the first line below.
 
 ```
 python -m tools.deps requirements build     17 requirement lines
 pip resolves those to                       62 packages
 the retired lock pinned                     48 packages
+python -m tools.deps lock                   the generator; .gitignore keeps its output out of the tree
 ```
 
 ### The macOS watch list, overtaken
@@ -1603,8 +1604,11 @@ release back. The Windows build of the same run is discarded with it, and the
 Releases panel keeps the version it already carried.
 
 ```yaml
-publish: {needs: [windows, macos]}   # .github/workflows/release.yml
+publish: {needs: [windows, macos, linux]}   # .github/workflows/release.yml
 ```
+
+**Overtaken.** A release needs three platforms, not two, so a macOS packaging
+failure discards the Linux build of the same run as well.
 
 ### Where the macOS build is downloaded
 
@@ -1658,19 +1662,37 @@ NO_ANSWER_NOTICE       # every other non-zero answer from gh api
 ### What the first launch looks like
 
 The bundle carries no Apple Developer signature, so macOS refuses the first
-double-click. The way past it is to right-click the application and choose Open,
-which is needed once per build and not again.
+double-click. On macOS 15 and later, open System Settings, choose Privacy &
+Security, and click Open Anyway. On macOS 14 and earlier, right-click the
+application and choose Open. A person does this once per build, and later
+launches open normally.
+
+Every Mac build prints both steps, from
+`tools/build_launcher.py, in GATEKEEPER_NOTICE`, worded as the release notes
+word them:
 
 ```
 ------------------------------------------------------------
   IF macOS REFUSES TO OPEN THE APP:
+
+  The bundle carries no Apple Developer signature, so
+  Gatekeeper blocks a double-click the first time.
+
+  On macOS 15 and later:
+  1. Open System Settings
+  2. Choose Privacy & Security
+  3. Click Open Anyway, then confirm
+
+  On macOS 14 and earlier:
   1. Right-click (or Control-click) the .app
   2. Choose Open
   3. Choose Open again in the dialog
+
+  That is once per build. Later launches open normally.
 ------------------------------------------------------------
 ```
 
-Signing removes that step and is not set up. It needs a paid Apple Developer
+Signing removes both steps and is not set up. It needs a paid Apple Developer
 account, a Developer ID Application certificate, and that certificate held as a
 repository secret. The build script already accepts the identity.
 
@@ -1689,15 +1711,20 @@ repository front page links it. Git cannot hold the builds: `dist` measured
 name: Release                        # .github/workflows/release.yml
 on:
   workflow_dispatch:
+  push: {branches: [main]}
 jobs:
-  windows: {runs-on: windows-latest}
+  windows: {uses: ./.github/workflows/windows-build.yml}
   macos: {uses: ./.github/workflows/macos-build.yml}
-  publish: {needs: [windows, macos]}
+  linux: {uses: ./.github/workflows/linux-build.yml}
+  publish: {needs: [windows, macos, linux]}
 ```
 
 The Run workflow button on the Actions tab starts it. One run builds both
 platforms, launches every application it built, reads the line each one writes
 once its main window is on screen, and attaches four files to one release.
+
+**Overtaken.** A push to `main` starts the same run. One run builds three
+platforms, Windows, macOS and Linux, and attaches six files to one release.
 
 ### The release a visitor downloads
 
@@ -1709,7 +1736,12 @@ Acervator-<version>-qt-windows.zip      Windows, the Qt interface
 Acervator-<version>-react-windows.zip   Windows, the React interface
 Acervator-<version>-qt.dmg              macOS, the Qt interface
 Acervator-<version>-react.dmg           macOS, the React interface
+Acervator-<version>-qt.AppImage         Linux, the Qt interface
+Acervator-<version>-react.AppImage      Linux, the React interface
 ```
+
+**Overtaken.** A release carries six files, not four. The two AppImage rows are
+the Linux pair.
 
 The tag carries that same version behind a `build-` prefix.
 
@@ -1751,7 +1783,7 @@ the Windows step refuses a build folder holding any logo file. Neither guard has
 a way to pass a mixed or a logo-carrying release.
 
 ```
-files to attach: 4          two per platform, or the step fails
+files to attach: 6          two per platform, or the step fails
 qt  logos    0              any other number fails the step
 ```
 
@@ -1776,3 +1808,9 @@ SMARTSCREEN_NOTICE                   # tools/build_launcher.py
 
 A macOS download carries the same unsigned bundle a run page artefact carries, so
 its own first launch is the Gatekeeper step recorded above.
+
+**Overtaken.** On macOS 15 and later, the right-click step no longer opens an
+unsigned application. The release notes send a person to System Settings,
+Privacy & Security and Open Anyway instead. They also give the Linux steps: mark
+the AppImage runnable once per download, then double-click it
+(`.github/workflows/release.yml, in the publish job`).
