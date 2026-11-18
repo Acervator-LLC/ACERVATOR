@@ -481,6 +481,148 @@ faulty form. Across those forms, no run needed more than 2 rounds. A run needs
 2 rounds when the first round applies the safe fixes and the second finds no
 safe fix left, as for C400 under CODE.OPTIMIZE.
 
+## Feedback while code is written
+
+The write hook reads each file a writer saves, after the save. With the switch
+on, the nine coding sigils then read each saved Python file, and their findings
+join the feedback the writer gets back. The writer reads them while it still
+holds the file.
+
+The switch is the environment variable ACERVATOR_SIGIL_FEEDBACK, and its default
+is off. The feedback runs only when the variable reads on. Any other value, or no
+value, leaves it off, and the archetype verdict is the same either way.
+Experiment 3 measures whether the feedback improves the code a writer produces,
+and its result decides the default.
+
+`dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`:
+
+```python
+def _sigil_feedback_off() -> bool:
+    """Report the sigil part off unless `SIGIL_SWITCH` reads `SIGIL_ON`."""
+    return os.environ.get(SIGIL_SWITCH, "").strip().lower() != SIGIL_ON
+```
+
+### What the feedback names
+
+Each finding names its sigil, its rule and its line. A ruff rule also carries
+one of two notes: ruff holds a safe fix for it, or the feedback prints the
+rule's published corrected form under the row. CODE.TYPE, CODE.REACH and
+CODE.SECURE hold no corrected forms, so their rows name the rule and its lines
+only.
+
+The hook never changes the saved file. The six sigils that the follow-on
+runner's card lists run through that runner without its write option, so ruff
+fixes only a copy. When a fix changes the copy, the sigil's own command reads
+the file once more to give the lines of each rule that ruff fixed. CODE.TYPE,
+CODE.REACH and CODE.SECURE run through their own commands. Each sigil reads the
+tree of the nearest folder above the file that holds .git, which is the tree
+its own command reads by default.
+
+`dev_harness/hooks/archetype_gate.py, in _sigil_feedback`:
+
+```python
+def _sigil_feedback(path: Path, deadline: float) -> str:
+    """Return each `CODING_SIGILS` reading of `path`, naming every sigil not read."""
+    root = _git_root(path)
+    cwd = _repo_for(path)
+    if root is None:
+        return _all_unread(f"no folder holding .git sits above {path.name}")
+    if not (cwd / FOLLOW_ON_FILE).is_file():
+        return _all_unread(f"{cwd} holds no {FOLLOW_ON_FILE.as_posix()}")
+    try:
+        rel = path.relative_to(root).as_posix()
+    except ValueError:
+        return _all_unread(f"{path.name} sits outside {root}")
+    follow_on = _follow_on_sigils(cwd, deadline)
+    if isinstance(follow_on, str):
+        return _all_unread(f"the card of {FOLLOW_ON_MODULE} did not read: {follow_on}")
+    readings = []
+    with tempfile.TemporaryDirectory(
+            prefix="sigil_feedback_", ignore_cleanup_errors=True) as folder:
+        listing = Path(folder) / "input.txt"
+        listing.write_text(f"{rel}\n", encoding="utf-8")
+        target = SigilTarget(rel, root, cwd, listing, deadline)
+        for name in CODING_SIGILS:
+            read = _ruff_sigil if name in follow_on else _tool_sigil
+            readings.append(read(name, target))
+    return _feedback_text(readings)
+```
+
+Each sigil ends in one of four states, and the feedback names every sigil in
+one of them:
+
+| State | When |
+| ----- | ---- |
+| findings | the sigil's reading flags a finding: a block with one row per rule |
+| clean | the reading passes |
+| does not cover this file | tier 1 or tier 2 refuses the file, as CODE.LOOP refuses a file with no loop |
+| not read | the sigil's command failed, or the time budget ran out; the reason follows the sigil's name |
+
+The first two blocks of the feedback on the published faulty form of ASYNC110,
+with the switch on:
+
+```
+[sigil-feedback] CODE.LOOP on known_bad_async110.py: FINDINGS, flag FIX, 1 finding(s) under 1 rule(s)
+  - ASYNC110 async-busy-wait line 8: the published corrected form:
+        import asyncio
+
+        DONE = asyncio.Event()
+
+
+        async def func():
+            await DONE.wait()
+[sigil-feedback] CODE.REACH on known_bad_async110.py: UNREACHED, flag FIX, 1 finding(s) under 1 rule(s)
+  - function func confidence 60 line 7: CODE.REACH holds no corrected form for this rule
+```
+
+### The time budget of the feedback
+
+The archetypes and the sigils share `POST_BUDGET_S`, 200 seconds per write. The
+sigils run one at a time, in the order of `CODING_SIGILS`: the six ruff sigils,
+then CODE.TYPE, CODE.REACH and CODE.SECURE. A sigil starts only while 2 seconds
+of the budget remain. A sigil still running when the budget ends is stopped with
+each process it started. The feedback then names it as not read, with the
+reason.
+
+Four settings bound the length of the feedback:
+
+| Setting | Value | What it bounds |
+| ------- | ----- | -------------- |
+| SIGIL_LINES_SHOWN | 20 | the lines named for one rule; the rest are counted |
+| SIGIL_RULES_SHOWN | 15 | the rules named for one sigil; the rest point to the sigil's command |
+| SIGIL_FORMS_SHOWN | 8 | the corrected forms printed for one sigil |
+| SIGIL_FORM_LINES | 30 | the lines printed of one corrected form |
+
+### Readings of the feedback
+
+Each coding sigil's faulty forms and corrected twins under `harness_fixtures/`
+were written through the after-write half. Each file was read with its sample
+tree as the root, as its lists state. A faulty form passes when the feedback
+names its rule with a corrected form or the safe-fix note. A twin fails when the
+feedback names the rule of its faulty partner.
+
+| Sigil | Faulty forms named with a form or note | Twins naming their partner's rule | Faulty forms with feedback, switch unset |
+| ----- | -------------------------------------- | --------------------------------- | ---------------------------------------- |
+| CODE.LOOP | 32 of 32 | 0 of 39 | 0 of 32 |
+| CODE.IMPORT | 21 of 21 | 0 of 22 | 0 of 21 |
+| CODE.FLOW | 22 of 22 | 0 of 28 | 0 of 22 |
+| CODE.VARIABLE | 18 of 18 | 0 of 21 | 0 of 18 |
+| CODE.COLLECTION | 19 of 19 | 0 of 20 | 0 of 19 |
+| CODE.OPTIMIZE | 6 of 6 | 0 of 8 | 0 of 6 |
+| CODE.TYPE | 7 of 7, rule and lines only | 0 of 5 | 0 of 7 |
+| CODE.REACH | 1 of 1, rule and lines only | 0 of 3 | 0 of 1 |
+| CODE.SECURE | 6 of 6, rule and lines only | 0 of 5 | 0 of 6 |
+
+The failure-mode list of CODE.LOOP, `harness_fixtures/sigil_code_loop/failure_modes.txt`,
+holds 19 faulty forms and 42 twins as functions and classes. With each file
+written whole, the feedback named a line inside 19 of 19 faulty forms and
+inside 0 of 42 twins.
+
+With the switch unset, off, or set to another value, the feedback on one faulty
+form of each sigil equals, byte for byte, what the hook gave before the sigil
+part existed. The before-write half gives the same decision and the same output
+on 10 of 10 tool calls.
+
 ## The shared modules
 
 Seven modules hold the steps that sigils share: every sigil builds its card with
