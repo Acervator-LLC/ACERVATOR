@@ -546,6 +546,10 @@ rule the card holds, is an output. One row
 per tool, from the card's
 settings and tier 3. The command prints the versions it ran.
 
+When mypy or pyright is missing, or its installed version differs from the
+card, `dev_harness/sigils/core.py, in version_fault` refuses the input at tier
+3 before any check of the card runs.
+
 | Tool | Version on the card | How the card runs it | What counts |
 | ---- | ------------------- | -------------------- | ----------- |
 | mypy | 2.1.0 | `python -P -m mypy` from the root of the target tree, with `--output json`, the null device as its cache folder, and `--disable-error-code` for each mypy code the selection leaves out | each error in the input file under one of the 33 mypy codes the card can run that the selection keeps |

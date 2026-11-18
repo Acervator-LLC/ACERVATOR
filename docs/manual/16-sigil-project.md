@@ -80,7 +80,7 @@ the input is refused.
 
 ```python
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
-    """Run `discipline_fault`, then tiers 1, 2 and 3 on `text`, until one refuses."""
+    """Run tiers 0 to 3 on `text`, `version_fault` before tier 3, until one refuses."""
     fault = discipline_fault(sigil)
     if fault:
         return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
@@ -90,6 +90,9 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
     fault = sigil.content(text, root)
     if fault:
         return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
+    fault = version_fault(sigil)
+    if fault:
+        return Verdict(sigil.refusal, f"{FUNCTIONS}: {fault}", 3, Flag.BLOCK)
     reading = sigil.functions(text, root)
     holds = not isinstance(reading, Reading) or reading.holds
     detail = reading.detail if isinstance(reading, Reading) else None
@@ -97,6 +100,71 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
     flag = flag_of(sigil, output, in_source=in_source and holds)
     return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag, detail)
 ```
+
+### The tool versions a card holds
+
+`dev_harness/sigils/core.py, in version_fault` runs after tier 2 accepts and
+before the card's functions run.
+
+Each card setting whose key ends in `_version` names one installed tool, and
+`dev_harness/sigils/core.py, in card_versions` reads those settings.
+
+`dev_harness/sigils/core.py, in version_fault` reads the installed version of
+each of those tools from Python's importlib.metadata.
+
+When a tool is missing, or its installed version differs from the card,
+`dev_harness/sigils/core.py, in judge` gives the card's refusal at tier 3 with
+the flag BLOCK.
+
+The reason that `dev_harness/sigils/core.py, in version_fault` writes names the
+tool, the installed version and the version the card holds.
+
+`dev_harness/sigils/core.py, in card_versions` and `in version_fault`:
+
+```python
+def card_versions(settings: Mapping[str, str]) -> dict[str, str]:
+    """Return each tool a `VERSION_KEY` key in `settings` names, with its version."""
+    return {
+        key.removesuffix(VERSION_KEY): built
+        for key, built in settings.items()
+        if key.endswith(VERSION_KEY)
+    }
+
+
+def version_fault(sigil: Sigil) -> str | None:
+    """Return each `card_versions` tool not installed at its card version, or None."""
+    faults = []
+    for tool, built in card_versions(sigil.settings).items():
+        try:
+            installed = metadata.version(tool)
+        except metadata.PackageNotFoundError:
+            faults.append(f"no {tool} installed; the card holds {tool} {built}")
+            continue
+        if installed != built:
+            faults.append(
+                f"{tool} {installed} installed; the card holds {tool} {built}",
+            )
+    return "; ".join(faults) or None
+```
+
+The cards that `dev_harness/sigils/core.py, in card_versions` reads a version
+from today:
+
+| Sigil | Setting | Version on the card |
+| ----- | ------- | ------------------- |
+| CODE.OPTIMIZE, CODE.LOOP, CODE.IMPORT, CODE.COLLECTION, CODE.FLOW, CODE.VARIABLE | ruff_version | 0.16.0 |
+| CODE.REACH | vulture_version | 2.16 |
+| CODE.SECURE | bandit_version and semgrep_version | 1.9.4 and 1.171.0 |
+| CODE.TYPE | mypy_version and pyright_version | 2.1.0 and 1.1.411 |
+
+CITE.SYMBOL, TA.AUDIT and CODE.DEBUG.PYTHON hold no such setting, so
+`dev_harness/sigils/core.py, in version_fault` refuses none of their inputs.
+
+The CODE.TYPE card takes its two versions from
+`dev_harness/sigils/coding_house.py, in MYPY_BUILT` and `in PYRIGHT_BUILT`.
+
+The house reading refuses any other installed mypy or pyright in
+`dev_harness/sigils/coding_house.py, in _mypy` and `in _pyright`.
 
 The path of one input line, from the tiers to its flag:
 
@@ -106,6 +174,7 @@ flowchart TD
     T0{"the disciplines the card names"}
     T1{"tier 1: data type"}
     T2{"tier 2: content compatibility"}
+    TV{"tier 3: the tool versions the card holds"}
     T3["tier 3: required processing functions"]
     BLOCK["BLOCK: the work does not start"]
     OUT["an output the card lists"]
@@ -120,7 +189,9 @@ flowchart TD
     T1 -->|refuses| BLOCK
     T1 -->|accepts| T2
     T2 -->|refuses| BLOCK
-    T2 -->|accepts| T3
+    T2 -->|accepts| TV
+    TV -->|refuses| BLOCK
+    TV -->|accepts| T3
     T3 --> OUT
     OUT -->|valid| PASS
     OUT -->|a named optimization rule| OPT
@@ -196,7 +267,7 @@ rule yet.
 
 | Flag | Side | When | What follows |
 | ---- | ---- | ---- | ------------ |
-| BLOCK | input | a tier 0 refusal of a discipline whose skill omits the owner, a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK | the work does not start |
+| BLOCK | input | a tier 0 refusal of a discipline whose skill omits the owner, a tier 1 or tier 2 refusal, a tier 3 refusal of an installed tool version the card does not hold, or a tier 3 output the card flags BLOCK | the work does not start |
 | HOLD | output | a fault in application source code | the merge waits until it is fixed |
 | FIX | output | a fault anywhere else, such as a document | the merge proceeds, and the fault is fixed at once |
 | OPTIMIZE | output | a named optimization rule fires | the merge proceeds |
@@ -239,7 +310,7 @@ module.
 
 | Module | What it holds |
 | ------ | ------------- |
-| `dev_harness/sigils/core.py` | the card as data in `Sigil`, the tiers in `judge`, the flags in `FLAGS`, and the command in `main` |
+| `dev_harness/sigils/core.py` | the card as data in `Sigil`, the tiers in `judge`, the tool version check in `version_fault`, the flags in `FLAGS`, and the command in `main` |
 | `dev_harness/sigils/coding_input.py` | the Coding Archetype's input: tier 1 in `DATA_TYPE_TIER`, tier 2 in `CONTENT_TIER`, and the file readers in `READERS` |
 | `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, each rule's fix class and its preview and removed marks in `listing`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
 | `dev_harness/sigils/construct_rules.py` | the rules a coding sigil holds from its disciplines: `take` for a construct sigil, `hold` for a tool sigil, and the reason each other scope rule left in `why_left` |

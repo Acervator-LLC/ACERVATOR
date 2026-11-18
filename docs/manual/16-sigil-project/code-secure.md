@@ -238,6 +238,10 @@ reports in the input file under a rule the card holds is an output. One row per
 tool, from the card's settings and tier 3. The command prints the versions it
 ran.
 
+When bandit or semgrep is missing, or its installed version differs from the
+card, `dev_harness/sigils/core.py, in version_fault` refuses the input at tier
+3 before either tool runs.
+
 | Tool | Version on the card | How the card runs it | Rule set |
 | ---- | ------------------- | -------------------- | -------- |
 | bandit | 1.9.4 | `python -P -m bandit -f json -q -t <tests> -`, with the file's bytes on standard input | the selected tests |
