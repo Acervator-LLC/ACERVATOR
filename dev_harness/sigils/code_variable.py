@@ -2,7 +2,7 @@
 
 import ast
 import sys
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 
 from .coding_input import (
@@ -16,6 +16,8 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .coding_partition import SELECTION, selection
+from .construct_rules import TOOL, take
 from .core import (
     APPLICATION_SOURCE,
     FLAGS,
@@ -35,159 +37,23 @@ CLEAN = "CLEAN"
 FINDINGS = "FINDINGS"
 REJECTED = "REJECTED"
 
-CANDIDATES = (
-    "ANN001",
-    "ANN401",
-    "ASYNC230",
-    "ASYNC250",
-    "S509",
-    "BLE001",
-    "B003",
-    "B007",
-    "B020",
-    "B023",
-    "B025",
-    "B031",
-    "B032",
-    "A001",
-    "A002",
-    "LOG002",
-    "PIE794",
-    "PIE796",
-    "RET504",
-    "SIM113",
-    "SIM115",
-    "ARG001",
-    "ARG002",
-    "ARG003",
-    "ARG004",
-    "ARG005",
-    "PTH123",
-    "N803",
-    "N804",
-    "N805",
-    "N806",
-    "N815",
-    "N816",
-    "PERF403",
-    "E731",
-    "E741",
-    "F402",
-    "F405",
-    "F602",
-    "F633",
-    "F821",
-    "F823",
-    "F841",
-    "F901",
-    "PLC0105",
-    "PLC0131",
-    "PLC0205",
-    "PLC2401",
-    "PLE0115",
-    "PLE0117",
-    "PLE0118",
-    "PLE0237",
-    "PLE0241",
-    "PLE0604",
-    "PLE0605",
-    "PLE1141",
-    "PLR1704",
-    "PLR1722",
-    "PLR6104",
-    "PLW0127",
-    "PLW0128",
-    "PLW0131",
-    "PLW0211",
-    "PLW0245",
-    "PLW0602",
-    "PLW0603",
-    "PLW0642",
-    "PLW1514",
-    "UP001",
-    "UP004",
-    "UP006",
-    "UP013",
-    "UP014",
-    "UP019",
-    "UP024",
-    "UP037",
-    "FURB148",
-    "FURB187",
-    "FURB189",
-    "RUF007",
-    "RUF013",
-    "RUF018",
-    "RUF020",
-    "RUF036",
-    "RUF052",
-    "RUF059",
-    "RUF070",
-    "TRY201",
-    "TRY401",
+FUNCTION = (
+    "reads each binding, from an assignment to a function argument, for a name that "
+    "is wrong, unsafe, wasteful, untyped, or against Python's naming conventions"
 )
-NO_BINDING_FORM = "faulty: refused at tier 2, the published form holds no binding"
-LEFT_OFF: dict[str, str] = {
-    "ANN001": "faulty: vulture unused variable 'x'",
-    "ANN401": "faulty: vulture unused variable 'x'",
-    "S509": NO_BINDING_FORM,
-    "B025": NO_BINDING_FORM,
-    "B032": "faulty: mypy valid-type and pyright reportInvalidTypeForm",
-    "ARG001": "faulty: vulture unused variable 'baz'",
-    "ARG002": "faulty: vulture unused variable 'arg2'",
-    "ARG003": "faulty: vulture unused variable 'cls' and 'arg2'",
-    "ARG004": "faulty: vulture unused variable 'arg2'",
-    "ARG005": "faulty: vulture unused variable 'y'",
-    "PTH123": NO_BINDING_FORM,
-    "N803": "faulty: vulture unused variable 'A' and 'myArg'",
-    "N804": "faulty: vulture unused variable 'data'",
-    "N805": "faulty: vulture unused variable 'cls' and 'data'",
-    "F402": "corrected: vulture unused import 'path'",
-    "F633": NO_BINDING_FORM,
-    "F821": NO_BINDING_FORM,
-    "F823": "faulty: pyright reportUnboundVariable, 'x' is unbound",
-    "PLE0115": "faulty: pyright, 'counter' declared global and nonlocal",
-    "PLE0117": "faulty: pyright reportUndefinedVariable and no binding for "
-    "nonlocal 'bar'",
-    "PLE0241": NO_BINDING_FORM,
-    "PLE0604": "faulty: mypy list-item, list items 1 and 2",
-    "PLE1141": "faulty: mypy str-unpack, unpacking a string",
-    "PLR1722": NO_BINDING_FORM,
-    "PLW0211": "corrected: vulture unused variable 'sheep'",
-    "PLW0245": "faulty: pyright reportIncompatibleMethodOverride, method 'speak'",
-    "PLW1514": NO_BINDING_FORM,
-    "UP004": NO_BINDING_FORM,
-    "UP024": NO_BINDING_FORM,
-    "UP037": "corrected: reads UP037",
-    "RUF013": "faulty: vulture unused variable 'arg'",
-    "RUF018": "corrected: reads RUF018",
-    "RUF020": NO_BINDING_FORM,
-    "RUF036": "faulty: vulture unused variable 'arg'",
-    "TRY201": NO_BINDING_FORM,
-}
-RULES = tuple(code for code in CANDIDATES if code not in LEFT_OFF)
-PREVIEW_CANDIDATES = (
-    "PLE1141",
-    "PLR6104",
-    "PLW1514",
-    "FURB148",
-    "FURB189",
-    "RUF052",
-    "RUF070",
+DISCIPLINES = ("python",)
+CHARACTERISTICS = (
+    "conventions",
+    "performance-efficiency",
+    "reliability",
+    "security",
+    "typing",
 )
-PREVIEW = tuple(code for code in RULES if code in PREVIEW_CANDIDATES)
-PYLINT_ERRORS = (
-    "PLE0115",
-    "PLE0117",
-    "PLE0118",
-    "PLE0237",
-    "PLE0241",
-    "PLE0604",
-    "PLE0605",
-    "PLE1141",
-)
-UNDEFINED_NAMES = ("F821", "F823")
-HOLDING = tuple(code for code in RULES if code in PYLINT_ERRORS + UNDEFINED_NAMES)
+TAKEN = take("variable", DISCIPLINES, CHARACTERISTICS)
+RULES = TAKEN.rules
+PREVIEW = TAKEN.preview
+HOLDING = TAKEN.holding
+CAN_RUN = tuple(f"{TOOL} {code}" for code in RULES)
 BINDING_NODES = (
     ast.Assign,
     ast.AnnAssign,
@@ -205,21 +71,42 @@ NO_BINDING = (
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "ruff_version": RUFF_BUILT,
-    "rules": " ".join(RULES),
-    "preview_rules": " ".join(PREVIEW),
-    "holding_rules": " ".join(HOLDING),
-    "pylint_errors": " ".join(PYLINT_ERRORS),
-    "undefined_names": " ".join(UNDEFINED_NAMES),
+    **TAKEN.settings(FUNCTION),
+    "selection": SELECTION,
+    "can_run": str(len(CAN_RUN)),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
     "in application_source and one of holding_rules fires",
     "ruff_config": "the one ruff finds from the folder of the file",
 }
 
 
-def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
-    """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+def _ruff_findings(
+    source: bytes, folder: Path, rules: tuple[str, ...]
+) -> list[tuple[str, int]]:
+    """Return each code and line of `rules` for `source` on stdin, run from `folder`; none when `rules` is empty."""
+    if not rules:
+        return []
+    rows = check(source, folder, rules, preview=bool(PREVIEW))
     return [(row.code, row.line) for row in rows]
+
+
+def findings(
+    text: str, root: Path, to_run: Collection[str]
+) -> tuple[str, list[tuple[str, int]]]:
+    """Return the ruff version and each code and line of the `to_run` rules inside the input `text` names."""
+    located = locate(text, root)
+    if isinstance(located, str):
+        message = f"{text}: {located}, after tier 2 accepted it"
+        raise ToolFault(message)
+    file, source, (first, last) = located
+    is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
+    rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
+    found = [
+        (code, line)
+        for code, line in _ruff_findings(source, file.parent, rules)
+        if not is_narrowed or first <= line <= last
+    ]
+    return f"ruff {ruff_version()}", found
 
 
 def _content_fault(text: str, root: Path) -> str | None:
@@ -236,25 +123,14 @@ def _content_fault(text: str, root: Path) -> str | None:
 
 
 def _functions_verdict(text: str, root: Path) -> Reading:
-    """Return `CLEAN`, or `FINDINGS` holding when a `HOLDING` rule fires."""
-    located = locate(text, root)
-    if isinstance(located, str):
-        message = f"{text}: {located}, after tier 2 accepted it"
-        raise ToolFault(message)
-    file, source, (first, last) = located
-    is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
-    findings = [
-        (code, line)
-        for code, line in _ruff_findings(source, file.parent)
-        if not is_narrowed or first <= line <= last
-    ]
-    version = f"ruff {ruff_version()}"
-    if not findings:
+    """Return `CLEAN`, or `FINDINGS` holding when a `HOLDING` rule fires, from the `selection` rules."""
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+    if not found:
         return Reading(CLEAN, f"{version}: no rule on the list fires", holds=False)
-    pages = {code: rule_page(code) for code, _ in findings}
+    pages = {code: rule_page(code) for code, _ in found}
     rows = "; ".join(
         f"{code} {pages[code].name} line {line} fix {pages[code].fix}"
-        for code, line in findings
+        for code, line in found
     )
     forms = "".join(
         f"\n{code} faulty:\n{page.faulty}{code} corrected:\n{page.corrected}"
@@ -268,6 +144,7 @@ SIGIL = Sigil(
     name="CODE.VARIABLE",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(
@@ -281,8 +158,17 @@ SIGIL = Sigil(
         },
         {
             "runs": [
-                "python -m ruff check --preview --select with the rules, "
-                "the file on standard input, from the folder of the file",
+                "the selection: the rules of the card that coding_partition.select "
+                "gives for the input's facts; no rule selected, no ruff run",
+                (
+                    "python -m ruff check --preview --select with the selected rules, "
+                    "the file on standard input, from the folder of the file"
+                )
+                if PREVIEW
+                else (
+                    "python -m ruff check --select with the selected rules, "
+                    "the file on standard input, from the folder of the file"
+                ),
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule <code> --output-format json, for each rule "
                 "that fires: its name, fix class, and the code under Example, "
@@ -298,13 +184,13 @@ SIGIL = Sigil(
                 "corrected form",
             ],
             "fix_classes": list(FOLLOW_ON),
-            "preview": "the preview_rules fire only with --preview",
-            "left_off": LEFT_OFF,
-            "left_off_because": "faulty or corrected names the sample; a tool and its "
-            "finding mean the write gate refused that sample, because the coding "
-            "archetype grades the finding high; reads names what ruff reads on that "
-            "published form, run from the sample tree; refused at tier 2 means "
-            "the published form holds none of the bindings tier 2 names",
+            "preview": (
+                "the preview_rules fire only with --preview"
+                if PREVIEW
+                else "no rule on the list is a preview rule, so ruff runs without --preview"
+            ),
+            "left": TAKEN.left,
+            "left_because": TAKEN.left_because,
             "not_read": "a ruff setting matched on the file name, such as "
             "per-file-ignores, because the file reaches ruff on standard input",
             "refuses": "ruff exits otherwise, or prints a finding or a rule page "

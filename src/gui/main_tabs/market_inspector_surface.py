@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ...core import encryption
+from ...core.log_paths import resolve_fleet_path
 from ...exchange.base import MarketRules
 from ...exchange.market_inspector_fetcher import DEFAULT_MIN_REFRESH_S, DEFAULT_QUOTES
 from ...trading import (
@@ -184,10 +185,8 @@ TICKER_UNTRADEABLE_MEASURED_FORMAT = (
 )
 UNTRADEABLE_JOIN = ", "
 
-#: Where ``fleet_scrum_excess`` reads the saved fleet's own figures, and the
-#: four keys it reads per record. Nothing here writes that file.
-FLEET_STATE_DIR = ".acervator"
-FLEET_STATE_NAME = "bot_state.json"
+#: The four keys ``fleet_scrum_excess`` reads per saved fleet record. Nothing
+#: here writes that file.
 FLEET_BOTS_KEY = "bots"
 FLEET_CONFIG_KEY = "config"
 FLEET_TARGET_KEY = "target_balance"
@@ -3773,20 +3772,14 @@ def market_rules_map(connectors: Any = None) -> dict:
         return {}
 
 
-def fleet_state_path() -> Path:
-    """The ``bot_state.json`` ``fleet_scrum_excess`` reads, under the runtime
-    directory ``FLEET_STATE_DIR`` names."""
-    return Path.home() / FLEET_STATE_DIR / FLEET_STATE_NAME
-
-
 def fleet_scrum_excess(path: Any = None) -> tuple:
     """The largest scrum excess the saved fleet produces, and how many records
-    gave one, read-only off ``bot_state.json``.
+    gave one, read-only off the file ``resolve_fleet_path`` names.
 
     ``fleet_excess_at`` holds the answer against the file's own stamp, so the
     ticker field re-reads it only once the live process has saved again.
     """
-    held = Path(path) if path is not None else fleet_state_path()
+    held = Path(path) if path is not None else resolve_fleet_path()
     try:
         stamp = held.stat()
     except OSError as exc:

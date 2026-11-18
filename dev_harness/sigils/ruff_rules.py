@@ -1,4 +1,4 @@
-"""`check` runs ruff on one file; `fix_class` and `rule_page` read rule pages."""
+"""`check` runs ruff on one file; `listing`, `fix_class` and `rule_page` read rule pages."""
 
 import json
 import re
@@ -17,6 +17,7 @@ RUFF_TIMEOUT_S = 120
 TOOL_EXITS = frozenset({0})
 CHECK_EXITS = frozenset({0, 1})
 FIX_CLASSES = {"Always": "always", "Sometimes": "sometimes", "None": "none"}
+REMOVED = "Removed"
 EXAMPLE = "## Example"
 SECTION = "\n## "
 USE_INSTEAD = "Use instead"
@@ -36,6 +37,14 @@ class Diagnostic(NamedTuple):
     code: str
     name: str
     line: int
+
+
+class Listed(NamedTuple):
+    """One rule `listing` reads: its `fix` class, and whether it is a `preview` or `removed` rule."""
+
+    fix: str
+    preview: bool
+    removed: bool
 
 
 @dataclass(frozen=True)
@@ -88,12 +97,16 @@ def ruff_version() -> str:
 
 
 @cache
-def _fix_classes() -> dict[str, str]:
-    """Return each rule code's `FIX_CLASSES` value from `python -m ruff rule --all`."""
+def listing() -> dict[str, Listed]:
+    """Return each rule code's `Listed` row from `python -m ruff rule --all`."""
     printed = _ruff("ruff rule --all", ["rule", "--all", "--output-format", "json"])
     try:
         return {
-            rule["code"]: FIX_CLASSES[rule["fix_availability"]]
+            rule["code"]: Listed(
+                FIX_CLASSES[rule["fix_availability"]],
+                bool(rule["preview"]),
+                REMOVED in rule["status"],
+            )
             for rule in json.loads(printed)
         }
     except (ValueError, KeyError, TypeError) as exc:
@@ -102,9 +115,9 @@ def _fix_classes() -> dict[str, str]:
 
 
 def fix_class(code: str) -> str:
-    """Return rule `code`'s fix class from `_fix_classes`, or raise `ToolFault`."""
+    """Return rule `code`'s fix class from `listing`, or raise `ToolFault`."""
     try:
-        return _fix_classes()[code]
+        return listing()[code].fix
     except KeyError as exc:
         message = f"ruff rule --all lists no rule {code}"
         raise ToolFault(message) from exc

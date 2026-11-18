@@ -70,6 +70,26 @@ def resolve_state_root() -> Path:
     return Path.home() / STATE_DIR_NAME
 
 
+FLEET_FILE_NAME = "bot_state.json"
+"""The fleet file name ``resolve_fleet_path`` joins under a state root."""
+
+
+def resolve_fleet_path(state_root: Optional[Path] = None) -> Path:
+    """Return ``FLEET_FILE_NAME`` under ``state_root``, else under
+    ``resolve_state_root``, creating nothing."""
+    root = Path(state_root) if state_root is not None else resolve_state_root()
+    return root / FLEET_FILE_NAME
+
+
+FLEET_BACKUP_SUFFIX = ".backup.json"
+"""The suffix ``resolve_fleet_backup_path`` puts on ``FLEET_FILE_NAME``."""
+
+
+def resolve_fleet_backup_path(state_root: Optional[Path] = None) -> Path:
+    """Return the backup beside ``resolve_fleet_path(state_root)``, creating nothing."""
+    return resolve_fleet_path(state_root).with_suffix(FLEET_BACKUP_SUFFIX)
+
+
 def get_log_root() -> Path:
     """Return the root ``resolve_log_root`` names, created by ``mkdir`` when missing."""
     root = resolve_log_root()

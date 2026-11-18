@@ -1,4 +1,4 @@
-"""`judge` runs a `Sigil` through three tiers, and `main` prints one row per input."""
+"""`judge` runs `discipline_fault` and three tiers; `main` prints one row per input."""
 
 import argparse
 import json
@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 from typing import Literal, NamedTuple
+
+from .construct_rules import HouseFault, archetypes
 
 
 class Flag(Enum):
@@ -23,7 +25,10 @@ class Flag(Enum):
 FLAGS: dict[Flag, dict[str, str]] = {
     Flag.BLOCK: {
         "side": "input",
-        "when": "a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK",
+        "when": (
+            "a tier 0 refusal of a discipline whose skill omits the owner, "
+            "a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK"
+        ),
         "follows": "the work does not start",
     },
     Flag.HOLD: {
@@ -52,6 +57,7 @@ GATED = frozenset({Flag.BLOCK, Flag.HOLD})
 
 APPLICATION_SOURCE = ("src", "desktop", "main.py")
 
+CARD_DISCIPLINES = "the disciplines the card names"
 DATA_TYPE = "tier 1 data type"
 CONTENT = "tier 2 content compatibility"
 FUNCTIONS = "tier 3 required processing functions"
@@ -59,11 +65,12 @@ TIER_NAMES = (DATA_TYPE, CONTENT, FUNCTIONS)
 
 
 class Reading(NamedTuple):
-    """Tier 3 `output` and `reason`; `holds` False keeps `Flag.HOLD` off this fault."""
+    """Tier 3 `output` and `reason`; `holds` False keeps `Flag.HOLD` off; `main` prints `detail`."""
 
     output: str
     reason: str
     holds: bool
+    detail: Mapping[str, object] | None = None
 
 
 OutputFlag = Literal[Flag.PASS, Flag.FIX, Flag.OPTIMIZE, Flag.BLOCK]
@@ -100,16 +107,18 @@ class Sigil:
     content: Content
     functions: Functions
     fault_file: FaultFile | None = None
+    disciplines: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class Verdict:
-    """One input's `output`, `reason` naming its tier, `tier` number and `flag`."""
+    """One input's `output`, `reason` naming its tier, `tier` number, `flag` and tier 3 `detail`."""
 
     output: str
     reason: str
     tier: int
     flag: Flag
+    detail: Mapping[str, object] | None = None
 
 
 def flag_of(sigil: Sigil, output: str, *, in_source: bool) -> Flag:
@@ -118,8 +127,26 @@ def flag_of(sigil: Sigil, output: str, *, in_source: bool) -> Flag:
     return Flag.HOLD if in_source and row.holds_in_source else row.flag
 
 
+def discipline_fault(sigil: Sigil) -> str | None:
+    """Return each `sigil.disciplines` entry whose `archetypes` omit `sigil.owner`, or None."""
+    faults = []
+    for name in sigil.disciplines:
+        try:
+            listed = archetypes(name)
+        except HouseFault as exc:
+            faults.append(f"{name}: {exc}")
+            continue
+        if sigil.owner not in listed:
+            named = ", ".join(listed) or "no archetype"
+            faults.append(f"{name} lists {named}, not the owner {sigil.owner}")
+    return "; ".join(faults) or None
+
+
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
-    """Run `text` through tiers 1, 2 and 3 of `sigil`, stopping at the first refusal."""
+    """Run `discipline_fault`, then tiers 1, 2 and 3 on `text`, until one refuses."""
+    fault = discipline_fault(sigil)
+    if fault:
+        return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
     fault = sigil.data_type(text)
     if fault:
         return Verdict(sigil.refusal, f"{DATA_TYPE}: {fault}", 1, Flag.BLOCK)
@@ -128,9 +155,10 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
         return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
     reading = sigil.functions(text, root)
     holds = not isinstance(reading, Reading) or reading.holds
+    detail = reading.detail if isinstance(reading, Reading) else None
     output, reason = reading[0], reading[1]
     flag = flag_of(sigil, output, in_source=in_source and holds)
-    return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag)
+    return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag, detail)
 
 
 def render_card(sigil: Sigil) -> dict[str, object]:
@@ -277,6 +305,7 @@ def main(sigil: Sigil, argv: list[str] | None = None) -> int:
             "reason": verdict.reason,
             "tier": verdict.tier,
             "flag": verdict.flag.name,
+            **(verdict.detail or {}),
         }
         print(json.dumps(row))
     if not flags:

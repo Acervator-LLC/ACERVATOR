@@ -7,9 +7,10 @@ quoted lines and the allowed dependency wording.
 """
 
 import json
-import pathlib
 import re
 import sys
+
+from transcript_tail import last_reply
 
 GATED_TOOLS = {"Agent", "SendMessage"}
 
@@ -45,33 +46,6 @@ def text_of(payload):
     keys = ("prompt", "message", "description", "summary")
     parts = [data.get(key) or "" for key in keys]
     return "\n".join(part for part in parts if isinstance(part, str))
-
-
-def last_reply(path):
-    """Returns the assistant's final text block from the transcript."""
-    try:
-        lines = pathlib.Path(path).read_text(
-            encoding="utf-8", errors="replace"
-        ).splitlines()
-    except OSError:
-        return ""
-    for line in reversed(lines):
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if row.get("type") != "assistant":
-            continue
-        content = (row.get("message") or {}).get("content") or []
-        parts = [
-            block.get("text", "")
-            for block in content
-            if isinstance(block, dict) and block.get("type") == "text"
-        ]
-        text = "\n".join(part for part in parts if part).strip()
-        if text:
-            return text
-    return ""
 
 
 def refuse(word):

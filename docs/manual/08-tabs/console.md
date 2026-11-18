@@ -1233,4 +1233,130 @@ The sentence above stands as written. This is the reading that replaced it.
 | --- | --- |
 | "The Product Manual PDF rebuild is owed for this page." | `docs/Acervator-Product-Manual.pdf` is rebuilt with this section and carries this page |
 
+
+## 2026-11-17 - a new instance offers a fleet import at launch
+
+A launch that finds no saved fleet now asks what to do. The first-run screen
+gives two choices: import a fleet file from any folder, or start a new instance
+with no bots. A fleet file moves a set-up instance from one computer to another.
+
+### The launch with no saved fleet
+
+The screen opens once per launch, after the splash closes. It opens only when
+the expected place holds no `bot_state.json` and no `bot_state.backup.json`. A
+file that is there but does not read, or is sealed, is a fleet, and the screen
+does not open over it.
+
+```mermaid
+flowchart TD
+    A[MainWindow built, every screen drawn] --> B[launch_classification]
+    B -->|locked| C[ask_for_unlock]
+    B -->|open, saved bots| D[run_fleet_sequence start]
+    B -->|open, fleet_on_disk answers False| E[ask_for_import]
+    E -->|Import a fleet file| F[import_fleet]
+    F -->|refused, one sentence| E
+    F -->|plain fleet written| G[restore_bots_from_state, every bot Idle]
+    F -->|sealed fleet written| C
+    E -->|Start a new instance| H[no bots, nothing written]
+```
+
+`main.py, in main` arms the screen on the splash in the same place it arms the
+unlock screen and the fleet start:
+
+```python
+elif not fleet_on_disk():
+    try:
+        _splash._on_finished_callback = _offer_fleet_import
+    except Exception:
+        QTimer.singleShot(9500, _offer_fleet_import)
+```
+
+The screen shows the full path of the expected place, because the folder name
+starts with a dot and some file browsers hide it. On every system the place is
+the `.acervator` folder in the home folder (`src/core/log_paths.py, in
+resolve_fleet_path`).
+
+### The two choices on the first-run screen
+
+| the press | what happens |
+| --- | --- |
+| Import a fleet file... | Opens the system file picker in the home folder. The picked file is checked. A file that passes is copied into the expected place, byte for byte, and the screen closes. A file that fails leaves the screen open with one sentence that says why, so you can pick again or start a new instance. `src/gui/fleet_import_dialog.py, in FleetImportDialog._on_import` |
+| Start a new instance | Closes the screen. Nothing is written, and the platform runs with no bots. Escape and the close button do the same. `src/gui/fleet_import_dialog.py, in FleetImportDialog._on_new` |
+
+### What an import checks and carries
+
+The import reads the picked file and, for a sealed fleet, the `master_key.json`
+beside it. It reads nothing else, so no settings file and no exchange key comes
+across. Each refusal writes nothing, and `src/core/fleet_import.py` declares
+every sentence.
+
+| the picked file | the sentence on the screen |
+| --- | --- |
+| no file at that path | No file was found at the path. |
+| a folder | The path is a folder, not a fleet file. |
+| a file the system will not read | The file could not be read, with the system's reason. |
+| not JSON text | It is not a fleet file, because it does not hold JSON text. |
+| JSON that is not one object | It is not a fleet file, because its JSON is not one object. |
+| an object with no map of bots | It is not a fleet file, because it holds no map of bots. |
+| marked sealed, with no sealed fleet in it | It is marked sealed, but it carries no sealed fleet. |
+| a sealed fleet with no key file beside it | It is a sealed fleet, and no `master_key.json` is beside it. |
+| a sealed fleet whose key file does not read | It is a sealed fleet, and the `master_key.json` beside it could not be read. |
+| the expected place itself | It is the file this instance reads its fleet from. |
+| a sealed fleet, with another key file in the expected place | The expected place already holds another master key. |
+
+An import never replaces a file. `src/core/fleet_import.py, in import_fleet`
+writes through `src/core/io_utils.py, in atomic_write_bytes`, and the last check
+before the file moves into place refuses if a fleet or a key file is now there.
+A key file with the same bytes as the one beside the sealed fleet stays as it is,
+and only the fleet is written.
+
+### After the import
+
+A plain fleet loads at once. Every bot is restored Idle and none starts, and the
+Console says:
+
+```
+Imported fleet: N of M bot(s) loaded. Every bot is Idle, and none starts until you start it.
+```
+
+A sealed fleet takes the locked launch's path, so the unlock screen opens. The
+right password loads every bot Idle, and in that session the unlock starts no
+bot. The save that runs every 60 seconds waits while the first-run screen is
+open, so it cannot write an empty fleet under it.
+
+The import carries no exchange keys, so Settings lists no exchange for the
+imported bots. Their venue page on the Live tab appears at once, and its API
+ACCESS REQUIRED line stays until that exchange's keys are saved in Settings.
+[A bot whose exchange has no keys](../06-trading-tab.md#a-bot-whose-exchange-has-no-keys)
+says what Start and Start All do with these bots.
+
+### What the first-run screen was measured doing
+
+Driven as a built widget on a scratch home folder, with the file picker answered
+inside the process. Every fleet file was written by `in save_state`.
+
+| the expected place holds | the screen | an import called anyway |
+| --- | --- | --- |
+| nothing | opens | the next table |
+| a fleet file | does not open | 12 of 12 picks refused, no byte changed |
+| only a backup | does not open | 12 of 12 picks refused, no byte changed |
+| a fleet file that does not read | does not open | 12 of 12 picks refused, no byte changed |
+| a sealed fleet | does not open | 12 of 12 picks refused, no byte changed |
+| only a key file | opens | the next table |
+
+| with the screen open | nothing in the expected place | only a key file there |
+| --- | --- | --- |
+| refused with its sentence, nothing written | 10 of 12 | 11 of 12 |
+| imported, the fleet file equal byte for byte | the plain fleet and the sealed fleet, its key file equal too | the plain fleet |
+
+The plain fleet, read back through `in load_state`, gave 2 bots, and
+`in restore_bots_from_state` restored both Idle. The sealed fleet read `locked`
+after the import. A wrong password did not open it, and the right one loaded
+both bots Idle.
+
+The control is the same empty home through the files before this section. It
+read `open` and `no_file`, and no module offered a screen. Through these files
+the same home drew the screen. These readings were taken on Windows. The macOS
+and Linux readings are not taken yet.
+
 Back to [the subsystem index](README.md).

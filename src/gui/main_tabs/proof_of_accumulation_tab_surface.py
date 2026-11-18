@@ -216,6 +216,7 @@ from ...competition.world_grid import (
     squares_in_view,
 )
 from ...core.fmt import fmt_usd
+from ...core.log_paths import FLEET_FILE_NAME, resolve_fleet_path
 from .shared_testnet_surface import PERSIST_PARTS
 
 METHOD = "proof_of_accumulation_tab.state"
@@ -348,7 +349,7 @@ LOOT_STORE_NAME = DEFAULT_LOOT_PATH.name
 IDENTITY_NAME = BotIdentity.KEY_FILE
 WORLD_NAME = DEFAULT_WORLD_PATH.name
 ROSTER_NAME = DEFAULT_ROSTER_PATH.name
-FLEET_NAME = "bot_state.json"
+FLEET_NAME = FLEET_FILE_NAME
 CHAIN_NAME = PERSIST_PARTS[-1]
 LEDGER_DIR = DEFAULT_LEDGER_PATH.parent
 
@@ -1663,7 +1664,8 @@ def redistribution(chain: str, event_id: str) -> dict:
 
 
 def fleet_records(chain: str) -> dict:
-    """The ``bots`` map in the fleet state file, or {} when it is unreadable.
+    """The ``bots`` map in the fleet file ``resolve_fleet_path`` names, or {}
+    when it is unreadable.
 
     ``src.core.state_manager.StateManager`` writes that file; this read never
     creates it. The fleet is not chain state, so every chain reads the one file
@@ -1673,7 +1675,7 @@ def fleet_records(chain: str) -> dict:
     from ...core.state_manager import FLEET_SEALED_NOTE, fleet_sealed, load_state_file
 
     del chain
-    path = LEDGER_DIR / FLEET_NAME
+    path = resolve_fleet_path()
     if not path.is_file():
         return {}
     try:

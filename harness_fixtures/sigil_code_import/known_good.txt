@@ -1,14 +1,32 @@
 # Read with --root harness_fixtures/sigil_code_import/sample_tree
-# Each file names its rule on line 1, then holds the Use instead blocks python -m ruff rule <id> prints.
+# Each file names its rule on line 1, then holds the Use instead block python -m ruff rule <id> prints.
+# The write gate refuses a file holding the corrected form of UP023, and beside pandas.py ruff
+# reads pandas as first-party, so I001's and TC002's forms read another way here; each of the
+# three is read from its published form in a temporary tree.
 
 # CLEAN for its own rule id
-known_good_a004.py
-pkg/known_good_tc001.py
+known_good_e401.py
+known_good_e402.py
+known_good_f403.py
+known_good_icn001.py
+known_good_n811.py
+known_good_n812.py
+known_good_n813.py
+known_good_n814.py
+known_good_n817.py
+known_good_plc0415.py
+known_good_plc2403.py
+known_good_plr0402.py
+known_good_pyi057.py
 known_good_tc003.py
 known_good_tc004.py
-known_good_f403.py
-known_good_plc0415.py
+known_good_up035.py
+pkg/known_good_tc001.py
+pkg/sub/known_good_tid252.py
 
-# REJECTED, BLOCK at tier 2: the corrected form holds no import, because the fix removes it
-known_good_up010.py
-known_good_up029.py
+# FINDINGS, FIX for another rule alone: A004's form reads E402, F401's form reads E402, F404's form
+# reads I001, F406's form reads F403
+known_good_a004.py
+known_good_f401.py
+known_good_f404.py
+known_good_f406.py

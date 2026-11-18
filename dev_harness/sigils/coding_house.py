@@ -1,4 +1,4 @@
-"""`count` checks each tool's rule listing against the `HOUSE` folders; `main` prints it or `CARD`."""
+"""`count` checks each tool's and coding sigil card's rules against the `HOUSE` folders; `main` prints it or `CARD`."""
 
 import argparse
 import ast
@@ -22,15 +22,9 @@ from dev_harness.harness.report import REPO_ROOT
 
 from .core import repository_root, tool_text
 
-HOUSE = Path(__file__).resolve().parents[1] / "disciplines"
-DISCIPLINES = (
-    "security",
-    "reliability",
-    "performance-efficiency",
-    "maintainability",
-    "conventions",
-    "typing",
-)
+SIGILS = Path(__file__).resolve().parent
+HOUSE = SIGILS.parent / "disciplines"
+DISCIPLINES = ("python",)
 RULES_FILE = "rules.json"
 UNPLACED_FILE = "unplaced.json"
 
@@ -38,6 +32,7 @@ TOOL_TIMEOUT_S = 300
 MYPY_BUILT = "2.1.0"
 PYRIGHT_BUILT = "1.1.411"
 VULTURE_RULE = "dead-code"
+VERSION_KEY = "_version"
 SEMGREP_PROBE = "probe.py"
 RULE_ID_SHAPE = re.compile(r"[A-Z]{1,3}[0-9]{3}")
 BANDIT_SELECTORS = frozenset(
@@ -132,6 +127,11 @@ LISTINGS: dict[str, str] = {
     "semgrep": "the rule ids semgrep --time reports for the archetype's configs on a one-line .py file",
     "pylint": "the messages pylint --list-msgs-enabled prints under the archetype's flags",
     "rule modules": "each rule id string in the modules coding_archetype._PY_RULE_MODULES names",
+    "sigils": "each card with owner coding and a sigil that python -m "
+    "dev_harness.sigils.<module> --card prints: its rules or rule_families, with "
+    "--preview when it names preview_rules, as ruff --show-settings on --root enables "
+    "them; each other tool a <tool>_version setting names counts under that tool's "
+    "listing above; each rule its own_rules setting names counts under its own_tool",
 }
 
 CARD: dict[str, object] = {
@@ -143,21 +143,35 @@ CARD: dict[str, object] = {
     "disciplines": {name: f"dev_harness/disciplines/{name}" for name in DISCIPLINES},
     "files": {"placed": f"<discipline>/{RULES_FILE}", "unplaced": UNPLACED_FILE},
     "standard": "ISO/IEC 5055:2021, CWE lists from https://www.omg.org/spec/ASCQM/1.0/PDF; "
-    "PEP 8, PEP 257, PEP 484 and https://typing.python.org/en/latest/spec/",
+    "PEP 8, PEP 257, PEP 484 and https://typing.python.org/en/latest/spec/; "
+    "PEP 20, https://docs.python.org/3.14/ and each framework's own documentation",
     "grounds": [
-        "cwe: a CWE id the discipline's rules.json lists, or one the tool attaches to the rule",
+        "cwe: a CWE id the rules.json lists for the ground's characteristic, or one the tool "
+        "attaches to the rule",
         "term: a quote of the tool's own text naming an ISO/IEC 25010 characteristic",
-        "pep: a quoted section of PEP 8, PEP 257 or PEP 484 that states the rule's check",
+        "pep: a quoted section of PEP 8, PEP 257 or PEP 484 that states the rule's check, "
+        "or a PEP 20 line whose concern the rule's quoted text names",
         "spec: a quoted section of the typing specification that states the rule's check",
+        "docs: a quoted section of the Python 3.14 documentation that states the failure, "
+        "cost, idiom or type of the construct the rule detects",
+        "framework: a quoted section of a framework's own documentation that states the same",
     ],
     "listings": LISTINGS,
-    "outputs": ["per tool: run, placed, unplaced", "per discipline: placements"],
+    "outputs": [
+        "per tool: run, placed, unplaced",
+        "per coding sigil: the tools its card names, and each rule it runs that no "
+        "archetype call enables, placed or unplaced",
+        "per discipline: placements",
+    ],
     "faults": {
-        "missing": "a rule a tool runs that no rules.json and not unplaced.json holds",
-        "stale": "a rule the files hold that no tool runs",
+        "missing": "a rule a tool or a coding sigil runs that no rules.json and not "
+        "unplaced.json holds",
+        "stale": "a rule the files hold that no tool and no coding sigil runs",
         "both": "a rule placed and also unplaced",
-        "ungrounded": "a CWE ground its discipline does not list and the tool did not attach",
-        "unread": "a tool whose listing could not be read",
+        "ungrounded": "a CWE ground its characteristic does not list and the tool did not "
+        "attach, a ground with no quote, or a row whose characteristics and standards are "
+        "not those of its grounds",
+        "unread": "a tool or a coding sigil card whose listing could not be read",
     },
 }
 
@@ -219,9 +233,8 @@ def _has_config(section: str, files: tuple[Path, ...]) -> bool:
     return any(path.is_file() for path in files)
 
 
-def _ruff(argv: list[str], root: Path) -> set[str]:
-    """Return the codes `linter.rules.enabled` lists for `root` under the archetype's ruff flags."""
-    flags = [part for part in argv[:-1] if not part.startswith("--output-format")]
+def _enabled(flags: list[str], root: Path) -> set[str]:
+    """Return the codes `linter.rules.enabled` lists for `root` under the ruff `flags`."""
     printed = _run([*flags, "--show-settings", str(root)], root)
     block = printed.partition("linter.rules.enabled = [")[2].partition("]")[0]
     codes = set(re.findall(r"\(([A-Z]+[0-9]+)\)", block))
@@ -229,6 +242,12 @@ def _ruff(argv: list[str], root: Path) -> set[str]:
         message = "ruff --show-settings printed no linter.rules.enabled"
         raise ToolFault(message)
     return codes
+
+
+def _ruff(argv: list[str], root: Path) -> set[str]:
+    """Return the `_enabled` codes for `root` under the archetype's ruff flags."""
+    flags = [part for part in argv[:-1] if not part.startswith("--output-format")]
+    return _enabled(flags, root)
 
 
 def _mypy(argv: list[str], _root: Path) -> set[str]:
@@ -404,6 +423,78 @@ def rules_run(root: Path) -> tuple[dict[str, set[str]], dict[str, str]]:
     return run, unread
 
 
+def sigil_cards(folder: Path = SIGILS) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Return each card a `folder` module prints with `CARD` owner and a sigil, and each unread module."""
+    cards: list[dict[str, Any]] = []
+    unread: dict[str, str] = {}
+    for path in sorted(folder.glob("*.py")):
+        module = f"{folder.parent.name}.{folder.name}.{path.stem}"
+        try:
+            printed = _run([sys.executable, "-m", module, "--card"], folder.parents[1])
+            card = json.loads(printed) if printed else {}
+        except (ToolFault, ValueError) as exc:
+            unread[f"card {module}"] = str(exc)
+            continue
+        if isinstance(card, dict) and card.get("owner") == CARD["owner"] and "sigil" in card:
+            cards.append(card)
+    return cards, unread
+
+
+def _card_tools(card: dict[str, Any]) -> list[str]:
+    """Return each tool a `VERSION_KEY` setting of `card` names."""
+    return sorted(
+        key.removesuffix(VERSION_KEY)
+        for key in card.get("settings", {})
+        if key.endswith(VERSION_KEY)
+    )
+
+
+def _card_ruff(settings: dict[str, Any], root: Path) -> set[str]:
+    """Return the `_enabled` codes for the card `settings` rules or rule_families, with preview_rules."""
+    selection = str(settings.get("rules") or settings.get("rule_families") or "")
+    codes = selection.replace(",", " ").split()
+    if not codes:
+        message = "the card names ruff and neither rules nor rule_families"
+        raise ToolFault(message)
+    preview = ["--preview"] if settings.get("preview_rules") else []
+    flags = [sys.executable, "-m", "ruff", "check", "--no-cache", *preview]
+    return _enabled([*flags, "--select", ",".join(codes)], root)
+
+
+def _card_own(card: dict[str, Any]) -> set[tuple[str, str]]:
+    """Return an (own_tool, rule) pair for each rule the `card` settings name in own_rules."""
+    settings = card.get("settings", {})
+    tool = str(settings.get("own_tool") or "")
+    rules = str(settings.get("own_rules") or "").split()
+    return {(tool, rule) for rule in rules} if tool else set()
+
+
+SigilRules = dict[str, tuple[list[str], set[tuple[str, str]]]]
+
+
+def sigil_rules(root: Path, run: dict[str, set[str]]) -> tuple[SigilRules, dict[str, str]]:
+    """Return each `sigil_cards` card's tools and its (tool, rule) pairs outside `run`, and each unread card."""
+    cards, unread = sigil_cards()
+    sigils: SigilRules = {}
+    for card in cards:
+        name = str(card["sigil"])
+        tools = _card_tools(card)
+        only: set[tuple[str, str]] = set()
+        for tool in tools:
+            if tool not in run:
+                unread[f"{name} {tool}"] = f"no {tool} listing was read to hold the card against"
+            elif tool == "ruff":
+                try:
+                    enabled = _card_ruff(card["settings"], root)
+                except ToolFault as exc:
+                    unread[f"{name} ruff"] = str(exc)
+                    continue
+                only |= {("ruff", rule) for rule in enabled - run["ruff"]}
+        only |= _card_own(card)
+        sigils[name] = (tools, only)
+    return sigils, unread
+
+
 def _load(path: Path) -> dict[str, Any]:
     """Return the JSON object at `path`."""
     data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
@@ -428,27 +519,36 @@ def house(folder: Path = HOUSE) -> tuple[Placements, set[tuple[str, str]]]:
 
 
 def ungrounded(folder: Path = HOUSE) -> list[str]:
-    """Return each ground in a `RULES_FILE` with no quote, or a CWE it neither lists nor the tool attached."""
+    """Return each `RULES_FILE` ground with no quote or an unlisted, unattached CWE, and each row its grounds do not match."""
     faults = []
     for name in DISCIPLINES:
         data = _load(folder / name / RULES_FILE)
-        listed = set(data["cwe"])
+        blocks = data["characteristics"]
         for row in data["rules"]:
+            rule = f"{row['tool']} {row['rule']}"
+            grounded = {ground.get("characteristic") for ground in row["grounds"]}
+            standards = {key: blocks[key]["standard"] for key in grounded if key in blocks}
+            if row["characteristics"] != standards or grounded - set(blocks):
+                faults.append(f"{name}: {rule} names {row['characteristics']}, grounds {grounded}")
             for ground in row["grounds"]:
+                listed = blocks.get(ground.get("characteristic"), {}).get("cwe", ())
                 cwe = ground.get("cwe")
                 if cwe and cwe not in listed and ground.get("attached") != row["tool"]:
-                    faults.append(f"{name}: {row['tool']} {row['rule']} {cwe}")
+                    faults.append(f"{name} {ground.get('characteristic')}: {rule} {cwe}")
                 if not ground.get("attached") and not ground.get("quote"):
-                    faults.append(f"{name}: {row['tool']} {row['rule']} has no quote")
+                    faults.append(f"{name}: {rule} has no quote")
     return faults
 
 
 def count(root: Path, folder: Path = HOUSE) -> dict[str, Any]:
-    """Return the per-tool and per-discipline counts for `root`, and every fault `CARD` names."""
+    """Return the per-tool, per-sigil and per-discipline counts for `root`, and every fault `CARD` names."""
     run, unread = rules_run(root)
+    sigils, sigil_unread = sigil_rules(root, run)
+    unread.update(sigil_unread)
     placed, unplaced = house(folder)
     housed = {key for rows in placed.values() for key in rows}
-    pairs = {(tool, rule) for tool, rules in run.items() for rule in rules}
+    extra = {pair for _tools, only in sigils.values() for pair in only}
+    pairs = {(tool, rule) for tool, rules in run.items() for rule in rules} | extra
     held = housed | unplaced
     tools = {
         tool: {
@@ -468,6 +568,16 @@ def count(root: Path, folder: Path = HOUSE) -> dict[str, Any]:
     return {
         "root": str(root),
         "tools": tools,
+        "sigils": {
+            name: {
+                "tools": names,
+                "only": len(only),
+                "placed": len(only & housed),
+                "unplaced": len(only & unplaced),
+                "rules": sorted(f"{t} {r}" for t, r in only),
+            }
+            for name, (names, only) in sorted(sigils.items())
+        },
         "totals": {
             "run": len(pairs),
             "placed": len(pairs & housed),

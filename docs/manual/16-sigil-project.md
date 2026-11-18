@@ -37,6 +37,7 @@ class Sigil:
     content: Content
     functions: Functions
     fault_file: FaultFile | None = None
+    disciplines: tuple[str, ...] = ()
 ```
 
 ## The scope test
@@ -54,6 +55,9 @@ owner     an archetype reads the result without asking the model
 decision  the model makes one named choice; with no choice, it is an ordinary function
 ```
 
+CODE.DEBUG.PYTHON@1 reads no on the decision line: its card names the decision
+as none.
+
 ## The three input tiers
 
 A sigil filters each input in three tiers, in this order. A tier runs only
@@ -68,14 +72,18 @@ tier 3  required processing functions  the function set that does the sigil's wo
 
 Tier 2 comes from the owning archetype. A sigil with no owning archetype has no
 tier 2 and is not admitted. Every Coding sigil takes tiers 1 and 2 from one
-module. Each Coding sigil built after the first four narrows tier 2: Python's
-ast module must find the construct the sigil reads, or the input is refused.
+module. Each Coding sigil built after the first four, except CODE.DEBUG.PYTHON@1,
+narrows tier 2: Python's ast module must find the construct the sigil reads, or
+the input is refused.
 
 `dev_harness/sigils/core.py, in judge`, the three tiers in order:
 
 ```python
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
-    """Run `text` through tiers 1, 2 and 3 of `sigil`, stopping at the first refusal."""
+    """Run `discipline_fault`, then tiers 1, 2 and 3 on `text`, until one refuses."""
+    fault = discipline_fault(sigil)
+    if fault:
+        return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
     fault = sigil.data_type(text)
     if fault:
         return Verdict(sigil.refusal, f"{DATA_TYPE}: {fault}", 1, Flag.BLOCK)
@@ -84,9 +92,10 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
         return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
     reading = sigil.functions(text, root)
     holds = not isinstance(reading, Reading) or reading.holds
+    detail = reading.detail if isinstance(reading, Reading) else None
     output, reason = reading[0], reading[1]
     flag = flag_of(sigil, output, in_source=in_source and holds)
-    return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag)
+    return Verdict(output, f"{FUNCTIONS}: {reason}", 3, flag, detail)
 ```
 
 The path of one input line, from the tiers to its flag:
@@ -94,6 +103,7 @@ The path of one input line, from the tiers to its flag:
 ```mermaid
 flowchart TD
     IN["one input line"]
+    T0{"the disciplines the card names"}
     T1{"tier 1: data type"}
     T2{"tier 2: content compatibility"}
     T3["tier 3: required processing functions"]
@@ -104,7 +114,9 @@ flowchart TD
     FIX["FIX: the merge proceeds, the fault is fixed at once"]
     HOLD["HOLD: the merge waits until it is fixed"]
 
-    IN --> T1
+    IN --> T0
+    T0 -->|refuses| BLOCK
+    T0 -->|accepts| T1
     T1 -->|refuses| BLOCK
     T1 -->|accepts| T2
     T2 -->|refuses| BLOCK
@@ -117,6 +129,63 @@ flowchart TD
     OUT -->|an output the card flags BLOCK| BLOCK
 ```
 
+### The disciplines a card names
+
+A card names the disciplines it takes its rules from. A coding card names one
+discipline, Python, and the characteristics it draws on inside it. Each discipline's SKILL.md
+lists the archetypes compatible with it, on its archetypes line. Before tier 1,
+the core reads that line for each discipline the card names.
+
+When the line does not name the card's owner, the sigil does not run with that
+discipline. Every input reads REJECTED with the flag BLOCK, and its tier reads
+0, because no tier ran. The reason names the discipline, the archetypes its
+skill lists, and the owner.
+
+`dev_harness/sigils/core.py, in discipline_fault`:
+
+```python
+def discipline_fault(sigil: Sigil) -> str | None:
+    """Return each `sigil.disciplines` entry whose `archetypes` omit `sigil.owner`, or None."""
+    faults = []
+    for name in sigil.disciplines:
+        try:
+            listed = archetypes(name)
+        except HouseFault as exc:
+            faults.append(f"{name}: {exc}")
+            continue
+        if sigil.owner not in listed:
+            named = ", ".join(listed) or "no archetype"
+            faults.append(f"{name} lists {named}, not the owner {sigil.owner}")
+    return "; ".join(faults) or None
+```
+
+The archetypes line is read in one place, in the module that reads the
+discipline folders. A skill with no such line lists no archetype, so every card
+that names it is refused.
+
+`dev_harness/sigils/construct_rules.py, in archetypes`:
+
+```python
+@cache
+def archetypes(name: str) -> tuple[str, ...]:
+    """Return each archetype the `ARCHETYPES_LINE` of discipline `name`'s `SKILL_FILE` front matter lists."""
+    path = HOUSE / name / SKILL_FILE
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        message = f"cannot read {name}/{SKILL_FILE}: {exc}"
+        raise HouseFault(message) from exc
+    if not lines or lines[0] != FRONT_MATTER:
+        return ()
+    for line in takewhile(lambda line: line != FRONT_MATTER, lines[1:]):
+        found = ARCHETYPES_LINE.fullmatch(line)
+        if found:
+            return tuple(
+                entry.strip() for entry in found["listed"].split(",") if entry.strip()
+            )
+    return ()
+```
+
 ## Flags and follow-on rules
 
 Each output maps to one flag on its card. Each flag names the rule that
@@ -127,7 +196,7 @@ rule yet.
 
 | Flag | Side | When | What follows |
 | ---- | ---- | ---- | ------------ |
-| BLOCK | input | a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK | the work does not start |
+| BLOCK | input | a tier 0 refusal of a discipline whose skill omits the owner, a tier 1 or tier 2 refusal, or a tier 3 output the card flags BLOCK | the work does not start |
 | HOLD | output | a fault in application source code | the merge waits until it is fixed |
 | FIX | output | a fault anywhere else, such as a document | the merge proceeds, and the fault is fixed at once |
 | OPTIMIZE | output | a named optimization rule fires | the merge proceeds |
@@ -163,8 +232,8 @@ FOLLOW_ON = {
 
 ## The shared modules
 
-Five modules hold the steps that sigils share: every sigil builds its card with
-`dev_harness/sigils/core.py, in Sigil`, and each of the other four serves only
+Seven modules hold the steps that sigils share: every sigil builds its card with
+`dev_harness/sigils/core.py, in Sigil`, and each of the other six serves only
 some sigils. Each step has one body. No sigil module imports from another sigil
 module.
 
@@ -172,12 +241,18 @@ module.
 | ------ | ------------- |
 | `dev_harness/sigils/core.py` | the card as data in `Sigil`, the tiers in `judge`, the flags in `FLAGS`, and the command in `main` |
 | `dev_harness/sigils/coding_input.py` | the Coding Archetype's input: tier 1 in `DATA_TYPE_TIER`, tier 2 in `CONTENT_TIER`, and the file readers in `READERS` |
-| `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
+| `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, each rule's fix class and its preview and removed marks in `listing`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
+| `dev_harness/sigils/construct_rules.py` | the rules a coding sigil holds from its disciplines: `take` for a construct sigil, `hold` for a tool sigil, and the reason each other scope rule left in `why_left` |
+| `dev_harness/sigils/coding_partition.py` | the rules a coding sigil runs on one input: the input's facts in `facts_of`, the run rule in `runs`, and the held rules it keeps in `selection` |
 | `dev_harness/sigils/fix_class.py` | the follow-on rule of each fix class, in `FOLLOW_ON` |
 | `dev_harness/sigils/citation.py` | the citation form that CITE.SYMBOL@3 and TA.AUDIT@1 share: tier 1 in `data_type_fault`, and the definition search in `definition_verdict` |
 
 CITE.SYMBOL@3 keeps its own tiers 1 and 2. Its input form differs, and the
 Truth Archetype owns it.
+
+CODE.DEBUG.PYTHON@1 reads the places that house a rule through
+`dev_harness/sigils/construct_rules.py, in places`. Its findings reach the
+printed row through the detail field of `dev_harness/sigils/core.py, in Reading`.
 
 ## Portability
 
@@ -219,58 +294,130 @@ layer stays with the owning archetype or a licensed reviewer.
 
 ## The Coding Archetype's disciplines
 
-The Coding Archetype reviews source code. ISO/IEC 5055:2021 measures source
-code on four characteristics, and those four are the archetype's disciplines:
+The Coding Archetype reviews source code. Its disciplines are by programming
+language and its syntax. It has one discipline today, Python, in the skill
+folder `dev_harness/disciplines/python`, which covers Python source in .py files
+as the ast module of Python 3.14 parses it.
+
+ISO/IEC 5055:2021 measures source
+code on four characteristics, and those four are characteristics of the
+archetype's Python discipline:
 security, reliability, performance efficiency and maintainability. Each
 discipline is a skill folder under `dev_harness/disciplines`, with a SKILL.md
 and a rules.json. Only an archetype that runs a rule the discipline holds is
 compatible with it, and SKILL.md names those archetypes as data.
 
-Two more disciplines hold Python's own published standards, which ISO/IEC 5055
+Two more characteristics hold Python's own published standards, which ISO/IEC 5055
 does not measure: conventions, grounded in PEP 8 and PEP 257, and typing,
-grounded in PEP 484 and the Python typing specification. Each is a skill folder
-shaped like the four.
+grounded in PEP 484 and the Python typing specification. Each is an entry in the
+Python discipline's rules.json shaped like the four.
 
-Every rule the archetype runs on a Python file sits under each discipline whose
+Every rule the archetype can run on a Python file sits in the Python discipline,
+under each characteristic whose
 weakness it reports, or in unplaced.json with its reason. One rule can sit under
-more than one discipline. Each placement names its ground: a CWE id that the
-discipline's ISO/IEC 5055 list holds, or the tool's own words naming the
+more than one characteristic. Each placement names its ground: a CWE id that the
+characteristic's ISO/IEC 5055 list holds, or the tool's own words naming the
 concern. The CWE lists come from the
 [OMG ASCQM 1.0 specification](https://www.omg.org/spec/ASCQM/1.0/PDF), Tables 1
 to 4.
 
+Each rule row names the characteristics it sits under, with each one's
+standard, and each ground names the characteristic it grounds. The Python
+discipline holds 854 rules: 804 under one characteristic, 46 under two and 4
+under three.
+
 A placement by definition quotes the CWE's description from the MITRE CWE list
-beside the rule's own text, and the CWE must be in the discipline's list. A
+beside the rule's own text, and the CWE must be in the characteristic's list. A
 conventions or typing placement quotes the PEP or specification section that
 states the rule's check, beside the rule's own text.
 
-| Discipline | CWE ids in its list | Rules it holds | Compatible archetypes |
-| ---------- | ------------------- | -------------- | --------------------- |
-| security | 74 | 389 | coding, gui, docs, ta |
-| reliability | 74 | 39 | coding, gui, docs |
-| performance efficiency | 18 | 38 | coding, gui, ta |
-| maintainability | 29 | 30 | coding, gui |
-| conventions | 0 | 75 | coding, gui |
-| typing | 0 | 58 | coding, gui |
+A placement can also rest on Python's own published canon. In conventions, a
+line of PEP 20, the Zen of Python, grounds a rule whose own text names that
+line's concern, such as "Readability counts." or "Flat is better than nested."
+A section of the [Python 3.14 documentation](https://docs.python.org/3.14/)
+grounds a rule where it states the failure, cost, idiom or type of the construct
+the rule detects, and the rule sits under that concern's characteristic. A framework
+rule rests the same way on the framework's own documentation, such as pytest or
+Django. Each such placement quotes both texts, with the section's address.
 
-| Tool | Rules it runs | Placed | Unplaced |
+The Python discipline's SKILL.md lists the coding, gui, docs and ta archetypes,
+each one compatible with at least one characteristic below.
+
+| Characteristic | CWE ids in its list | Rules it holds | Compatible archetypes |
+| -------------- | ------------------- | -------------- | --------------------- |
+| security | 74 | 389 | coding, gui, docs, ta |
+| reliability | 74 | 111 | coding, gui, docs |
+| performance efficiency | 18 | 48 | coding, gui, ta |
+| maintainability | 29 | 30 | coding, gui |
+| conventions | 0 | 254 | coding, gui, ta |
+| typing | 0 | 76 | coding, gui |
+
+| Tool | Rules it can run | Placed | Unplaced |
 | ---- | ------------- | ------ | -------- |
-| ruff, with every rule selected | 810 | 240 | 570 |
+| ruff, with every rule selected | 810 | 484 | 326 |
+| ruff preview rules the sigils run | 7 | 7 | 0 |
 | semgrep | 216 | 216 | 0 |
 | bandit | 75 | 75 | 0 |
-| mypy | 58 | 23 | 35 |
-| pyright | 42 | 24 | 18 |
+| mypy | 58 | 34 | 24 |
+| pyright | 42 | 31 | 11 |
 | pylint | 12 | 1 | 11 |
 | vulture | 1 | 1 | 0 |
 | the six rule modules | 19 | 4 | 15 |
-| all | 1,233 | 584 | 649 |
+| the rule CODE.TYPE runs itself | 1 | 1 | 0 |
+| all | 1,241 | 854 | 387 |
 
 Each rule left in unplaced.json carries its reason: no listed CWE definition and
 no PEP or specification section describes it, or its text names a PEP that no
-discipline holds.
+discipline holds. The reason also names the PEP 20 lines and the documentation
+sections read against the rule, and why none of them grounds it.
+
+The five construct sigils, CODE.LOOP, CODE.IMPORT, CODE.COLLECTION, CODE.FLOW
+and CODE.VARIABLE, also read 7 preview rules. The archetype runs ruff without
+preview rules, so the house holds none of the 7 from the archetype's own call.
+
+The house also reads the card each built coding sigil prints, and counts every
+rule a card runs that no call of the archetype enables. A card that names
+preview rules runs ruff with preview on, so its 7 preview rules join the count:
+all 7 are placed.
+
+| Sigil | Preview rules it runs | Placed | Unplaced |
+| ----- | --------------------- | ------ | -------- |
+| CODE.LOOP | 2 | 2 | 0 |
+| CODE.COLLECTION | 2 | 2 | 0 |
+| CODE.FLOW | 3 | 3 | 0 |
+| CODE.OPTIMIZE | 3 | 3 | 0 |
+
+CODE.IMPORT and CODE.VARIABLE select only rules the archetype already runs.
+CODE.OPTIMIZE runs the same 3 preview rules that CODE.LOOP and CODE.FLOW run, so
+the 7 stay 7.
+CODE.SECURE, CODE.TYPE and CODE.REACH run bandit, semgrep, mypy, pyright and
+vulture, and the house counts those under the archetype's own lists.
+
+CODE.TYPE also runs one rule of its own, unused-builtin-result, which no call of
+the archetype runs. Its card names that rule and its tool, and the house counts
+the rule as the sigil's own. The Python discipline places it under reliability.
+
+`dev_harness/sigils/coding_house.py, in _card_own`:
+
+```python
+def _card_own(card: dict[str, Any]) -> set[tuple[str, str]]:
+    """Return an (own_tool, rule) pair for each rule the `card` settings name in own_rules."""
+    settings = card.get("settings", {})
+    tool = str(settings.get("own_tool") or "")
+    rules = str(settings.get("own_rules") or "").split()
+    return {(tool, rule) for rule in rules} if tool else set()
+```
+
+`dev_harness/sigils/coding_house.py, in _card_ruff`:
+
+```python
+    preview = ["--preview"] if settings.get("preview_rules") else []
+    flags = [sys.executable, "-m", "ruff", "check", "--no-cache", *preview]
+    return _enabled([*flags, "--select", ",".join(codes)], root)
+```
 
 The command reads each tool's own rule list under the archetype's own flags.
-It then checks that list against the six rules.json files and unplaced.json,
+It then checks that list against the Python discipline's rules.json and unplaced.json,
 and exits 1 on any fault. `--root` names the tree, and `--card` prints the card.
 
 `dev_harness/sigils/coding_house.py, in count`:
@@ -285,6 +432,130 @@ and exits 1 on any fault. `--root` names the tree, and `--card` prints the card.
     }
 ```
 
+An ungrounded fault names a CWE ground that its characteristic's list does not
+hold and the tool did not attach, a ground with no quote, or a rule row whose
+characteristics are not those of its grounds.
+
+The archetype's coding sigils, except CODE.DEBUG.PYTHON@1, do not run every rule
+on every input. The input
+decides which rules run, before any rule runs. The archetype's own ruff call
+still runs every rule it enables. [Rule run partitioning](16-sigil-project/rule-partition.md)
+states the inputs, the four keys each rule carries, the run rule, and the proof
+on `src/`.
+
+CODE.DEBUG.PYTHON@1 is the one coding sigil that selects no rules. It runs the
+archetype's own command, so every rule that the archetype enables runs on every
+input. [CODE.DEBUG.PYTHON@1](16-sigil-project/code-debug-python.md) states how.
+
+## The construct scope
+
+The five construct sigils hold no rule list of their own. Each one takes the
+ruff rules that its disciplines house, under its characteristics, inside its construct's scope. A rule sits
+on a construct where its own published faulty example raises its finding on that
+construct.
+
+The scope command reads each example, the ruff run over it and the finding's
+node through the partition reading. It then climbs from that node to the first
+node that a construct sigil's tier 2 names. The climb stops outside every
+construct when it enters a statement through a part the construct does not own,
+such as an assignment's value, or when it reaches a def, class, lambda or module
+first. A for header and a while test belong to their loop.
+
+The rule partition keys answer three more questions. A rule whose finding sits
+on an import statement sits on the import construct. A rule that reads text the
+AST does not hold, or fires on stub files only, sits on none. A rule whose page
+publishes no corrected form stays off every card, because a finding carries both
+forms.
+
+`dev_harness/sigils/construct_scope.py, in owners`:
+
+```python
+def owners(chain: list[ast.AST]) -> tuple[frozenset[str], ast.AST]:
+    """Return the `CONSTRUCTS` holding the first node of `chain`, and the node the climb stops on."""
+    previous: ast.AST | None = None
+    for node in chain:
+        if previous is not None:
+            slot = _slot(node, previous)
+            header = any(isinstance(node, kind) and slot == field for kind, field in HEADERS)
+            holder = isinstance(node, HOLDERS) and not isinstance(node, ast.Expr)
+            if holder and not header and slot not in OWNED_SLOTS:
+                return frozenset(), node
+        found = frozenset(name for name, holds in CONSTRUCTS.items() if holds(node))
+        if found or isinstance(node, BOUNDARY):
+            return found, node
+        previous = node
+    return frozenset(), chain[-1]
+```
+
+One command writes the scope beside the sigils, and each sigil reads it when it
+loads.
+
+```
+python -m dev_harness.sigils.construct_scope
+```
+
+| Construct | Rules the scope places on it | Rules its sigil can run |
+| --------- | ---------------------------- | ----------------------- |
+| loop | 27 | 18 |
+| import | 32 | 25 |
+| collection | 50 | 23 |
+| flow | 62 | 33 |
+| variable | 73 | 38 |
+
+A scope rule that no discipline houses and unplaced.json does not list leaves
+with a reason too: the house holds only the rules the archetype or a sigil runs,
+and neither runs it. Eight preview rules leave the construct sigils this way.
+
+## The tool scope
+
+The four tool sigils, CODE.OPTIMIZE, CODE.TYPE, CODE.SECURE and CODE.REACH,
+hold no rule list of their own either, except the one rule CODE.TYPE runs
+itself, which a discipline must still house. Each one holds the rules its disciplines
+house, under its characteristics, inside its tool's scope. A finding under any other rule moves no verdict,
+and each sigil's page lists the rules it holds and the rules that left.
+
+`dev_harness/sigils/construct_rules.py, in hold`:
+
+```python
+def hold(
+    tool: str, rules: Iterable[str], named: Sequence[str], characteristics: Sequence[str]
+) -> Held:
+    """Return the `Held` scope `rules` of `tool` that the `named` disciplines house under `characteristics`."""
+    _check_named(named, characteristics)
+    held: list[str] = []
+    left: dict[str, str] = {}
+    for rule in rules:
+        why = why_left(tool, rule, named, characteristics)
+        if why is None:
+            held.append(rule)
+        else:
+            left[rule] = why
+    return Held(tool, tuple(named), tuple(characteristics), tuple(held), left)
+```
+
+| Sigil | Scope | Rules in scope | Rules it can run | Disciplines | Characteristics |
+| ----- | ----- | -------------- | ---------------- | ----------- | --------------- |
+| CODE.OPTIMIZE | each ruff rule in its seven families | 149 | 85 | python | conventions, maintainability, performance efficiency, typing |
+| CODE.TYPE | each mypy error code, each pyright rule the house holds, and its own rule | 121 | 63 | python | conventions, reliability, typing |
+| CODE.SECURE | each bandit test and semgrep rule the house holds | 291 | 291 | python | security |
+| CODE.REACH | the vulture rule the house holds | 1 | 1 | python | maintainability |
+
+A tool sigil names its characteristics so that a rule the Python discipline
+houses only under another characteristic stays off its card. CODE.OPTIMIZE
+leaves 3 rules this way and CODE.TYPE leaves 3; with every characteristic named,
+they would run 88 and 66 rules.
+
+## The defects this tree had
+
+Each OCIR catalogue row that names a code defect this tree had, with the commit
+that fixed it, is a case. All nine coding sigils read each case's code before
+and after its fix, and git restores both sides on each run.
+[The OCIR cases](16-sigil-project/ocir-cases.md) states the case list, how a
+case is restored and read, and which rows the sigils read.
+
+CODE.DEBUG.PYTHON@1 is a tenth coding sigil. It holds no rule list, so the case
+reading leaves it out.
+
 ## Progress
 
 Every sigil, its owner and where it stands. A built sigil's count comes from
@@ -293,15 +564,16 @@ the card its command prints. A sigil that is not built has no card yet.
 | Sigil | Owner | Rules on the card | Status | Module |
 | ----- | ----- | ----------------- | ------ | ------ |
 | CITE.SYMBOL@3 | truth | no rule list: its tiers decide | built | `dev_harness/sigils/cite_symbol.py, in SIGIL` |
-| CODE.OPTIMIZE@1 | coding | 7 ruff rule families | built | `dev_harness/sigils/code_optimize.py, in SIGIL` |
-| CODE.TYPE@1 | coding | no rule list: every mypy and pyright error | built | `dev_harness/sigils/code_type.py, in SIGIL` |
-| CODE.SECURE@1 | coding | no rule list: every bandit and semgrep finding | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
-| CODE.REACH@1 | coding | no rule list: every vulture item | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
-| CODE.LOOP@1 | coding | 19 ruff rules | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
-| CODE.IMPORT@1 | coding | 8 of 28 ruff rules | built | `dev_harness/sigils/code_import.py, in SIGIL` |
-| CODE.COLLECTION@1 | coding | 34 of 39 ruff rules | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
-| CODE.FLOW@1 | coding | 39 of 56 ruff rules | built | `dev_harness/sigils/code_flow.py, in SIGIL` |
-| CODE.VARIABLE@1 | coding | 54 of 89 ruff rules | built | `dev_harness/sigils/code_variable.py, in SIGIL` |
+| CODE.OPTIMIZE@1 | coding | 85 ruff rules it can run | built | `dev_harness/sigils/code_optimize.py, in SIGIL` |
+| CODE.TYPE@1 | coding | 63 rules it can run: 62 mypy and pyright rules and its own | built | `dev_harness/sigils/code_type.py, in SIGIL` |
+| CODE.SECURE@1 | coding | 291 bandit and semgrep rules it can run | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
+| CODE.REACH@1 | coding | 1 vulture rule it can run | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
+| CODE.LOOP@1 | coding | 18 ruff rules it can run | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
+| CODE.IMPORT@1 | coding | 25 ruff rules it can run | built | `dev_harness/sigils/code_import.py, in SIGIL` |
+| CODE.COLLECTION@1 | coding | 23 ruff rules it can run | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
+| CODE.FLOW@1 | coding | 33 ruff rules it can run | built | `dev_harness/sigils/code_flow.py, in SIGIL` |
+| CODE.VARIABLE@1 | coding | 38 ruff rules it can run | built | `dev_harness/sigils/code_variable.py, in SIGIL` |
+| CODE.DEBUG.PYTHON@1 | coding | no rule list: every rule the Coding Archetype runs | built | `dev_harness/sigils/code_debug_python.py, in SIGIL` |
 | TA.AUDIT@1 | ta | no rule list: its tiers decide | built | `dev_harness/sigils/ta_audit.py, in SIGIL` |
 | ROW.CLOSE@1 | not named yet | no card yet | unbuilt | not in the tree |
 
@@ -414,4 +686,5 @@ condition, its outputs and flags, the command that runs it, and its rules.
 - [CODE.COLLECTION@1](16-sigil-project/code-collection.md)
 - [CODE.FLOW@1](16-sigil-project/code-flow.md)
 - [CODE.VARIABLE@1](16-sigil-project/code-variable.md)
+- [CODE.DEBUG.PYTHON@1](16-sigil-project/code-debug-python.md)
 - [TA.AUDIT@1](16-sigil-project/ta-audit.md)

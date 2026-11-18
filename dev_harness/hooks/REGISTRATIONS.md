@@ -42,6 +42,22 @@ Each hook in `dev_harness/hooks/` runs at the event below.
 - `block_long_reply.py` on `(any)`
 - `block_unanchored_claim.py` on `(any)`
 
+## Imported, not run
+
+`transcript_tail.py` holds the one reader for a session transcript. No event
+runs it. It reads the file from its end, one 64 KiB block at a time, and stops
+at the row the caller needs. Four hooks import it:
+
+```
+block_long_reply.py         last_reply, rows_from_end
+block_unanchored_claim.py   last_reply
+block_deflection.py         last_reply
+block_banned_words.py       last_reply
+```
+
+It is copied to `~/.claude/hooks/` beside them. Without it, each of the four
+exits 1 at its import with `ModuleNotFoundError`, and no reply is read.
+
 ## Not registered
 
 These files sit in the directory and no event runs them.

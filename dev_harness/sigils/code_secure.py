@@ -5,7 +5,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from functools import cache
 from importlib import metadata
@@ -23,6 +23,8 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .coding_partition import SELECTION, selection
+from .construct_rules import LEFT_BECAUSE, hold, house_rules
 from .core import (
     APPLICATION_SOURCE,
     Flag,
@@ -44,20 +46,42 @@ BANDIT_BUILT = "1.9.4"
 SEMGREP_BUILT = "1.171.0"
 BANDIT_TIMEOUT_S = 120
 SEMGREP_TIMEOUT_S = 180
+SEMGREP_NO_RULE_TIMEOUT = "--timeout=0"
 BANDIT_FINISHED = (0, 1)
 SEMGREP_FINISHED = (0,)
 BANDIT_STDIN = "<stdin>"
 NO_CWE = "no CWE"
+NO_TOOL = "no tool ran: the selection holds no rule of either"
 SEVERITIES = ("low", "medium", "high")
 BANDIT_SEVERITY = {"LOW": "low", "MEDIUM": "medium", "HIGH": "high"}
 SEMGREP_SEVERITY = {"INFO": "low", "WARNING": "medium", "ERROR": "high"}
 
 _CWE_RE = re.compile(r"CWE-(\d+)")
 
+FUNCTION = (
+    "reads each call, query, secret, parse and path for a weakness an attacker "
+    "can use, with the CWE id each tool attaches to it"
+)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = ("security",)
+BANDIT = hold("bandit", house_rules("bandit"), DISCIPLINES, CHARACTERISTICS)
+SEMGREP = hold("semgrep", house_rules("semgrep"), DISCIPLINES, CHARACTERISTICS)
+CAN_RUN = tuple(f"{held.tool} {rule}" for held in (BANDIT, SEMGREP) for rule in held.rules)
+
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "bandit_version": BANDIT_BUILT,
     "semgrep_version": SEMGREP_BUILT,
+    "function": FUNCTION,
+    "disciplines": " ".join(DISCIPLINES),
+    "characteristics": " ".join(CHARACTERISTICS),
+    "scope": "each bandit test and semgrep rule a discipline houses or unplaced.json "
+    "lists: the tests python -m bandit --help lists, and the rules p/python and "
+    "p/security-audit hold",
+    "bandit_rules": " ".join(BANDIT.rules),
+    "semgrep_rules": " ".join(SEMGREP.rules),
+    "selection": SELECTION,
+    "can_run": str(len(CAN_RUN)),
     "severity_floor": "medium",
     "fault_file": "the file the input line names: WEAK reads HOLD when it sits "
     "in application_source and a finding reaches severity_floor",
@@ -92,11 +116,12 @@ def _semgrep_cwe(cwe: object) -> str:
     return ", ".join(dict.fromkeys(ids)) or NO_CWE
 
 
-def _bandit_findings(source: bytes) -> list[Finding]:
-    """Return each bandit `Finding` for `source`, read on stdin by default tests."""
+def _bandit_findings(source: bytes, tests: tuple[str, ...]) -> list[Finding]:
+    """Return each bandit `Finding` for `source`, read on stdin by the `tests` named."""
+    argv = [sys.executable, "-P", "-m", "bandit", "-f", "json", "-q"]
     try:
         proc = subprocess.run(
-            [sys.executable, "-P", "-m", "bandit", "-f", "json", "-q", "-"],
+            [*argv, "-t", ",".join(tests), "-"],
             input=source,
             capture_output=True,
             timeout=BANDIT_TIMEOUT_S,
@@ -129,8 +154,10 @@ def _bandit_findings(source: bytes) -> list[Finding]:
         raise ToolFault(message) from exc
 
 
-def _semgrep_findings(name: str, source: bytes) -> tuple[str, list[Finding]]:
-    """Return the semgrep version and each `Finding` for `source` copied as `name`."""
+def _semgrep_findings(
+    name: str, source: bytes, excluded: tuple[str, ...]
+) -> tuple[str, list[Finding]]:
+    """Return the semgrep version and each `Finding` for `source` copied as `name`, no `excluded` rule run."""
     with tempfile.TemporaryDirectory() as folder:
         Path(folder, name).write_bytes(source)
         try:
@@ -146,6 +173,8 @@ def _semgrep_findings(name: str, source: bytes) -> tuple[str, list[Finding]]:
                     "--json",
                     "--quiet",
                     "--no-git-ignore",
+                    SEMGREP_NO_RULE_TIMEOUT,
+                    *(f"--exclude-rule={rule}" for rule in excluded),
                     ".",
                 ],
                 cwd=folder,
@@ -183,30 +212,49 @@ def _semgrep_findings(name: str, source: bytes) -> tuple[str, list[Finding]]:
         raise ToolFault(message) from exc
 
 
-def _functions_verdict(text: str, root: Path) -> Reading:
-    """Return `CLEAN`, or `WEAK` holding when a finding reaches `severity_floor`."""
+def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[Finding]]:
+    """Return the tools run and each `Finding` of the `to_run` rules inside the input `text` names."""
     located = locate(text, root)
     if isinstance(located, str):
         message = f"{text}: {located}, after tier 2 accepted it"
         raise ToolFault(message)
     file, source, (first, last) = located
     is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
-    semgrep_ran, semgrep_found = _semgrep_findings(file.name, source)
-    findings = [
+    tests = tuple(rule for rule in BANDIT.rules if f"{BANDIT.tool} {rule}" in to_run)
+    rules = [rule for rule in SEMGREP.rules if f"{SEMGREP.tool} {rule}" in to_run]
+    ran: list[str] = []
+    found: list[Finding] = []
+    if tests:
+        ran.append(f"bandit {bandit_version()}")
+        found += _bandit_findings(source, tests)
+    if rules:
+        excluded = tuple(rule for rule in SEMGREP.rules if rule not in rules)
+        semgrep_ran, semgrep_found = _semgrep_findings(file.name, source, excluded)
+        ran.append(f"semgrep {semgrep_ran}")
+        found += semgrep_found
+    kept = [
         finding
-        for finding in [*_bandit_findings(source), *semgrep_found]
-        if not is_narrowed or first <= finding.line <= last
+        for finding in found
+        if f"{finding.tool} {finding.rule}" in to_run
+        and (not is_narrowed or first <= finding.line <= last)
     ]
-    versions = f"bandit {bandit_version()}, semgrep {semgrep_ran}"
-    if not findings:
+    return ", ".join(ran) or NO_TOOL, kept
+
+
+def _functions_verdict(text: str, root: Path) -> Reading:
+    """Return `CLEAN`, or `WEAK` holding when a finding of the `selection` rules reaches `severity_floor`."""
+    versions, found = findings(text, root, selection(text, root, CAN_RUN))
+    if not found:
         return Reading(
-            CLEAN, f"{versions}: neither tool reports a finding", holds=False
+            CLEAN,
+            f"{versions}: neither tool reports a finding under a rule on the card",
+            holds=False,
         )
     floor = SEVERITIES.index(SETTINGS["severity_floor"])
-    holds = any(SEVERITIES.index(finding.severity) >= floor for finding in findings)
+    holds = any(SEVERITIES.index(finding.severity) >= floor for finding in found)
     rows = "; ".join(
         f"{item.tool} {item.rule} {item.cwe} {item.severity} line {item.line}"
-        for item in findings
+        for item in found
     )
     return Reading(WEAK, f"{versions}: {rows}", holds)
 
@@ -215,6 +263,7 @@ SIGIL = Sigil(
     name="CODE.SECURE",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(
@@ -222,22 +271,32 @@ SIGIL = Sigil(
         CONTENT_TIER,
         {
             "runs": [
+                "the selection: the rules of the card that coding_partition.select "
+                "gives for the input's facts",
                 (
-                    "bandit, as python -P -m bandit -f json -q -, "
-                    "with the file's bytes on stdin and bandit's default tests"
+                    "bandit, as python -P -m bandit -f json -q -t <the selected tests> -, "
+                    "with the file's bytes on stdin, when the selection holds a bandit test"
                 ),
                 (
                     "semgrep, through semgrep.console_scripts.entrypoint, "
                     "as semgrep scan --config=p/python --config=p/security-audit "
-                    "--json --quiet --no-git-ignore ., in an empty temporary folder "
-                    "holding a copy of the file under its own name"
+                    "--json --quiet --no-git-ignore --timeout=0, so no rule stops "
+                    "on a per-rule time limit, with --exclude-rule for each "
+                    "semgrep rule of the card the selection leaves out, in an empty "
+                    "temporary folder holding a copy of the file under its own name, "
+                    "when the selection holds a semgrep rule"
                 ),
+                "only the findings under the selected rules",
                 "for a symbol, only the findings inside its lines",
             ],
-            "clean": "neither tool reports a finding",
+            "clean": "neither tool reports a finding under a rule on the card",
             "weak": ["tool", "rule id", "CWE id", "severity", "line"],
             "cwe": "the CWE id each tool reports for its own finding, else no CWE",
             "severity": {"bandit": BANDIT_SEVERITY, "semgrep": SEMGREP_SEVERITY},
+            "left": {BANDIT.tool: BANDIT.left, SEMGREP.tool: SEMGREP.left},
+            "left_because": LEFT_BECAUSE,
+            "not_held": "a finding under a rule outside the scope, such as a rule "
+            "the registry adds after the house was counted, moves no verdict",
             "fetches": "semgrep downloads both rule sets from its registry on each run",
             "refuses": "a tool that exits otherwise, reports an error, "
             "or did not read the file",

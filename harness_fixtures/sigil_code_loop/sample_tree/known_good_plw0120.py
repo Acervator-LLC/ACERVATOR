@@ -1,5 +1,0 @@
-# PLW0120 useless-else-on-loop: the lines above the Use instead block python -m ruff rule PLW0120 prints define its free names
-items = ["a"]
-for item in items:
-    print(item)
-print("All items printed")

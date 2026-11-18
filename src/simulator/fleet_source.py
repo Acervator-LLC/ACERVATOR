@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 from ..core.io_utils import atomic_write_json
-from ..core.log_paths import get_sim_dir
+from ..core.log_paths import FLEET_FILE_NAME, get_sim_dir, resolve_fleet_path
 from ..exchange.ytd_trade_store import SIDE_BUY, SIDE_SELL, YtdFileEntry, YtdTrade
 from ..trading.container.config import (
     DETONATION_CONFIDENCE_MIN_DEFAULT,
@@ -72,7 +72,7 @@ from .tablet_source import SendRefused
 
 logger = logging.getLogger("acervator.simulator.fleet")
 
-BOT_STATE_NAME = "bot_state.json"
+BOT_STATE_NAME = FLEET_FILE_NAME
 
 #: The sim fleet file under ``get_sim_dir``, in ``bot_state.json``'s shape.
 SIM_FLEET_NAME = "sim_fleet.json"
@@ -1023,9 +1023,9 @@ class FleetSource:
     ) -> None:
         """Read the sim fleet file from ``sim_dir``, or from ``get_sim_dir``
         when it is None, with the mode it names under ``MODE_KEY`` in force;
-        ``bot_state.json`` under ``root``, or under ``~/.acervator`` when it is
-        None, is read on ``stored_records`` alone."""
-        self._root = Path(root) if root is not None else Path.home() / ".acervator"
+        the fleet file ``resolve_fleet_path`` names for ``root`` is read on
+        ``stored_records`` alone."""
+        self._fleet_path = resolve_fleet_path(root)
         self._sim_dir = Path(sim_dir) if sim_dir is not None else get_sim_dir()
         self._mode: str = _read_sim_mode(self.sim_path())
         self._fleets: dict[str, dict[str, dict]] = _read_sim_records(self.sim_path())
@@ -1066,11 +1066,11 @@ class FleetSource:
 
     def root(self) -> Path:
         """The directory holding the ``bot_state.json`` this source reads."""
-        return self._root
+        return self._fleet_path.parent
 
     def path(self) -> Path:
         """The ``bot_state.json`` file itself."""
-        return self._root / BOT_STATE_NAME
+        return self._fleet_path
 
     def sim_dir(self) -> Path:
         """The directory holding the sim fleet file, ``get_sim_dir`` by default."""

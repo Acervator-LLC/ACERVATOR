@@ -344,6 +344,54 @@ _RUFF_SEV_MAP: dict[str, str] = {
     "RUF": "medium",  # ruff-specific
     "PERF": "low",  # perf
     "ANN": "medium",  # missing type annotations
+    # One entry per group `ruff linter` lists. "k of n": stable rule pages that
+    # name a raise, a wrong result or a likely mistake; medium from half up.
+    "A": "low",  # flake8-builtins: 0 of 6, names that read as builtins
+    "AIR": "medium",  # Airflow: 4 of 7, removed or moved members
+    "ARG": "medium",  # flake8-unused-arguments: 5 of 5, likely a mistake
+    "ASYNC": "medium",  # flake8-async: 11 of 15, most block the event loop
+    "C4": "low",  # flake8-comprehensions: 0 of 19
+    "C90": "low",  # mccabe: 0 of 1, complexity
+    "COM": "low",  # flake8-commas: 1 of 3
+    "CPY": "low",  # flake8-copyright: 0 of 1
+    "DJ": "low",  # flake8-django: 2 of 7
+    "DOC": "low",  # pydoclint: all 7 rule pages are preview, so none runs
+    "DTZ": "medium",  # flake8-datetimez: 10 of 10, naive datetimes
+    "EM": "low",  # flake8-errmsg: 0 of 3, traceback readability
+    "ERA": "low",  # eradicate: 0 of 1, commented-out code
+    "EXE": "medium",  # flake8-executable: 4 of 5, shebang ignored or wrong
+    "FA": "medium",  # flake8-future-annotations: 1 of 2, FA102 raises before 3.10
+    "FAST": "low",  # FastAPI: 1 of 3
+    "FBT": "low",  # flake8-boolean-trap: 0 of 3, call readability
+    "FIX": "low",  # flake8-fixme: 0 of 4, task comments
+    "FLY": "low",  # flynt: 0 of 1
+    "FURB": "low",  # refurb: 0 of 22, idiom
+    "G": "low",  # flake8-logging-format: 1 of 8
+    "ICN": "low",  # flake8-import-conventions: 0 of 3
+    "INP": "low",  # flake8-no-pep420: 0 of 1, package layout
+    "INT": "medium",  # flake8-gettext: 3 of 3, catalog lookup of formatted text
+    "ISC": "low",  # flake8-implicit-str-concat: 1 of 4
+    "LOG": "medium",  # flake8-logging: 4 of 7
+    "NPY": "medium",  # NumPy: 2 of 4, NPY001 and NPY201 call removed members
+    "PD": "low",  # pandas-vet: 1 of 12
+    "PGH": "low",  # pygrep-hooks: 1 of 3
+    "PIE": "low",  # flake8-pie: 2 of 8
+    "PLC": "low",  # Pylint convention: 0 of 13
+    "PLE": "medium",  # Pylint error: 30 of 36
+    "PLR": "low",  # Pylint refactor: 5 of 21
+    "PLW": "medium",  # Pylint warning: 15 of 25
+    "PTH": "low",  # flake8-use-pathlib: 1 of 35
+    "PYI": "low",  # flake8-pyi: 7 of 55
+    "Q": "low",  # flake8-quotes: 0 of 5
+    "RET": "low",  # flake8-return: 0 of 8
+    "RSE": "low",  # flake8-raise: 0 of 1
+    "SLOT": "low",  # flake8-slots: 0 of 3, memory use
+    "T10": "medium",  # flake8-debugger: 1 of 1
+    "T20": "low",  # flake8-print: 0 of 2
+    "TC": "low",  # flake8-type-checking: 3 of 8
+    "TID": "low",  # flake8-tidy-imports: 0 of 3
+    "TRY": "low",  # tryceratops: 1 of 9
+    "YTT": "medium",  # flake8-2020: 10 of 10, version checks that misread
 }
 _RUFF_FAMILIES_BY_LEN: tuple[str, ...] = tuple(
     sorted(_RUFF_SEV_MAP, key=len, reverse=True)

@@ -103,6 +103,33 @@ POOL_STOPPED_FORMAT = (
     "next fetch; restart only if this line stays."
 )
 NO_POOL_STOP_TEXT = ""
+ACCESS_WAIT_STYLE = (
+    f"color:{ds.WARNING}; border:1px solid {ds.WARNING}; border-radius:4px; "
+    "font-size:13px; font-weight:bold; padding:6px 8px;"
+)
+ACCESS_WAIT_TOOLTIP = (
+    "Shows while Settings holds no API keys for this exchange. Start and "
+    "Start All pass these bots, and nothing is sent to the exchange."
+)
+ACCESS_WAIT_FORMAT = (
+    "{required}: {venue} has no stored API keys, so {bots} until its keys "
+    "are saved in Settings."
+)
+ACCESS_WAIT_ONE = "1 bot below waits"
+ACCESS_WAIT_MANY_FORMAT = "{count} bots below wait"
+NO_ACCESS_WAIT_TEXT = ""
+#: The box ``MainWindow._offer_released_starts`` raises once a save gives a waiting exchange its keys.
+ACCESS_OFFER_TITLE = "Start the waiting bots?"
+ACCESS_OFFER_FORMAT = (
+    "{venue} now has stored API keys. {bots} on {venue} waited with {required}: "
+    "{names}. Start {them} now?"
+)
+ACCESS_OFFER_ONE = "1 bot"
+ACCESS_OFFER_MANY_FORMAT = "{count} bots"
+ACCESS_OFFER_IT = "it"
+ACCESS_OFFER_THEM = "them"
+ACCESS_OFFER_START = "Start"
+ACCESS_OFFER_LATER = "Not now"
 CLEARED_TAIL_FORMAT = "  ·  {count} {noun} cleared"
 CLEARED_ONE_NOUN = "blocked fetch"
 CLEARED_MANY_NOUN = "blocked fetches"
@@ -290,6 +317,7 @@ HEADER_STRETCH_ADDED = "news.stretch"
 PULL_RATE_UNREADABLE = "pull.unreadable"
 PULL_RATE_WRITTEN = "pull.written"
 POOL_STOPPED_WRITTEN = "pool.stopped.written"
+ACCESS_WAIT_WRITTEN = "access.wait.written"
 NO_CALL_RATE = 0.0
 ROUTED = "bots.routed"
 SECTIONS_SHOWN = "sections.shown"
@@ -417,6 +445,44 @@ def pool_stopped_words(exchange_name: str, freshest_age_s, calls_per_minute) -> 
     if stopped_for is None:
         return NO_POOL_STOP_TEXT
     return POOL_STOPPED_FORMAT.format(venue=exchange_name, span=span_words(stopped_for))
+
+
+def access_wait_words(exchange_name: str, statuses: Any) -> str:
+    """The line counting ``statuses`` that carry ``API_ACCESS_KEY``, or ``NO_ACCESS_WAIT_TEXT`` where none does."""
+    from ...exchange.api_access import API_ACCESS_KEY, API_ACCESS_REQUIRED
+
+    waiting = sum(
+        1 for one in statuses or () if isinstance(one, dict) and one.get(API_ACCESS_KEY)
+    )
+    if not waiting:
+        return NO_ACCESS_WAIT_TEXT
+    bots = (
+        ACCESS_WAIT_ONE
+        if waiting == 1
+        else ACCESS_WAIT_MANY_FORMAT.format(count=waiting)
+    )
+    return ACCESS_WAIT_FORMAT.format(
+        required=API_ACCESS_REQUIRED, venue=exchange_name, bots=bots
+    )
+
+
+def access_offer_words(exchange_name: str, bot_ids: Any) -> str:
+    """The question ``ACCESS_OFFER_TITLE`` asks, naming each of ``bot_ids`` on ``exchange_name``."""
+    from ...exchange.api_access import API_ACCESS_REQUIRED
+
+    names = [str(one) for one in bot_ids or ()]
+    single = len(names) == 1
+    return ACCESS_OFFER_FORMAT.format(
+        venue=exchange_name,
+        bots=(
+            ACCESS_OFFER_ONE
+            if single
+            else ACCESS_OFFER_MANY_FORMAT.format(count=len(names))
+        ),
+        required=API_ACCESS_REQUIRED,
+        names=", ".join(names),
+        them=ACCESS_OFFER_IT if single else ACCESS_OFFER_THEM,
+    )
 
 
 def pull_rate_text(summary: dict) -> str:
@@ -688,6 +754,7 @@ class ExchangeTabModel:
         self.privacy_style_sheet = PRIVACY_STYLE_OFF
         self.pull_rate_label_text = PULL_RATE_INITIAL_TEXT
         self.pool_stopped_label_text = NO_POOL_STOP_TEXT
+        self.access_wait_label_text = NO_ACCESS_WAIT_TEXT
         self.news_ticker = None
         self.news_ticker_started = 0
         self.header_stretch = False
@@ -847,7 +914,9 @@ class ExchangeTabModel:
         return table.get_selected_bot_id()
 
     def update_bots(self, statuses: list) -> None:
-        """Route one fleet list to the two tables and show or hide each section."""
+        """Write ``access_wait_words``, route one fleet list to the two tables and show or hide each section."""
+        self.access_wait_label_text = access_wait_words(self.exchange_name, statuses)
+        self.calls.append([ACCESS_WAIT_WRITTEN, self.access_wait_label_text])
         selected_before = (
             self.scrum_table.get_selected_bot_id(),
             self.extractor_table.get_selected_bot_id(),
@@ -1188,6 +1257,10 @@ def build_view_model(model: ExchangeTabModel) -> dict:
         "pool_stopped_shown": bool(model.pool_stopped_label_text),
         "pool_stopped_style": POOL_STOPPED_STYLE,
         "pool_stopped_tooltip": POOL_STOPPED_TOOLTIP,
+        "access_wait_text": model.access_wait_label_text,
+        "access_wait_shown": bool(model.access_wait_label_text),
+        "access_wait_style": ACCESS_WAIT_STYLE,
+        "access_wait_tooltip": ACCESS_WAIT_TOOLTIP,
         "pull_rate_initial_text": PULL_RATE_INITIAL_TEXT,
         "pull_rate_style": PULL_RATE_STYLE,
         "pull_rate_tooltip": PULL_RATE_TOOLTIP,
@@ -1321,7 +1394,8 @@ def live_view_model(params: dict, live: Any) -> dict:
     """Build the screen ``EXCHANGE_ID_PARAM`` names from the running fleet.
 
     ``live.bot_manager.list_bots_by_exchange`` names the bots the two
-    tables draw; ``view_model`` answers while no manager is bound.
+    tables draw, marked by ``mark_api_access`` against ``live.settings_manager``;
+    ``view_model`` answers while no manager is bound.
     """
     manager = getattr(live, "bot_manager", None)
     if manager is None or not hasattr(manager, "list_bots_by_exchange"):
@@ -1332,7 +1406,13 @@ def live_view_model(params: dict, live: Any) -> dict:
     if asked.pop(RESET_PARAM, False):
         PANE_MODELS.pop(exchange_id, None)
     if asked.get(STATUSES_PARAM) is None:
-        asked[STATUSES_PARAM] = list(manager.list_bots_by_exchange(exchange_id))
+        statuses = list(manager.list_bots_by_exchange(exchange_id))
+        settings = getattr(live, "settings_manager", None)
+        if settings is not None:
+            from ...exchange.api_access import mark_api_access
+
+            statuses = mark_api_access(statuses, settings)
+        asked[STATUSES_PARAM] = statuses
     return drive(pane_model_for(exchange_id, exchange_name), asked)
 
 

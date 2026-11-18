@@ -2,7 +2,7 @@
 
 import ast
 import sys
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 
 from .coding_input import (
@@ -16,6 +16,8 @@ from .coding_input import (
     fault_file,
     locate,
 )
+from .coding_partition import SELECTION, selection
+from .construct_rules import TOOL, take
 from .core import (
     APPLICATION_SOURCE,
     FLAGS,
@@ -35,59 +37,24 @@ CLEAN = "CLEAN"
 FINDINGS = "FINDINGS"
 REJECTED = "REJECTED"
 
-CANDIDATES = (
-    "S104",
-    "S607",
-    "S609",
-    "B006",
-    "B013",
-    "B033",
-    "B039",
-    "COM812",
-    "COM818",
-    "COM819",
-    "C400",
-    "C401",
-    "C402",
-    "C403",
-    "C404",
-    "C405",
-    "C406",
-    "C408",
-    "C409",
-    "C410",
-    "C411",
-    "C414",
-    "C418",
-    "G101",
-    "PIE800",
-    "PERF101",
-    "F601",
-    "F634",
-    "F822",
-    "PLC0208",
-    "PLR6201",
-    "PLW0244",
-    "RUF008",
-    "RUF012",
-    "RUF022",
-    "RUF023",
-    "RUF031",
-    "RUF048",
-    "RUF068",
+FUNCTION = (
+    "reads each tuple, list, set and dictionary, written out, built or called, for "
+    "contents that are wrong, wasteful, unsafe, unclear, untyped or against convention"
 )
-LEFT_OFF: dict[str, str] = {
-    "S104": "faulty: ruff S104 possible binding to all interfaces",
-    "S609": "faulty: bandit B602 and B609, ruff S602 and S609, "
-    "semgrep subprocess-shell-true",
-    "F634": "faulty: vulture redundant if-condition",
-    "RUF008": "corrected: mypy no-redef and pyright reportRedeclaration, class 'A'",
-    "RUF012": "corrected: mypy no-redef and pyright reportRedeclaration, class 'A'",
-}
-RULES = tuple(code for code in CANDIDATES if code not in LEFT_OFF)
-PREVIEW = ("PLR6201", "PLW0244", "RUF031")
-UNDEFINED_EXPORT = "F822"
-HOLDING = tuple(code for code in RULES if code == UNDEFINED_EXPORT)
+DISCIPLINES = ("python",)
+CHARACTERISTICS = (
+    "conventions",
+    "maintainability",
+    "performance-efficiency",
+    "reliability",
+    "security",
+    "typing",
+)
+TAKEN = take("collection", DISCIPLINES, CHARACTERISTICS)
+RULES = TAKEN.rules
+PREVIEW = TAKEN.preview
+HOLDING = TAKEN.holding
+CAN_RUN = tuple(f"{TOOL} {code}" for code in RULES)
 DISPLAY_NODES = (ast.Tuple, ast.List)
 COLLECTION_NODES = (ast.Set, ast.Dict, ast.ListComp, ast.SetComp, ast.DictComp)
 BUILDERS = frozenset({"tuple", "list", "set", "dict"})
@@ -99,20 +66,42 @@ NO_COLLECTION = (
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "ruff_version": RUFF_BUILT,
-    "rules": " ".join(RULES),
-    "preview_rules": " ".join(PREVIEW),
-    "holding_rules": " ".join(HOLDING),
-    "undefined_export": UNDEFINED_EXPORT,
+    **TAKEN.settings(FUNCTION),
+    "selection": SELECTION,
+    "can_run": str(len(CAN_RUN)),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
     "in application_source and one of holding_rules fires",
     "ruff_config": "the one ruff finds from the folder of the file",
 }
 
 
-def _ruff_findings(source: bytes, folder: Path) -> list[tuple[str, int]]:
-    """Return each `RULES` code and line for `source` on stdin, run from `folder`."""
-    rows = check(source, folder, RULES, preview=bool(PREVIEW))
+def _ruff_findings(
+    source: bytes, folder: Path, rules: tuple[str, ...]
+) -> list[tuple[str, int]]:
+    """Return each code and line of `rules` for `source` on stdin, run from `folder`; none when `rules` is empty."""
+    if not rules:
+        return []
+    rows = check(source, folder, rules, preview=bool(PREVIEW))
     return [(row.code, row.line) for row in rows]
+
+
+def findings(
+    text: str, root: Path, to_run: Collection[str]
+) -> tuple[str, list[tuple[str, int]]]:
+    """Return the ruff version and each code and line of the `to_run` rules inside the input `text` names."""
+    located = locate(text, root)
+    if isinstance(located, str):
+        message = f"{text}: {located}, after tier 2 accepted it"
+        raise ToolFault(message)
+    file, source, (first, last) = located
+    is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
+    rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
+    found = [
+        (code, line)
+        for code, line in _ruff_findings(source, file.parent, rules)
+        if not is_narrowed or first <= line <= last
+    ]
+    return f"ruff {ruff_version()}", found
 
 
 def _is_collection(node: ast.expr) -> bool:
@@ -140,25 +129,14 @@ def _content_fault(text: str, root: Path) -> str | None:
 
 
 def _functions_verdict(text: str, root: Path) -> Reading:
-    """Return `CLEAN`, or `FINDINGS` holding when a `HOLDING` rule fires."""
-    located = locate(text, root)
-    if isinstance(located, str):
-        message = f"{text}: {located}, after tier 2 accepted it"
-        raise ToolFault(message)
-    file, source, (first, last) = located
-    is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
-    findings = [
-        (code, line)
-        for code, line in _ruff_findings(source, file.parent)
-        if not is_narrowed or first <= line <= last
-    ]
-    version = f"ruff {ruff_version()}"
-    if not findings:
+    """Return `CLEAN`, or `FINDINGS` holding when a `HOLDING` rule fires, from the `selection` rules."""
+    version, found = findings(text, root, selection(text, root, CAN_RUN))
+    if not found:
         return Reading(CLEAN, f"{version}: no rule on the list fires", holds=False)
-    pages = {code: rule_page(code) for code, _ in findings}
+    pages = {code: rule_page(code) for code, _ in found}
     rows = "; ".join(
         f"{code} {pages[code].name} line {line} fix {pages[code].fix}"
-        for code, line in findings
+        for code, line in found
     )
     forms = "".join(
         f"\n{code} faulty:\n{page.faulty}{code} corrected:\n{page.corrected}"
@@ -172,6 +150,7 @@ SIGIL = Sigil(
     name="CODE.COLLECTION",
     edition=1,
     owner=OWNER,
+    disciplines=DISCIPLINES,
     input_form=INPUT_FORM,
     settings=SETTINGS,
     tiers=(
@@ -186,8 +165,17 @@ SIGIL = Sigil(
         },
         {
             "runs": [
-                "python -m ruff check --preview --select with the rules, "
-                "the file on standard input, from the folder of the file",
+                "the selection: the rules of the card that coding_partition.select "
+                "gives for the input's facts; no rule selected, no ruff run",
+                (
+                    "python -m ruff check --preview --select with the selected rules, "
+                    "the file on standard input, from the folder of the file"
+                )
+                if PREVIEW
+                else (
+                    "python -m ruff check --select with the selected rules, "
+                    "the file on standard input, from the folder of the file"
+                ),
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule <code> --output-format json, for each rule "
                 "that fires: its name, fix class, and the code under Example, "
@@ -203,11 +191,13 @@ SIGIL = Sigil(
                 "corrected form",
             ],
             "fix_classes": list(FOLLOW_ON),
-            "preview": "the preview_rules fire only with --preview",
-            "left_off": LEFT_OFF,
-            "left_off_because": "faulty or corrected: the write gate refused that "
-            "rule's sample, because the coding archetype grades the named finding "
-            "high",
+            "preview": (
+                "the preview_rules fire only with --preview"
+                if PREVIEW
+                else "no rule on the list is a preview rule, so ruff runs without --preview"
+            ),
+            "left": TAKEN.left,
+            "left_because": TAKEN.left_because,
             "not_read": "a ruff setting matched on the file name, such as "
             "per-file-ignores, because the file reaches ruff on standard input",
             "refuses": "ruff exits otherwise, or prints a finding or a rule page "
