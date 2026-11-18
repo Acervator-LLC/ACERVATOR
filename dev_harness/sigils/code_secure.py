@@ -1,6 +1,8 @@
 """`SIGIL` is CODE.SECURE on the `core` card; `secure_check` judges one input line."""
 
+import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -52,11 +54,31 @@ SEMGREP_FINISHED = (0,)
 BANDIT_STDIN = "<stdin>"
 NO_CWE = "no CWE"
 NO_TOOL = "no tool ran: the selection holds no rule of either"
+NO_OUTPUT = "nothing on stdout or stderr"
 SEVERITIES = ("low", "medium", "high")
 BANDIT_SEVERITY = {"LOW": "low", "MEDIUM": "medium", "HIGH": "high"}
 SEMGREP_SEVERITY = {"INFO": "low", "WARNING": "medium", "ERROR": "high"}
+SEMGREP_REGISTRY = "https://semgrep.dev/c/"
+SEMGREP_PACKS = {
+    "p/python": "de5bc79d074c3b4146338a0bf95830406f169bd91ac590a2f1ef111f162e23f5",
+    "p/security-audit": "6d2f9a77b0372395072aa859ffd47f57b5851e1511da72a6c1b7ff9898ee1313",
+}
+PACK_FOLDER = Path(__file__).resolve().parent / "semgrep_rule_packs"
+PACK_TEXT = PACK_FOLDER.relative_to(Path(__file__).resolve().parents[2]).as_posix()
+FETCH = (
+    "by hand, once per tree, never by a reading: for each pack, curl --fail "
+    f"-H 'Accept: application/json' -H 'User-Agent: Semgrep/{SEMGREP_BUILT}' "
+    f"--create-dirs --output-dir {PACK_TEXT} -o <file> {SEMGREP_REGISTRY}<pack>, "
+    f"the address and headers semgrep {SEMGREP_BUILT} sends for a registry pack"
+)
 
 _CWE_RE = re.compile(r"CWE-(\d+)")
+
+
+def pack_name(pack: str) -> str:
+    """Return the `PACK_FOLDER` file name of registry `pack`, such as p_python.yaml."""
+    return pack.replace("/", "_") + ".yaml"
+
 
 FUNCTION = (
     "reads each call, query, secret, parse and path for a weakness an attacker "
@@ -72,6 +94,11 @@ SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "bandit_version": BANDIT_BUILT,
     "semgrep_version": SEMGREP_BUILT,
+    "semgrep_pack_folder": PACK_TEXT,
+    "semgrep_packs": "; ".join(
+        f"{pack} as {pack_name(pack)}, sha256 {digest}"
+        for pack, digest in SEMGREP_PACKS.items()
+    ),
     "function": FUNCTION,
     "disciplines": " ".join(DISCIPLINES),
     "characteristics": " ".join(CHARACTERISTICS),
@@ -89,7 +116,8 @@ SETTINGS: dict[str, str] = {
 
 
 class ToolFault(Exception):
-    """bandit or semgrep did not finish, or printed a report this module cannot read."""
+    """bandit or semgrep did not finish, printed an unreadable report, or a
+    `SEMGREP_PACKS` file failed its check."""
 
 
 @dataclass(frozen=True)
@@ -107,6 +135,11 @@ class Finding:
 def bandit_version() -> str:
     """Return the installed bandit version `python -P -m bandit` runs."""
     return metadata.version("bandit")
+
+
+def _said(proc: subprocess.CompletedProcess[bytes]) -> str:
+    """Return what `proc` printed on stderr, else on stdout, else `NO_OUTPUT`."""
+    return tool_text(proc.stderr) or tool_text(proc.stdout) or NO_OUTPUT
 
 
 def _semgrep_cwe(cwe: object) -> str:
@@ -131,8 +164,7 @@ def _bandit_findings(source: bytes, tests: tuple[str, ...]) -> list[Finding]:
         message = f"bandit: {exc}"
         raise ToolFault(message) from exc
     if proc.returncode not in BANDIT_FINISHED:
-        said = tool_text(proc.stderr or proc.stdout)
-        message = f"bandit exited {proc.returncode}: {said}"
+        message = f"bandit exited {proc.returncode}: {_said(proc)}"
         raise ToolFault(message)
     try:
         report = json.loads(proc.stdout)
@@ -154,10 +186,33 @@ def _bandit_findings(source: bytes, tests: tuple[str, ...]) -> list[Finding]:
         raise ToolFault(message) from exc
 
 
+def _held_packs() -> list[Path]:
+    """Return each `SEMGREP_PACKS` file in `PACK_FOLDER`, or raise `ToolFault`
+    naming an unread path or both sha256 values."""
+    held = []
+    for pack, card_sha256 in SEMGREP_PACKS.items():
+        path = PACK_FOLDER / pack_name(pack)
+        where = f"{PACK_TEXT}/{pack_name(pack)}"
+        try:
+            found = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError as exc:
+            message = f"held semgrep pack {where} cannot be read: {exc.strerror or exc}"
+            raise ToolFault(message) from exc
+        if found != card_sha256:
+            message = (
+                f"held semgrep pack {where} has sha256 {found}; "
+                f"the card holds {card_sha256}"
+            )
+            raise ToolFault(message)
+        held.append(path)
+    return held
+
+
 def _semgrep_findings(
     name: str, source: bytes, excluded: tuple[str, ...]
 ) -> tuple[str, list[Finding]]:
     """Return the semgrep version and each `Finding` for `source` copied as `name`, no `excluded` rule run."""
+    packs = _held_packs()
     with tempfile.TemporaryDirectory() as folder:
         Path(folder, name).write_bytes(source)
         try:
@@ -168,16 +223,18 @@ def _semgrep_findings(
                     "-c",
                     "from semgrep.console_scripts.entrypoint import main; main()",
                     "scan",
-                    "--config=p/python",
-                    "--config=p/security-audit",
+                    *(f"--config={pack}" for pack in packs),
                     "--json",
-                    "--quiet",
+                    "--metrics=off",
+                    "--disable-version-check",
+                    "--no-rewrite-rule-ids",
                     "--no-git-ignore",
                     SEMGREP_NO_RULE_TIMEOUT,
                     *(f"--exclude-rule={rule}" for rule in excluded),
                     ".",
                 ],
                 cwd=folder,
+                env={**os.environ, "PYTHONUTF8": "1"},
                 capture_output=True,
                 timeout=SEMGREP_TIMEOUT_S,
                 check=False,
@@ -186,8 +243,7 @@ def _semgrep_findings(
             message = f"semgrep: {exc}"
             raise ToolFault(message) from exc
     if proc.returncode not in SEMGREP_FINISHED:
-        said = tool_text(proc.stderr or proc.stdout)
-        message = f"semgrep exited {proc.returncode}: {said}"
+        message = f"semgrep exited {proc.returncode}: {_said(proc)}"
         raise ToolFault(message)
     try:
         report = json.loads(proc.stdout)
@@ -278,13 +334,15 @@ SIGIL = Sigil(
                     "with the file's bytes on stdin, when the selection holds a bandit test"
                 ),
                 (
-                    "semgrep, through semgrep.console_scripts.entrypoint, "
-                    "as semgrep scan --config=p/python --config=p/security-audit "
-                    "--json --quiet --no-git-ignore --timeout=0, so no rule stops "
-                    "on a per-rule time limit, with --exclude-rule for each "
-                    "semgrep rule of the card the selection leaves out, in an empty "
-                    "temporary folder holding a copy of the file under its own name, "
-                    "when the selection holds a semgrep rule"
+                    "semgrep, through semgrep.console_scripts.entrypoint, as semgrep "
+                    "scan with a --config for each held pack in semgrep_pack_folder "
+                    "once its sha256 matches semgrep_packs, --json --metrics=off "
+                    "--disable-version-check --no-rewrite-rule-ids --no-git-ignore "
+                    "--timeout=0, so no rule stops on a per-rule time limit, and "
+                    "PYTHONUTF8=1, so each pack is read as UTF-8, with --exclude-rule "
+                    "for each semgrep rule of the card the selection leaves out, in "
+                    "an empty temporary folder holding a copy of the file under its "
+                    "own name, when the selection holds a semgrep rule"
                 ),
                 "only the findings under the selected rules",
                 "for a symbol, only the findings inside its lines",
@@ -295,10 +353,11 @@ SIGIL = Sigil(
             "severity": {"bandit": BANDIT_SEVERITY, "semgrep": SEMGREP_SEVERITY},
             "left": {BANDIT.tool: BANDIT.left, SEMGREP.tool: SEMGREP.left},
             "left_because": LEFT_BECAUSE,
-            "not_held": "a finding under a rule outside the scope, such as a rule "
-            "the registry adds after the house was counted, moves no verdict",
-            "fetches": "semgrep downloads both rule sets from its registry on each run",
-            "refuses": "a tool that exits otherwise, reports an error, "
+            "not_held": "a finding under a rule outside the scope moves no verdict",
+            "fetches": FETCH,
+            "refuses": "a held pack that cannot be read, naming its path, or whose "
+            "sha256 differs from semgrep_packs, naming both sha256 values; a tool "
+            "that exits otherwise, naming what it printed, reports an error, "
             "or did not read the file",
         },
     ),
