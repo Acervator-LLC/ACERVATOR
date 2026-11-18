@@ -309,8 +309,8 @@ def archetypes(name: str) -> tuple[str, ...]:
 ## Flags and follow-on rules
 
 Each output maps to one flag on its card. Each flag names the rule that
-follows it. The card holds that rule as data, and nothing runs a follow-on
-rule yet.
+follows it. The card holds that rule as data. For the six sigils that read ruff
+findings, the follow-on runner carries the rule out.
 
 `dev_harness/sigils/core.py, in FLAGS`:
 
@@ -344,11 +344,123 @@ HOLD.
 
 ```python
 FOLLOW_ON = {
-    "always": "apply ruff's fix for that rule and read the file again",
-    "sometimes": "the same, where ruff offers it for that line",
-    "none": "a unit of work",
+    "always": "apply ruff's fix where ruff marks it safe, and read the file again",
+    "sometimes": "the same, where ruff offers a safe fix for that line",
+    "none": "a unit of work, with the rule's published corrected form",
 }
 ```
+
+### The follow-on runner
+
+The follow-on runner carries out the follow-on rule for the six sigils that
+read ruff findings: CODE.LOOP, CODE.IMPORT, CODE.FLOW, CODE.VARIABLE,
+CODE.COLLECTION and CODE.OPTIMIZE. It judges one input with the sigil, applies
+ruff's own safe fix to each rule the reading names, and judges the file again.
+
+```
+python -m dev_harness.sigils.fix_class <sigil> <input>
+python -m dev_harness.sigils.fix_class <sigil> <input> --root <folder>
+python -m dev_harness.sigils.fix_class <sigil> <input> --root <folder> --write
+```
+
+The runner applies only the fixes that ruff marks safe. Ruff's own
+documentation, in its section on fix safety, says an unsafe fix can change what
+the code does when it runs. The runner passes ruff the option that refuses
+unsafe fixes, so a ruff setting that turns unsafe fixes on has no effect. A ruff
+setting can also mark one rule's unsafe fix as safe. The runner reads the
+settings ruff resolves for the file, and it leaves each such rule unfixed.
+
+`dev_harness/sigils/fix_class.py, in _fixed`:
+
+```python
+def _fixed(
+    source: bytes, folder: Path, codes: Sequence[str], module: ModuleType
+) -> bytes:
+    """Return `source` after ruff's safe fixes of `codes`, run from `folder`, one call per preview flag."""
+    for preview in (False, True):
+        group = [code for code in codes if _preview(module, code) is preview]
+        if not group:
+            continue
+        source = _ruff(
+            "ruff check --fix-only",
+            [
+                "check",
+                "--no-cache",
+                "--fix-only",
+                "--no-unsafe-fixes",
+                *(["--preview"] if preview else []),
+                "--select",
+                ",".join(group),
+                "-",
+            ],
+            source=source,
+            folder=folder,
+        )
+    return source
+```
+
+Without the write option, the runner copies the named file into a temporary
+folder beside it, so ruff reads the same settings, and it fixes the copy. It
+prints the change it found and removes the folder, and the named file keeps
+every byte. With the write option, the runner writes the fixed copy over the
+named file. It writes no file outside the root it is given.
+
+Each round applies ruff's safe fixes for the rules the last reading names, and
+then judges the copy again. The runner stops at the first of five events:
+
+| Stop | When |
+| ---- | ---- |
+| the reading passes | the last reading reads PASS |
+| the sigil refuses the input | the last reading reads BLOCK, as when a fix removes the last construct the sigil reads |
+| a round changes no byte | ruff has no safe fix left for the rules the reading names |
+| ruff's fix changes a line outside the symbol | the input names a symbol, and the fix reaches a line outside it; the runner drops that round's change |
+| the round limit is reached | the round limit, 2 rounds, has run |
+
+`dev_harness/sigils/fix_class.py, in _rounds`:
+
+```python
+def _rounds(
+    module: ModuleType,
+    copied: str,
+    root: Path,
+    first: Verdict,
+    *,
+    in_source: bool,
+    forced: frozenset[str],
+    limit: int,
+) -> tuple[list[tuple[str, ...]], str, Verdict]:
+    """Return the codes fixed per round, the stop and the last `judge` verdict of the copy `copied` names."""
+    verdict = first
+    rounds: list[tuple[str, ...]] = []
+    narrowed = bool(copied.partition(SEPARATOR)[1])
+    while len(rounds) < limit:
+        located = locate(copied, root)
+        if isinstance(located, str):
+            message = f"{copied}: {located}, after a round"
+            raise ToolFault(message)
+        file, before, span = located
+        codes = tuple(code for code in reading_codes(verdict) if code not in forced)
+        rounds.append(codes)
+        after = _fixed(before, file.parent, codes, module) if codes else before
+        if after == before:
+            return rounds, UNCHANGED, verdict
+        if narrowed and _outside(before, after, span):
+            return rounds, OUTSIDE, verdict
+        file.write_bytes(after)
+        verdict = judge(module.SIGIL, copied, root, in_source=in_source)
+        if verdict.flag in ENDS:
+            return rounds, PASSED if verdict.flag is Flag.PASS else REFUSED, verdict
+    return rounds, LIMIT, verdict
+```
+
+A rule left in the last reading carries its published corrected form, from the
+rule page ruff prints. That rule is a unit of work.
+
+The round limit is the largest number of rounds that a published faulty form
+needed. The six sigils hold 189 rules, and 185 of them flag their own published
+faulty form. Across those forms, no run needed more than 2 rounds. A run needs
+2 rounds when the first round applies the safe fixes and the second finds no
+safe fix left, as for C400 under CODE.OPTIMIZE.
 
 ## The shared modules
 
@@ -364,7 +476,7 @@ module.
 | `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, each rule's fix class and its preview and removed marks in `listing`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
 | `dev_harness/sigils/construct_rules.py` | the rules a coding sigil holds from its disciplines: `take` for a construct sigil, `hold` for a tool sigil, and the reason each other scope rule left in `why_left` |
 | `dev_harness/sigils/coding_partition.py` | the rules a coding sigil runs on one input: the input's facts in `facts_of`, the run rule in `runs`, and the held rules it keeps in `selection` |
-| `dev_harness/sigils/fix_class.py` | the follow-on rule of each fix class, in `FOLLOW_ON` |
+| `dev_harness/sigils/fix_class.py` | the follow-on rule of each fix class, in `FOLLOW_ON`, and the follow-on runner, in `follow_on` |
 | `dev_harness/sigils/citation.py` | the citation form that CITE.SYMBOL@3 and TA.AUDIT@1 share: tier 1 in `data_type_fault`, and the definition search in `definition_verdict` |
 
 CITE.SYMBOL@3 keeps its own tiers 1 and 2. Its input form differs, and the
