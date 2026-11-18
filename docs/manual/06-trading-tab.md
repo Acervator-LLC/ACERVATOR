@@ -515,6 +515,29 @@ def api_access_required(settings: Any, exchange_id: Any, sector: Any = "") -> bo
     return not all(entry.get(name) for name in start_key_fields(exchange_id, sector))
 ```
 
+Saving an exchange's keys offers to start the bots that waited on it. The Settings window notes the waiting bots when it opens. When it closes after a save that gives their exchange keys, a box asks "Start the waiting bots?" (`src/gui/main_window.py, in MainWindow._offer_released_starts`). The box names each bot on that exchange that waited with API Access Required. It names no bot on another exchange, and no running or paused bot. A save that leaves no bot waiting shows no box.
+
+The box has two buttons. Start runs the named bots through the Start All sequence, one at a time, with its progress window. Not now starts none, and the bots stay Idle until Start or Start All. Each answer writes one Activity Log line. With either answer the API ACCESS REQUIRED line is gone, because the exchange now has keys.
+
+```python
+def released_bots(
+    waited: dict[str, list[str]], statuses: Iterable[dict], settings: Any
+) -> dict[str, list[str]]:
+    """Each exchange in ``waited`` to its bots that ``statuses`` still holds outside ``active_states`` and ``waiting_bots`` no longer names."""
+    held = list(statuses)
+    active = active_states()
+    idle = {
+        str(one.get("bot_id") or "") for one in held if one.get("state") not in active
+    }
+    still = waiting_bots(held, settings)
+    released: dict[str, list[str]] = {}
+    for venue, ids in waited.items():
+        ready = [bid for bid in ids if bid in idle and bid not in still.get(venue, ())]
+        if ready:
+            released[venue] = ready
+    return released
+```
+
 ### The two log panes
 
 | Control | What it does and what it reads |

@@ -50,11 +50,16 @@ def api_access_required(settings: Any, exchange_id: Any, sector: Any = "") -> bo
     return not all(entry.get(name) for name in start_key_fields(exchange_id, sector))
 
 
-def mark_api_access(statuses: Iterable[dict], settings: Any) -> list[dict]:
-    """Copies of ``statuses``, each bot outside RUNNING and PAUSED that ``api_access_required`` names carrying ``API_ACCESS_KEY``."""
+def active_states() -> tuple[str, str]:
+    """The RUNNING and PAUSED ``BotState`` values, the two states in which a bot never waits for keys."""
     from ..trading.container.config import BotState
 
-    active = (BotState.RUNNING.value, BotState.PAUSED.value)
+    return (BotState.RUNNING.value, BotState.PAUSED.value)
+
+
+def mark_api_access(statuses: Iterable[dict], settings: Any) -> list[dict]:
+    """Copies of ``statuses``, each bot outside ``active_states`` that ``api_access_required`` names carrying ``API_ACCESS_KEY``."""
+    active = active_states()
     marked = []
     for status in statuses:
         one = dict(status)
@@ -65,6 +70,34 @@ def mark_api_access(statuses: Iterable[dict], settings: Any) -> list[dict]:
             one[API_ACCESS_KEY] = API_ACCESS_REQUIRED
         marked.append(one)
     return marked
+
+
+def waiting_bots(statuses: Iterable[dict], settings: Any) -> dict[str, list[str]]:
+    """Each exchange id to the sorted ids of its bots that ``mark_api_access`` marks."""
+    waiting: dict[str, list[str]] = {}
+    for one in mark_api_access(statuses, settings):
+        if one.get(API_ACCESS_KEY):
+            venue = str(one.get("exchange") or "")
+            waiting.setdefault(venue, []).append(str(one.get("bot_id") or ""))
+    return {venue: sorted(ids) for venue, ids in waiting.items()}
+
+
+def released_bots(
+    waited: dict[str, list[str]], statuses: Iterable[dict], settings: Any
+) -> dict[str, list[str]]:
+    """Each exchange in ``waited`` to its bots that ``statuses`` still holds outside ``active_states`` and ``waiting_bots`` no longer names."""
+    held = list(statuses)
+    active = active_states()
+    idle = {
+        str(one.get("bot_id") or "") for one in held if one.get("state") not in active
+    }
+    still = waiting_bots(held, settings)
+    released: dict[str, list[str]] = {}
+    for venue, ids in waited.items():
+        ready = [bid for bid in ids if bid in idle and bid not in still.get(venue, ())]
+        if ready:
+            released[venue] = ready
+    return released
 
 
 def unstored_venues(entries: Iterable[dict], exchange_ids: Iterable[Any]) -> list[str]:
