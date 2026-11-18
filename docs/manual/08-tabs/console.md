@@ -1356,7 +1356,32 @@ both bots Idle.
 
 The control is the same empty home through the files before this section. It
 read `open` and `no_file`, and no module offered a screen. Through these files
-the same home drew the screen. These readings were taken on Windows. The macOS
-and Linux readings are not taken yet.
+the same home drew the screen. These readings were taken on Windows. On macOS
+and on Linux, the build checks read the four results in the next table, in
+both built variants, each on a scratch home folder.
+
+| the reading, in each built variant | Windows | macOS | Linux |
+| --- | --- | --- | --- |
+| the screen opens over the main window, and nothing is written before a press | yes | yes | yes |
+| a file that is not a fleet: its sentence is read off the screen, and nothing is written | yes | yes | yes |
+| a fleet file: the file written has the same SHA-256 as the file picked | yes | yes | yes |
+| the main window lists both bots of the file | yes | yes | yes |
+
+Each build check presses the import, answers the system file picker and reads
+the screen through the system's accessibility interface. It runs on every
+build and every release.
+
+| system | the check | the tool |
+| --- | --- | --- |
+| Windows | `.github/workflows/windows-build.yml`, in "Press the fleet import in each executable and read what it wrote" | pywinauto, through UI Automation |
+| macOS | `.github/workflows/macos-build.yml`, in "Press the fleet import in each bundle and read what it wrote" | osascript, through System Events |
+| Linux | `.github/workflows/linux-build.yml`, in "Press the fleet import in each AppImage and read what it wrote" | libatspi, through AT-SPI |
+
+A screen reader reads each sentence on the first-run screen, a refusal
+included (`src/gui/fleet_import_dialog.py, in FleetImportDialog._line`).
+
+On the React build, a screen reader reads each bot row's pair and bot id
+(`src/gui/web/bot_status_table.js, in rowLabel`), and the bot the voting panel
+shows (`src/gui/web/indicator_panel.js, in chosenText`).
 
 Back to [the subsystem index](README.md).

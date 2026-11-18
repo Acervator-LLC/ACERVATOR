@@ -157,6 +157,7 @@
   var STATE_ATTR = "data-state";
   var ARIA_LABEL = "aria-label";
   var TITLE_ATTR = "title";
+  var GROUP_ROLE = "group";
 
   var PANEL_PART = "indicator-panel";
   var HEADER_PART = "indicator-header";
@@ -513,6 +514,13 @@
     return { at: at, total: entries.length };
   }
 
+  // The text the dropdown shows for its chosen bot, or undefined with none chosen.
+  function chosenText(model) {
+    var place = selectorPlace(model);
+    var entries = listField(model, SELECTOR);
+    return place.at < 0 ? undefined : label(text(entries[place.at][TEXT]));
+  }
+
   // Title, a spacer, the left arrow, the dropdown, the right arrow, the
   // dot, a spacer. The arrows stop at each end rather than wrapping.
   function HeaderRow(props) {
@@ -524,8 +532,10 @@
       head[MARGINS_PX], objectField(model, CONTAINER)[SPACING_PX], ROW
     );
     style.alignItems = CENTER;
-    var headProps = { style: style };
+    var headProps = { style: style, role: GROUP_ROLE };
     headProps[PART_ATTR] = HEADER_PART;
+    // Qt on macOS drops a select's popup role, so the row names its chosen bot.
+    headProps[ARIA_LABEL] = chosenText(model);
     var place = selectorPlace(model);
     var lead = element(
       DIV_TAG, { key: LEAD_SPACER_KEY, style: { flex: FULL } }, null

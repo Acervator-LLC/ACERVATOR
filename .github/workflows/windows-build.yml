@@ -1,21 +1,10 @@
-# Acervator Windows build — the same shape macos-build.yml has.
-#
-# release.yml calls this file, so the release attaches the builds this
-# workflow's own launch readings were taken on. A push also starts it, so a
-# change to how a build is made or to what a build installs is built on a
-# branch before it merges.
-#
-# The bar is an application that STARTS, both variants. Every artefact is read
-# back here: the folder and the .exe with their byte sizes, the variant baked
-# into each one, and the line main.py logs once the main window is on screen,
-# with heartbeat.txt as the reading that the event loop ran.
-#
-# The launch runs with USERPROFILE on a scratch directory. No bot state file
-# exists there, so no bot is ever started, and no credential file exists, so no
-# venue is reachable.
+---
+# Builds both Windows variants, launches each executable, and presses the fleet
+# import in each.
 name: Windows build
 
-on:
+"on":
+  # release.yml calls this file and attaches the builds these launches read.
   workflow_call:
   workflow_dispatch:
   push:
@@ -34,8 +23,8 @@ on:
       - .github/workflows/windows-build.yml
 
 concurrency:
-  # github.workflow names the caller, so a called run and a push run of this
-  # file sit in different groups and cannot cancel each other.
+  # github.workflow names the caller, so a called run and a push run sit in
+  # separate groups.
   group: windows-build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -45,16 +34,19 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 120
     env:
-      # Where a launched build writes its logs. Not the runner's own profile.
+      # Parent of each launched executable's USERPROFILE, apart from the
+      # runner's own profile.
       LAUNCH_ROOT: ${{ github.workspace }}\launch
+      # Parent of each USERPROFILE the fleet import is pressed under.
+      IMPORT_ROOT: ${{ github.workspace }}\launch\import
+      IMPORT_VARIANTS: qt react
       # Seconds to wait for a build to report its window.
       LAUNCH_WAIT_SECONDS: 180
 
     steps:
       - uses: actions/checkout@v7
         with:
-          # The whole history. src/_version.py reads HEAD's own date and id,
-          # and no tag.
+          # src/_version.py reads HEAD's date and id from the whole history.
           fetch-depth: 0
 
       - uses: actions/setup-python@v7
@@ -84,7 +76,9 @@ jobs:
       - name: Build both variants
         shell: cmd
         # The argument list tools/build_launcher.py builds for this script.
-        run: powershell -ExecutionPolicy Bypass -File build_windows.ps1 -Variant qt,react
+        run: >-
+          powershell -ExecutionPolicy Bypass -File build_windows.ps1
+          -Variant qt,react
 
       - name: Read every artefact back with its byte size
         shell: pwsh
@@ -112,7 +106,8 @@ jobs:
             Write-Host "$variant  folder   $name"
             Write-Host "$variant  folder   $bytes bytes on disk"
             Write-Host "$variant  exe      $((Get-Item $exe).Length) bytes"
-            $bakedVariant = Join-Path $folder.FullName '_internal\src\_baked_variant.txt'
+            $internal = Join-Path $folder.FullName '_internal'
+            $bakedVariant = Join-Path $internal 'src\_baked_variant.txt'
             $read = 'ABSENT'
             if (Test-Path $bakedVariant) {
               $read = (Get-Content $bakedVariant -Raw).Trim()
@@ -122,11 +117,12 @@ jobs:
               Write-Host "WRONG VARIANT BAKED into $name"
               $fail = 1
             }
-            $bakedVersion = Join-Path $folder.FullName '_internal\src\_baked_version.txt'
+            $bakedVersion = Join-Path $internal 'src\_baked_version.txt'
             if (Test-Path $bakedVersion) {
-              Write-Host "$variant  version  $((Get-Content $bakedVersion -Raw).Trim())"
+              $version = (Get-Content $bakedVersion -Raw).Trim()
+              Write-Host "$variant  version  $version"
             }
-            $logos = Join-Path $folder.FullName '_internal\resources\logos'
+            $logos = Join-Path $internal 'resources\logos'
             $logoCount = 0
             if (Test-Path $logos) {
               $logoCount = (Get-ChildItem $logos -Recurse -File).Count
@@ -144,6 +140,9 @@ jobs:
         shell: pwsh
         run: |
           $fail = 0
+          $readyLine = 'main window displayed'
+          $limit = [int]$env:LAUNCH_WAIT_SECONDS
+          $quiet = 'SilentlyContinue'
           foreach ($variant in @('qt', 'react')) {
             $folder = Get-ChildItem -Path dist -Directory -Filter "*-$variant" |
                       Select-Object -First 1
@@ -161,34 +160,34 @@ jobs:
             $env:LOCALAPPDATA = Join-Path $sandbox 'AppData\Local'
             $env:ACERVATOR_DEBUG_BOOT = '1'
 
-            Write-Host '=============================================================='
+            Write-Host '=================================================='
             Write-Host "=== launching the $variant build: $exe"
             Write-Host "=== USERPROFILE is $sandbox"
-            Write-Host '=============================================================='
+            Write-Host '=================================================='
             $proc = Start-Process -FilePath $exe -PassThru
             Write-Host "pid $($proc.Id)"
 
             $logs = Join-Path $sandbox '.acervator_logs'
             $ready = 'timeout'
-            for ($second = 0; $second -lt [int]$env:LAUNCH_WAIT_SECONDS; $second++) {
+            for ($second = 0; $second -lt $limit; $second++) {
               if (Test-Path $logs) {
-                $hit = Get-ChildItem $logs -Recurse -File -ErrorAction SilentlyContinue |
-                       Select-String -SimpleMatch 'main window displayed' -List `
-                         -ErrorAction SilentlyContinue
+                $hit = Get-ChildItem $logs -Recurse -File -ErrorAction $quiet |
+                       Select-String -SimpleMatch $readyLine -List `
+                         -ErrorAction $quiet
                 if ($hit) { $ready = 'log'; break }
               }
               if ($proc.HasExited) { $ready = 'died'; break }
               Start-Sleep -Seconds 1
             }
-            Write-Host "--- the $variant build reported its window through: $ready"
+            Write-Host "--- the $variant build reported its window by: $ready"
 
             if (Test-Path $logs) {
               Write-Host '--- the log tree it created under its own profile ---'
               Get-ChildItem $logs -Recurse -File |
                 Select-Object -First 40 |
                 ForEach-Object { Write-Host "  $($_.FullName)" }
-              $line = Get-ChildItem $logs -Recurse -File -ErrorAction SilentlyContinue |
-                      Select-String -SimpleMatch 'main window displayed' |
+              $line = Get-ChildItem $logs -Recurse -File -ErrorAction $quiet |
+                      Select-String -SimpleMatch $readyLine |
                       Select-Object -First 1
               if ($line) {
                 Write-Host "--- the line the running application wrote:"
@@ -197,14 +196,15 @@ jobs:
               # heartbeat.txt is written by the timer main.py starts, so its
               # presence shows the event loop ran.
               $beat = Get-ChildItem $logs -Recurse -Filter 'heartbeat.txt' `
-                        -ErrorAction SilentlyContinue | Select-Object -First 1
+                        -ErrorAction $quiet | Select-Object -First 1
               if ($beat) {
-                Write-Host "--- heartbeat.txt: $((Get-Content $beat.FullName -Raw).Trim())"
+                $pulse = (Get-Content $beat.FullName -Raw).Trim()
+                Write-Host "--- heartbeat.txt: $pulse"
               } else {
                 Write-Host '--- NO HEARTBEAT: the event loop never ran'
               }
               $system = Get-ChildItem $logs -Recurse -Filter 'system.log' `
-                          -ErrorAction SilentlyContinue | Select-Object -First 1
+                          -ErrorAction $quiet | Select-Object -First 1
               if ($system) {
                 Write-Host "--- the last 40 lines the $variant build logged ---"
                 Get-Content $system.FullName -Tail 40
@@ -216,31 +216,393 @@ jobs:
             }
 
             if (-not $proc.HasExited) {
-              Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+              Stop-Process -Id $proc.Id -Force -ErrorAction $quiet
             }
-            Wait-Process -Id $proc.Id -Timeout 30 -ErrorAction SilentlyContinue
-            # The launch spawns QtWebEngineProcess children under the same name,
-            # so stopping the one pid leaves siblings running into the next
-            # variant's reading.
-            foreach ($stray in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
-              Stop-Process -Id $stray.Id -Force -ErrorAction SilentlyContinue
+            Wait-Process -Id $proc.Id -Timeout 30 -ErrorAction $quiet
+            # QtWebEngineProcess children outlive the one pid, so every process
+            # of the name is stopped.
+            $strays = @(Get-Process -Name $name -ErrorAction $quiet)
+            foreach ($stray in $strays) {
+              Stop-Process -Id $stray.Id -Force -ErrorAction $quiet
             }
-            Stop-Process -Name QtWebEngineProcess -Force -ErrorAction SilentlyContinue
+            Stop-Process -Name QtWebEngineProcess -Force -ErrorAction $quiet
             for ($wait = 0; $wait -lt 30; $wait++) {
-              if (@(Get-Process -Name $name -ErrorAction SilentlyContinue).Count -eq 0) { break }
+              $alive = @(Get-Process -Name $name -ErrorAction $quiet).Count
+              if ($alive -eq 0) { break }
               Start-Sleep -Seconds 1
             }
-            $left = @(Get-Process -Name $name -ErrorAction SilentlyContinue).Count
-            $web = @(Get-Process -Name QtWebEngineProcess -ErrorAction SilentlyContinue).Count
-            Write-Host "--- reaped pid $($proc.Id); processes left: $left; web engine left: $web"
+            $left = @(Get-Process -Name $name -ErrorAction $quiet).Count
+            $web = @(
+              Get-Process -Name QtWebEngineProcess -ErrorAction $quiet
+            ).Count
+            Write-Host "--- reaped pid $($proc.Id); left: $left; web left: $web"
 
             if ($ready -ne 'log') {
-              Write-Host "FAILURE: the $variant build never reported its main window"
+              Write-Host "FAILURE: the $variant build never reported its window"
               $fail = 1
             }
             Write-Host ''
           }
           exit $fail
+
+      # StateManager.save_state writes the fleet file, from two ScrummingBot
+      # records get_full_state exports.
+      - name: Write a fleet file and a file that is not one into each home
+        shell: python
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          USERPROFILE: ${{ github.workspace }}\launch\import-maker
+          HOME: ${{ github.workspace }}\launch\import-maker
+        run: |
+          import os
+          from pathlib import Path
+
+          from src.core.state_manager import StateManager
+          from src.trading.container.config import BotMode, make_bot_config
+          from src.trading.container.restore import (
+              _PlaceholderExchangeForRestore,
+          )
+          from src.trading.scrumming_bot import ScrummingBot
+
+          root = Path(os.environ["IMPORT_ROOT"])
+          for variant in os.environ["IMPORT_VARIANTS"].split():
+              files = root / variant / "fleet-files"
+              records = []
+              for asset in ("ALGO", "ATOM"):
+                  config = make_bot_config(
+                      BotMode.SCRUMMING,
+                      exchange_id="coinbase",
+                      base_currency="EUR",
+                      target_asset=asset,
+                  )
+                  venue = _PlaceholderExchangeForRestore("coinbase")
+                  bot = ScrummingBot(config, venue)
+                  records.append(bot.get_full_state())
+              StateManager(config_dir=files).save_state(records)
+              not_fleet = files / "not_a_fleet.json"
+              not_fleet.write_text("this file holds no fleet\n", "utf-8")
+              for path in sorted(files.iterdir()):
+                  size = path.stat().st_size
+                  print(f"{variant} wrote {path.name}, {size} bytes")
+              ids = [one["bot_id"] for one in records]
+              print(f"{variant} fleet file bots: {ids}")
+
+      # pywinauto drives Windows UI Automation:
+      # https://pywinauto.readthedocs.io/en/latest/
+      - name: Install pywinauto, which presses the import and answers the picker
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install pywinauto==0.6.9
+          python -m pip show pywinauto | Select-String '^(Name|Version):'
+
+      - name: Press the fleet import in each executable and read what it wrote
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          import time
+          import traceback
+          from pathlib import Path
+
+          from PIL import ImageGrab
+          from pywinauto import Desktop
+
+          # UIA names a Qt window by its accessible name, else by its title.
+          DIALOG = r"^(?:Fleet Import Dialog|Acervator - no saved fleet)$"
+          MAIN = r"^(?:Acervator Main Window|Acervator v.*)$"
+          IMPORT = "Import a fleet file..."
+          PICKER = "Pick a fleet file"
+          # The voting panel's next-bot button: Qt names it by its arrow.
+          NEXT = "^(?:▶|Show the next bot\\.)$"
+          PREV = "^(?:◀|Show the previous bot\\.)$"
+          REFUSAL = "is not a fleet file, because it does not hold JSON text."
+          LOADED = "Imported fleet: 2 of 2 bot(s) loaded."
+          READY = "main window displayed"
+          # A log pane or log line naming a symbol is not a listed bot.
+          LOG_KINDS = ("Edit:", "Document:")
+          LOG_MARKS = ("[INFO]", "[WARNING]", "[ERROR]", "[DEBUG]",
+                       "acervator.")
+          STAMP = re.compile(r"^(?:\S+:? )?\[?\d\d:\d\d:\d\d")
+
+          root = Path(os.environ["IMPORT_ROOT"])
+          limit = int(os.environ["LAUNCH_WAIT_SECONDS"])
+          desktop = Desktop(backend="uia")
+          failures = []
+          errors = []
+          last_rows = []
+
+
+          def wait_for(read, seconds):
+              """Poll read each second until it answers truthy or time ends."""
+              end = time.monotonic() + seconds
+              while True:
+                  try:
+                      found = read()
+                  except Exception as exc:
+                      errors.append(f"{type(exc).__name__}: {exc}")
+                      found = None
+                  if found or time.monotonic() > end:
+                      return found
+                  time.sleep(1)
+
+
+          def ready(home):
+              """True once a file under the home's log tree names READY."""
+              logs = home / ".acervator_logs"
+              for path in logs.rglob("*") if logs.exists() else []:
+                  if not path.is_file():
+                      continue
+                  if READY in path.read_text("utf-8", "ignore"):
+                      return True
+              return False
+
+
+          def strings(element):
+              """The name, value and text one UIA element exposes."""
+              found = []
+              try:
+                  found.append(element.window_text())
+              except Exception:
+                  pass
+              try:
+                  found.append(element.iface_value.CurrentValue)
+              except Exception:
+                  pass
+              try:
+                  found.append(element.iface_text.DocumentRange.GetText(-1))
+              except Exception:
+                  pass
+              return [" ".join(str(one).split()) for one in found if one]
+
+
+          def tree(spec):
+              """Each string under spec, prefixed with its control type."""
+              rows = []
+              for element in spec.descendants():
+                  try:
+                      kind = element.element_info.control_type
+                  except Exception:
+                      kind = "Unknown"
+                  rows.extend(f"{kind}: {one}" for one in strings(element))
+              return rows
+
+
+          def bot_rows(rows, symbol):
+              """Rows naming symbol that are not log text."""
+              return [
+                  row for row in rows
+                  if symbol in row
+                  and not row.startswith(LOG_KINDS)
+                  and not STAMP.match(row)
+                  and not any(mark in row for mark in LOG_MARKS)
+              ]
+
+
+          def fleet_symbols(good):
+              """Each bot id in the fleet file mapped to its symbol."""
+              bots = json.loads(good.read_text("utf-8"))["bots"]
+              return {bid: one["config"]["symbol"] for bid, one in bots.items()}
+
+
+          def listing(main, symbols):
+              """Rows naming each symbol as NEXT steps the menu, else None."""
+              rows = tree(main)
+              # The bot menu stops at each end, so it steps back, then forward.
+              arrows = [PREV] * len(symbols) + [NEXT] * len(symbols)
+              for arrow in arrows:
+                  step = main.child_window(
+                      title_re=arrow, control_type="Button", found_index=0
+                  )
+                  step.invoke()
+                  time.sleep(4)
+                  rows += [f"pressed {arrow}"] + tree(main)
+              last_rows[:] = rows
+              named = {one: bot_rows(rows, one) for one in symbols}
+              loaded = [row for row in rows if LOADED in row]
+              if all(named.values()):
+                  return {"bot rows": named, "loaded line": loaded}
+              return None
+
+
+          def sha(path):
+              """The SHA-256 of the bytes at path."""
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+          def capture(home, label):
+              """Save the whole screen beside the home's readings."""
+              try:
+                  ImageGrab.grab().save(home / f"import-{label}.png")
+              except Exception as exc:
+                  print(f"capture {label} failed: {exc}")
+
+
+          def top_level():
+              """Each top-level UIA window as its name and process id."""
+              return [
+                  f"{one.window_text()} pid {one.element_info.process_id}"
+                  for one in desktop.windows()
+              ]
+
+
+          def pick(main, dialog, path, seen, label):
+              """Press IMPORT, then answer the picker with path."""
+              button = dialog.child_window(title=IMPORT, control_type="Button")
+              button.invoke()
+              # UIA lists an owned window under its owner, not on the desktop.
+              picker = main.child_window(
+                  title=PICKER, control_type="Window", depth=4
+              )
+              if not wait_for(lambda: picker.exists(timeout=0), 30):
+                  seen[f"{label} windows, no picker"] = top_level()
+                  raise RuntimeError("no picker window opened")
+              seen[f"{label} picker pid"] = picker.element_info.process_id
+              blocker = picker.child_window(
+                  title="Location is not available", control_type="Window"
+              )
+              if blocker.exists(timeout=3):
+                  seen[f"{label} location box"] = tree(blocker)[:6]
+                  ok = blocker.child_window(title="OK", control_type="Button")
+                  ok.invoke()
+              box = picker.child_window(auto_id="1148", control_type="Edit")
+              if not wait_for(lambda: box.is_enabled(), 30):
+                  seen[f"{label} picker rows"] = tree(picker)[:120]
+                  raise RuntimeError("the picker's file name box stayed off")
+              box.set_edit_text(str(path))
+              seen[f"{label} name box"] = box.window_text()
+              opener = picker.child_window(title="Open", auto_id="1")
+              opener.invoke()
+              seen[f"{label} answered by"] = "Open"
+              if not wait_for(lambda: not picker.exists(timeout=0), 10):
+                  box.type_keys("{ENTER}", set_foreground=True)
+                  seen[f"{label} answered by"] = "Enter in the name box"
+              picker.wait_not("exists", timeout=30)
+
+
+          def press_and_read(variant, home, seen):
+              """Take every reading on one running executable."""
+              files = home / "fleet-files"
+              good = files / "bot_state.json"
+              bad = files / "not_a_fleet.json"
+              expected = home / ".acervator" / "bot_state.json"
+              seen["good file sha256"] = sha(good)
+              symbols = fleet_symbols(good)
+              seen["fleet file bots"] = symbols
+              logged = wait_for(lambda: ready(home), limit)
+              seen["main window line"] = bool(logged)
+              main = desktop.window(title_re=MAIN, found_index=0)
+              dialog = main.child_window(
+                  title_re=DIALOG, control_type="Window", depth=3
+              )
+              opened = wait_for(lambda: dialog.exists(timeout=0), 120)
+              seen["top-level windows"] = top_level()
+              seen["errors while waiting"] = errors[-5:]
+              if not opened:
+                  failures.append(f"{variant}: the screen never opened")
+                  return
+              seen["first-run screen"] = dialog.window_text()
+              seen["first-run screen pid"] = dialog.element_info.process_id
+              seen["main window under it"] = main.window_text()
+              seen["main window pid"] = main.element_info.process_id
+              time.sleep(15)
+              seen["expected place, nothing pressed"] = expected.exists()
+              if expected.exists():
+                  failures.append(f"{variant}: a fleet appeared unpressed")
+              before = tree(main)
+              seen["bot rows before"] = {
+                  one: bot_rows(before, one) for one in symbols.values()
+              }
+              seen["screen strings, open"] = tree(dialog)
+              capture(home, "1-open")
+
+              pick(main, dialog, bad, seen, "bad file")
+              shown = []
+
+              def refusal():
+                  shown[:] = tree(dialog)
+                  return [row for row in shown if REFUSAL in row]
+
+              said = wait_for(refusal, 30) or []
+              seen["screen strings, bad file"] = shown
+              seen["refusal sentence read"] = said
+              seen["screen open after bad file"] = dialog.exists()
+              seen["expected place after bad file"] = expected.exists()
+              capture(home, "2-refused")
+              if not said:
+                  failures.append(f"{variant}: no refusal sentence was read")
+              if expected.exists():
+                  failures.append(f"{variant}: the bad file wrote the place")
+
+              pick(main, dialog, good, seen, "good file")
+              dialog.wait_not("exists", timeout=60)
+              written = wait_for(expected.exists, 30)
+              seen["expected place after good file"] = bool(written)
+              if not written:
+                  failures.append(f"{variant}: the good file wrote nothing")
+                  return
+              seen["expected place sha256"] = sha(expected)
+              if seen["expected place sha256"] != seen["good file sha256"]:
+                  failures.append(f"{variant}: the written bytes differ")
+              found = wait_for(lambda: listing(main, symbols.values()), 120)
+              seen["main window after good file"] = found
+              capture(home, "3-imported")
+              if not found:
+                  seen["errors after good file"] = errors[-5:]
+                  seen["last main window rows"] = last_rows[:400]
+                  failures.append(f"{variant}: the bots were not listed")
+
+
+          def read_variant(variant):
+              """Launch one variant on its import home and read it."""
+              home = root / variant
+              # The file picker's navigation pane opens USERPROFILE's Desktop.
+              (home / "Desktop").mkdir(parents=True, exist_ok=True)
+              found = Path("dist").glob(f"*-{variant}")
+              folder = next(one for one in found if one.is_dir())
+              exe = folder / f"{folder.name}.exe"
+              env = dict(os.environ)
+              env.update(
+                  USERPROFILE=str(home),
+                  HOME=str(home),
+                  APPDATA=str(home / "AppData" / "Roaming"),
+                  LOCALAPPDATA=str(home / "AppData" / "Local"),
+                  ACERVATOR_DEBUG_BOOT="1",
+              )
+              proc = subprocess.Popen([str(exe)], env=env)
+              seen = {"variant": variant, "pid": proc.pid}
+              try:
+                  press_and_read(variant, home, seen)
+              except Exception:
+                  failures.append(f"{variant}: {traceback.format_exc()}")
+              finally:
+                  for kill in (
+                      ["/T", "/PID", str(proc.pid)],
+                      ["/IM", exe.name],
+                      ["/IM", "QtWebEngineProcess.exe"],
+                  ):
+                      subprocess.run(
+                          ["taskkill", "/F", *kill], capture_output=True
+                      )
+              out = home / "import-readings.json"
+              out.write_text(json.dumps(seen, indent=2), "utf-8")
+              return seen
+
+
+          for variant in os.environ["IMPORT_VARIANTS"].split():
+              print("=" * 50)
+              print(f"=== {variant}: the fleet import, pressed with pywinauto")
+              print("=" * 50)
+              for key, value in read_variant(variant).items():
+                  dumped = json.dumps(value, indent=2)
+                  print(f"READING {variant} {key}: {dumped}")
+          for failure in failures:
+              print(f"FAILURE {failure}")
+          sys.exit(1 if failures else 0)
 
       - name: Pack each build folder into the one file a visitor downloads
         shell: pwsh
@@ -251,9 +613,12 @@ jobs:
             $folder = Get-ChildItem -Directory -Filter "*-$variant" |
                       Select-Object -First 1
             $zip = "$($folder.Name)-windows.zip"
-            # 7z ships on the runner; Compress-Archive takes minutes at this size.
+            # 7z ships on the runner; Compress-Archive takes minutes at this
+            # size.
             7z a -tzip -mx=5 -bso0 -bsp0 $zip $folder.Name
-            if ($LASTEXITCODE -ne 0) { throw "7z failed for the $variant variant" }
+            if ($LASTEXITCODE -ne 0) {
+              throw "7z failed for the $variant variant"
+            }
             Write-Host "$zip  $((Get-Item $zip).Length) bytes"
           }
           Pop-Location
