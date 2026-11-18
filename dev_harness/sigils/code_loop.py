@@ -127,7 +127,7 @@ class OwnRule:
 
     page: RulePage
     sources: tuple[tuple[str, str], ...]
-    matches: Callable[[Node, Chain], bool]
+    matches: Callable[[Node, Chain, frozenset[str]], bool]
 
 
 def _value_kind(value: ast.expr | None) -> str:
@@ -153,6 +153,29 @@ def _annotation_kind(annotation: ast.expr | None) -> str:
     if isinstance(named, ast.Name) and named.id in {LIST, STR}:
         return named.id
     return OTHER
+
+
+def _addends(value: ast.expr | None) -> list[ast.expr]:
+    """Return the operands of `value` when it is a chain of `+`, else none."""
+    if not (isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add)):
+        return []
+    return [
+        *(_addends(value.left) or [value.left]),
+        *(_addends(value.right) or [value.right]),
+    ]
+
+
+def _derives(value: ast.expr | None, name: str) -> bool:
+    """Report whether `value` slices the name `name` or adds it to something, so it keeps the old value."""
+    if isinstance(value, ast.Subscript):
+        return (
+            isinstance(value.value, ast.Name)
+            and value.value.id == name
+            and isinstance(value.slice, ast.Slice)
+        )
+    return any(
+        isinstance(part, ast.Name) and part.id == name for part in _addends(value)
+    )
 
 
 def _inside(scope: Scope) -> Iterator[ast.AST]:
@@ -197,8 +220,9 @@ def _kinds(scope: Scope) -> dict[str, set[str]]:
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
-                    kinds.setdefault(target.id, set()).add(_value_kind(node.value))
                     typed.add(id(target))
+                    if not _derives(node.value, target.id):
+                        kinds.setdefault(target.id, set()).add(_value_kind(node.value))
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             kinds.setdefault(node.target.id, set()).add(
                 _annotation_kind(node.annotation)
@@ -256,6 +280,26 @@ def _walk(parts: list[ast.AST]) -> Iterator[ast.AST]:
             stack.extend(ast.iter_child_nodes(node))
 
 
+def _rebound(loop: LoopNode) -> frozenset[str]:
+    """Return each name a `_repeated` part of `loop` binds afresh: not by `+=`, nor from its own value."""
+    nodes = list(_walk(_repeated(loop)))
+    carrying = {id(node.target) for node in nodes if isinstance(node, ast.AugAssign)}
+    carrying |= {
+        id(target)
+        for node in nodes
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Name) and _derives(node.value, target.id)
+    }
+    return frozenset(
+        node.id
+        for node in nodes
+        if isinstance(node, ast.Name)
+        and not isinstance(node.ctx, ast.Load)
+        and id(node) not in carrying
+    )
+
+
 def _kind(expr: ast.expr, chain: Chain) -> str:
     """Return the one kind every binding gives the name `expr` in its nearest `chain` scope, else `OTHER`."""
     if not isinstance(expr, ast.Name):
@@ -267,42 +311,92 @@ def _kind(expr: ast.expr, chain: Chain) -> str:
     return OTHER
 
 
-def _is_zero(expr: ast.expr) -> bool:
-    """Report whether `expr` is the int constant 0."""
-    return (
-        isinstance(expr, ast.Constant) and type(expr.value) is int and expr.value == 0
-    )
+def _carried(expr: ast.expr, chain: Chain, rebound: frozenset[str]) -> str:
+    """Return `_kind` of `expr` when it names nothing in `rebound`, else `OTHER`."""
+    if isinstance(expr, ast.Name) and expr.id in rebound:
+        return OTHER
+    return _kind(expr, chain)
 
 
-def _front_call(node: Node, chain: Chain, method: str, count: int) -> bool:
-    """Report whether `node` calls `method` with `count` arguments, the first 0, on a `LIST` name."""
+def _int_value(expr: ast.expr | None) -> int | None:
+    """Return the value of `expr` when it is an int constant, else None."""
+    if isinstance(expr, ast.Constant) and type(expr.value) is int:
+        return expr.value
+    return None
+
+
+def _front_call(
+    node: Node, chain: Chain, rebound: frozenset[str], method: str, count: int
+) -> bool:
+    """Report whether `node` calls `method` with `count` arguments, the first 0, on a carried `LIST` name."""
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == method
         and len(node.args) == count
         and not node.keywords
-        and _is_zero(node.args[0])
-        and _kind(node.func.value, chain) == LIST
+        and _int_value(node.args[0]) == 0
+        and _carried(node.func.value, chain, rebound) == LIST
     )
 
 
-def _pops_front(node: Node, chain: Chain) -> bool:
-    """Report whether `node` calls `pop(0)` on a name that every binding in its scope gives a list."""
-    return _front_call(node, chain, "pop", 1)
+def _self_assign(node: Node) -> tuple[ast.Name, ast.expr] | None:
+    """Return the one name target and the value of `node` when it assigns that name from itself."""
+    if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
+        return None
+    target = node.targets[0]
+    if isinstance(target, ast.Name) and _derives(node.value, target.id):
+        return target, node.value
+    return None
 
 
-def _inserts_front(node: Node, chain: Chain) -> bool:
-    """Report whether `node` calls `insert(0, item)` on a name that every binding in its scope gives a list."""
-    return _front_call(node, chain, "insert", 2)
-
-
-def _concatenates(node: Node, chain: Chain) -> bool:
-    """Report whether `node` adds to a name by `+=` that every binding in its scope gives a str."""
+def _pops_front(node: Node, chain: Chain, rebound: frozenset[str]) -> bool:
+    """Report whether `node` calls `pop(0)` on a carried list name, or rebinds one to its slice from 1."""
+    if _front_call(node, chain, rebound, "pop", 1):
+        return True
+    assigned = _self_assign(node)
+    if assigned is None:
+        return False
+    target, value = assigned
     return (
-        isinstance(node, ast.AugAssign)
-        and isinstance(node.op, ast.Add)
-        and _kind(node.target, chain) == STR
+        isinstance(value, ast.Subscript)
+        and isinstance(value.slice, ast.Slice)
+        and (_int_value(value.slice.lower) or 0) >= 1
+        and value.slice.upper is None
+        and value.slice.step is None
+        and _carried(target, chain, rebound) == LIST
+    )
+
+
+def _inserts_front(node: Node, chain: Chain, rebound: frozenset[str]) -> bool:
+    """Report whether `node` calls `insert(0, item)` on a carried list name, or rebinds one to a list plus itself."""
+    if _front_call(node, chain, rebound, "insert", 2):
+        return True
+    assigned = _self_assign(node)
+    if assigned is None:
+        return False
+    target, value = assigned
+    return (
+        isinstance(value, ast.BinOp)
+        and isinstance(value.left, ast.List)
+        and isinstance(value.right, ast.Name)
+        and value.right.id == target.id
+        and _carried(target, chain, rebound) == LIST
+    )
+
+
+def _concatenates(node: Node, chain: Chain, rebound: frozenset[str]) -> bool:
+    """Report whether `node` adds to a carried str name by `+=`, or rebinds one to a sum holding itself."""
+    if isinstance(node, ast.AugAssign):
+        return (
+            isinstance(node.op, ast.Add)
+            and _carried(node.target, chain, rebound) == STR
+        )
+    assigned = _self_assign(node)
+    return (
+        assigned is not None
+        and isinstance(assigned[1], ast.BinOp)
+        and _carried(assigned[0], chain, rebound) == STR
     )
 
 
@@ -374,7 +468,8 @@ SETTINGS: dict[str, str] = {
     "own_tool": OWN.tool,
     "own_rules": " ".join(OWN.rules),
     "own_reads": "Python's ast module: each own rule fires only inside a part of a "
-    "loop that runs on each pass, with fix class none",
+    "loop that runs on each pass, on a name the loop carries from pass to pass, "
+    "with fix class none",
     "selection": SELECTION,
     "can_run": str(len(CAN_RUN)),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
@@ -399,11 +494,12 @@ def _own_findings(source: bytes, codes: tuple[str, ...]) -> list[tuple[str, int]
         return []
     lines: dict[tuple[str, int], int] = {}
     for loop, chain in _loops(ast.parse(source)):
+        rebound = _rebound(loop)
         for node in _walk(_repeated(loop)):
             if not isinstance(node, ast.expr | ast.stmt):
                 continue
             for code in codes:
-                if OWN_RULES[code].matches(node, chain):
+                if OWN_RULES[code].matches(node, chain, rebound):
                     lines[code, id(node)] = node.lineno
     return sorted(
         ((code, line) for (code, _), line in lines.items()),
@@ -512,7 +608,8 @@ SIGIL = Sigil(
                 "of a loop that runs on each pass, which is a for or async for body, a "
                 "while test or body, or a builder's element, conditions and later "
                 "sources; a name is a list or a str when every binding in its nearest "
-                "scope builds one",
+                "scope builds one, and the loop carries it when no part run on each "
+                "pass assigns it other than by += or from its own value",
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule <code> --output-format json, for each rule "
                 "that fires: its name, fix class, and the code under Example, "

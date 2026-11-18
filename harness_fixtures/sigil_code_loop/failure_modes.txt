@@ -1,0 +1,81 @@
+# Read with --root harness_fixtures/sigil_code_loop/sample_tree
+# One section per rule of OWN_RULES in code_loop.py. A known_bad_ file or a faulty_ function must read
+# its section's rule: a miss means the rule cannot see that form of the fault. Every other row must not
+# read that rule: a fire means the rule reports a form the published source does not call slow.
+
+# LOOP001 list-pop-front-in-loop: the published faulty form, its corrected and outside twins, and a
+# list each pass assigns afresh
+known_bad_loop001.py
+known_good_loop001.py
+outside_loop001.py
+fresh_loop001.py
+
+# LOOP001 in a for loop, a while loop, a nested loop, a list the loop rebinds from itself, and the
+# site found in src/gui/main_tabs/crypto_news_ticker_surface.py, in fetch_all
+modes_loop001.py, in faulty_for
+modes_loop001.py, in corrected_for
+modes_loop001.py, in outside_for
+modes_loop001.py, in faulty_while
+modes_loop001.py, in corrected_while
+modes_loop001.py, in outside_while
+modes_loop001.py, in faulty_nested
+modes_loop001.py, in corrected_nested
+modes_loop001.py, in outside_nested
+modes_loop001.py, in faulty_rebind
+modes_loop001.py, in corrected_rebind
+modes_loop001.py, in outside_rebind
+modes_loop001.py, in faulty_site_fetch_all
+modes_loop001.py, in corrected_site_fetch_all
+modes_loop001.py, in outside_site_fetch_all
+
+# LOOP002 list-insert-front-in-loop: the published faulty form, its twins, and a list each pass
+# assigns afresh
+known_bad_loop002.py
+known_good_loop002.py
+outside_loop002.py
+fresh_loop002.py
+
+# LOOP002 in a for loop, a while loop, a nested loop, and a list the loop rebinds from itself
+modes_loop002.py, in faulty_for
+modes_loop002.py, in corrected_for
+modes_loop002.py, in outside_for
+modes_loop002.py, in faulty_while
+modes_loop002.py, in corrected_while
+modes_loop002.py, in outside_while
+modes_loop002.py, in faulty_nested
+modes_loop002.py, in corrected_nested
+modes_loop002.py, in outside_nested
+modes_loop002.py, in faulty_rebind
+modes_loop002.py, in corrected_rebind
+modes_loop002.py, in outside_rebind
+
+# LOOP003 str-concat-in-loop: the published faulty form, its twins, and a str each pass assigns afresh
+known_bad_loop003.py
+known_good_loop003.py
+outside_loop003.py
+fresh_loop003.py
+
+# LOOP003 in a for loop, a while loop, a nested loop, a str the loop rebinds from itself, the two
+# sites found in src/competition/trophy_generator.py and src/gui/descriptions.py, in fitted, and the
+# three sites in src/ where each pass assigns the str afresh
+modes_loop003.py, in faulty_for
+modes_loop003.py, in corrected_for
+modes_loop003.py, in outside_for
+modes_loop003.py, in faulty_while
+modes_loop003.py, in corrected_while
+modes_loop003.py, in outside_while
+modes_loop003.py, in faulty_nested
+modes_loop003.py, in corrected_nested
+modes_loop003.py, in outside_nested
+modes_loop003.py, in faulty_rebind
+modes_loop003.py, in corrected_rebind
+modes_loop003.py, in outside_rebind
+modes_loop003.py, in faulty_site_trophy_cards
+modes_loop003.py, in corrected_site_trophy_cards
+modes_loop003.py, in outside_site_trophy_cards
+modes_loop003.py, in faulty_site_fitted
+modes_loop003.py, in corrected_site_fitted
+modes_loop003.py, in outside_site_fitted
+modes_loop003.py, in clean_site_usb_labels
+modes_loop003.py, in clean_site_api_details
+modes_loop003.py, in clean_site_transaction_queries

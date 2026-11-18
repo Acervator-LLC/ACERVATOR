@@ -54,3 +54,9 @@ known_good_loop003.py
 outside_loop001.py
 outside_loop002.py
 outside_loop003.py
+
+# CLEAN: the same call or statement of each rule of OWN inside a loop, on a name each pass
+# assigns afresh
+fresh_loop001.py
+fresh_loop002.py
+fresh_loop003.py
