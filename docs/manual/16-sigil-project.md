@@ -76,23 +76,55 @@ module. Each Coding sigil built after the first four, except CODE.DEBUG.PYTHON@1
 narrows tier 2: Python's ast module must find the construct the sigil reads, or
 the input is refused.
 
-`dev_harness/sigils/core.py, in judge`, the three tiers in order:
+`dev_harness/sigils/core.py, in first_refusal` runs four checks in order: the
+card's disciplines, tier 1, tier 2, and the tool versions the card holds.
+
+`dev_harness/sigils/core.py, in first_refusal` returns the first refusal with
+its tier number and tier name, or None when all four checks accept.
+
+`dev_harness/sigils/core.py, in Refusal`:
+
+```python
+class Refusal(NamedTuple):
+    """The `tier`, `tier_name` and `fault` of the refusal `first_refusal` returns."""
+
+    tier: int
+    tier_name: str
+    fault: str
+```
+
+`dev_harness/sigils/core.py, in first_refusal`:
+
+```python
+def first_refusal(sigil: Sigil, text: str, root: Path) -> Refusal | None:
+    """Return the first `Refusal` of `discipline_fault` to `version_fault`, or None."""
+    fault = discipline_fault(sigil)
+    if fault:
+        return Refusal(0, CARD_DISCIPLINES, fault)
+    fault = sigil.data_type(text)
+    if fault:
+        return Refusal(1, DATA_TYPE, fault)
+    fault = sigil.content(text, root)
+    if fault:
+        return Refusal(2, CONTENT, fault)
+    fault = version_fault(sigil)
+    if fault:
+        return Refusal(3, FUNCTIONS, fault)
+    return None
+```
+
+`dev_harness/sigils/core.py, in judge` gives the card's refusal with the flag
+BLOCK when `dev_harness/sigils/core.py, in first_refusal` returns one.
+
+`dev_harness/sigils/core.py, in judge` runs tier 3 when no check refuses:
 
 ```python
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
-    """Run tiers 0 to 3 on `text`, `version_fault` before tier 3, until one refuses."""
-    fault = discipline_fault(sigil)
-    if fault:
-        return Verdict(sigil.refusal, f"{CARD_DISCIPLINES}: {fault}", 0, Flag.BLOCK)
-    fault = sigil.data_type(text)
-    if fault:
-        return Verdict(sigil.refusal, f"{DATA_TYPE}: {fault}", 1, Flag.BLOCK)
-    fault = sigil.content(text, root)
-    if fault:
-        return Verdict(sigil.refusal, f"{CONTENT}: {fault}", 2, Flag.BLOCK)
-    fault = version_fault(sigil)
-    if fault:
-        return Verdict(sigil.refusal, f"{FUNCTIONS}: {fault}", 3, Flag.BLOCK)
+    """Return `first_refusal` as a `Flag.BLOCK` `Verdict`, else the tier 3 reading."""
+    refusal = first_refusal(sigil, text, root)
+    if refusal is not None:
+        reason = f"{refusal.tier_name}: {refusal.fault}"
+        return Verdict(sigil.refusal, reason, refusal.tier, Flag.BLOCK)
     reading = sigil.functions(text, root)
     holds = not isinstance(reading, Reading) or reading.holds
     detail = reading.detail if isinstance(reading, Reading) else None
@@ -310,7 +342,7 @@ module.
 
 | Module | What it holds |
 | ------ | ------------- |
-| `dev_harness/sigils/core.py` | the card as data in `Sigil`, the tiers in `judge`, the tool version check in `version_fault`, the flags in `FLAGS`, and the command in `main` |
+| `dev_harness/sigils/core.py` | the card as data in `Sigil`, the first refusal before tier 3 in `first_refusal`, the tiers in `judge`, the tool version check in `version_fault`, the flags in `FLAGS`, and the command in `main` |
 | `dev_harness/sigils/coding_input.py` | the Coding Archetype's input: tier 1 in `DATA_TYPE_TIER`, tier 2 in `CONTENT_TIER`, and the file readers in `READERS` |
 | `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, each rule's fix class and its preview and removed marks in `listing`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
 | `dev_harness/sigils/construct_rules.py` | the rules a coding sigil holds from its disciplines: `take` for a construct sigil, `hold` for a tool sigil, and the reason each other scope rule left in `why_left` |
