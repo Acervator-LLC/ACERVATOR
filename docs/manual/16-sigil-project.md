@@ -699,6 +699,27 @@ AST does not hold, or fires on stub files only, sits on none. A rule whose page
 publishes no corrected form stays off every card, because a finding carries both
 forms.
 
+One more reading places loop rules. Each rule the scope command lists in
+LOOP_PAIRS sits on the loop construct as well, because its published corrected
+form changes a loop of its faulty form. The command reads each pair through the
+rule page and records the first loop node that changes. It refuses to write the
+scope when a listed rule's pair changes no loop. A rule the climb placed on no
+construct keeps that reason beside its loop entry.
+[CODE.LOOP@1](16-sigil-project/code-loop.md#how-its-loop-rules-were-found) names
+the 11 rules and the two readings that found them.
+
+`dev_harness/sigils/construct_scope.py, in pair_change`:
+
+```python
+    kept = [ast.dump(node) for node in ast.walk(corrected) if isinstance(node, LOOP_NODES)]
+    loops = [node for node in ast.walk(faulty) if isinstance(node, LOOP_NODES)]
+    for node in sorted(loops, key=lambda found: (found.lineno, found.col_offset)):
+        dump = ast.dump(node)
+        if dump not in kept:
+            return PAIRED.format(node=type(node).__name__, line=node.lineno)
+        kept.remove(dump)
+```
+
 `dev_harness/sigils/construct_scope.py, in owners`:
 
 ```python
@@ -728,7 +749,7 @@ python -m dev_harness.sigils.construct_scope
 
 | Construct | Rules the scope places on it | Rules its sigil can run |
 | --------- | ---------------------------- | ----------------------- |
-| loop | 27 | 18 |
+| loop | 38 | 29 |
 | import | 32 | 25 |
 | collection | 50 | 23 |
 | flow | 62 | 33 |
@@ -800,7 +821,7 @@ the card its command prints. A sigil that is not built has no card yet.
 | CODE.TYPE@1 | coding | 63 rules it can run: 62 mypy and pyright rules and its own | built | `dev_harness/sigils/code_type.py, in SIGIL` |
 | CODE.SECURE@1 | coding | 291 bandit and semgrep rules it can run | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
 | CODE.REACH@1 | coding | 1 vulture rule it can run | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
-| CODE.LOOP@1 | coding | 18 ruff rules it can run | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
+| CODE.LOOP@1 | coding | 29 ruff rules it can run | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
 | CODE.IMPORT@1 | coding | 25 ruff rules it can run | built | `dev_harness/sigils/code_import.py, in SIGIL` |
 | CODE.COLLECTION@1 | coding | 23 ruff rules it can run | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
 | CODE.FLOW@1 | coding | 33 ruff rules it can run | built | `dev_harness/sigils/code_flow.py, in SIGIL` |

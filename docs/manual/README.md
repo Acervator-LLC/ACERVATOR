@@ -56,7 +56,7 @@ directory that disagree
 
 ```python
 if not path.is_file():
-    message = f"{readme.name} lists {name}, absent from {docs_dir}"
+    message = f"{readme.name} lists {link.group(1)}, absent from {docs_dir}"
     raise FileNotFoundError(message)
 ...
 if unlisted:
@@ -121,11 +121,11 @@ rules. [16-sigil-project.md](16-sigil-project.md) links every one.
 | [16-sigil-project/code-type.md](16-sigil-project/code-type.md) | CODE.TYPE@1: mypy and pyright errors |
 | [16-sigil-project/code-secure.md](16-sigil-project/code-secure.md) | CODE.SECURE@1: bandit and semgrep findings, each with its CWE id |
 | [16-sigil-project/code-reach.md](16-sigil-project/code-reach.md) | CODE.REACH@1: code that nothing reaches, found by vulture |
-| [16-sigil-project/code-loop.md](16-sigil-project/code-loop.md) | CODE.LOOP@1: 19 ruff rules for loops and builders |
-| [16-sigil-project/code-import.md](16-sigil-project/code-import.md) | CODE.IMPORT@1: 8 ruff rules for import statements |
-| [16-sigil-project/code-collection.md](16-sigil-project/code-collection.md) | CODE.COLLECTION@1: 34 ruff rules for tuples, lists, sets and dictionaries |
-| [16-sigil-project/code-flow.md](16-sigil-project/code-flow.md) | CODE.FLOW@1: 39 ruff rules for if, try, with, return, raise, assert, pass and del |
-| [16-sigil-project/code-variable.md](16-sigil-project/code-variable.md) | CODE.VARIABLE@1: 54 ruff rules for names, assignments and function arguments |
+| [16-sigil-project/code-loop.md](16-sigil-project/code-loop.md) | CODE.LOOP@1: 29 ruff rules for loops and builders |
+| [16-sigil-project/code-import.md](16-sigil-project/code-import.md) | CODE.IMPORT@1: 25 ruff rules for import statements |
+| [16-sigil-project/code-collection.md](16-sigil-project/code-collection.md) | CODE.COLLECTION@1: 23 ruff rules for tuples, lists, sets and dictionaries |
+| [16-sigil-project/code-flow.md](16-sigil-project/code-flow.md) | CODE.FLOW@1: 33 ruff rules for if, try, with, return, raise, assert, pass and del |
+| [16-sigil-project/code-variable.md](16-sigil-project/code-variable.md) | CODE.VARIABLE@1: 38 ruff rules for names, assignments and function arguments |
 | [16-sigil-project/code-debug-python.md](16-sigil-project/code-debug-python.md) | CODE.DEBUG.PYTHON@1: the Coding Archetype's canonized testing on one Python file, each finding bound to the Python discipline |
 | [16-sigil-project/ta-audit.md](16-sigil-project/ta-audit.md) | TA.AUDIT@1: whether an indicator module defines the name an audit line ranks |
 | [16-sigil-project/rule-partition.md](16-sigil-project/rule-partition.md) | Rule run partitioning: which of the Coding Archetype's rules run on one input, and the proof on src/ |
@@ -143,7 +143,7 @@ Where the extractor puts them:
 
 ```python
 REPO_ROOT = Path(__file__).resolve().parents[1]     # tools/extract_product_manual.py
-DEFAULT_FIGURES_DIR = REPO_ROOT / "docs" / "manual" / "figures"
+DEFAULT_FIGURES_DIR = REPO_ROOT / "artifacts" / "manual-figures"
 ```
 
 That count of 38 covers the images the source PDF embeds. A deep walk of the

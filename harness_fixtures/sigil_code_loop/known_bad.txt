@@ -28,3 +28,23 @@ known_bad_plr1736.py
 
 # FINDINGS, FIX: narrowed to the one function holding the loop
 known_bad_async110.py, in func
+
+# FINDINGS, FIX: each file reads its own rule id, one of the loop rules construct_scope.LOOP_PAIRS
+# places; C400 and SIM110 define their free names above the block; PLC0208's also reads B007
+known_bad_b023.py
+known_bad_c400.py
+known_bad_perf101.py
+known_bad_perf401.py
+known_bad_perf403.py
+known_bad_plc0208.py
+known_bad_ret507.py
+known_bad_ret508.py
+known_bad_sim110.py
+known_bad_sim113.py
+
+# CLEAN: PERF203 fires only below Python 3.11, and ruff resolves target 3.14 here from
+# requires-python in pyproject.toml
+known_bad_perf203.py
+
+# FINDINGS, FIX: the same PERF203 form under target_py310/ruff.toml, target-version py310
+target_py310/known_bad_perf203.py

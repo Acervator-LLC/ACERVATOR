@@ -1,6 +1,6 @@
 # CODE.LOOP@1
 
-Reference. CODE.LOOP@1 reads the loops in one Python file against the 18 ruff
+Reference. CODE.LOOP@1 reads the loops in one Python file against the 29 ruff
 rules it can run. The Coding Archetype owns it. It is one sigil of
 [the sigil project](../16-sigil-project.md).
 
@@ -24,11 +24,74 @@ CHARACTERISTICS = ("conventions", "performance-efficiency", "reliability")
 TAKEN = take("loop", DISCIPLINES, CHARACTERISTICS)
 ```
 
+## How its loop rules were found
+
+Two readings looked for every loop rule the Python discipline houses, without
+starting from the construct scope. The first reads each rule's published pair
+and asks whether the corrected form changes a for, async for or while
+statement, or a list, set or dictionary builder or generator expression, of the
+faulty form. The second reads each rule's published text for a loop.
+
+| Reading | Rules it names, of 491 housed ruff rules |
+| ------- | ---------------------------------------- |
+| the published pair changes a loop | 34 |
+| the published text names a loop | 43 |
+| both | 27 |
+
+The construct scope already placed 16 of the 27 on the loop construct. It
+places the other 11 there through a list in the scope command, each with the
+first loop node its corrected form changes.
+
+One reading alone names 23 rules. B031 and PTH206 of them sit on the loop
+construct through the climb. The other 21 were read against their pairs and
+stay off the card. A rule joins only when its corrected form changes the loop
+itself, and its faulty form holds no fault outside the loop. Each of the 21
+fails one test: its corrected form leaves the loop as it is, its faulty form
+holds the fault outside a loop too, its faulty form holds no loop, or ruff
+publishes no pair for it.
+
+`dev_harness/sigils/construct_scope.py, in LOOP_PAIRS`:
+
+```python
+LOOP_PAIRS = (
+    "B023",
+    "C400",
+    "PERF101",
+    "PERF203",
+    "PERF401",
+    "PERF403",
+    "PLC0208",
+    "RET507",
+    "RET508",
+    "SIM110",
+    "SIM113",
+)
+```
+
+| Rule | Where the climb places it | The loop node its corrected form changes |
+| ---- | ------------------------- | ---------------------------------------- |
+| B023 | none | the list builder at line 1 |
+| C400 | collection | the generator expression at line 1 |
+| PERF101 | collection | the for at line 2 |
+| PERF203 | none | the for at line 5 |
+| PERF401 | flow | the for at line 3 |
+| PERF403 | variable | the for at line 3 |
+| PLC0208 | collection | the for at line 1 |
+| RET507 | flow | the for at line 2 |
+| RET508 | flow | the for at line 2 |
+| SIM110 | none | the for at line 2 |
+| SIM113 | variable | the for at line 3 |
+
+PERF203 fires only when ruff's target is below Python 3.11. This tree's
+`pyproject.toml` requires Python 3.14, so its faulty form reads CLEAN here. The
+test pair reads it again under a ruff.toml that sets target-version py310, and
+there it reads FINDINGS.
+
 ## What it reads
 
 One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module. Tier 3 runs ruff
-with the selected rules of the 18 the card can run and with preview rules on. The file goes to ruff
+with the selected rules of the 29 the card can run and with preview rules on. The file goes to ruff
 on standard input, from the folder of the file. For a function or class, only
 the findings inside its lines count.
 
@@ -73,7 +136,7 @@ LOOP_NODES = (
 
 ## The selection
 
-For each input, CODE.LOOP@1 runs only those of its 18 rules that the run rule
+For each input, CODE.LOOP@1 runs only those of its 29 rules that the run rule
 selects for the input's facts. A rule whose subject the input lacks does not
 run, and an input that selects no rule runs no ruff.
 [Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
@@ -96,8 +159,8 @@ them, for each input that tier 2 accepts:
 
 | Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
 | ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
-| file | 416 | 18 | 10 | 13 | 17 | 56 | 56 |
-| def or class | 3,763 | 18 | 4 | 13 | 17 | 89 | 89 |
+| file | 418 | 29 | 17 | 24 | 28 | 113 | 113 |
+| def or class | 3,775 | 29 | 7 | 21 | 28 | 159 | 159 |
 
 ## Outputs and flags
 
@@ -135,20 +198,31 @@ rules on.
 | ---- | --------- | --------------- | --- | ------- |
 | ASYNC110 | async-busy-wait | Checks for the use of an async sleep function in a `while` loop. | none | no |
 | B007 | unused-loop-control-variable | Checks for unused variables in loops (e.g., `for` and `while` statements). | sometimes | no |
+| B023 | function-uses-loop-variable | Checks for function definitions that use a loop variable. | none | no |
 | B031 | reuse-of-groupby-generator | Checks for multiple usage of the generator returned from `itertools.groupby()`. | none | no |
+| C400 | unnecessary-generator-list | Checks for unnecessary generators that can be rewritten as list comprehensions (or with `list()` directly). | always | no |
 | C419 | unnecessary-comprehension-in-call | Checks for unnecessary list or set comprehensions passed to builtin functions that take an iterable. | sometimes | no |
 | C420 | unnecessary-dict-comprehension-for-iterable | Checks for unnecessary dict comprehension when creating a dictionary from an iterable. | sometimes | no |
 | F402 | import-shadowed-by-loop-var | Checks for import bindings that are shadowed by loop variables. | none | no |
 | FURB129 | readlines-in-for | Checks for uses of `readlines()` when iterating over a file line-by-line. | always | no |
 | FURB140 | reimplemented-starmap | Checks for generator expressions, list and set comprehensions that can be replaced with `itertools.starmap`. | sometimes | yes |
+| PERF101 | unnecessary-list-cast | Checks for explicit casts to `list` on for-loop iterables. | always | no |
 | PERF102 | incorrect-dict-iterator | Checks for uses of `dict.items()` that discard either the key or the value when iterating over the dictionary. | always | no |
+| PERF203 | try-except-in-loop | Checks for uses of except handling via `try`-`except` within `for` and `while` loops. | none | no |
+| PERF401 | manual-list-comprehension | Checks for `for` loops that can be replaced by a list comprehension. | sometimes | no |
 | PERF402 | manual-list-copy | Checks for `for` loops that append every item of an iterable to a list, which can be replaced with a call to `list`. | none | no |
+| PERF403 | manual-dict-comprehension | Checks for `for` loops that can be replaced by a dictionary comprehension. | sometimes | no |
 | PLC0206 | dict-index-missing-items | Checks for dictionary iterations that extract the dictionary value via explicit indexing, instead of using `.items()`. | none | no |
+| PLC0208 | iteration-over-set | Checks for iteration over a `set` literal in which each element is a literal. | always | no |
 | PLE4703 | modified-iterating-set | Checks for loops in which a `set` is modified during iteration. | always | yes |
 | PLR1733 | unnecessary-dict-index-lookup | Checks for key-based dict accesses during `.items()` iterations. | always | no |
 | PLR1736 | unnecessary-list-index-lookup | Checks for index-based list accesses during `enumerate` iterations. | always | no |
 | PTH206 | os-sep-split | Checks for uses of `.split(os.sep)` | none | no |
+| RET507 | superfluous-else-continue | Checks for `else` statements with a `continue` statement in the preceding `if` block. | sometimes | no |
+| RET508 | superfluous-else-break | Checks for `else` statements with a `break` statement in the preceding `if` block. | sometimes | no |
 | RUF006 | asyncio-dangling-task | Checks for `asyncio.create_task` and `asyncio.ensure_future` calls that do not store a reference to the returned result. | none | no |
+| SIM110 | reimplemented-builtin | Checks for `for` loops that can be replaced with a builtin function, like `any` or `all`. | sometimes | no |
+| SIM113 | enumerate-for-loop | Checks for `for` loops with explicit loop-index variables that can be replaced with `enumerate()`. | none | no |
 | SIM911 | zip-dict-keys-and-values | Checks for use of `zip()` to iterate over keys and values of a dictionary at once. | always | no |
 | UP028 | yield-in-for-loop | Checks for `for` loops that can be replaced with `yield from` expressions. | sometimes | no |
 
