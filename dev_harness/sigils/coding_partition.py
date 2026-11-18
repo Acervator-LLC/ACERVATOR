@@ -23,7 +23,15 @@ from dev_harness.harness import coding_archetype, report
 
 from . import coding_house
 from .coding_input import _SCOPES, OWNER, _scope, data_type_fault, locate
-from .core import discipline_fault, repository_root, tool_text
+from .core import (
+    CARD_DISCIPLINES,
+    FUNCTIONS,
+    Refusal,
+    card_refusal,
+    first_refusal,
+    repository_root,
+    tool_text,
+)
 from .partition_measure import KEYS_FILE, KINDS, SIZES
 
 TOOL_TIMEOUT_S = 1800
@@ -551,7 +559,7 @@ def tracked_files(root: Path, tree: str) -> list[str]:
 def prove_file(
     root: Path, relative: str, keys_path: Path, names: tuple[str, ...]
 ) -> list[dict[str, Any]]:
-    """Return a row per input of `relative` and per `names` sigil whose tier 2 accepts it: rules run, findings both ways."""
+    """Return a row per input of `relative` and per `names` sigil `first_refusal` accepts: rules run, findings both ways."""
     rules = load(keys_path)
     sigils = [m for m in coding_sigils() if m.SIGIL.name in names]
     faults = (*{m.ToolFault for m in sigils}, FactsFault, OSError, subprocess.SubprocessError)
@@ -563,7 +571,7 @@ def prove_file(
             continue
         for module in sigils:
             sigil = module.SIGIL
-            if sigil.data_type(text) or sigil.content(text, root):
+            if first_refusal(sigil, text, root) is not None:
                 continue
             selected = select(rules, facts, module.CAN_RUN)
             try:
@@ -619,6 +627,15 @@ def _saved_rows(saved: Path | None) -> dict[str, list[dict[str, Any]]]:
     return {entry["file"]: entry["rows"] for entry in map(json.loads, lines) if entry}
 
 
+def _refused_at(refusals: dict[str, Refusal | None], tier_name: str) -> dict[str, str]:
+    """Return the fault of each `refusals` sigil whose `Refusal` names `tier_name`."""
+    return {
+        name: refusal.fault
+        for name, refusal in refusals.items()
+        if refusal is not None and refusal.tier_name == tier_name
+    }
+
+
 def prove_sigils(
     root: Path,
     keys_path: Path,
@@ -630,8 +647,12 @@ def prove_sigils(
     """Return the proof that each coding sigil's findings on `PROOF_TREE` equal with and without the selection."""
     sigils = coding_sigils()
     missing = [m.SIGIL.name for m in sigils if not hasattr(m, "CAN_RUN")]
-    blocked = {m.SIGIL.name: discipline_fault(m.SIGIL) for m in sigils}
-    sigils = [m for m in sigils if m.SIGIL.name not in missing and not blocked[m.SIGIL.name]]
+    refusals = {m.SIGIL.name: card_refusal(m.SIGIL) for m in sigils}
+    sigils = [
+        m
+        for m in sigils
+        if m.SIGIL.name not in missing and not refusals[m.SIGIL.name]
+    ]
     if control:
         sigils = [m for m in sigils if control in m.CAN_RUN]
     if only:
@@ -661,12 +682,14 @@ def prove_sigils(
                         with saved.open("a", encoding="utf-8") as out:
                             out.write(json.dumps({"file": file, "rows": done[file]}) + "\n")
     rows = [row for file in files for row in done.get(file, [])]
+    versions = _refused_at(refusals, FUNCTIONS)
     return {
         "tree": PROOF_TREE,
         "files": len(files),
         "control": control,
         "sigils without CAN_RUN": missing,
-        "sigils refused by a discipline": {k: v for k, v in blocked.items() if v},
+        "sigils refused by a discipline": _refused_at(refusals, CARD_DISCIPLINES),
+        **({"sigils refused by a tool version": versions} if versions else {}),
         "inputs": {
             size: len({row["input"] for row in rows if row.get("size") == size})
             for size in ("module", "scope")
@@ -735,8 +758,8 @@ CARD: dict[str, object] = {
     "input, and the folder as the project input: no finding of a rule the input must carry is left "
     "out by the selection, read once from the archetype's own calls",
     "sigil proof": f"every tracked .py file of {PROOF_TREE}/ as a module input and every def and class "
-    "in it as a scope input: each coding sigil whose tier 2 accepts the input gives the same findings "
-    "with the selection as with every rule it can run",
+    "in it as a scope input: each coding sigil that first_refusal accepts the input for gives the same "
+    "findings with the selection as with every rule it can run; a sigil card_refusal refuses is set aside",
     "keys": str(KEYS_FILE.relative_to(report.REPO_ROOT)).replace("\\", "/"),
 }
 

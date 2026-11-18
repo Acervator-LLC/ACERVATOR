@@ -178,21 +178,29 @@ def version_fault(sigil: Sigil) -> str | None:
     return "; ".join(faults) or None
 
 
-def first_refusal(sigil: Sigil, text: str, root: Path) -> Refusal | None:
-    """Return the first `Refusal` of `discipline_fault` to `version_fault`, or None."""
+def card_refusal(sigil: Sigil) -> Refusal | None:
+    """Return `discipline_fault` at tier 0, else `version_fault` at tier 3, or None."""
     fault = discipline_fault(sigil)
     if fault:
         return Refusal(0, CARD_DISCIPLINES, fault)
+    fault = version_fault(sigil)
+    if fault:
+        return Refusal(3, FUNCTIONS, fault)
+    return None
+
+
+def first_refusal(sigil: Sigil, text: str, root: Path) -> Refusal | None:
+    """Return the lowest-tier refusal of `card_refusal`, tier 1 and tier 2, or None."""
+    card = card_refusal(sigil)
+    if card is not None and card.tier == 0:
+        return card
     fault = sigil.data_type(text)
     if fault:
         return Refusal(1, DATA_TYPE, fault)
     fault = sigil.content(text, root)
     if fault:
         return Refusal(2, CONTENT, fault)
-    fault = version_fault(sigil)
-    if fault:
-        return Refusal(3, FUNCTIONS, fault)
-    return None
+    return card
 
 
 def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:

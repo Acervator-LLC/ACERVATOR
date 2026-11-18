@@ -76,11 +76,16 @@ module. Each Coding sigil built after the first four, except CODE.DEBUG.PYTHON@1
 narrows tier 2: Python's ast module must find the construct the sigil reads, or
 the input is refused.
 
-`dev_harness/sigils/core.py, in first_refusal` runs four checks in order: the
-card's disciplines, tier 1, tier 2, and the tool versions the card holds.
+`dev_harness/sigils/core.py, in card_refusal` runs the two checks that read
+only the card: its disciplines at tier 0, then the tool versions it holds at
+tier 3.
 
-`dev_harness/sigils/core.py, in first_refusal` returns the first refusal with
-its tier number and tier name, or None when all four checks accept.
+`dev_harness/sigils/core.py, in first_refusal` calls `card_refusal` first, and
+then runs tier 1 and tier 2 on the input.
+
+`dev_harness/sigils/core.py, in first_refusal` returns the refusal with the
+lowest tier, with its tier number and tier name, or None when every check
+accepts.
 
 `dev_harness/sigils/core.py, in Refusal`:
 
@@ -93,24 +98,32 @@ class Refusal(NamedTuple):
     fault: str
 ```
 
-`dev_harness/sigils/core.py, in first_refusal`:
+`dev_harness/sigils/core.py, in card_refusal` and `in first_refusal`:
 
 ```python
-def first_refusal(sigil: Sigil, text: str, root: Path) -> Refusal | None:
-    """Return the first `Refusal` of `discipline_fault` to `version_fault`, or None."""
+def card_refusal(sigil: Sigil) -> Refusal | None:
+    """Return `discipline_fault` at tier 0, else `version_fault` at tier 3, or None."""
     fault = discipline_fault(sigil)
     if fault:
         return Refusal(0, CARD_DISCIPLINES, fault)
+    fault = version_fault(sigil)
+    if fault:
+        return Refusal(3, FUNCTIONS, fault)
+    return None
+
+
+def first_refusal(sigil: Sigil, text: str, root: Path) -> Refusal | None:
+    """Return the lowest-tier refusal of `card_refusal`, tier 1 and tier 2, or None."""
+    card = card_refusal(sigil)
+    if card is not None and card.tier == 0:
+        return card
     fault = sigil.data_type(text)
     if fault:
         return Refusal(1, DATA_TYPE, fault)
     fault = sigil.content(text, root)
     if fault:
         return Refusal(2, CONTENT, fault)
-    fault = version_fault(sigil)
-    if fault:
-        return Refusal(3, FUNCTIONS, fault)
-    return None
+    return card
 ```
 
 `dev_harness/sigils/core.py, in judge` gives the card's refusal with the flag
@@ -135,8 +148,8 @@ def judge(sigil: Sigil, text: str, root: Path, *, in_source: bool) -> Verdict:
 
 ### The tool versions a card holds
 
-`dev_harness/sigils/core.py, in version_fault` runs after tier 2 accepts and
-before the card's functions run.
+`dev_harness/sigils/core.py, in first_refusal` returns the refusal of
+`version_fault` only after tier 2 accepts, and before the card's functions run.
 
 Each card setting whose key ends in `_version` names one installed tool, and
 `dev_harness/sigils/core.py, in card_versions` reads those settings.
@@ -150,6 +163,10 @@ the flag BLOCK.
 
 The reason that `dev_harness/sigils/core.py, in version_fault` writes names the
 tool, the installed version and the version the card holds.
+
+`dev_harness/sigils/coding_partition.py, in prove_sigils` sets such a sigil
+aside before [the sigil proof](16-sigil-project/rule-partition.md#the-sigil-proof)
+reads any file, and its output names the tool and both versions.
 
 `dev_harness/sigils/core.py, in card_versions` and `in version_fault`:
 
@@ -342,7 +359,7 @@ module.
 
 | Module | What it holds |
 | ------ | ------------- |
-| `dev_harness/sigils/core.py` | the card as data in `Sigil`, the first refusal before tier 3 in `first_refusal`, the tiers in `judge`, the tool version check in `version_fault`, the flags in `FLAGS`, and the command in `main` |
+| `dev_harness/sigils/core.py` | the card as data in `Sigil`, the checks that read only the card in `card_refusal`, the first refusal before tier 3 in `first_refusal`, the tiers in `judge`, the tool version check in `version_fault`, the flags in `FLAGS`, and the command in `main` |
 | `dev_harness/sigils/coding_input.py` | the Coding Archetype's input: tier 1 in `DATA_TYPE_TIER`, tier 2 in `CONTENT_TIER`, and the file readers in `READERS` |
 | `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, each rule's fix class and its preview and removed marks in `listing`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
 | `dev_harness/sigils/construct_rules.py` | the rules a coding sigil holds from its disciplines: `take` for a construct sigil, `hold` for a tool sigil, and the reason each other scope rule left in `why_left` |
