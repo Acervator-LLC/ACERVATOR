@@ -144,8 +144,11 @@ def _outside(before: bytes, after: bytes, span: tuple[int, int]) -> bool:
     return False
 
 
-def _corrected(code: str) -> str:
-    """Return the published corrected form of rule `code`, or the `ToolFault` naming its absence."""
+def _corrected(code: str, module: ModuleType) -> str:
+    """Return the corrected form of rule `code` from `module`'s `OWN` rules or `rule_page`, or the `ToolFault`."""
+    own = getattr(module, "OWN", {})
+    if code in own:
+        return str(own[code].page.corrected)
     try:
         return rule_page(code).corrected
     except ToolFault as exc:
@@ -166,13 +169,18 @@ def _rounds(
     verdict = first
     rounds: list[tuple[str, ...]] = []
     narrowed = bool(copied.partition(SEPARATOR)[1])
+    own = getattr(module, "OWN", {})
     while len(rounds) < limit:
         located = locate(copied, root)
         if isinstance(located, str):
             message = f"{copied}: {located}, after a round"
             raise ToolFault(message)
         file, before, span = located
-        codes = tuple(code for code in reading_codes(verdict) if code not in forced)
+        codes = tuple(
+            code
+            for code in reading_codes(verdict)
+            if code not in forced and code not in own
+        )
         rounds.append(codes)
         after = _fixed(before, file.parent, codes, module) if codes else before
         if after == before:
@@ -228,7 +236,7 @@ def follow_on(
     corrected = (
         {}
         if verdict.flag in ENDS
-        else {code: _corrected(code) for code in reading_codes(verdict)}
+        else {code: _corrected(code, module) for code in reading_codes(verdict)}
     )
     change = "".join(
         difflib.unified_diff(

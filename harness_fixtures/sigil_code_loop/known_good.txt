@@ -44,3 +44,13 @@ known_good_plc0208.py
 # py314 and under target_py310/ruff.toml, where PERF203 can fire
 known_good_perf203.py
 target_py310/known_good_perf203.py
+
+# CLEAN: the corrected form of each rule of OWN in code_loop.py
+known_good_loop001.py
+known_good_loop002.py
+known_good_loop003.py
+
+# CLEAN: the same call or statement of each rule of OWN, outside any loop, beside a loop
+outside_loop001.py
+outside_loop002.py
+outside_loop003.py

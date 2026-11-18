@@ -48,3 +48,9 @@ known_bad_perf203.py
 
 # FINDINGS, FIX: the same PERF203 form under target_py310/ruff.toml, target-version py310
 target_py310/known_bad_perf203.py
+
+# FINDINGS, FIX: each file reads its own rule of OWN in code_loop.py, read from Python's ast,
+# and no ruff rule
+known_bad_loop001.py
+known_bad_loop002.py
+known_bad_loop003.py

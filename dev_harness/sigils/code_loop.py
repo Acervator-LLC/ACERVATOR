@@ -2,7 +2,8 @@
 
 import ast
 import sys
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from .coding_input import (
@@ -31,7 +32,14 @@ from .core import (
     main,
 )
 from .fix_class import BY_FIX_CLASS, FOLLOW_ON
-from .ruff_rules import RUFF_BUILT, ToolFault, check, rule_page, ruff_version
+from .ruff_rules import (
+    RUFF_BUILT,
+    RulePage,
+    ToolFault,
+    check,
+    rule_page,
+    ruff_version,
+)
 
 CLEAN = "CLEAN"
 FINDINGS = "FINDINGS"
@@ -47,7 +55,6 @@ TAKEN = take("loop", DISCIPLINES, CHARACTERISTICS)
 RULES = TAKEN.rules
 PREVIEW = TAKEN.preview
 HOLDING = TAKEN.holding
-CAN_RUN = tuple(f"{TOOL} {code}" for code in RULES)
 LOOP_NODES = (
     ast.For,
     ast.AsyncFor,
@@ -62,10 +69,310 @@ NO_LOOP = (
     "or generator expression"
 )
 
+OWN_TOOL = "ast"
+LIST = "list"
+STR = "str"
+OTHER = "other"
+DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+NESTED = (*DEFS, ast.Lambda)
+QUEUE_LINK = (
+    "https://docs.python.org/3.14/tutorial/datastructures.html#using-lists-as-queues"
+)
+QUEUE_QUOTE = (
+    "While appends and pops from the end of list are fast, doing inserts or pops "
+    "from the beginning of a list is slow (because all of the other elements have "
+    "to be shifted by one). See Time complexity of operations on built-in types for "
+    "more information. To implement a queue, use collections.deque which was "
+    "designed to have fast appends and pops from both ends."
+)
+CONCAT_LINK = (
+    "https://docs.python.org/3.14/builtins/stdtypes.html"
+    "#typesseq-repeated-concatenation"
+)
+CONCAT_QUOTE = (
+    "Concatenating immutable sequences always results in a new object. This means "
+    "that building up a sequence by repeated concatenation will have a quadratic "
+    "runtime cost in the total sequence length. To get a linear runtime cost, you "
+    "must switch to one of the alternatives below: if concatenating str objects, you "
+    "can build a list and use str.join() at the end or else write to an io.StringIO "
+    "instance and retrieve its value when complete"
+)
+
+Scope = ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda
+LoopNode = (
+    ast.For
+    | ast.AsyncFor
+    | ast.While
+    | ast.ListComp
+    | ast.SetComp
+    | ast.DictComp
+    | ast.GeneratorExp
+)
+Chain = tuple[dict[str, set[str]], ...]
+Node = ast.expr | ast.stmt
+
+
+@dataclass(frozen=True)
+class Found:
+    """One `findings` item: the `tool` that read it, the rule `code` and its `line`."""
+
+    tool: str
+    code: str
+    line: int
+
+
+@dataclass(frozen=True)
+class OwnRule:
+    """One `OWN` rule: its `page`, each quoted source and link in `sources`, and `matches`."""
+
+    page: RulePage
+    sources: tuple[tuple[str, str], ...]
+    matches: Callable[[Node, Chain], bool]
+
+
+def _value_kind(value: ast.expr | None) -> str:
+    """Return `LIST` or `STR` when `value` builds a list or a str, else `OTHER`."""
+    if isinstance(value, ast.List | ast.ListComp):
+        return LIST
+    if isinstance(value, ast.JoinedStr) or (
+        isinstance(value, ast.Constant) and isinstance(value.value, str)
+    ):
+        return STR
+    if (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id in {LIST, STR}
+    ):
+        return value.func.id
+    return OTHER
+
+
+def _annotation_kind(annotation: ast.expr | None) -> str:
+    """Return `LIST` or `STR` when `annotation` names list, a list subscript, or str, else `OTHER`."""
+    named = annotation.value if isinstance(annotation, ast.Subscript) else annotation
+    if isinstance(named, ast.Name) and named.id in {LIST, STR}:
+        return named.id
+    return OTHER
+
+
+def _inside(scope: Scope) -> Iterator[ast.AST]:
+    """Yield each node of `scope`'s body, parent first, never entering a `NESTED` body."""
+    body = scope.body
+    stack: list[ast.AST] = [body] if isinstance(body, ast.expr) else list(body)
+    stack.reverse()
+    while stack:
+        node = stack.pop()
+        yield node
+        if not isinstance(node, NESTED):
+            stack.extend(reversed(list(ast.iter_child_nodes(node))))
+
+
+def _other_names(node: ast.AST) -> list[str]:
+    """Return each name `node` binds by a def, class, import, except, global, nonlocal or match."""
+    if isinstance(node, DEFS):
+        return [node.name]
+    if isinstance(node, ast.Import | ast.ImportFrom):
+        return [(alias.asname or alias.name).partition(".")[0] for alias in node.names]
+    if isinstance(node, ast.Global | ast.Nonlocal):
+        return list(node.names)
+    if isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar):
+        return [node.name] if node.name else []
+    if isinstance(node, ast.MatchMapping):
+        return [node.rest] if node.rest else []
+    return []
+
+
+def _kinds(scope: Scope) -> dict[str, set[str]]:
+    """Return each name `scope` binds, with the `LIST`, `STR` or `OTHER` kind of every binding."""
+    kinds: dict[str, set[str]] = {}
+    if not isinstance(scope, ast.Module | ast.ClassDef):
+        params = scope.args
+        for arg in (*params.posonlyargs, *params.args, *params.kwonlyargs):
+            kinds.setdefault(arg.arg, set()).add(_annotation_kind(arg.annotation))
+        for rest in (params.vararg, params.kwarg):
+            if rest is not None:
+                kinds.setdefault(rest.arg, set()).add(OTHER)
+    typed: set[int] = set()
+    for node in _inside(scope):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    kinds.setdefault(target.id, set()).add(_value_kind(node.value))
+                    typed.add(id(target))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            kinds.setdefault(node.target.id, set()).add(
+                _annotation_kind(node.annotation)
+            )
+            typed.add(id(node.target))
+        elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
+            typed.add(id(node.target))
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            if id(node) not in typed:
+                kinds.setdefault(node.id, set()).add(OTHER)
+        for name in _other_names(node):
+            kinds.setdefault(name, set()).add(OTHER)
+    return kinds
+
+
+def _loops(tree: ast.Module) -> Iterator[tuple[LoopNode, Chain]]:
+    """Yield each loop in `tree` with the `_kinds` of each scope its names resolve through, innermost first."""
+
+    def visit(scope: Scope, outer: Chain) -> Iterator[tuple[LoopNode, Chain]]:
+        """Yield each loop of `scope`, then of each `NESTED` scope inside it."""
+        chain = (_kinds(scope), *outer)
+        enclosing = outer if isinstance(scope, ast.ClassDef) else chain
+        for node in _inside(scope):
+            if isinstance(node, LOOP_NODES):
+                yield node, chain
+            elif isinstance(node, NESTED):
+                yield from visit(node, enclosing)
+
+    yield from visit(tree, ())
+
+
+def _repeated(loop: LoopNode) -> list[ast.AST]:
+    """Return the parts of `loop` that run on each pass: body, while test, or builder element and conditions."""
+    if isinstance(loop, ast.For | ast.AsyncFor):
+        return list(loop.body)
+    if isinstance(loop, ast.While):
+        return [loop.test, *loop.body]
+    parts: list[ast.AST] = (
+        [loop.key, loop.value] if isinstance(loop, ast.DictComp) else [loop.elt]
+    )
+    for index, generator in enumerate(loop.generators):
+        parts.extend(generator.ifs)
+        if index:
+            parts.append(generator.iter)
+    return parts
+
+
+def _walk(parts: list[ast.AST]) -> Iterator[ast.AST]:
+    """Yield each node under `parts`, never entering a `NESTED` body."""
+    stack = list(parts)
+    while stack:
+        node = stack.pop()
+        yield node
+        if not isinstance(node, NESTED):
+            stack.extend(ast.iter_child_nodes(node))
+
+
+def _kind(expr: ast.expr, chain: Chain) -> str:
+    """Return the one kind every binding gives the name `expr` in its nearest `chain` scope, else `OTHER`."""
+    if not isinstance(expr, ast.Name):
+        return OTHER
+    for kinds in chain:
+        if expr.id in kinds:
+            found = kinds[expr.id]
+            return next(iter(found)) if len(found) == 1 else OTHER
+    return OTHER
+
+
+def _is_zero(expr: ast.expr) -> bool:
+    """Report whether `expr` is the int constant 0."""
+    return (
+        isinstance(expr, ast.Constant) and type(expr.value) is int and expr.value == 0
+    )
+
+
+def _front_call(node: Node, chain: Chain, method: str, count: int) -> bool:
+    """Report whether `node` calls `method` with `count` arguments, the first 0, on a `LIST` name."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == method
+        and len(node.args) == count
+        and not node.keywords
+        and _is_zero(node.args[0])
+        and _kind(node.func.value, chain) == LIST
+    )
+
+
+def _pops_front(node: Node, chain: Chain) -> bool:
+    """Report whether `node` is `pop(0)` on a `LIST` name, by `_front_call`."""
+    return _front_call(node, chain, "pop", 1)
+
+
+def _inserts_front(node: Node, chain: Chain) -> bool:
+    """Report whether `node` is `insert(0, item)` on a `LIST` name, by `_front_call`."""
+    return _front_call(node, chain, "insert", 2)
+
+
+def _concatenates(node: Node, chain: Chain) -> bool:
+    """Report whether `node` is `+=` on a name `_kind` reads as `STR`."""
+    return (
+        isinstance(node, ast.AugAssign)
+        and isinstance(node.op, ast.Add)
+        and _kind(node.target, chain) == STR
+    )
+
+
+OWN: dict[str, OwnRule] = {
+    "LOOP001": OwnRule(
+        RulePage(
+            "list-pop-front-in-loop",
+            "none",
+            'queue = ["Eric", "John", "Michael"]\n'
+            "served: list[str] = []\n"
+            "while queue:\n"
+            "    served.append(queue.pop(0))\n",
+            "from collections import deque\n"
+            "\n"
+            'queue = deque(["Eric", "John", "Michael"])\n'
+            "served: list[str] = []\n"
+            "while queue:\n"
+            "    served.append(queue.popleft())\n",
+        ),
+        ((QUEUE_QUOTE, QUEUE_LINK),),
+        _pops_front,
+    ),
+    "LOOP002": OwnRule(
+        RulePage(
+            "list-insert-front-in-loop",
+            "none",
+            "queue: list[str] = []\n"
+            'for name in ["Eric", "John", "Michael"]:\n'
+            "    queue.insert(0, name)\n",
+            "from collections import deque\n"
+            "\n"
+            "queue: deque[str] = deque()\n"
+            'for name in ["Eric", "John", "Michael"]:\n'
+            "    queue.appendleft(name)\n",
+        ),
+        ((QUEUE_QUOTE, QUEUE_LINK),),
+        _inserts_front,
+    ),
+    "LOOP003": OwnRule(
+        RulePage(
+            "str-concat-in-loop",
+            "none",
+            'words = ["Eric", "John", "Michael"]\n'
+            'text = ""\n'
+            "for word in words:\n"
+            "    text += word\n",
+            "import io\n"
+            "\n"
+            'words = ["Eric", "John", "Michael"]\n'
+            "buffer = io.StringIO()\n"
+            "for word in words:\n"
+            "    buffer.write(word)\n"
+            "text = buffer.getvalue()\n",
+        ),
+        ((CONCAT_QUOTE, CONCAT_LINK),),
+        _concatenates,
+    ),
+}
+CAN_RUN = (
+    *(f"{TOOL} {code}" for code in RULES),
+    *(f"{OWN_TOOL} {code}" for code in OWN),
+)
+
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "ruff_version": RUFF_BUILT,
     **TAKEN.settings(FUNCTION),
+    "own_rules": " ".join(OWN),
+    "own_tool": "Python's ast module: each own rule fires only inside a part of a "
+    "loop that runs on each pass, with fix class none",
     "selection": SELECTION,
     "can_run": str(len(CAN_RUN)),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
@@ -84,10 +391,28 @@ def _ruff_findings(
     return [(row.code, row.line) for row in rows]
 
 
+def _own_findings(source: bytes, codes: tuple[str, ...]) -> list[tuple[str, int]]:
+    """Return each code and line where an `OWN` rule of `codes` matches a node `_repeated` in a loop."""
+    if not codes:
+        return []
+    lines: dict[tuple[str, int], int] = {}
+    for loop, chain in _loops(ast.parse(source)):
+        for node in _walk(_repeated(loop)):
+            if not isinstance(node, ast.expr | ast.stmt):
+                continue
+            for code in codes:
+                if OWN[code].matches(node, chain):
+                    lines[code, id(node)] = node.lineno
+    return sorted(
+        ((code, line) for (code, _), line in lines.items()),
+        key=lambda row: (row[1], row[0]),
+    )
+
+
 def findings(
     text: str, root: Path, to_run: Collection[str]
-) -> tuple[str, list[tuple[str, int]]]:
-    """Return the ruff version and each code and line of the `to_run` rules inside the input `text` names."""
+) -> tuple[str, list[Found]]:
+    """Return the ruff version and each `Found` of the `to_run` rules inside the input `text` names."""
     located = locate(text, root)
     if isinstance(located, str):
         message = f"{text}: {located}, after tier 2 accepted it"
@@ -95,12 +420,31 @@ def findings(
     file, source, (first, last) = located
     is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
     rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
-    found = [
-        (code, line)
-        for code, line in _ruff_findings(source, file.parent, rules)
-        if not is_narrowed or first <= line <= last
+    own = tuple(code for code in OWN if f"{OWN_TOOL} {code}" in to_run)
+    read = [
+        *(
+            Found(TOOL, code, line)
+            for code, line in _ruff_findings(source, file.parent, rules)
+        ),
+        *(Found(OWN_TOOL, code, line) for code, line in _own_findings(source, own)),
     ]
+    found = [item for item in read if not is_narrowed or first <= item.line <= last]
     return f"ruff {ruff_version()}", found
+
+
+def page(code: str) -> RulePage:
+    """Return the `RulePage` of `code`: its `OWN` page, else the one `rule_page` reads from ruff."""
+    rule = OWN.get(code)
+    return rule.page if rule is not None else rule_page(code)
+
+
+def _source(code: str) -> str:
+    """Return the line quoting each of `OWN` rule `code`'s sources with its link, or nothing for ruff."""
+    rule = OWN.get(code)
+    if rule is None:
+        return ""
+    quoted = "; ".join(f'"{quote}" {link}' for quote, link in rule.sources)
+    return f"\n{code} source: {quoted}"
 
 
 def _content_fault(text: str, root: Path) -> str | None:
@@ -121,14 +465,14 @@ def _functions_verdict(text: str, root: Path) -> Reading:
     version, found = findings(text, root, selection(text, root, CAN_RUN))
     if not found:
         return Reading(CLEAN, f"{version}: no rule on the list fires", holds=False)
-    pages = {code: rule_page(code) for code, _ in found}
+    pages = {item.code: page(item.code) for item in found}
     rows = "; ".join(
-        f"{code} {pages[code].name} line {line} fix {pages[code].fix}"
-        for code, line in found
+        f"{item.code} {pages[item.code].name} line {item.line} fix {pages[item.code].fix}"
+        for item in found
     )
     forms = "".join(
-        f"\n{code} faulty:\n{page.faulty}{code} corrected:\n{page.corrected}"
-        for code, page in pages.items()
+        f"{_source(code)}\n{code} faulty:\n{form.faulty}{code} corrected:\n{form.corrected}"
+        for code, form in pages.items()
     )
     holds = any(code in HOLDING for code in pages)
     return Reading(FINDINGS, f"{version}: {rows}{forms}", holds)
@@ -162,6 +506,11 @@ SIGIL = Sigil(
                     "python -m ruff check --select with the selected rules, "
                     "the file on standard input, from the folder of the file"
                 ),
+                "Python's ast module, for each selected own rule: its form in a part "
+                "of a loop that runs on each pass, which is a for or async for body, a "
+                "while test or body, or a builder's element, conditions and later "
+                "sources; a name is a list or a str when every binding in its nearest "
+                "scope builds one",
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule <code> --output-format json, for each rule "
                 "that fires: its name, fix class, and the code under Example, "
@@ -173,6 +522,7 @@ SIGIL = Sigil(
                 "rule name",
                 "line",
                 "fix class",
+                "for an own rule, each source quoted with its link",
                 "faulty form",
                 "corrected form",
             ],
