@@ -200,12 +200,15 @@ import json
 import os
 import re
 import secrets
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
 
 with contextlib.suppress(AttributeError, ValueError):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -958,6 +961,374 @@ def _deny_reason(
 
 
 # ---------------------------------------------------------------------------
+# Sigil feedback - the coding sigils read a written .py file
+# ---------------------------------------------------------------------------
+
+SIGIL_SWITCH = "ACERVATOR_SIGIL_FEEDBACK"
+SIGIL_ON = "on"
+SIGIL_SUFFIX = ".py"
+SIGIL_PACKAGE = "dev_harness.sigils"
+FOLLOW_ON_MODULE = f"{SIGIL_PACKAGE}.fix_class"
+FOLLOW_ON_FILE = Path("dev_harness") / "sigils" / "fix_class.py"
+CODING_SIGILS = (
+    "CODE.LOOP",
+    "CODE.IMPORT",
+    "CODE.FLOW",
+    "CODE.VARIABLE",
+    "CODE.COLLECTION",
+    "CODE.OPTIMIZE",
+    "CODE.TYPE",
+    "CODE.REACH",
+    "CODE.SECURE",
+)
+
+# A sigil starts only while this many seconds of POST_BUDGET_S remain.
+SIGIL_MIN_S = 2.0
+
+# Seconds a stopped sigil's process tree gets to exit.
+SIGIL_REAP_S = 10.0
+
+SIGIL_LINES_SHOWN = 20
+SIGIL_RULES_SHOWN = 15
+SIGIL_FORMS_SHOWN = 8
+SIGIL_FORM_LINES = 30
+
+FINDINGS = "findings"
+CLEAN = "clean"
+UNCOVERED = "does not cover this file"
+UNREAD = "not read"
+
+_FEEDBACK = "[sigil-feedback]"
+_TIER_REFUSALS = ("tier 1 ", "tier 2 ")
+_TIER_3 = "tier 3 required processing functions: "
+_RUFF_ROW_RE = re.compile(
+    r"\b([A-Z]+[0-9]+) ([a-z0-9-]+) line ([0-9]+) fix (?:always|sometimes|none)\b")
+_TOOL_ROW_RE = re.compile(r"(.+) line ([0-9]+)")
+
+Ran = tuple[int, str, str] | str
+
+
+class SigilReading(NamedTuple):
+    """One sigil's `status` on the written file and the feedback `text` it adds."""
+
+    status: str
+    text: str
+
+
+def _sigil_feedback_off() -> bool:
+    """Report the sigil part off unless `SIGIL_SWITCH` reads `SIGIL_ON`."""
+    return os.environ.get(SIGIL_SWITCH, "").strip().lower() != SIGIL_ON
+
+
+def _git_root(path: Path) -> Path | None:
+    """Return the nearest folder above `path` that holds `.git`, the sigils' tree."""
+    for cand in path.parents:
+        if (cand / ".git").exists():
+            return cand
+    return None
+
+
+def _sigil_module(name: str) -> str:
+    """Return sigil `name`'s module: `dev_harness.sigils.code_loop` for CODE.LOOP."""
+    return f"{SIGIL_PACKAGE}.{name.lower().replace('.', '_')}"
+
+
+def _stop_tree(proc: subprocess.Popen[str]) -> None:
+    """Stop `proc` and each process it started; reap `proc` within `SIGIL_REAP_S`."""
+    if sys.platform == "win32":
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True,
+                check=False,
+                timeout=SIGIL_REAP_S,
+            )
+    else:
+        with contextlib.suppress(OSError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        proc.kill()
+        proc.communicate(timeout=SIGIL_REAP_S)
+
+
+def _sigil_run(argv: list[str], cwd: Path, deadline: float) -> Ran:
+    """Return `argv`'s exit code, stdout and stderr, or why it missed `deadline`."""
+    budget = deadline - time.monotonic()
+    if budget < SIGIL_MIN_S:
+        return f"the hook's {POST_BUDGET_S} s budget was spent before it started"
+    try:
+        proc = subprocess.Popen(
+            argv,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            start_new_session=True,
+        )
+    except (OSError, ValueError) as exc:
+        return f"did not start: {type(exc).__name__}: {exc}"
+    try:
+        out, err = proc.communicate(timeout=budget)
+    except subprocess.TimeoutExpired:
+        _stop_tree(proc)
+        return f"stopped when the hook's {POST_BUDGET_S} s budget ran out"
+    return proc.returncode, out, err
+
+
+def _row_of(ran: Ran) -> tuple[dict | None, str]:
+    """Return the JSON object `ran` printed, or None and why it printed none."""
+    if isinstance(ran, str):
+        return None, ran
+    _code, out, err = ran
+    try:
+        row = json.loads(out)
+    except json.JSONDecodeError:
+        said = err.strip() or out.strip() or "nothing on stdout or stderr"
+        return None, said.splitlines()[0][:200]
+    if not isinstance(row, dict):
+        return None, "printed JSON that is not an object"
+    return row, ""
+
+
+def _early(name: str, row: dict) -> SigilReading | None:
+    """Return `row`'s `CLEAN`, `UNCOVERED` or `UNREAD` reading, or None on findings."""
+    flag = row.get("flag")
+    reason = str(row.get("reason") or "").partition("\n")[0]
+    if flag == "PASS":
+        return SigilReading(CLEAN, name)
+    if flag == "BLOCK":
+        status = UNCOVERED if reason.startswith(_TIER_REFUSALS) else UNREAD
+        return SigilReading(status, f"{name} ({reason[:160]})")
+    return None
+
+
+def _ruff_rows(reason: str) -> list[tuple[str, str, int]]:
+    """Return each (code, name, line) row on the first line of a ruff `reason`."""
+    first = reason.partition("\n")[0]
+    return [
+        (code, name, int(line)) for code, name, line in _RUFF_ROW_RE.findall(first)
+    ]
+
+
+def _tool_rows(reason: str) -> list[tuple[str, int]]:
+    """Return each (rule, line) row after the tool versions in a tier 3 `reason`."""
+    body = reason.partition("\n")[0].removeprefix(_TIER_3).partition(": ")[2]
+    rows = []
+    for part in body.split("; "):
+        found = _TOOL_ROW_RE.fullmatch(part.strip())
+        if found:
+            rows.append((found.group(1), int(found.group(2))))
+    return rows
+
+
+def _lines_by_rule(rows: list[tuple[str, int]]) -> dict[str, list[int]]:
+    """Return each rule in `rows` with its sorted lines, in first-named order."""
+    grouped: dict[str, list[int]] = {}
+    for rule, line in rows:
+        grouped.setdefault(rule, []).append(line)
+    return {rule: sorted(set(lines)) for rule, lines in grouped.items()}
+
+
+def _rule_row(rule: str, lines: list[int], note: str) -> str:
+    """Return a row of `rule`, its first `SIGIL_LINES_SHOWN` `lines`, and `note`."""
+    shown = ", ".join(str(line) for line in lines[:SIGIL_LINES_SHOWN])
+    more = len(lines) - SIGIL_LINES_SHOWN
+    tail = f" (+{more} more)" if more > 0 else ""
+    word = "line" if len(lines) == 1 else "lines"
+    return f"  - {rule} {word} {shown}{tail}: {note}"
+
+
+def _form_rows(form: str) -> list[str]:
+    """Return the corrected `form` indented, cut to `SIGIL_FORM_LINES` lines."""
+    lines = form.rstrip("\n").splitlines()
+    rows = [f"        {line}" for line in lines[:SIGIL_FORM_LINES]]
+    if len(lines) > SIGIL_FORM_LINES:
+        rows.append(f"        ... {len(lines) - SIGIL_FORM_LINES} more lines")
+    return rows
+
+
+class SigilTarget(NamedTuple):
+    """The file as `rel` under `root`, its `listing`, and runs' `cwd` and `deadline`."""
+
+    rel: str
+    root: Path
+    cwd: Path
+    listing: Path
+    deadline: float
+
+
+def _run_on(target: SigilTarget, argv: list[str]) -> tuple[dict | None, str]:
+    """Return `_row_of` the run of `argv` from `target.cwd` by `target.deadline`."""
+    return _row_of(_sigil_run(argv, target.cwd, target.deadline))
+
+
+def _own_argv(name: str, target: SigilTarget) -> list[str]:
+    """Return the command of sigil `name`'s own module on `target.listing`."""
+    return [
+        sys.executable, "-m", _sigil_module(name), str(target.listing),
+        "--root", str(target.root),
+    ]
+
+
+def _no_rows(name: str, row: dict) -> SigilReading:
+    """Return the `UNREAD` reading of a `row` that flags findings and names no row."""
+    reason = str(row.get("reason"))[:160]
+    return SigilReading(UNREAD, f"{name} (no finding row in: {reason})")
+
+
+def _header(name: str, target: SigilTarget, row: dict, counts: tuple[int, int]) -> str:
+    """Return sigil `name`'s first line on `target`; `counts` is (findings, rules)."""
+    findings, rules = counts
+    return (
+        f"{_FEEDBACK} {name} on {target.rel}: {row.get('verdict')}, "
+        f"flag {row.get('flag')}, {findings} finding(s) under {rules} rule(s)"
+    )
+
+
+def _ruff_section(
+    name: str, target: SigilTarget, first_row: dict, left: set[str], forms: dict,
+) -> str:
+    """Return each `first_row` rule with a safe fix, or a `forms` entry if in `left`."""
+    first = _ruff_rows(str(first_row.get("reason") or ""))
+    names = {code: f"{code} {rule}" for code, rule, _ in first}
+    grouped = _lines_by_rule([(code, line) for code, _, line in first])
+    command = f"python -m {FOLLOW_ON_MODULE} {name} {target.rel}"
+    lines = [_header(name, target, first_row, (len(first), len(grouped)))]
+    shown = 0
+    for count, (code, at) in enumerate(grouped.items()):
+        if count == SIGIL_RULES_SHOWN:
+            lines.append(f"  - and {len(grouped) - count} more rule(s): {command}")
+            break
+        form = forms.get(code)
+        if code not in left:
+            lines.append(_rule_row(names[code], at, "ruff holds a safe fix"))
+        elif isinstance(form, str) and shown < SIGIL_FORMS_SHOWN:
+            shown += 1
+            lines.append(_rule_row(names[code], at, "the published corrected form:"))
+            lines.extend(_form_rows(form))
+        else:
+            lines.append(_rule_row(names[code], at, f"corrected form: {command}"))
+    if set(grouped) - left:
+        lines.append(f"  ruff's safe fixes: {command} --write")
+    return "\n".join(lines)
+
+
+def _ruff_sigil(name: str, target: SigilTarget) -> SigilReading:
+    """Return sigil `name`'s reading of `target` from `FOLLOW_ON_MODULE`."""
+    row, why = _run_on(target, [
+        sys.executable, "-m", FOLLOW_ON_MODULE, name, target.rel,
+        "--root", str(target.root),
+    ])
+    if row is None:
+        return SigilReading(UNREAD, f"{name} ({why})")
+    early = None if row.get("rounds") else _early(name, row)
+    if early is not None:
+        return early
+    left = {code for code, _, _ in _ruff_rows(str(row.get("reason") or ""))}
+    first_row = row
+    if row.get("change"):
+        before, why = _run_on(target, _own_argv(name, target))
+        if before is None:
+            return SigilReading(UNREAD, f"{name} (its reading before a fix: {why})")
+        first_row = before
+    if not _ruff_rows(str(first_row.get("reason") or "")):
+        return _no_rows(name, first_row)
+    corrected = row.get("corrected")
+    forms = corrected if isinstance(corrected, dict) else {}
+    return SigilReading(
+        FINDINGS, _ruff_section(name, target, first_row, left, forms))
+
+
+def _tool_sigil(name: str, target: SigilTarget) -> SigilReading:
+    """Return sigil `name`'s own reading of `target`, each rule with its lines."""
+    row, why = _run_on(target, _own_argv(name, target))
+    if row is None:
+        return SigilReading(UNREAD, f"{name} ({why})")
+    early = _early(name, row)
+    if early is not None:
+        return early
+    rows = _tool_rows(str(row.get("reason") or ""))
+    if not rows:
+        return _no_rows(name, row)
+    grouped = _lines_by_rule(rows)
+    lines = [_header(name, target, row, (len(rows), len(grouped)))]
+    note = f"{name} holds no corrected form for this rule"
+    for count, (rule, at) in enumerate(grouped.items()):
+        if count == SIGIL_RULES_SHOWN:
+            lines.append(
+                f"  - and {len(grouped) - count} more rule(s): python -m "
+                f"{_sigil_module(name)} <a file holding the line {target.rel}> "
+                f"--root {target.root}")
+            break
+        lines.append(_rule_row(rule, at, note))
+    return SigilReading(FINDINGS, "\n".join(lines))
+
+
+def _follow_on_sigils(cwd: Path, deadline: float) -> frozenset[str] | str:
+    """Return the sigils the `FOLLOW_ON_MODULE` card lists, or why it did not read."""
+    row, why = _row_of(_sigil_run(
+        [sys.executable, "-m", FOLLOW_ON_MODULE, "--card"], cwd, deadline))
+    if row is None:
+        return why
+    sigils = row.get("sigils")
+    if not isinstance(sigils, list):
+        return "its card lists no sigils"
+    return frozenset(str(sigil) for sigil in sigils)
+
+
+def _all_unread(why: str) -> str:
+    """Return one line naming every `CODING_SIGILS` entry as not read, with `why`."""
+    return f"{_FEEDBACK} {UNREAD}: {', '.join(CODING_SIGILS)} ({why})"
+
+
+def _feedback_text(readings: list[SigilReading]) -> str:
+    """Return the `FINDINGS` sections of `readings`, then one line per other status."""
+    parts = [reading.text for reading in readings if reading.status == FINDINGS]
+    for status in (CLEAN, UNCOVERED, UNREAD):
+        named = [reading.text for reading in readings if reading.status == status]
+        if named:
+            parts.append(f"{_FEEDBACK} {status}: {'; '.join(named)}")
+    return "\n".join(parts)
+
+
+def _sigil_feedback(path: Path, deadline: float) -> str:
+    """Return each `CODING_SIGILS` reading of `path`, naming every sigil not read."""
+    root = _git_root(path)
+    cwd = _repo_for(path)
+    if root is None:
+        return _all_unread(f"no folder holding .git sits above {path.name}")
+    if not (cwd / FOLLOW_ON_FILE).is_file():
+        return _all_unread(f"{cwd} holds no {FOLLOW_ON_FILE.as_posix()}")
+    try:
+        rel = path.relative_to(root).as_posix()
+    except ValueError:
+        return _all_unread(f"{path.name} sits outside {root}")
+    follow_on = _follow_on_sigils(cwd, deadline)
+    if isinstance(follow_on, str):
+        return _all_unread(f"the card of {FOLLOW_ON_MODULE} did not read: {follow_on}")
+    readings = []
+    with tempfile.TemporaryDirectory(
+            prefix="sigil_feedback_", ignore_cleanup_errors=True) as folder:
+        listing = Path(folder) / "input.txt"
+        listing.write_text(f"{rel}\n", encoding="utf-8")
+        target = SigilTarget(rel, root, cwd, listing, deadline)
+        for name in CODING_SIGILS:
+            read = _ruff_sigil if name in follow_on else _tool_sigil
+            readings.append(read(name, target))
+    return _feedback_text(readings)
+
+
+def _sigil_part(path: Path, deadline: float) -> str:
+    """Return `_sigil_feedback` for `path`, or the `_all_unread` line when it raises."""
+    try:
+        return _sigil_feedback(path, deadline)
+    except (OSError, ValueError) as exc:
+        return _all_unread(f"{type(exc).__name__}: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # stdin helpers
 # ---------------------------------------------------------------------------
 
@@ -1139,7 +1510,7 @@ def _run_pre(data: dict) -> int:
 
 
 def _run_post(data: dict) -> int:
-    """Report the archetype verdict for the file that was written."""
+    """Report the archetype verdict, then the sigil findings, on the written file."""
     path = _payload_path(data)
     if path is None or not path.exists():
         _debug_log(f"post: skipped, path missing (resolved to {path})")
@@ -1161,6 +1532,9 @@ def _run_post(data: dict) -> int:
         parts.append(
             _summarize(_run_archetype(module, path, deadline=deadline),
                        module, path))
+    if path.suffix == SIGIL_SUFFIX and not _sigil_feedback_off():
+        _debug_log(f"post: running the coding sigils on {path.name}")
+        parts.append(_sigil_part(path, deadline))
     if not parts:
         return 0
     summary = "\n".join(parts)
