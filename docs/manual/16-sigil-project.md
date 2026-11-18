@@ -361,7 +361,11 @@ ruff's own safe fix to each rule the reading names, and judges the file again.
 python -m dev_harness.sigils.fix_class <sigil> <input>
 python -m dev_harness.sigils.fix_class <sigil> <input> --root <folder>
 python -m dev_harness.sigils.fix_class <sigil> <input> --root <folder> --write
+python -m dev_harness.sigils.fix_class --card
 ```
+
+The last command prints the runner's card: the six sigils, the follow-on rule
+of each fix class, the round limit and the five stops.
 
 The runner applies only the fixes that ruff marks safe. Ruff's own
 documentation, in its section on fix safety, says an unsafe fix can change what
@@ -433,13 +437,18 @@ def _rounds(
     verdict = first
     rounds: list[tuple[str, ...]] = []
     narrowed = bool(copied.partition(SEPARATOR)[1])
+    own = getattr(module, OWN_ATTRIBUTE, {})
     while len(rounds) < limit:
         located = locate(copied, root)
         if isinstance(located, str):
             message = f"{copied}: {located}, after a round"
             raise ToolFault(message)
         file, before, span = located
-        codes = tuple(code for code in reading_codes(verdict) if code not in forced)
+        codes = tuple(
+            code
+            for code in reading_codes(verdict)
+            if code not in forced and code not in own
+        )
         rounds.append(codes)
         after = _fixed(before, file.parent, codes, module) if codes else before
         if after == before:
@@ -456,8 +465,18 @@ def _rounds(
 A rule left in the last reading carries its published corrected form, from the
 rule page ruff prints. That rule is a unit of work.
 
+CODE.LOOP's three rules of its own never go to ruff, because ruff does not
+know them. A round passes ruff only the other rules the reading names, and the
+runner takes each own rule's corrected form from the sigil module.
+
+`dev_harness/sigils/fix_class.py, in OWN_ATTRIBUTE`:
+
+```python
+OWN_ATTRIBUTE = "OWN_RULES"
+```
+
 The round limit is the largest number of rounds that a published faulty form
-needed. The six sigils hold 189 rules, and 185 of them flag their own published
+needed. The six sigils hold 193 rules, and 189 of them flag their own published
 faulty form. Across those forms, no run needed more than 2 rounds. A run needs
 2 rounds when the first round applies the safe fixes and the second finds no
 safe fix left, as for C400 under CODE.OPTIMIZE.
@@ -555,7 +574,7 @@ to 4.
 
 Each rule row names the characteristics it sits under, with each one's
 standard, and each ground names the characteristic it grounds. The Python
-discipline holds 854 rules: 804 under one characteristic, 46 under two and 4
+discipline holds 857 rules: 807 under one characteristic, 46 under two and 4
 under three.
 
 A placement by definition quotes the CWE's description from the MITRE CWE list
@@ -579,7 +598,7 @@ each one compatible with at least one characteristic below.
 | -------------- | ------------------- | -------------- | --------------------- |
 | security | 74 | 389 | coding, gui, docs, ta |
 | reliability | 74 | 111 | coding, gui, docs |
-| performance efficiency | 18 | 48 | coding, gui, ta |
+| performance efficiency | 18 | 51 | coding, gui, ta |
 | maintainability | 29 | 30 | coding, gui |
 | conventions | 0 | 254 | coding, gui, ta |
 | typing | 0 | 76 | coding, gui |
@@ -596,7 +615,8 @@ each one compatible with at least one characteristic below.
 | vulture | 1 | 1 | 0 |
 | the six rule modules | 19 | 4 | 15 |
 | the rule CODE.TYPE runs itself | 1 | 1 | 0 |
-| all | 1,241 | 854 | 387 |
+| the rules CODE.LOOP runs itself | 3 | 3 | 0 |
+| all | 1,244 | 857 | 387 |
 
 Each rule left in unplaced.json carries its reason: no listed CWE definition and
 no PEP or specification section describes it, or its text names a PEP that no
@@ -628,6 +648,13 @@ vulture, and the house counts those under the archetype's own lists.
 CODE.TYPE also runs one rule of its own, unused-builtin-result, which no call of
 the archetype runs. Its card names that rule and its tool, and the house counts
 the rule as the sigil's own. The Python discipline places it under reliability.
+
+CODE.LOOP runs three rules of its own the same way, LOOP001, LOOP002 and
+LOOP003, with code_loop as their tool. The Python discipline places them under
+performance efficiency, each on the Python 3.14 documentation section that
+states its cost.
+[CODE.LOOP@1](16-sigil-project/code-loop.md#rules-of-its-own) lists them with
+their sources.
 
 `dev_harness/sigils/coding_house.py, in _card_own`:
 
@@ -749,7 +776,7 @@ python -m dev_harness.sigils.construct_scope
 
 | Construct | Rules the scope places on it | Rules its sigil can run |
 | --------- | ---------------------------- | ----------------------- |
-| loop | 38 | 29 |
+| loop | 38 | 29, and 3 rules of its own |
 | import | 32 | 25 |
 | collection | 50 | 23 |
 | flow | 62 | 33 |
@@ -821,7 +848,7 @@ the card its command prints. A sigil that is not built has no card yet.
 | CODE.TYPE@1 | coding | 63 rules it can run: 62 mypy and pyright rules and its own | built | `dev_harness/sigils/code_type.py, in SIGIL` |
 | CODE.SECURE@1 | coding | 291 bandit and semgrep rules it can run | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
 | CODE.REACH@1 | coding | 1 vulture rule it can run | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
-| CODE.LOOP@1 | coding | 29 ruff rules it can run | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
+| CODE.LOOP@1 | coding | 32 rules it can run: 29 ruff rules and 3 of its own | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
 | CODE.IMPORT@1 | coding | 25 ruff rules it can run | built | `dev_harness/sigils/code_import.py, in SIGIL` |
 | CODE.COLLECTION@1 | coding | 23 ruff rules it can run | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
 | CODE.FLOW@1 | coding | 33 ruff rules it can run | built | `dev_harness/sigils/code_flow.py, in SIGIL` |

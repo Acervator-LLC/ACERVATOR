@@ -196,6 +196,24 @@ Each performance efficiency ground is one of six kinds.
 | docs, definition, quote | the documentation book, the section heading and URL, a quote of the section, and a quote of the rule | the section states the speed or memory cost the rule reports |
 | framework, definition, quote | the framework, the section heading and URL, a quote of the section, and a quote of the rule | the framework's documentation states that cost |
 
+### Rules CODE.LOOP runs itself
+
+The coding sigil CODE.LOOP runs three rules that this project writes, with
+code_loop as their tool. This discipline houses each under performance
+efficiency, on the documentation section that states its cost:
+
+```text
+LOOP001  list-pop-front-in-loop     The Python Tutorial, 5.1.2. Using Lists as Queues
+LOOP002  list-insert-front-in-loop  The Python Tutorial, 5.1.2. Using Lists as Queues
+LOOP003  str-concat-in-loop         Python built-ins reference, Common Sequence Operations,
+                                    and CWE-1046
+```
+
+Each rule reports its form only on a list or str that a loop carries from one
+pass to the next.
+[CODE.LOOP@1](../../../docs/manual/16-sigil-project/code-loop.md#rules-of-its-own)
+quotes each section and gives each rule's forms.
+
 ### Performance efficiency archetypes
 
 An archetype is compatible with performance efficiency when it runs a rule this

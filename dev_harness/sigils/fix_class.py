@@ -41,6 +41,7 @@ RUFF_SIGILS = {
     "CODE.COLLECTION": "code_collection",
     "CODE.OPTIMIZE": "code_optimize",
 }
+OWN_ATTRIBUTE = "OWN_RULES"
 ROUND_LIMIT = 2
 COPY_PREFIX = "follow_on_"
 FORCED_SAFE = "linter.safety_table.forced_safe = ["
@@ -50,6 +51,18 @@ UNCHANGED = "a round changes no byte"
 OUTSIDE = "ruff's fix changes a line outside the symbol"
 LIMIT = "the round limit is reached"
 ENDS = frozenset({Flag.PASS, Flag.BLOCK})
+CARD: dict[str, object] = {
+    "house": "coding",
+    "edition": 1,
+    "owner": "coding",
+    "sigils": sorted(RUFF_SIGILS),
+    "follow_on": FOLLOW_ON,
+    "round_limit": ROUND_LIMIT,
+    "stops": [PASSED, REFUSED, UNCHANGED, OUTSIDE, LIMIT],
+    "own_rules": f"each rule a sigil module's {OWN_ATTRIBUTE} holds: no round passes "
+    "it to ruff, and its corrected form comes from that module",
+    "command": "python -m dev_harness.sigils.fix_class <sigil> <input>",
+}
 
 _FINDING_RE = re.compile(
     r"\b([A-Z]+[0-9]+) [a-z0-9-]+ line [0-9]+ fix (?:always|sometimes|none)\b"
@@ -144,8 +157,11 @@ def _outside(before: bytes, after: bytes, span: tuple[int, int]) -> bool:
     return False
 
 
-def _corrected(code: str) -> str:
-    """Return the published corrected form of rule `code`, or the `ToolFault` naming its absence."""
+def _corrected(code: str, module: ModuleType) -> str:
+    """Return rule `code`'s corrected form from `module`'s `OWN_ATTRIBUTE` rules or `rule_page`, or the `ToolFault`."""
+    own = getattr(module, OWN_ATTRIBUTE, {})
+    if code in own:
+        return str(own[code].page.corrected)
     try:
         return rule_page(code).corrected
     except ToolFault as exc:
@@ -166,13 +182,18 @@ def _rounds(
     verdict = first
     rounds: list[tuple[str, ...]] = []
     narrowed = bool(copied.partition(SEPARATOR)[1])
+    own = getattr(module, OWN_ATTRIBUTE, {})
     while len(rounds) < limit:
         located = locate(copied, root)
         if isinstance(located, str):
             message = f"{copied}: {located}, after a round"
             raise ToolFault(message)
         file, before, span = located
-        codes = tuple(code for code in reading_codes(verdict) if code not in forced)
+        codes = tuple(
+            code
+            for code in reading_codes(verdict)
+            if code not in forced and code not in own
+        )
         rounds.append(codes)
         after = _fixed(before, file.parent, codes, module) if codes else before
         if after == before:
@@ -228,7 +249,7 @@ def follow_on(
     corrected = (
         {}
         if verdict.flag in ENDS
-        else {code: _corrected(code) for code in reading_codes(verdict)}
+        else {code: _corrected(code, module) for code in reading_codes(verdict)}
     )
     change = "".join(
         difflib.unified_diff(
@@ -247,14 +268,17 @@ def follow_on(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Print one `follow_on` run as JSON; exit 0 only when its last verdict reads `Flag.PASS`."""
+    """Print `CARD` with --card, else one `follow_on` run as JSON; exit 0 only on `Flag.PASS`."""
     parser = argparse.ArgumentParser(
         description="Apply ruff's safe fixes to one input of a ruff sigil until a stop.",
     )
     parser.add_argument(
-        "sigil", choices=sorted(RUFF_SIGILS), help="the sigil to judge with"
+        "sigil", nargs="?", choices=sorted(RUFF_SIGILS), help="the sigil to judge with"
     )
-    parser.add_argument("input", help="one input line: <path>, or <path>, in <symbol>")
+    parser.add_argument(
+        "input", nargs="?", help="one input line: <path>, or <path>, in <symbol>"
+    )
+    parser.add_argument("--card", action="store_true", help="print the card as JSON")
     parser.add_argument(
         "--root",
         type=Path,
@@ -272,6 +296,11 @@ def main(argv: list[str] | None = None) -> int:
         "repeat for more; default: " + ", ".join(APPLICATION_SOURCE),
     )
     args = parser.parse_args(argv)
+    if args.card:
+        print(json.dumps(CARD, indent=2))
+        return 0
+    if args.sigil is None or args.input is None:
+        parser.error("a sigil and an input are required unless --card is given")
     root = args.root if args.root is not None else repository_root(Path.cwd())
     if root is None or not root.is_dir():
         print(
