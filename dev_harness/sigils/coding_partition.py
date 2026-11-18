@@ -45,6 +45,8 @@ SELECTION = (
     "for each input, only the rules the card can run that coding_partition.select "
     "gives for the input's facts, by the keys in dev_harness/disciplines/partition.json"
 )
+SELECTION_SETTING = "selection"
+UNSELECTED = "sigils whose card names the selection, without CAN_RUN"
 FILE_CALLS = (
     "locate",
     "_ruff_findings",
@@ -647,6 +649,11 @@ def prove_sigils(
     """Return the proof that each coding sigil's findings on `PROOF_TREE` equal with and without the selection."""
     sigils = coding_sigils()
     missing = [m.SIGIL.name for m in sigils if not hasattr(m, "CAN_RUN")]
+    unselected = [
+        m.SIGIL.name
+        for m in sigils
+        if m.SIGIL.name in missing and SELECTION_SETTING in m.SIGIL.settings
+    ]
     refusals = {m.SIGIL.name: card_refusal(m.SIGIL) for m in sigils}
     sigils = [
         m
@@ -688,6 +695,7 @@ def prove_sigils(
         "files": len(files),
         "control": control,
         "sigils without CAN_RUN": missing,
+        UNSELECTED: unselected,
         "sigils refused by a discipline": _refused_at(refusals, CARD_DISCIPLINES),
         **({"sigils refused by a tool version": versions} if versions else {}),
         "inputs": {
@@ -825,7 +833,7 @@ def main(argv: list[str] | None = None) -> int:
             root, args.keys, args.control, args.findings, args.sigil, args.workers
         )
         print(json.dumps(proved, indent=2))
-        failed = proved["differ"] or proved["faults"] or proved["sigils without CAN_RUN"]
+        failed = proved["differ"] or proved["faults"] or proved[UNSELECTED]
         return 1 if failed else 0
     if not args.prove:
         shown = show(args.input, root, load(args.keys))

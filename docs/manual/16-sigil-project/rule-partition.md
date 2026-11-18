@@ -238,6 +238,20 @@ does not run. CODE.TYPE runs its own rule only when the selection keeps it.
 CODE.DEBUG.PYTHON@1 applies no run rule. It reports every finding of the Coding
 Archetype's own run, and the proof lists it among the sigils without CAN_RUN.
 
+That listing does not fail the proof, because CODE.DEBUG.PYTHON@1's card names
+no selection. The proof exits 1 when a sigil whose card names the selection
+holds no CAN_RUN.
+
+`dev_harness/sigils/coding_partition.py, in prove_sigils`:
+
+```python
+    unselected = [
+        m.SIGIL.name
+        for m in sigils
+        if m.SIGIL.name in missing and SELECTION_SETTING in m.SIGIL.settings
+    ]
+```
+
 `dev_harness/sigils/coding_partition.py, in selection`:
 
 ```python
@@ -296,7 +310,7 @@ left, so an input that tier 1 or tier 2 refuses is not read.
 
 | Sigil | Can run | Files: rules run now, lowest, median, highest | Defs and classes: rules run now, lowest, median, highest | Findings with the selection | Findings with every rule |
 | ----- | ------- | --------------------------------------------- | -------------------------------------------------------- | --------------------------- | ------------------------ |
-| CODE.LOOP | 18 | 10, 13, 17 | 4, 13, 17 | 145 | 145 |
+| CODE.LOOP | 29 | 17, 24, 28 | 7, 21, 28 | 272 | 272 |
 | CODE.IMPORT | 25 | 25, 25, 25 | 25, 25, 25 | 7,240 | 7,240 |
 | CODE.COLLECTION | 23 | 14, 18, 21 | 3, 17, 21 | 652 | 652 |
 | CODE.FLOW | 33 | 9, 22, 29 | 3, 12, 29 | 533 | 533 |
@@ -316,6 +330,7 @@ its one rule fits every source file.
 | ------- | ------ |
 | findings that differ with and without the selection | 0 |
 | sigils that refused an input after tier 2 accepted it | 0 |
+| CODE.LOOP@1's proof with no control | exit 0 |
 | control: one rule's imports key made wrong | 46 lost findings reported, exit 1 |
 
 The control copies the keys and makes ruff B007 need a module no input
