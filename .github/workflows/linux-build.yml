@@ -1,7 +1,7 @@
 ---
 name: Linux build
 
-on:
+"on":
   workflow_call:
   workflow_dispatch:
   push:
@@ -27,8 +27,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
-      QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
       LAUNCH_ROOT: ${{ github.workspace }}/launch
+      READY_LINE: main window displayed
+      USERNS_RESTRICT: kernel.apparmor_restrict_unprivileged_userns
       LAUNCH_WAIT_SECONDS: 180
       SETTLE_SECONDS: 20
       APPIMAGETOOL_VERSION: 1.9.1
@@ -174,7 +175,8 @@ jobs:
               > "$modules"
             echo "$variant  archive   $(wc -l < "$modules") entries"
             grep -F keyring.backends "$modules"
-            for module in keyring.backends.SecretService secretstorage jeepney; do
+            wanted="keyring.backends.SecretService secretstorage jeepney"
+            for module in $wanted; do
               if grep -qF "$module" "$modules"; then
                 echo "$variant  bundles   $module"
               else
@@ -186,7 +188,20 @@ jobs:
           done
           exit "$fail"
 
-      - name: Launch each AppImage and read what it reports about itself
+      - name: Read how the kernel treats unprivileged user namespaces
+        run: |
+          set -euo pipefail
+          echo "kernel $(uname -r)"
+          aa_enabled=/sys/module/apparmor/parameters/enabled
+          echo "apparmor enabled: $(cat "$aa_enabled")"
+          for key in "$USERNS_RESTRICT" \
+            kernel.unprivileged_userns_clone user.max_user_namespaces; do
+            echo "$key = $(sysctl -n "$key" 2>/dev/null || echo ABSENT)"
+          done
+          shipped="$(sysctl -n "$USERNS_RESTRICT")"
+          echo "USERNS_RESTRICT_SHIPPED=$shipped" >> "$GITHUB_ENV"
+
+      - name: Launch each AppImage, the namespace restriction off then on
         env:
           DISPLAY: ":99"
         run: |
@@ -199,95 +214,129 @@ jobs:
             sleep 1
           done
           echo "display $DISPLAY: $(xdpyinfo | grep -m1 dimensions)"
+
+          web_engine_report() {
+            local label="$1" pids p args kind flag status seccomp nspid
+            pids="$(pgrep -f QtWebEngineProcess || true)"
+            echo "$label QtWebEngineProcess count: $(grep -c . <<< "$pids")"
+            for p in $pids; do
+              args="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)"
+              kind="$(grep -o -m1 -- '--type=[a-z-]*' <<< "$args" || echo main)"
+              case "$args" in
+                *--no-sandbox*) flag=no-sandbox ;;
+                *) flag=sandbox ;;
+              esac
+              status="/proc/$p/status"
+              seccomp="$(awk '/^Seccomp:/{print $2}' "$status" 2>/dev/null)"
+              nspid="$(awk '/^NSpid:/{$1=""; print}' "$status" 2>/dev/null)"
+              echo "$label pid $p $kind $flag seccomp=$seccomp nspid=$nspid"
+            done
+          }
+
           fail=0
-          for variant in $VARIANTS; do
-            appdir="$(find dist -maxdepth 1 -type d -name "*-$variant")"
-            name="$(basename "$appdir")"
-            image="$GITHUB_WORKSPACE/$appdir.AppImage"
-            home="$LAUNCH_ROOT/$variant"
-            rm -rf "$home"
-            mkdir -p "$home/tmp"
-
-            echo "=============================================================="
-            echo "=== launching the $variant AppImage: $(basename "$image")"
-            echo "=== HOME is launch/$variant"
-            echo "=============================================================="
-            env -i \
-              PATH="/usr/bin:/bin" \
-              HOME="$home" \
-              TMPDIR="$home/tmp" \
-              LANG=C.UTF-8 \
-              DISPLAY="$DISPLAY" \
-              QTWEBENGINE_CHROMIUM_FLAGS="$QTWEBENGINE_CHROMIUM_FLAGS" \
-              ACERVATOR_DEBUG_BOOT=1 \
-              "$image" > "$home/console.txt" 2>&1 &
-            pid=$!
-            echo "pid $pid"
-
-            ready=timeout
-            for _ in $(seq 1 "$LAUNCH_WAIT_SECONDS"); do
-              if grep -rqs "main window displayed" "$home/.acervator_logs"; then
-                ready=log
-                break
-              fi
-              if ! kill -0 "$pid" 2>/dev/null; then
-                ready=died
-                break
-              fi
-              sleep 1
-            done
-            echo "--- the $variant AppImage reported its window through: $ready"
-            if [ "$ready" = log ]; then
-              sleep "$SETTLE_SECONDS"
-            fi
-
-            echo "--- the main window line, from its own log tree"
-            (cd "$home" && grep -rHs "main window displayed" .acervator_logs) \
-              || echo "NO main window line"
-
-            echo "--- heartbeat.txt, which only a running event loop writes"
-            cat "$home/.acervator_logs/heartbeat.txt" 2>/dev/null \
-              || echo "NO HEARTBEAT: the event loop never ran"
-
-            echo "--- QtWebEngineProcess instances while $variant runs"
-            web="$(pgrep -f QtWebEngineProcess | wc -l)" || true
-            echo "$variant QtWebEngineProcess count: $web"
-
-            echo "--- the windows named Acervator on the display"
-            xwininfo -root -tree > "$home/windows.txt" 2>&1 || true
-            grep -i acervator "$home/windows.txt" | head -5 \
-              || echo "NO window named Acervator"
-
-            echo "--- the log files under its HOME"
-            (cd "$home" && find .acervator_logs -type f | head -40) || true
-
-            echo "--- the last 40 lines of its system.log"
-            sysl="$(find "$home/.acervator_logs" -name system.log | head -1)"
-            if [ -n "$sysl" ]; then
-              tail -40 "$sysl"
-            else
-              echo "NO system.log"
-            fi
-
-            echo "--- the last 60 lines on its console"
-            tail -60 "$home/console.txt" || true
-
-            kill "$pid" 2>/dev/null || true
-            wait "$pid" 2>/dev/null || true
-            pkill -f "$name" 2>/dev/null || true
-            pkill -f QtWebEngineProcess 2>/dev/null || true
-            for _ in $(seq 1 30); do
-              [ "$(pgrep -f "$name" | wc -l)" = "0" ] && break
-              sleep 1
-            done
-            echo "--- reaped pid $pid; left: $(pgrep -f "$name" | wc -l)"
-
-            if [ "$ready" != log ]; then
-              echo "FAILURE: the $variant AppImage never logged its main window"
+          for restrict in 0 1; do
+            sudo sysctl -w "$USERNS_RESTRICT=$restrict"
+            held="$(sysctl -n "$USERNS_RESTRICT")"
+            if [ "$held" != "$restrict" ]; then
+              echo "FAILURE: the restriction reads $held, not $restrict"
               fail=1
+              continue
             fi
-            echo
+            setting="restrict-$held"
+            for variant in $VARIANTS; do
+              appdir="$(find dist -maxdepth 1 -type d -name "*-$variant")"
+              name="$(basename "$appdir")"
+              image="$GITHUB_WORKSPACE/$appdir.AppImage"
+              home="$LAUNCH_ROOT/$setting/$variant"
+              logs="$home/.acervator_logs"
+              rm -rf "$home"
+              mkdir -p "$home/tmp"
+
+              echo "=================================================="
+              echo "=== $setting: launching $(basename "$image")"
+              echo "=== HOME is launch/$setting/$variant"
+              echo "=== the runner shipped restrict-$USERNS_RESTRICT_SHIPPED"
+              echo "=================================================="
+              web_engine_report "before $setting $variant"
+              env -i \
+                PATH="/usr/bin:/bin" \
+                HOME="$home" \
+                TMPDIR="$home/tmp" \
+                LANG=C.UTF-8 \
+                DISPLAY="$DISPLAY" \
+                ACERVATOR_DEBUG_BOOT=1 \
+                "$image" > "$home/stdout.txt" 2> "$home/stderr.txt" &
+              pid=$!
+              echo "pid $pid"
+
+              ready=timeout
+              for _ in $(seq 1 "$LAUNCH_WAIT_SECONDS"); do
+                if grep -rqs "$READY_LINE" "$logs"; then
+                  ready=log
+                  break
+                fi
+                if ! kill -0 "$pid" 2>/dev/null; then
+                  ready=died
+                  break
+                fi
+                sleep 1
+              done
+              echo "--- $setting $variant reported its window through: $ready"
+              if [ "$ready" = log ]; then
+                sleep "$SETTLE_SECONDS"
+              fi
+
+              echo "--- the main window line, from its own log tree"
+              (cd "$home" && grep -rHs "$READY_LINE" .acervator_logs) \
+                || echo "NO main window line"
+
+              echo "--- pages that failed to load"
+              (cd "$home" && grep -rHs "failed to load" .acervator_logs) \
+                || echo "no page failed to load"
+
+              echo "--- heartbeat.txt, which only a running event loop writes"
+              cat "$logs/heartbeat.txt" 2>/dev/null \
+                || echo "NO HEARTBEAT: the event loop never ran"
+
+              echo "--- the web engine processes while $variant runs"
+              web_engine_report "$setting $variant"
+
+              echo "--- the windows named Acervator on the display"
+              xwininfo -root -tree > "$home/windows.txt" 2>&1 || true
+              grep -i acervator "$home/windows.txt" | head -5 \
+                || echo "NO window named Acervator"
+
+              echo "--- the last 40 lines of its system.log"
+              sysl="$(find "$logs" -name system.log | head -1)"
+              if [ -n "$sysl" ]; then
+                tail -40 "$sysl"
+              else
+                echo "NO system.log"
+              fi
+
+              echo "--- the last 40 lines of its stderr"
+              tail -40 "$home/stderr.txt" || true
+              echo "--- the last 20 lines of its stdout"
+              tail -20 "$home/stdout.txt" || true
+
+              kill "$pid" 2>/dev/null || true
+              wait "$pid" 2>/dev/null || true
+              pkill -f "$name" 2>/dev/null || true
+              pkill -f QtWebEngineProcess 2>/dev/null || true
+              for _ in $(seq 1 30); do
+                [ "$(pgrep -f "$name" | wc -l)" = "0" ] && break
+                sleep 1
+              done
+              echo "--- reaped pid $pid; left: $(pgrep -f "$name" | wc -l)"
+
+              if [ "$ready" != log ]; then
+                echo "FAILURE: $setting $variant never logged its main window"
+                fail=1
+              fi
+              echo
+            done
           done
+          sudo sysctl -w "$USERNS_RESTRICT=$USERNS_RESTRICT_SHIPPED"
           exit "$fail"
 
       - name: Upload the AppImages
