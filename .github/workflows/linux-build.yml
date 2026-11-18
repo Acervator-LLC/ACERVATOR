@@ -199,8 +199,14 @@ jobs:
             echo "$key = $(sysctl -n "$key" 2>/dev/null || echo ABSENT)"
           done
           echo "--- the sysctl.d files that set the restriction"
-          grep -rHs "$USERNS_RESTRICT" \
-            /usr/lib/sysctl.d /etc/sysctl.d /run/sysctl.d \
+          dirs=()
+          for dir in /usr/lib/sysctl.d /etc/sysctl.d /run/sysctl.d; do
+            if [ -d "$dir" ]; then
+              dirs+=("$dir")
+            fi
+          done
+          echo "sysctl.d folders on this runner: ${dirs[*]}"
+          grep -rH "$USERNS_RESTRICT" "${dirs[@]}" \
             || echo "no sysctl.d file names $USERNS_RESTRICT"
           dpkg -S /usr/lib/sysctl.d/10-apparmor.conf || true
           shipped="$(sysctl -n "$USERNS_RESTRICT")"
