@@ -18,7 +18,7 @@ from .coding_input import (
     locate,
 )
 from .coding_partition import SELECTION, selection
-from .construct_rules import TOOL, take
+from .construct_rules import TOOL, hold, take
 from .core import (
     APPLICATION_SOURCE,
     FLAGS,
@@ -69,7 +69,7 @@ NO_LOOP = (
     "or generator expression"
 )
 
-OWN_TOOL = "ast"
+OWN_TOOL = "code_loop"
 LIST = "list"
 STR = "str"
 OTHER = "other"
@@ -123,7 +123,7 @@ class Found:
 
 @dataclass(frozen=True)
 class OwnRule:
-    """One `OWN` rule: its `page`, each quoted source and link in `sources`, and `matches`."""
+    """One `OWN_RULES` rule: its `page`, each quoted source and link in `sources`, and `matches`."""
 
     page: RulePage
     sources: tuple[tuple[str, str], ...]
@@ -288,17 +288,17 @@ def _front_call(node: Node, chain: Chain, method: str, count: int) -> bool:
 
 
 def _pops_front(node: Node, chain: Chain) -> bool:
-    """Report whether `node` is `pop(0)` on a `LIST` name, by `_front_call`."""
+    """Report whether `node` calls `pop(0)` on a name that every binding in its scope gives a list."""
     return _front_call(node, chain, "pop", 1)
 
 
 def _inserts_front(node: Node, chain: Chain) -> bool:
-    """Report whether `node` is `insert(0, item)` on a `LIST` name, by `_front_call`."""
+    """Report whether `node` calls `insert(0, item)` on a name that every binding in its scope gives a list."""
     return _front_call(node, chain, "insert", 2)
 
 
 def _concatenates(node: Node, chain: Chain) -> bool:
-    """Report whether `node` is `+=` on a name `_kind` reads as `STR`."""
+    """Report whether `node` adds to a name by `+=` that every binding in its scope gives a str."""
     return (
         isinstance(node, ast.AugAssign)
         and isinstance(node.op, ast.Add)
@@ -306,7 +306,7 @@ def _concatenates(node: Node, chain: Chain) -> bool:
     )
 
 
-OWN: dict[str, OwnRule] = {
+OWN_RULES: dict[str, OwnRule] = {
     "LOOP001": OwnRule(
         RulePage(
             "list-pop-front-in-loop",
@@ -361,17 +361,19 @@ OWN: dict[str, OwnRule] = {
         _concatenates,
     ),
 }
+OWN = hold(OWN_TOOL, tuple(OWN_RULES), DISCIPLINES, CHARACTERISTICS)
 CAN_RUN = (
     *(f"{TOOL} {code}" for code in RULES),
-    *(f"{OWN_TOOL} {code}" for code in OWN),
+    *(f"{OWN.tool} {code}" for code in OWN.rules),
 )
 
 SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "ruff_version": RUFF_BUILT,
     **TAKEN.settings(FUNCTION),
-    "own_rules": " ".join(OWN),
-    "own_tool": "Python's ast module: each own rule fires only inside a part of a "
+    "own_tool": OWN.tool,
+    "own_rules": " ".join(OWN.rules),
+    "own_reads": "Python's ast module: each own rule fires only inside a part of a "
     "loop that runs on each pass, with fix class none",
     "selection": SELECTION,
     "can_run": str(len(CAN_RUN)),
@@ -392,7 +394,7 @@ def _ruff_findings(
 
 
 def _own_findings(source: bytes, codes: tuple[str, ...]) -> list[tuple[str, int]]:
-    """Return each code and line where an `OWN` rule of `codes` matches a node `_repeated` in a loop."""
+    """Return each code and line where an `OWN_RULES` rule of `codes` matches a node `_repeated` in a loop."""
     if not codes:
         return []
     lines: dict[tuple[str, int], int] = {}
@@ -401,7 +403,7 @@ def _own_findings(source: bytes, codes: tuple[str, ...]) -> list[tuple[str, int]
             if not isinstance(node, ast.expr | ast.stmt):
                 continue
             for code in codes:
-                if OWN[code].matches(node, chain):
+                if OWN_RULES[code].matches(node, chain):
                     lines[code, id(node)] = node.lineno
     return sorted(
         ((code, line) for (code, _), line in lines.items()),
@@ -420,27 +422,27 @@ def findings(
     file, source, (first, last) = located
     is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
     rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
-    own = tuple(code for code in OWN if f"{OWN_TOOL} {code}" in to_run)
+    own = tuple(code for code in OWN.rules if f"{OWN.tool} {code}" in to_run)
     read = [
         *(
             Found(TOOL, code, line)
             for code, line in _ruff_findings(source, file.parent, rules)
         ),
-        *(Found(OWN_TOOL, code, line) for code, line in _own_findings(source, own)),
+        *(Found(OWN.tool, code, line) for code, line in _own_findings(source, own)),
     ]
     found = [item for item in read if not is_narrowed or first <= item.line <= last]
     return f"ruff {ruff_version()}", found
 
 
 def page(code: str) -> RulePage:
-    """Return the `RulePage` of `code`: its `OWN` page, else the one `rule_page` reads from ruff."""
-    rule = OWN.get(code)
+    """Return the `RulePage` of `code`: its `OWN_RULES` page, else the one `rule_page` reads from ruff."""
+    rule = OWN_RULES.get(code)
     return rule.page if rule is not None else rule_page(code)
 
 
 def _source(code: str) -> str:
-    """Return the line quoting each of `OWN` rule `code`'s sources with its link, or nothing for ruff."""
-    rule = OWN.get(code)
+    """Return the line quoting each of `OWN_RULES` rule `code`'s sources with its link, or nothing for ruff."""
+    rule = OWN_RULES.get(code)
     if rule is None:
         return ""
     quoted = "; ".join(f'"{quote}" {link}' for quote, link in rule.sources)
@@ -533,6 +535,7 @@ SIGIL = Sigil(
                 else "no rule on the list is a preview rule, so ruff runs without --preview"
             ),
             "left": TAKEN.left,
+            "own_left": OWN.left,
             "left_because": TAKEN.left_because,
             "not_read": "a ruff setting matched on the file name, such as "
             "per-file-ignores, because the file reaches ruff on standard input",
