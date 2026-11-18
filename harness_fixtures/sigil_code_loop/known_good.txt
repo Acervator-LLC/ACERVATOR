@@ -25,3 +25,38 @@ known_good_async110.py
 known_good_c420.py
 known_good_furb140.py
 known_good_perf402.py
+
+# CLEAN for its own rule id: the loop rules construct_scope.LOOP_PAIRS places
+known_good_b023.py
+known_good_c400.py
+known_good_perf101.py
+known_good_perf401.py
+known_good_perf403.py
+known_good_ret507.py
+known_good_ret508.py
+known_good_sim110.py
+known_good_sim113.py
+
+# FINDINGS, FIX for another rule alone: PLC0208's form reads B007
+known_good_plc0208.py
+
+# FINDINGS, FIX for another rule alone: PERF203's form reads PERF401, under the tree's target
+# py314 and under target_py310/ruff.toml, where PERF203 can fire
+known_good_perf203.py
+target_py310/known_good_perf203.py
+
+# CLEAN: the corrected form of each rule of OWN in code_loop.py
+known_good_loop001.py
+known_good_loop002.py
+known_good_loop003.py
+
+# CLEAN: the same call or statement of each rule of OWN, outside any loop, beside a loop
+outside_loop001.py
+outside_loop002.py
+outside_loop003.py
+
+# CLEAN: the same call or statement of each rule of OWN inside a loop, on a name each pass
+# assigns afresh
+fresh_loop001.py
+fresh_loop002.py
+fresh_loop003.py

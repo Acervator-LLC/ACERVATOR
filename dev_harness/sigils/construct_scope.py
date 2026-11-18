@@ -54,6 +54,20 @@ TEXT_READ = f"{KEYS_FILE.name}: it reads text the AST does not hold (ground: {TE
 NO_SOURCE = f"{KEYS_FILE.name}: it fires on {{kinds}} files, and a sigil reads a {SOURCE_KIND} .py file"
 OUTSIDE = "the climb from its finding stops on {node}, inside no construct"
 NO_FORMS = "ruff_rules.rule_page refuses it, so a FINDINGS row cannot carry both forms: {fault}"
+PAIRED = "{node}, at line {line} of the Example form, changed by the Use instead form"
+LOOP_PAIRS = (
+    "B023",
+    "C400",
+    "PERF101",
+    "PERF203",
+    "PERF401",
+    "PERF403",
+    "PLC0208",
+    "RET507",
+    "RET508",
+    "SIM110",
+    "SIM113",
+)
 CONSTRUCTS: dict[str, Callable[[ast.AST], bool]] = {
     "collection": lambda node: isinstance(node, ast.expr) and _is_collection(node),
     "flow": lambda node: isinstance(node, FLOW_NODES),
@@ -79,6 +93,10 @@ CARD: dict[str, object] = {
     f"import construct; a rule whose reach ground is {TEXT_GROUND}, or whose file kinds lack "
     f"{SOURCE_KIND}, sits on none; its preview flag carries over",
     "forms": "a rule on a construct whose page ruff_rules.rule_page cannot read carries no_forms",
+    "pairs": "each rule in LOOP_PAIRS, whose published pair changes a loop node and whose page "
+    "names a loop, sits on loop as well; its loop entry names the first loop node of the "
+    "Example form that the Use instead form changes, read through ruff_rules.rule_page; a "
+    "row the climb placed on no construct keeps its none text",
     "source": "python -m ruff rule --all --output-format json, read by partition_measure.Ruff",
     "output": str(SCOPE_FILE.name),
     "command": "python -m dev_harness.sigils.construct_scope",
@@ -155,9 +173,35 @@ def _forms_fault(code: str) -> str | None:
     return None
 
 
+def pair_change(code: str) -> str:
+    """Return `PAIRED` for the first loop node of `code`'s Example form its Use instead form changes."""
+    try:
+        page = rule_page(code)
+    except ToolFault as exc:
+        message = f"{code}: {exc}"
+        raise MeasureFault(message) from exc
+    faulty, corrected = parsed(page.faulty), parsed(page.corrected)
+    if faulty is None or corrected is None:
+        message = f"{code}: its published pair does not parse as Python"
+        raise MeasureFault(message)
+    kept = [ast.dump(node) for node in ast.walk(corrected) if isinstance(node, LOOP_NODES)]
+    loops = [node for node in ast.walk(faulty) if isinstance(node, LOOP_NODES)]
+    for node in sorted(loops, key=lambda found: (found.lineno, found.col_offset)):
+        dump = ast.dump(node)
+        if dump not in kept:
+            return PAIRED.format(node=type(node).__name__, line=node.lineno)
+        kept.remove(dump)
+    message = f"{code}: its Use instead form changes no loop node of its Example form"
+    raise MeasureFault(message)
+
+
 def measure(sources: Path) -> dict[str, dict[str, Any]]:
-    """Return each `KEYS_FILE` ruff rule's constructs, or the text naming why it sits on none."""
+    """Return each `KEYS_FILE` ruff rule's constructs, with `LOOP_PAIRS` on loop, or why it sits on none."""
     keys = _keys()
+    unknown = sorted(set(LOOP_PAIRS) - set(keys))
+    if unknown:
+        message = f"LOOP_PAIRS names rules {KEYS_FILE.name} does not hold: {unknown}"
+        raise MeasureFault(message)
     preview = frozenset(code for code, row in keys.items() if row.get("preview"))
     engine = Ruff(preview)
     examples = {example.stem: example for example in engine.examples(sources)}
@@ -179,6 +223,10 @@ def measure(sources: Path) -> dict[str, dict[str, Any]]:
             row.pop("none", None)
             row.setdefault("constructs", {})["import"] = f"{KEYS_FILE.name}: {IMPORT_OPEN}"
             row["constructs"] = dict(sorted(row["constructs"].items()))
+        if code in LOOP_PAIRS:
+            placed = row.setdefault("constructs", {})
+            placed.setdefault("loop", pair_change(code))
+            row["constructs"] = dict(sorted(placed.items()))
         fault = _forms_fault(code) if "constructs" in row else None
         if fault:
             row["no_forms"] = fault

@@ -129,7 +129,6 @@ class FleetImportDialog(QtWidgets.QDialog):
         label = QtWidgets.QLabel(text, self)
         label.setObjectName(name)
         label.setWordWrap(True)
-        label.setAccessibleName(name)
         return label
 
     def _button(

@@ -309,8 +309,8 @@ def archetypes(name: str) -> tuple[str, ...]:
 ## Flags and follow-on rules
 
 Each output maps to one flag on its card. Each flag names the rule that
-follows it. The card holds that rule as data, and nothing runs a follow-on
-rule yet.
+follows it. The card holds that rule as data. For the six sigils that read ruff
+findings, the follow-on runner carries the rule out.
 
 `dev_harness/sigils/core.py, in FLAGS`:
 
@@ -344,11 +344,284 @@ HOLD.
 
 ```python
 FOLLOW_ON = {
-    "always": "apply ruff's fix for that rule and read the file again",
-    "sometimes": "the same, where ruff offers it for that line",
-    "none": "a unit of work",
+    "always": "apply ruff's fix where ruff marks it safe, and read the file again",
+    "sometimes": "the same, where ruff offers a safe fix for that line",
+    "none": "a unit of work, with the rule's published corrected form",
 }
 ```
+
+### The follow-on runner
+
+The follow-on runner carries out the follow-on rule for the six sigils that
+read ruff findings: CODE.LOOP, CODE.IMPORT, CODE.FLOW, CODE.VARIABLE,
+CODE.COLLECTION and CODE.OPTIMIZE. It judges one input with the sigil, applies
+ruff's own safe fix to each rule the reading names, and judges the file again.
+
+```
+python -m dev_harness.sigils.fix_class <sigil> <input>
+python -m dev_harness.sigils.fix_class <sigil> <input> --root <folder>
+python -m dev_harness.sigils.fix_class <sigil> <input> --root <folder> --write
+python -m dev_harness.sigils.fix_class --card
+```
+
+The last command prints the runner's card: the six sigils, the follow-on rule
+of each fix class, the round limit and the five stops.
+
+The runner applies only the fixes that ruff marks safe. Ruff's own
+documentation, in its section on fix safety, says an unsafe fix can change what
+the code does when it runs. The runner passes ruff the option that refuses
+unsafe fixes, so a ruff setting that turns unsafe fixes on has no effect. A ruff
+setting can also mark one rule's unsafe fix as safe. The runner reads the
+settings ruff resolves for the file, and it leaves each such rule unfixed.
+
+`dev_harness/sigils/fix_class.py, in _fixed`:
+
+```python
+def _fixed(
+    source: bytes, folder: Path, codes: Sequence[str], module: ModuleType
+) -> bytes:
+    """Return `source` after ruff's safe fixes of `codes`, run from `folder`, one call per preview flag."""
+    for preview in (False, True):
+        group = [code for code in codes if _preview(module, code) is preview]
+        if not group:
+            continue
+        source = _ruff(
+            "ruff check --fix-only",
+            [
+                "check",
+                "--no-cache",
+                "--fix-only",
+                "--no-unsafe-fixes",
+                *(["--preview"] if preview else []),
+                "--select",
+                ",".join(group),
+                "-",
+            ],
+            source=source,
+            folder=folder,
+        )
+    return source
+```
+
+Without the write option, the runner copies the named file into a temporary
+folder beside it, so ruff reads the same settings, and it fixes the copy. It
+prints the change it found and removes the folder, and the named file keeps
+every byte. With the write option, the runner writes the fixed copy over the
+named file. It writes no file outside the root it is given.
+
+Each round applies ruff's safe fixes for the rules the last reading names, and
+then judges the copy again. The runner stops at the first of five events:
+
+| Stop | When |
+| ---- | ---- |
+| the reading passes | the last reading reads PASS |
+| the sigil refuses the input | the last reading reads BLOCK, as when a fix removes the last construct the sigil reads |
+| a round changes no byte | ruff has no safe fix left for the rules the reading names |
+| ruff's fix changes a line outside the symbol | the input names a symbol, and the fix reaches a line outside it; the runner drops that round's change |
+| the round limit is reached | the round limit, 2 rounds, has run |
+
+`dev_harness/sigils/fix_class.py, in _rounds`:
+
+```python
+def _rounds(
+    module: ModuleType,
+    copied: str,
+    root: Path,
+    first: Verdict,
+    *,
+    in_source: bool,
+    forced: frozenset[str],
+    limit: int,
+) -> tuple[list[tuple[str, ...]], str, Verdict]:
+    """Return the codes fixed per round, the stop and the last `judge` verdict of the copy `copied` names."""
+    verdict = first
+    rounds: list[tuple[str, ...]] = []
+    narrowed = bool(copied.partition(SEPARATOR)[1])
+    own = getattr(module, OWN_ATTRIBUTE, {})
+    while len(rounds) < limit:
+        located = locate(copied, root)
+        if isinstance(located, str):
+            message = f"{copied}: {located}, after a round"
+            raise ToolFault(message)
+        file, before, span = located
+        codes = tuple(
+            code
+            for code in reading_codes(verdict)
+            if code not in forced and code not in own
+        )
+        rounds.append(codes)
+        after = _fixed(before, file.parent, codes, module) if codes else before
+        if after == before:
+            return rounds, UNCHANGED, verdict
+        if narrowed and _outside(before, after, span):
+            return rounds, OUTSIDE, verdict
+        file.write_bytes(after)
+        verdict = judge(module.SIGIL, copied, root, in_source=in_source)
+        if verdict.flag in ENDS:
+            return rounds, PASSED if verdict.flag is Flag.PASS else REFUSED, verdict
+    return rounds, LIMIT, verdict
+```
+
+A rule left in the last reading carries its published corrected form, from the
+rule page ruff prints. That rule is a unit of work.
+
+CODE.LOOP's three rules of its own never go to ruff, because ruff does not
+know them. A round passes ruff only the other rules the reading names, and the
+runner takes each own rule's corrected form from the sigil module.
+
+`dev_harness/sigils/fix_class.py, in OWN_ATTRIBUTE`:
+
+```python
+OWN_ATTRIBUTE = "OWN_RULES"
+```
+
+The round limit is the largest number of rounds that a published faulty form
+needed. The six sigils hold 193 rules, and 189 of them flag their own published
+faulty form. Across those forms, no run needed more than 2 rounds. A run needs
+2 rounds when the first round applies the safe fixes and the second finds no
+safe fix left, as for C400 under CODE.OPTIMIZE.
+
+## Feedback while code is written
+
+The write hook reads each file a writer saves, after the save. With the switch
+on, the nine coding sigils then read each saved Python file, and their findings
+join the feedback the writer gets back. The writer reads them while it still
+holds the file.
+
+The switch is the environment variable ACERVATOR_SIGIL_FEEDBACK, and its default
+is off. The feedback runs only when the variable reads on. Any other value, or no
+value, leaves it off, and the archetype verdict is the same either way.
+Experiment 3 measures whether the feedback improves the code a writer produces,
+and its result decides the default.
+
+`dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`:
+
+```python
+def _sigil_feedback_off() -> bool:
+    """Report the sigil part off unless `SIGIL_SWITCH` reads `SIGIL_ON`."""
+    return os.environ.get(SIGIL_SWITCH, "").strip().lower() != SIGIL_ON
+```
+
+### What the feedback names
+
+Each finding names its sigil, its rule and its line. A ruff rule also carries
+one of two notes: ruff holds a safe fix for it, or the feedback prints the
+rule's published corrected form under the row. CODE.TYPE, CODE.REACH and
+CODE.SECURE hold no corrected forms, so their rows name the rule and its lines
+only.
+
+The hook never changes the saved file. The six sigils that the follow-on
+runner's card lists run through that runner without its write option, so ruff
+fixes only a copy. When a fix changes the copy, the sigil's own command reads
+the file once more to give the lines of each rule that ruff fixed. CODE.TYPE,
+CODE.REACH and CODE.SECURE run through their own commands. Each sigil reads the
+tree of the nearest folder above the file that holds .git, which is the tree
+its own command reads by default.
+
+`dev_harness/hooks/archetype_gate.py, in _sigil_feedback`:
+
+```python
+def _sigil_feedback(path: Path, deadline: float) -> str:
+    """Return each `CODING_SIGILS` reading of `path`, naming every sigil not read."""
+    root = _git_root(path)
+    cwd = _repo_for(path)
+    if root is None:
+        return _all_unread(f"no folder holding .git sits above {path.name}")
+    if not (cwd / FOLLOW_ON_FILE).is_file():
+        return _all_unread(f"{cwd} holds no {FOLLOW_ON_FILE.as_posix()}")
+    try:
+        rel = path.relative_to(root).as_posix()
+    except ValueError:
+        return _all_unread(f"{path.name} sits outside {root}")
+    follow_on = _follow_on_sigils(cwd, deadline)
+    if isinstance(follow_on, str):
+        return _all_unread(f"the card of {FOLLOW_ON_MODULE} did not read: {follow_on}")
+    readings = []
+    with tempfile.TemporaryDirectory(
+            prefix="sigil_feedback_", ignore_cleanup_errors=True) as folder:
+        listing = Path(folder) / "input.txt"
+        listing.write_text(f"{rel}\n", encoding="utf-8")
+        target = SigilTarget(rel, root, cwd, listing, deadline)
+        for name in CODING_SIGILS:
+            read = _ruff_sigil if name in follow_on else _tool_sigil
+            readings.append(read(name, target))
+    return _feedback_text(readings)
+```
+
+Each sigil ends in one of four states, and the feedback names every sigil in
+one of them:
+
+| State | When |
+| ----- | ---- |
+| findings | the sigil's reading flags a finding: a block with one row per rule |
+| clean | the reading passes |
+| does not cover this file | tier 1 or tier 2 refuses the file, as CODE.LOOP refuses a file with no loop |
+| not read | the sigil's command failed, or the time budget ran out; the reason follows the sigil's name |
+
+The first two blocks of the feedback on the published faulty form of ASYNC110,
+with the switch on:
+
+```
+[sigil-feedback] CODE.LOOP on known_bad_async110.py: FINDINGS, flag FIX, 1 finding(s) under 1 rule(s)
+  - ASYNC110 async-busy-wait line 8: the published corrected form:
+        import asyncio
+
+        DONE = asyncio.Event()
+
+
+        async def func():
+            await DONE.wait()
+[sigil-feedback] CODE.REACH on known_bad_async110.py: UNREACHED, flag FIX, 1 finding(s) under 1 rule(s)
+  - function func confidence 60 line 7: CODE.REACH holds no corrected form for this rule
+```
+
+### The time budget of the feedback
+
+The archetypes and the sigils share `POST_BUDGET_S`, 200 seconds per write. The
+sigils run one at a time, in the order of `CODING_SIGILS`: the six ruff sigils,
+then CODE.TYPE, CODE.REACH and CODE.SECURE. A sigil starts only while 2 seconds
+of the budget remain. A sigil still running when the budget ends is stopped with
+each process it started. The feedback then names it as not read, with the
+reason.
+
+Four settings bound the length of the feedback:
+
+| Setting | Value | What it bounds |
+| ------- | ----- | -------------- |
+| SIGIL_LINES_SHOWN | 20 | the lines named for one rule; the rest are counted |
+| SIGIL_RULES_SHOWN | 15 | the rules named for one sigil; the rest point to the sigil's command |
+| SIGIL_FORMS_SHOWN | 8 | the corrected forms printed for one sigil |
+| SIGIL_FORM_LINES | 30 | the lines printed of one corrected form |
+
+### Readings of the feedback
+
+Each coding sigil's faulty forms and corrected twins under `harness_fixtures/`
+were written through the after-write half. Each file was read with its sample
+tree as the root, as its lists state. A faulty form passes when the feedback
+names its rule with a corrected form or the safe-fix note. A twin fails when the
+feedback names the rule of its faulty partner.
+
+| Sigil | Faulty forms named with a form or note | Twins naming their partner's rule | Faulty forms with feedback, switch unset |
+| ----- | -------------------------------------- | --------------------------------- | ---------------------------------------- |
+| CODE.LOOP | 32 of 32 | 0 of 39 | 0 of 32 |
+| CODE.IMPORT | 21 of 21 | 0 of 22 | 0 of 21 |
+| CODE.FLOW | 22 of 22 | 0 of 28 | 0 of 22 |
+| CODE.VARIABLE | 18 of 18 | 0 of 21 | 0 of 18 |
+| CODE.COLLECTION | 19 of 19 | 0 of 20 | 0 of 19 |
+| CODE.OPTIMIZE | 6 of 6 | 0 of 8 | 0 of 6 |
+| CODE.TYPE | 7 of 7, rule and lines only | 0 of 5 | 0 of 7 |
+| CODE.REACH | 1 of 1, rule and lines only | 0 of 3 | 0 of 1 |
+| CODE.SECURE | 6 of 6, rule and lines only | 0 of 5 | 0 of 6 |
+
+The failure-mode list of CODE.LOOP, `harness_fixtures/sigil_code_loop/failure_modes.txt`,
+holds 19 faulty forms and 42 twins as functions and classes. With each file
+written whole, the feedback named a line inside 19 of 19 faulty forms and
+inside 0 of 42 twins.
+
+With the switch unset, off, or set to another value, the feedback on one faulty
+form of each sigil equals, byte for byte, what the hook gave before the sigil
+part existed. The before-write half gives the same decision and the same output
+on 10 of 10 tool calls.
 
 ## The shared modules
 
@@ -364,7 +637,7 @@ module.
 | `dev_harness/sigils/ruff_rules.py` | one ruff run for a rule list in `check`, each rule's fix class and its preview and removed marks in `listing`, the fix class in `fix_class`, and a rule's published faulty and corrected forms in `rule_page` |
 | `dev_harness/sigils/construct_rules.py` | the rules a coding sigil holds from its disciplines: `take` for a construct sigil, `hold` for a tool sigil, and the reason each other scope rule left in `why_left` |
 | `dev_harness/sigils/coding_partition.py` | the rules a coding sigil runs on one input: the input's facts in `facts_of`, the run rule in `runs`, and the held rules it keeps in `selection` |
-| `dev_harness/sigils/fix_class.py` | the follow-on rule of each fix class, in `FOLLOW_ON` |
+| `dev_harness/sigils/fix_class.py` | the follow-on rule of each fix class, in `FOLLOW_ON`, and the follow-on runner, in `follow_on` |
 | `dev_harness/sigils/citation.py` | the citation form that CITE.SYMBOL@3 and TA.AUDIT@1 share: tier 1 in `data_type_fault`, and the definition search in `definition_verdict` |
 
 CITE.SYMBOL@3 keeps its own tiers 1 and 2. Its input form differs, and the
@@ -443,7 +716,7 @@ to 4.
 
 Each rule row names the characteristics it sits under, with each one's
 standard, and each ground names the characteristic it grounds. The Python
-discipline holds 854 rules: 804 under one characteristic, 46 under two and 4
+discipline holds 857 rules: 807 under one characteristic, 46 under two and 4
 under three.
 
 A placement by definition quotes the CWE's description from the MITRE CWE list
@@ -467,7 +740,7 @@ each one compatible with at least one characteristic below.
 | -------------- | ------------------- | -------------- | --------------------- |
 | security | 74 | 389 | coding, gui, docs, ta |
 | reliability | 74 | 111 | coding, gui, docs |
-| performance efficiency | 18 | 48 | coding, gui, ta |
+| performance efficiency | 18 | 51 | coding, gui, ta |
 | maintainability | 29 | 30 | coding, gui |
 | conventions | 0 | 254 | coding, gui, ta |
 | typing | 0 | 76 | coding, gui |
@@ -484,7 +757,8 @@ each one compatible with at least one characteristic below.
 | vulture | 1 | 1 | 0 |
 | the six rule modules | 19 | 4 | 15 |
 | the rule CODE.TYPE runs itself | 1 | 1 | 0 |
-| all | 1,241 | 854 | 387 |
+| the rules CODE.LOOP runs itself | 3 | 3 | 0 |
+| all | 1,244 | 857 | 387 |
 
 Each rule left in unplaced.json carries its reason: no listed CWE definition and
 no PEP or specification section describes it, or its text names a PEP that no
@@ -516,6 +790,13 @@ vulture, and the house counts those under the archetype's own lists.
 CODE.TYPE also runs one rule of its own, unused-builtin-result, which no call of
 the archetype runs. Its card names that rule and its tool, and the house counts
 the rule as the sigil's own. The Python discipline places it under reliability.
+
+CODE.LOOP runs three rules of its own the same way, LOOP001, LOOP002 and
+LOOP003, with code_loop as their tool. The Python discipline places them under
+performance efficiency, each on the Python 3.14 documentation section that
+states its cost.
+[CODE.LOOP@1](16-sigil-project/code-loop.md#rules-of-its-own) lists them with
+their sources.
 
 `dev_harness/sigils/coding_house.py, in _card_own`:
 
@@ -587,6 +868,27 @@ AST does not hold, or fires on stub files only, sits on none. A rule whose page
 publishes no corrected form stays off every card, because a finding carries both
 forms.
 
+One more reading places loop rules. Each rule the scope command lists in
+LOOP_PAIRS sits on the loop construct as well, because its published corrected
+form changes a loop of its faulty form. The command reads each pair through the
+rule page and records the first loop node that changes. It refuses to write the
+scope when a listed rule's pair changes no loop. A rule the climb placed on no
+construct keeps that reason beside its loop entry.
+[CODE.LOOP@1](16-sigil-project/code-loop.md#how-its-loop-rules-were-found) names
+the 11 rules and the two readings that found them.
+
+`dev_harness/sigils/construct_scope.py, in pair_change`:
+
+```python
+    kept = [ast.dump(node) for node in ast.walk(corrected) if isinstance(node, LOOP_NODES)]
+    loops = [node for node in ast.walk(faulty) if isinstance(node, LOOP_NODES)]
+    for node in sorted(loops, key=lambda found: (found.lineno, found.col_offset)):
+        dump = ast.dump(node)
+        if dump not in kept:
+            return PAIRED.format(node=type(node).__name__, line=node.lineno)
+        kept.remove(dump)
+```
+
 `dev_harness/sigils/construct_scope.py, in owners`:
 
 ```python
@@ -616,7 +918,7 @@ python -m dev_harness.sigils.construct_scope
 
 | Construct | Rules the scope places on it | Rules its sigil can run |
 | --------- | ---------------------------- | ----------------------- |
-| loop | 27 | 18 |
+| loop | 38 | 29, and 3 rules of its own |
 | import | 32 | 25 |
 | collection | 50 | 23 |
 | flow | 62 | 33 |
@@ -688,7 +990,7 @@ the card its command prints. A sigil that is not built has no card yet.
 | CODE.TYPE@1 | coding | 63 rules it can run: 62 mypy and pyright rules and its own | built | `dev_harness/sigils/code_type.py, in SIGIL` |
 | CODE.SECURE@1 | coding | 291 bandit and semgrep rules it can run | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
 | CODE.REACH@1 | coding | 1 vulture rule it can run | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
-| CODE.LOOP@1 | coding | 18 ruff rules it can run | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
+| CODE.LOOP@1 | coding | 32 rules it can run: 29 ruff rules and 3 of its own | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
 | CODE.IMPORT@1 | coding | 25 ruff rules it can run | built | `dev_harness/sigils/code_import.py, in SIGIL` |
 | CODE.COLLECTION@1 | coding | 23 ruff rules it can run | built | `dev_harness/sigils/code_collection.py, in SIGIL` |
 | CODE.FLOW@1 | coding | 33 ruff rules it can run | built | `dev_harness/sigils/code_flow.py, in SIGIL` |

@@ -827,7 +827,7 @@
     var cellProps = { className: TABLE_CLASS, style: style };
     cellProps[PART_ATTR] = CELL_PART;
     cellProps[COLUMN_ATTR] = text(column);
-    cellProps[ARIA_LABEL] = label(listField(model, COLUMNS)[column]);
+    cellProps[ARIA_LABEL] = label(props.name) || label(listField(model, COLUMNS)[column]);
     if (!isPlainObject(found)) {
       return element(CELL_TAG, cellProps, props.children);
     }
@@ -881,6 +881,28 @@
     return undefined;
   }
 
+  // The row's accessible name: its asset cell, its pair cell and its bot id.
+  function rowLabel(model, cells, botId) {
+    var named = [model[BOT_ID_COLUMN], model[SYMBOL_COLUMN]].map(function (column) {
+      var found = cells[column];
+      return isPlainObject(found) ? text(found[TEXT]) : undefined;
+    });
+    named.push(text(botId));
+    return label(named.filter(isFilledText).join(" "));
+  }
+
+  // A cell's accessible name: its column, then its text, the asset cell taking rowLabel.
+  function cellName(model, cells, column, botId) {
+    var said;
+    if (column === model[BOT_ID_COLUMN]) {
+      said = rowLabel(model, cells, botId);
+    } else if (isPlainObject(cells[column])) {
+      said = text(cells[column][TEXT]);
+    }
+    var heading = text(listField(model, COLUMNS)[column]);
+    return label([heading, said].filter(isFilledText).join(": "));
+  }
+
   function BotRow(props) {
     var model = props.model;
     var row = isPlainObject(props.row) ? props.row : {};
@@ -892,6 +914,7 @@
         key: String(column),
         model: model,
         cell: cells[column],
+        name: cellName(model, cells, column, botId),
         column: column,
         at: at,
         children: buttonAt(model, row, column, botId)
@@ -907,6 +930,7 @@
       }
     };
     rowProps[PART_ATTR] = ROW_PART;
+    rowProps[ARIA_LABEL] = rowLabel(model, cells, botId);
     rowProps[ROW_ATTR] = text(at);
     rowProps[BOT_ID_ATTR] = text(botId);
     rowProps[SKIPPED_ATTR] = text(row[SKIPPED]);

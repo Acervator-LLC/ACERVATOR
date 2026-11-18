@@ -1,11 +1,12 @@
 # Rule run partitioning
 
-Reference. The Coding Archetype can run 1,241 rules. The keys below were
-measured over 1,252, and the 11 more are preview rules no sigil runs now.
+Reference. The Coding Archetype can run 1,244 rules. The keys below were
+measured over 1,252: 1,241 of those rules, and 11 preview rules no sigil runs
+now. CODE.LOOP's 3 rules of its own carry no keys.
 For one input it runs only
 the rules that input can hold, and that choice is made before any rule runs.
 This page states the inputs, the facts read from each one, the four keys every
-rule carries, the run rule, and the table measured on `src/`. It is part of
+rule carries, the run rule, and the proof. It is part of
 [the sigil project](../16-sigil-project.md).
 
 ```mermaid
@@ -185,44 +186,27 @@ Why each open key stays open:
 | vulture's one rule id covers every kind of unused code | 0 | 1 | 0 | 0 |
 | the rule reads text the AST joins or the module's line count | 0 | 2 | 0 | 0 |
 
-## Measured on src/
-
-`src/` holds 503 Python files and 13,893 defs and classes.
-
-| Input | Inputs | Rules run, lowest | Median | Highest |
-| ----- | ------ | ----------------- | ------ | ------- |
-| scope | 13,893 | 310 | 772 | 943 |
-| module, source | 502 | 194 | 881 | 974 |
-| module, test | 1 | 900 | 900 | 900 |
-| project | 1 | 1,062 | 1,062 | 1,062 |
-
-How many rules each key left out of at least one of those inputs:
-
-| Key | Rules it partitions |
-| --- | ------------------- |
-| reach | 21 |
-| nodes | 1,052 |
-| imports | 369 |
-| file | 31 |
-
 ## The proof
 
 The proof reads every archetype call once over `src/`: ruff, mypy, pyright,
 bandit, vulture, semgrep, pylint, the sigils' preview rules, and the six rule
-modules. Those calls give 48,865 findings of 234 rules. For every module, scope
-and project input, each finding the input must carry is checked against the
-rules selected for it. A module or scope input carries each finding inside its
-lines whose rule's reach fits it, and the project carries every finding.
+modules. For every module, scope and project input, each finding the input must
+carry is checked against the rules selected for it. A module or scope input
+carries each finding inside its lines whose rule's reach fits it, and the
+project carries every finding.
 
-| Reading | Result |
-| ------- | ------ |
-| findings left out by the selection | 0 |
-| mypy notes with no error code, outside the 1,251 rules | 249 |
-| control: one rule's imports key made wrong | 4 lost findings reported, exit 1 |
+| Reading | What the proof does |
+| ------- | ------------------- |
+| a finding the selection leaves out | names its input, rule, file and line, and exits 1 |
+| a mypy note with no error code | counts it apart, outside every rule |
+| control: one rule's imports key made wrong | reports each finding of that rule as lost, and exits 1 |
 
 The control copies the keys and makes bandit B404 need a module no input
-imports. The proof then reports both B404 findings in `src/` by file and line,
+imports. The proof then reports each B404 finding in `src/` by file and line,
 at each module input and at the project input.
+
+The proof prints its counts for the tree it reads. This page holds none of
+them.
 
 ## The selection each sigil runs
 
@@ -234,9 +218,25 @@ out. Mypy gets a disabled error code for each mypy rule of the card that the
 selection leaves out. Pyright and vulture count only the selected codes, and
 every one of their rules fits every source file. A tool with no selected rule
 does not run. CODE.TYPE runs its own rule only when the selection keeps it.
+CODE.LOOP runs its three rules of its own the same way. The keys file holds no
+keys for them, so the selection keeps them for every input.
 
 CODE.DEBUG.PYTHON@1 applies no run rule. It reports every finding of the Coding
 Archetype's own run, and the proof lists it among the sigils without CAN_RUN.
+
+That listing does not fail the proof, because CODE.DEBUG.PYTHON@1's card names
+no selection. The proof exits 1 when a sigil whose card names the selection
+holds no CAN_RUN.
+
+`dev_harness/sigils/coding_partition.py, in prove_sigils`:
+
+```python
+    unselected = [
+        m.SIGIL.name
+        for m in sigils
+        if m.SIGIL.name in missing and SELECTION_SETTING in m.SIGIL.settings
+    ]
+```
 
 `dev_harness/sigils/coding_partition.py, in selection`:
 
@@ -256,8 +256,7 @@ and no sigil holds a run rule of its own.
 ### The sigil proof
 
 The sigil proof reads every tracked Python file of `src/` as a file input, and
-every def and class in them as a scope input: 503 files and 13,885 defs and
-classes. Each sigil that `dev_harness/sigils/core.py, in first_refusal` accepts
+every def and class in them as a scope input. Each sigil that `dev_harness/sigils/core.py, in first_refusal` accepts
 the input for runs twice, once with the selection and once with every rule it
 can run. The two lists of findings must be equal, in the same order.
 
@@ -294,34 +293,21 @@ left, so an input that tier 1 or tier 2 refuses is not read.
                 continue
 ```
 
-| Sigil | Can run | Files: rules run now, lowest, median, highest | Defs and classes: rules run now, lowest, median, highest | Findings with the selection | Findings with every rule |
-| ----- | ------- | --------------------------------------------- | -------------------------------------------------------- | --------------------------- | ------------------------ |
-| CODE.LOOP | 18 | 10, 13, 17 | 4, 13, 17 | 145 | 145 |
-| CODE.IMPORT | 25 | 25, 25, 25 | 25, 25, 25 | 7,240 | 7,240 |
-| CODE.COLLECTION | 23 | 14, 18, 21 | 3, 17, 21 | 652 | 652 |
-| CODE.FLOW | 33 | 9, 22, 29 | 3, 12, 29 | 533 | 533 |
-| CODE.VARIABLE | 38 | 16, 33, 35 | 12, 32, 35 | 14,417 | 14,417 |
-| CODE.OPTIMIZE | 85 | 4, 71, 81 | 7, 61, 81 | 6,711 | 6,711 |
-| CODE.TYPE | 63 | 32, 62, 63 | 41, 59, 63 | 17,537 | 17,537 |
-| CODE.SECURE | 291 | 18, 187, 202 | 34, 176, 198 | 62 | 62 |
-| CODE.REACH | 1 | 1, 1, 1 | 1, 1, 1 | 2,822 | 2,822 |
+Without the selection, a sigil runs every rule it can run on every input. The
+selection never narrows CODE.IMPORT: each of its rules needs an import
+statement, and its tier 2 already refuses an input without one. CODE.REACH's
+one rule fits every source file.
 
-Without the selection, a sigil runs every rule it can run on every input: the
-count in the second column. Each sigil page gives its own rows by input size.
-CODE.IMPORT stays at 25 because each of its rules needs an import statement and
-its tier 2 already refuses an input without one. CODE.REACH stays at 1 because
-its one rule fits every source file.
-
-| Reading | Result |
-| ------- | ------ |
-| findings that differ with and without the selection | 0 |
-| sigils that refused an input after tier 2 accepted it | 0 |
-| control: one rule's imports key made wrong | 46 lost findings reported, exit 1 |
+| Reading | What the proof does |
+| ------- | ------------------- |
+| a finding that differs with and without the selection | lists the input with the findings lost and added, and exits 1 |
+| a sigil that refuses an input after tier 2 accepted it | lists the fault, and exits 1 |
+| control: one rule's imports key made wrong | reports each finding of that rule as lost, and exits 1 |
 
 The control copies the keys and makes ruff B007 need a module no input
 imports. The proof then runs CODE.LOOP@1, the one sigil that can run B007. It
-reports every B007 finding as lost, each with its line: 16 at 9 files and 30 at
-19 defs and classes. No other finding moves.
+reports every B007 finding as lost, each with its line, and no other finding
+moves.
 
 ## Commands
 
@@ -335,8 +321,7 @@ python -m dev_harness.sigils.coding_partition --root . --sigils --control "ruff 
 python -m dev_harness.sigils.coding_partition --root . --sigils --sigil CODE.TYPE --findings <file>
 ```
 
-The first prints an input's facts and the rules that run on it: 810 of 1,252
-for that function, 898 for its file. The second runs every archetype call over
+The first prints an input's facts and the rules that run on it. The second runs every archetype call over
 `src/` once and checks every input. The third runs the same check on a copy of
 the keys with one key made wrong. The fourth measures the keys from the
 published sources that its `--card` lists.

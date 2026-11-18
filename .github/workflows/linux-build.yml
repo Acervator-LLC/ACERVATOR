@@ -28,6 +28,7 @@ jobs:
     timeout-minutes: 120
     env:
       LAUNCH_ROOT: ${{ github.workspace }}/launch
+      IMPORT_ROOT: ${{ github.workspace }}/launch/import
       READY_LINE: main window displayed
       USERNS_RESTRICT: kernel.apparmor_restrict_unprivileged_userns
       LAUNCH_WAIT_SECONDS: 180
@@ -355,6 +356,468 @@ jobs:
           done
           sudo sysctl -w "$USERNS_RESTRICT=$USERNS_RESTRICT_SHIPPED"
           exit "$fail"
+
+      # StateManager.save_state writes the fleet file, from two ScrummingBot
+      # records get_full_state exports.
+      - name: Write a fleet file and a file that is not one into each home
+        shell: python
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          HOME: ${{ github.workspace }}/launch/import-maker
+        run: |
+          import os
+          from pathlib import Path
+
+          from src.core.state_manager import StateManager
+          from src.trading.container.config import BotMode, make_bot_config
+          from src.trading.container.restore import (
+              _PlaceholderExchangeForRestore,
+          )
+          from src.trading.scrumming_bot import ScrummingBot
+
+          root = Path(os.environ["IMPORT_ROOT"])
+          for variant in os.environ["VARIANTS"].split():
+              files = root / variant / "fleet-files"
+              records = []
+              for asset in ("ALGO", "ATOM"):
+                  config = make_bot_config(
+                      BotMode.SCRUMMING,
+                      exchange_id="coinbase",
+                      base_currency="EUR",
+                      target_asset=asset,
+                  )
+                  venue = _PlaceholderExchangeForRestore("coinbase")
+                  bot = ScrummingBot(config, venue)
+                  records.append(bot.get_full_state())
+              StateManager(config_dir=files).save_state(records)
+              not_fleet = files / "not_a_fleet.json"
+              not_fleet.write_text("this file holds no fleet\n", "utf-8")
+              for path in sorted(files.iterdir()):
+                  size = path.stat().st_size
+                  print(f"{variant} wrote {path.name}, {size} bytes")
+              ids = [one["bot_id"] for one in records]
+              print(f"{variant} fleet file bots: {ids}")
+
+      # libatspi reads and drives the AT-SPI tree: https://docs.gtk.org/atspi2/
+      - name: Install AT-SPI, which presses the import and answers the picker
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends \
+            at-spi2-core gir1.2-atspi-2.0 python3-gi dbus python3-pil
+          dpkg-query -W at-spi2-core gir1.2-atspi-2.0 python3-gi
+
+      - name: Press the fleet import in each AppImage and read what it wrote
+        shell: /usr/bin/python3 {0}
+        run: |
+          import hashlib
+          import json
+          import os
+          import re
+          import signal
+          import subprocess
+          import sys
+          import time
+          import traceback
+          from pathlib import Path
+
+          DISPLAY = ":98"
+          # AT-SPI names a Qt window by its accessible name, else its title.
+          DIALOG = ("Fleet Import Dialog", "Acervator - no saved fleet")
+          MAIN = ("Acervator Main Window", "Acervator v")
+          PICKER = ("Pick a fleet file",)
+          IMPORT = "Import a fleet file..."
+          OPEN = "Open"
+          FIELD = "File name:"
+          BUTTON = ("button",)
+          FIELDS = ("text", "entry")
+          REFUSAL = "is not a fleet file, because it does not hold JSON text."
+          LOADED = "Imported fleet: 2 of 2 bot(s) loaded."
+          READY = "main window displayed"
+          # A log pane or log line naming a symbol is not a listed bot.
+          LOG_KINDS = ("text:",)
+          LOG_MARKS = ("[INFO]", "[WARNING]", "[ERROR]", "[DEBUG]",
+                       "acervator.")
+          STAMP = re.compile(r"^(?:\S+:? )?\[?\d\d:\d\d:\d\d")
+
+          root = Path(os.environ["IMPORT_ROOT"])
+          limit = int(os.environ["LAUNCH_WAIT_SECONDS"])
+          root.mkdir(parents=True, exist_ok=True)
+          os.environ["DISPLAY"] = DISPLAY
+          xvfb = subprocess.Popen(
+              ["Xvfb", DISPLAY, "-screen", "0", "1920x1080x24", "-nolisten",
+               "tcp"],
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
+          )
+          for _ in range(30):
+              probe = ["xdpyinfo", "-display", DISPLAY]
+              if subprocess.run(probe, capture_output=True).returncode == 0:
+                  break
+              time.sleep(1)
+          bus = subprocess.run(
+              ["dbus-daemon", "--session", "--fork", "--print-address=1"],
+              capture_output=True,
+              text=True,
+              check=True,
+          ).stdout.split()[0]
+          os.environ["DBUS_SESSION_BUS_ADDRESS"] = bus
+
+          import gi
+
+          gi.require_version("Atspi", "2.0")
+          from gi.repository import Atspi, Gio, GLib
+
+          # org.a11y.Bus starts the accessibility bus; Qt and libatspi share it.
+          reply = Gio.bus_get_sync(Gio.BusType.SESSION, None).call_sync(
+              "org.a11y.Bus",
+              "/org/a11y/bus",
+              "org.a11y.Bus",
+              "GetAddress",
+              None,
+              GLib.VariantType.new("(s)"),
+              Gio.DBusCallFlags.NONE,
+              20000,
+              None,
+          )
+          a11y = reply.unpack()[0]
+          os.environ["AT_SPI_BUS_ADDRESS"] = a11y
+          print(f"accessibility bus: {a11y}")
+          print(f"Atspi.init answered {Atspi.init()}")
+          failures = []
+          errors = []
+
+
+          def wait_for(read, seconds):
+              """Poll read each second until it answers truthy or time ends."""
+              end = time.monotonic() + seconds
+              while True:
+                  try:
+                      found = read()
+                  except Exception as exc:
+                      errors.append(f"{type(exc).__name__}: {exc}")
+                      found = None
+                  if found or time.monotonic() > end:
+                      return found
+                  time.sleep(1)
+
+
+          def applications():
+              """Each AT-SPI application with its pid and top-level names."""
+              desktop = Atspi.get_desktop(0)
+              held = []
+              for index in range(desktop.get_child_count()):
+                  app = desktop.get_child_at_index(index)
+                  if app is None:
+                      continue
+                  names = []
+                  for inner in range(app.get_child_count()):
+                      frame = app.get_child_at_index(inner)
+                      names.append(frame.get_name() if frame else None)
+                  pid = app.get_process_id()
+                  held.append(f"{app.get_name()} {pid} {names}")
+              return held
+
+
+          def ready(home):
+              """True once a file under the home's log tree names READY."""
+              logs = home / ".acervator_logs"
+              for path in logs.rglob("*") if logs.exists() else []:
+                  if not path.is_file():
+                      continue
+                  if READY in path.read_text("utf-8", "ignore"):
+                      return True
+              return False
+
+
+          def frames():
+              """Every top-level window each AT-SPI application holds."""
+              desktop = Atspi.get_desktop(0)
+              for index in range(desktop.get_child_count()):
+                  app = desktop.get_child_at_index(index)
+                  if app is None:
+                      continue
+                  for inner in range(app.get_child_count()):
+                      frame = app.get_child_at_index(inner)
+                      if frame is not None:
+                          yield frame
+
+
+          def window(prefix):
+              """The first top-level window whose name starts with prefix."""
+              for frame in frames():
+                  if (frame.get_name() or "").startswith(prefix):
+                      frame.clear_cache()
+                      return frame
+              return None
+
+
+          def walk(node):
+              """node and every descendant AT-SPI reports."""
+              stack = [node]
+              while stack:
+                  one = stack.pop()
+                  yield one
+                  try:
+                      count = one.get_child_count()
+                  except Exception:
+                      continue
+                  for index in range(count):
+                      try:
+                          child = one.get_child_at_index(index)
+                      except Exception:
+                          child = None
+                      if child is not None:
+                          stack.append(child)
+
+
+          def role(node):
+              """The AT-SPI role name of node."""
+              try:
+                  return node.get_role_name()
+              except Exception:
+                  return "unknown"
+
+
+          def strings(node):
+              """The name and the text one AT-SPI node exposes."""
+              found = []
+              try:
+                  found.append(node.get_name() or "")
+              except Exception:
+                  pass
+              try:
+                  text = node.get_text_iface()
+                  if text is not None:
+                      size = Atspi.Text.get_character_count(text)
+                      found.append(Atspi.Text.get_text(text, 0, size))
+              except Exception:
+                  pass
+              return [" ".join(one.split()) for one in found if one]
+
+
+          def tree(node):
+              """Each string under node, prefixed with its role."""
+              rows = []
+              for one in walk(node):
+                  rows.extend(f"{role(one)}: {text}" for text in strings(one))
+              return rows
+
+
+          def find(node, kinds, name):
+              """The first node under node named name, its role in kinds."""
+              for one in walk(node):
+                  held = role(one)
+                  if any(kind in held for kind in kinds):
+                      if (one.get_name() or "") == name:
+                          return one
+              return None
+
+
+          def press(node):
+              """Run the press action of node and answer its action names."""
+              action = node.get_action_iface()
+              count = Atspi.Action.get_n_actions(action)
+              names = [Atspi.Action.get_action_name(action, i)
+                       for i in range(count)]
+              wanted = [i for i, name in enumerate(names)
+                        if name.lower() in ("press", "click", "activate")]
+              Atspi.Action.do_action(action, wanted[0] if wanted else 0)
+              return names
+
+
+          def bot_rows(rows, symbol):
+              """Rows naming symbol that are not log text."""
+              return [
+                  row for row in rows
+                  if symbol in row
+                  and not row.startswith(LOG_KINDS)
+                  and not STAMP.match(row)
+                  and not any(mark in row for mark in LOG_MARKS)
+              ]
+
+
+          def fleet_symbols(good):
+              """Each bot id in the fleet file mapped to its symbol."""
+              bots = json.loads(good.read_text("utf-8"))["bots"]
+              return {bid: one["config"]["symbol"] for bid, one in bots.items()}
+
+
+          def listing(symbols):
+              """Rows of the main window listing each symbol, else None."""
+              rows = tree(window(MAIN))
+              named = {one: bot_rows(rows, one) for one in symbols}
+              loaded = [row for row in rows if LOADED in row]
+              if all(named.values()):
+                  return {"bot rows": named, "loaded line": loaded}
+              return None
+
+
+          def sha(path):
+              """The SHA-256 of the bytes at path."""
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+          def capture(home, label):
+              """Save the whole display beside the home's readings."""
+              try:
+                  from PIL import ImageGrab
+
+                  shot = ImageGrab.grab(xdisplay=DISPLAY)
+                  shot.save(home / f"import-{label}.png")
+              except Exception as exc:
+                  print(f"capture {label} failed: {exc}")
+
+
+          def pick(path, seen, label):
+              """Press IMPORT, then answer the picker with path."""
+              button = find(window(DIALOG), BUTTON, IMPORT)
+              seen[f"{label} press actions"] = press(button)
+              picker = wait_for(lambda: window(PICKER), 30)
+              if picker is None:
+                  raise RuntimeError("no picker window opened")
+              seen[f"{label} picker strings"] = tree(picker)
+              field = find(picker, FIELDS, FIELD)
+              editable = field.get_editable_text_iface()
+              Atspi.EditableText.set_text_contents(editable, str(path))
+              seen[f"{label} field"] = strings(field)
+              press(find(window(PICKER), BUTTON, OPEN))
+              closed = wait_for(lambda: window(PICKER) is None, 30)
+              seen[f"{label} picker closed"] = bool(closed)
+
+
+          def press_and_read(variant, home, seen):
+              """Take every reading on one running AppImage."""
+              files = home / "fleet-files"
+              good = files / "bot_state.json"
+              bad = files / "not_a_fleet.json"
+              expected = home / ".acervator" / "bot_state.json"
+              seen["good file sha256"] = sha(good)
+              symbols = fleet_symbols(good)
+              seen["fleet file bots"] = symbols
+              logged = wait_for(lambda: ready(home), limit)
+              seen["main window line"] = bool(logged)
+              dialog = wait_for(lambda: window(DIALOG), 120)
+              main = window(MAIN)
+              seen["first-run screen"] = dialog.get_name() if dialog else None
+              seen["main window under it"] = main.get_name() if main else None
+              seen["at-spi applications"] = applications()
+              seen["errors while waiting"] = errors[-5:]
+              if dialog is None:
+                  failures.append(f"{variant}: the screen never opened")
+                  return
+              time.sleep(15)
+              seen["expected place, nothing pressed"] = expected.exists()
+              if expected.exists():
+                  failures.append(f"{variant}: a fleet appeared unpressed")
+              before = tree(window(MAIN))
+              seen["bot rows before"] = {
+                  one: bot_rows(before, one) for one in symbols.values()
+              }
+              seen["screen strings, open"] = tree(window(DIALOG))
+              capture(home, "1-open")
+
+              pick(bad, seen, "bad file")
+              shown = []
+
+              def refusal():
+                  shown[:] = tree(window(DIALOG))
+                  return [row for row in shown if REFUSAL in row]
+
+              said = wait_for(refusal, 30) or []
+              seen["screen strings, bad file"] = shown
+              seen["refusal sentence read"] = said
+              seen["screen open after bad file"] = window(DIALOG) is not None
+              seen["expected place after bad file"] = expected.exists()
+              capture(home, "2-refused")
+              if not said:
+                  failures.append(f"{variant}: no refusal sentence was read")
+              if expected.exists():
+                  failures.append(f"{variant}: the bad file wrote the place")
+
+              pick(good, seen, "good file")
+              closed = wait_for(lambda: window(DIALOG) is None, 60)
+              seen["screen closed after good file"] = bool(closed)
+              written = wait_for(expected.exists, 30)
+              seen["expected place after good file"] = bool(written)
+              if not written:
+                  failures.append(f"{variant}: the good file wrote nothing")
+                  return
+              seen["expected place sha256"] = sha(expected)
+              if seen["expected place sha256"] != seen["good file sha256"]:
+                  failures.append(f"{variant}: the written bytes differ")
+              found = wait_for(lambda: listing(symbols.values()), 120)
+              seen["main window after good file"] = found
+              capture(home, "3-imported")
+              if not found:
+                  failures.append(f"{variant}: the bots were not listed")
+
+
+          def read_variant(variant):
+              """Launch one AppImage on its import home and read it."""
+              home = root / variant
+              (home / "tmp").mkdir(parents=True, exist_ok=True)
+              image = next(Path("dist").glob(f"*-{variant}.AppImage"))
+              env = {
+                  "PATH": "/usr/bin:/bin",
+                  "HOME": str(home),
+                  "TMPDIR": str(home / "tmp"),
+                  "LANG": "C.UTF-8",
+                  "DISPLAY": DISPLAY,
+                  "DBUS_SESSION_BUS_ADDRESS": bus,
+                  "AT_SPI_BUS_ADDRESS": a11y,
+                  "QT_LINUX_ACCESSIBILITY_ALWAYS_ON": "1",
+                  "ACERVATOR_DEBUG_BOOT": "1",
+              }
+              out = (home / "import-stdout.txt").open("w")
+              err = (home / "import-stderr.txt").open("w")
+              proc = subprocess.Popen(
+                  [str(image.resolve())],
+                  env=env,
+                  stdout=out,
+                  stderr=err,
+                  start_new_session=True,
+              )
+              seen = {"variant": variant, "pid": proc.pid}
+              try:
+                  press_and_read(variant, home, seen)
+              except Exception:
+                  failures.append(f"{variant}: {traceback.format_exc()}")
+              finally:
+                  # SIGTERM lets the AppImage runtime unmount its FUSE folder.
+                  for stop in (signal.SIGTERM, signal.SIGKILL):
+                      try:
+                          os.killpg(proc.pid, stop)
+                      except ProcessLookupError:
+                          break
+                      try:
+                          proc.wait(timeout=15)
+                          break
+                      except subprocess.TimeoutExpired:
+                          continue
+                  for name in (image.stem, "QtWebEngineProcess"):
+                      subprocess.run(["pkill", "-9", "-f", name], check=False)
+                  for mount in (home / "tmp").glob(".mount_*"):
+                      subprocess.run(
+                          ["fusermount3", "-u", "-z", str(mount)], check=False
+                      )
+                  out.close()
+                  err.close()
+              readings = home / "import-readings.json"
+              readings.write_text(json.dumps(seen, indent=2), "utf-8")
+              return seen
+
+
+          for variant in os.environ["VARIANTS"].split():
+              print("=" * 50)
+              print(f"=== {variant}: the fleet import, pressed through AT-SPI")
+              print("=" * 50)
+              for key, value in read_variant(variant).items():
+                  dumped = json.dumps(value, indent=2)
+                  print(f"READING {variant} {key}: {dumped}")
+          xvfb.terminate()
+          for failure in failures:
+              print(f"FAILURE {failure}")
+          sys.exit(1 if failures else 0)
 
       - name: Upload the AppImages
         if: always()

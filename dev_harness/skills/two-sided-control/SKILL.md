@@ -397,6 +397,52 @@ log and never to him.
 a thread guard refusing a feed — these are defects the unit fixes. Only a product
 choice is his. Writing a defect down as *his line* is how it shipped twice.
 
+## MEASURE A CONTROL ON ITS FAILURE MODES, CHOSEN BY A SAMPLING RULE
+
+Operator, 2026-11-18:
+
+> "For a given failure type, the optimal goal or target would be to have
+> controls and mechanismms that provide a large statistical cross section of
+> prevention based upon historical failure modes and examples."
+
+> "we should not be trying to scan everything or even huge batches of files.
+> Instead, we need to follow proper sampling rules and provide inputs that
+> exhibit known failure modes to see where our controls succeed or fail."
+
+Measured that day: one proof ran a sigil on every module and every def and
+class in `src/`. After 57 minutes it had read 6,415 inputs in 87 files, of
+about 14,400, for a change to a different sigil. Its first pass wrote a 19.8 MB
+row file, in which one missing rule folder showed as thousands of faults.
+
+**The set.** For each failure type a control exists to catch, build a set of
+inputs that show its known failure modes:
+
+- the published faulty form;
+- the variant forms the same fault takes;
+- faulty forms from this platform's own history, where `git log` shows the fix;
+- real sites in the code, taken by a sampling rule, never by reading all of it.
+
+Each faulty input has a corrected twin and a near-miss twin that must not fire.
+
+**The reading.** Per failure mode: faulty inputs caught out of faulty inputs
+held, and twins fired on out of twins held. A miss shows where the control
+fails. Fix it, or name the form as out of reach and say why.
+
+**The sample.** Where a reading draws on `src/`, take a seeded random sample,
+stratified by top-level folder. Record the seed, the size and the rule that
+sets the size. The margin the answer needs sets the size, not the size of
+the tree.
+
+**The scope.** A change is proved on the controls it changes, read from the
+diff, and nothing wider.
+
+**The data set** keeps the per-mode table, each input with its expected and its
+observed result, and the control. It never keeps a per-input dump of the tree.
+
+**What this does not change.** A regression run of a test suite still runs
+whole, as the section above requires. This section governs measuring what a
+control catches.
+
 ## THE RESIDUAL — what this does NOT catch
 
 **A check whose premise is wrong will pass its own two-sided control.**
