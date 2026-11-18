@@ -1,0 +1,309 @@
+---
+name: Linux build
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    paths:
+      - Acervator_linux.spec
+      - tools/build_variants.py
+      - tools/spec_common.py
+      - tools/deps.py
+      - pyproject.toml
+      - .python-version
+      - .github/workflows/linux-build.yml
+
+concurrency:
+  group: linux-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      QTWEBENGINE_CHROMIUM_FLAGS: --no-sandbox
+      LAUNCH_ROOT: ${{ github.workspace }}/launch
+      LAUNCH_WAIT_SECONDS: 180
+      SETTLE_SECONDS: 20
+      APPIMAGETOOL_VERSION: 1.9.1
+      APPIMAGETOOL_SHA256: >-
+        ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+      RUNTIME_VERSION: "20251108"
+      RUNTIME_SHA256: >-
+        2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+
+      - name: Report the runner and the version the build will carry
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          uname -m
+          grep PRETTY_NAME /etc/os-release
+          python -V
+          python -c 'import src; print("version:", src.__version__)'
+          env_var="$(python -m tools.build_variants env-var)"
+          variants="$(python -m tools.build_variants select | tr '\n' ' ')"
+          echo "variant variable: $env_var"
+          echo "variants: $variants"
+          echo "VARIANT_ENV_VAR=$env_var" >> "$GITHUB_ENV"
+          echo "VARIANTS=$variants" >> "$GITHUB_ENV"
+
+      - name: Install the libraries the Qt build loads, the display and FUSE
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb x11-utils fuse3 \
+            libegl1 libgl1 libopengl0 libfontconfig1 libfreetype6 \
+            libdbus-1-3 libxkbcommon0 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-xinerama0 libxcb-xkb1 libxcb-xfixes0 libxcb-sync1 \
+            libxcb-shm0 libnss3 libxcomposite1 libxdamage1 libxrandr2 \
+            libxtst6 libxkbfile1 libxshmfence1 libgbm1 libasound2t64
+
+      - name: Download appimagetool and its runtime, and check each digest
+        run: |
+          set -euo pipefail
+          releases="https://github.com/AppImage"
+          tools="$RUNNER_TEMP/appimage"
+          tool="$tools/appimagetool"
+          runtime="$tools/runtime-x86_64"
+          mkdir -p "$tools"
+          curl -fsSL -o "$tool" \
+            "$releases/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-x86_64.AppImage"
+          curl -fsSL -o "$runtime" \
+            "$releases/type2-runtime/releases/download/$RUNTIME_VERSION/runtime-x86_64"
+          echo "$APPIMAGETOOL_SHA256  $tool" | sha256sum -c -
+          echo "$RUNTIME_SHA256  $runtime" | sha256sum -c -
+          chmod +x "$tool"
+          "$tool" --appimage-extract-and-run --version
+          echo "APPIMAGETOOL=$tool" >> "$GITHUB_ENV"
+          echo "APPIMAGE_RUNTIME=$runtime" >> "$GITHUB_ENV"
+
+      - name: Install what the build needs
+        run: |
+          set -euo pipefail
+          mapfile -t requirements < <(python -m tools.deps requirements build)
+          echo "requirements: ${#requirements[@]}"
+          test "${#requirements[@]}" -gt 0
+          python -m pip install --upgrade pip
+          python -m pip install "${requirements[@]}"
+          python -m PyInstaller --version
+          python -m pip show keyring SecretStorage jeepney \
+            | grep -E '^(Name|Version):'
+
+      - name: Build both variants, each laid out as an AppDir
+        run: |
+          set -euo pipefail
+          for variant in $VARIANTS; do
+            echo "=== building the $variant variant ==="
+            env "$VARIANT_ENV_VAR=$variant" \
+              python -m PyInstaller Acervator_linux.spec --noconfirm
+          done
+          ls -l dist
+
+      - name: Pack each AppDir into one AppImage
+        run: |
+          set -euo pipefail
+          for variant in $VARIANTS; do
+            appdir="$(find dist -maxdepth 1 -type d -name "*-$variant")"
+            test -n "$appdir"
+            ls -l "$appdir/AppRun" "$appdir"/*.desktop "$appdir"/*.png
+            cat "$appdir"/*.desktop
+            ARCH=x86_64 "$APPIMAGETOOL" --appimage-extract-and-run \
+              --no-appstream --runtime-file "$APPIMAGE_RUNTIME" \
+              "$appdir" "$appdir.AppImage"
+          done
+          ls -l dist/*.AppImage
+
+      - name: Read every AppImage back with its byte size
+        run: |
+          set -uo pipefail
+          fail=0
+          for variant in $VARIANTS; do
+            appdir="$(find dist -maxdepth 1 -type d -name "*-$variant")"
+            name="$(basename "$appdir")"
+            image="$appdir.AppImage"
+            if [ ! -f "$image" ]; then
+              echo "MISSING: no AppImage for the $variant variant"
+              fail=1
+              continue
+            fi
+            echo "$variant  appimage  $(basename "$image")"
+            echo "$variant  appimage  $(stat -c%s "$image") bytes"
+            peek="$RUNNER_TEMP/peek-$variant"
+            rm -rf "$peek"
+            mkdir -p "$peek"
+            (cd "$peek" && "$GITHUB_WORKSPACE/$image" --appimage-extract \
+              > /dev/null)
+            inside="$peek/squashfs-root"
+            built="$(sha256sum "$appdir/$name" | cut -d' ' -f1)"
+            shipped="$(sha256sum "$inside/$name" | cut -d' ' -f1)"
+            echo "built   executable sha256 $built"
+            echo "shipped executable sha256 $shipped"
+            if [ "$built" != "$shipped" ]; then
+              echo "MISMATCH: the AppImage does not carry the built executable"
+              fail=1
+            fi
+            baked="$(cat "$inside/_internal/src/_baked_variant.txt" \
+                     2>/dev/null || echo ABSENT)"
+            echo "$variant  baked     $baked"
+            if [ "$baked" != "$variant" ]; then
+              echo "WRONG VARIANT BAKED into $image"
+              fail=1
+            fi
+            echo "$variant  AppRun -> $(readlink "$inside/AppRun")"
+            rm -rf "$peek"
+            modules="$RUNNER_TEMP/modules-$variant.txt"
+            pyi-archive_viewer --list --recursive --brief "$appdir/$name" \
+              > "$modules"
+            echo "$variant  archive   $(wc -l < "$modules") entries"
+            grep -F keyring.backends "$modules"
+            for module in keyring.backends.SecretService secretstorage jeepney; do
+              if grep -qF "$module" "$modules"; then
+                echo "$variant  bundles   $module"
+              else
+                echo "MISSING from $name: $module"
+                fail=1
+              fi
+            done
+            echo
+          done
+          exit "$fail"
+
+      - name: Launch each AppImage and read what it reports about itself
+        env:
+          DISPLAY: ":99"
+        run: |
+          set -uo pipefail
+          mkdir -p "$LAUNCH_ROOT"
+          Xvfb "$DISPLAY" -screen 0 1920x1080x24 -nolisten tcp \
+            > "$LAUNCH_ROOT/xvfb.txt" 2>&1 &
+          for _ in $(seq 1 30); do
+            xdpyinfo > /dev/null 2>&1 && break
+            sleep 1
+          done
+          echo "display $DISPLAY: $(xdpyinfo | grep -m1 dimensions)"
+          fail=0
+          for variant in $VARIANTS; do
+            appdir="$(find dist -maxdepth 1 -type d -name "*-$variant")"
+            name="$(basename "$appdir")"
+            image="$GITHUB_WORKSPACE/$appdir.AppImage"
+            home="$LAUNCH_ROOT/$variant"
+            rm -rf "$home"
+            mkdir -p "$home/tmp"
+
+            echo "=============================================================="
+            echo "=== launching the $variant AppImage: $(basename "$image")"
+            echo "=== HOME is launch/$variant"
+            echo "=============================================================="
+            env -i \
+              PATH="/usr/bin:/bin" \
+              HOME="$home" \
+              TMPDIR="$home/tmp" \
+              LANG=C.UTF-8 \
+              DISPLAY="$DISPLAY" \
+              QTWEBENGINE_CHROMIUM_FLAGS="$QTWEBENGINE_CHROMIUM_FLAGS" \
+              ACERVATOR_DEBUG_BOOT=1 \
+              "$image" > "$home/console.txt" 2>&1 &
+            pid=$!
+            echo "pid $pid"
+
+            ready=timeout
+            for _ in $(seq 1 "$LAUNCH_WAIT_SECONDS"); do
+              if grep -rqs "main window displayed" "$home/.acervator_logs"; then
+                ready=log
+                break
+              fi
+              if ! kill -0 "$pid" 2>/dev/null; then
+                ready=died
+                break
+              fi
+              sleep 1
+            done
+            echo "--- the $variant AppImage reported its window through: $ready"
+            if [ "$ready" = log ]; then
+              sleep "$SETTLE_SECONDS"
+            fi
+
+            echo "--- the main window line, from its own log tree"
+            (cd "$home" && grep -rHs "main window displayed" .acervator_logs) \
+              || echo "NO main window line"
+
+            echo "--- heartbeat.txt, which only a running event loop writes"
+            cat "$home/.acervator_logs/heartbeat.txt" 2>/dev/null \
+              || echo "NO HEARTBEAT: the event loop never ran"
+
+            echo "--- QtWebEngineProcess instances while $variant runs"
+            web="$(pgrep -f QtWebEngineProcess | wc -l)" || true
+            echo "$variant QtWebEngineProcess count: $web"
+
+            echo "--- the windows named Acervator on the display"
+            xwininfo -root -tree > "$home/windows.txt" 2>&1 || true
+            grep -i acervator "$home/windows.txt" | head -5 \
+              || echo "NO window named Acervator"
+
+            echo "--- the log files under its HOME"
+            (cd "$home" && find .acervator_logs -type f | head -40) || true
+
+            echo "--- the last 40 lines of its system.log"
+            sysl="$(find "$home/.acervator_logs" -name system.log | head -1)"
+            if [ -n "$sysl" ]; then
+              tail -40 "$sysl"
+            else
+              echo "NO system.log"
+            fi
+
+            echo "--- the last 60 lines on its console"
+            tail -60 "$home/console.txt" || true
+
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            pkill -f "$name" 2>/dev/null || true
+            pkill -f QtWebEngineProcess 2>/dev/null || true
+            for _ in $(seq 1 30); do
+              [ "$(pgrep -f "$name" | wc -l)" = "0" ] && break
+              sleep 1
+            done
+            echo "--- reaped pid $pid; left: $(pgrep -f "$name" | wc -l)"
+
+            if [ "$ready" != log ]; then
+              echo "FAILURE: the $variant AppImage never logged its main window"
+              fail=1
+            fi
+            echo
+          done
+          exit "$fail"
+
+      - name: Upload the AppImages
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: acervator-linux
+          path: dist/*.AppImage
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload what the launches produced
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: acervator-linux-launch-evidence
+          path: ${{ env.LAUNCH_ROOT }}
+          include-hidden-files: true
+          if-no-files-found: warn

@@ -1,6 +1,6 @@
-"""Shared PyInstaller spec content for Acervator_win.spec and Acervator_mac.spec.
+"""Shared PyInstaller spec content for the Windows, macOS and Linux spec files.
 
-``COMMON_HIDDENIMPORTS`` and ``EXCLUDES`` hold the names both spec files pass to
+``COMMON_HIDDENIMPORTS`` and ``EXCLUDES`` hold the names each spec file passes to
 PyInstaller, and ``hiddenimports_for`` adds the one ``KEYRING_BACKENDS`` entry
 that is per-platform. ``read_acervator_version`` and ``bake_version_datas``
 resolve the version and write it under ``BAKE_SUBDIR`` for the bundle to carry.
@@ -557,7 +557,7 @@ def unreachable_src_files(project_root: str) -> frozenset[str]:
 def report_unreachable(project_root: str) -> list[str]:
     """Print one line per ``unreachable_src_modules`` name and return the names printed.
 
-    Both spec files call it before ``Analysis``; ``retired_src_modules`` names come last.
+    Each spec file calls it before ``Analysis``; ``retired_src_modules`` names come last.
     """
     held = src_modules(project_root)
     every, built = _readings(project_root)
@@ -578,7 +578,7 @@ def report_unreachable(project_root: str) -> list[str]:
 def excludes_for(project_root: str) -> list[str]:
     """Return ``EXCLUDES`` plus every ``retired_src_modules`` name.
 
-    Both spec files hand this list to ``Analysis`` as its excludes.
+    Each spec file hands this list to ``Analysis`` as its excludes.
     """
     return [*EXCLUDES, *sorted(retired_src_modules(project_root))]
 
@@ -684,6 +684,7 @@ COMMON_HIDDENIMPORTS: tuple[str, ...] = (
 KEYRING_BACKENDS: dict[str, str] = {
     "windows": "keyring.backends.Windows",
     "macos": "keyring.backends.macOS",
+    "linux": "keyring.backends.SecretService",
 }
 
 
@@ -702,7 +703,7 @@ def hiddenimports_for(platform: str) -> list[str]:
     return [*COMMON_HIDDENIMPORTS, backend]
 
 
-# Passed to PyInstaller by both spec files. A name here must not appear in
+# Passed to PyInstaller by each spec file. A name here must not appear in
 # pyproject.toml `dependencies`, and every name here was read against the import
 # set of the 498 modules under src/ plus main.py, by AST walk over both
 # module-level and function-level imports. Control: a name that does not exist
