@@ -36,14 +36,18 @@ coding archetype runs. Bandit runs only the selected tests, and semgrep skips
 each rule of the card that the selection leaves out. For a function or class, only the findings inside its
 lines count.
 
-A finding counts only under a rule the card holds and the selection keeps. A rule the registry adds
-after the house counted its rules is outside the scope, and its finding moves
-no verdict.
+A finding counts only under a rule the card holds and the selection keeps. A
+held pack also holds rules outside the scope, and
+`dev_harness/sigils/code_secure.py, in findings` keeps no finding under one of
+them.
 
 Each finding carries the CWE id that its own tool reports, or no CWE when the
-tool reports none. semgrep downloads both of its rule sets from its registry on
-each run. A tool that exits with any other code, reports an error, or did not
-read the file stops the run.
+tool reports none. Semgrep reads only the held packs that
+[the held rule packs](#the-held-rule-packs) describes, as
+`dev_harness/sigils/code_secure.py, in _held_packs` returns them. A tool that
+exits with any other code, reports an error, or did not read the file stops
+the run. The stop names what the tool printed, or says that it printed
+nothing, from `dev_harness/sigils/code_secure.py, in _said`.
 
 Semgrep runs with `--timeout=0`, so no rule stops at a per-rule time limit.
 Semgrep's own default limit is 5 seconds a rule. The OCIR case C1 restores the
@@ -80,6 +84,93 @@ count:
         if f"{finding.tool} {finding.rule}" in to_run
         and (not is_narrowed or first <= finding.line <= last)
     ]
+```
+
+## The held rule packs
+
+Semgrep reads its two rule packs, p/python and p/security-audit, only from
+copies held in the repository's tree, and no reading fetches them.
+`dev_harness/sigils/code_secure.py, in SEMGREP_PACKS` records the sha256 of
+each copy.
+
+Each copy sits in the semgrep_rule_packs folder beside the module, which git
+ignores, as `dev_harness/sigils/code_secure.py, in PACK_FOLDER` states.
+
+```python
+SEMGREP_PACKS = {
+    "p/python": "de5bc79d074c3b4146338a0bf95830406f169bd91ac590a2f1ef111f162e23f5",
+    "p/security-audit": "6d2f9a77b0372395072aa859ffd47f57b5851e1511da72a6c1b7ff9898ee1313",
+}
+PACK_FOLDER = Path(__file__).resolve().parent / "semgrep_rule_packs"
+```
+
+The copies that `dev_harness/sigils/code_secure.py, in SEMGREP_PACKS` names
+hold every one of the card's 216 semgrep rules:
+
+| Pack | Held file | Bytes | Rule ids |
+| ---- | --------- | ----- | -------- |
+| p/python | p_python.yaml | 502,198 | 151 |
+| p/security-audit | p_security-audit.yaml | 492,566 | 225 |
+
+Before semgrep runs, `dev_harness/sigils/code_secure.py, in _held_packs`
+hashes each copy and compares it with the card. A copy that cannot be read
+stops the run and names its path, and a copy whose sha256 differs stops the
+run and names both values, through
+`dev_harness/sigils/code_secure.py, in ToolFault`.
+
+```python
+        try:
+            found = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError as exc:
+            message = f"held semgrep pack {where} cannot be read: {exc.strerror or exc}"
+            raise ToolFault(message) from exc
+        if found != card_sha256:
+            message = (
+                f"held semgrep pack {where} has sha256 {found}; "
+                f"the card holds {card_sha256}"
+            )
+            raise ToolFault(message)
+```
+
+A pack is fetched by hand, once per tree, with the command that
+`dev_harness/sigils/code_secure.py, in FETCH` states, and the card prints it
+as fetches. The command sends the address and the two headers that semgrep
+1.171.0 sends for a registry pack, from
+`dev_harness/sigils/code_secure.py, in SEMGREP_REGISTRY`.
+
+```
+curl --fail -H "Accept: application/json" -H "User-Agent: Semgrep/1.171.0" --create-dirs --output-dir dev_harness/sigils/semgrep_rule_packs -o p_python.yaml https://semgrep.dev/c/p/python
+curl --fail -H "Accept: application/json" -H "User-Agent: Semgrep/1.171.0" --create-dirs --output-dir dev_harness/sigils/semgrep_rule_packs -o p_security-audit.yaml https://semgrep.dev/c/p/security-audit
+```
+
+A copy fetched later can differ from the one the card records. Every reading
+then stops, through `dev_harness/sigils/code_secure.py, in _held_packs`, until
+the card records the new sha256.
+
+Semgrep reads the copies with metrics off, the version check off, and each
+rule id as the pack writes it, from
+`dev_harness/sigils/code_secure.py, in _semgrep_findings`. Without the rule id
+flag, semgrep puts the folder path in front of every rule id, and
+`dev_harness/sigils/code_secure.py, in findings` keeps no semgrep finding.
+
+Semgrep reads a held copy in the Windows code page unless Python's UTF-8 mode
+is on, and it decodes a registry download as UTF-8.
+`dev_harness/sigils/code_secure.py, in _semgrep_findings` turns UTF-8 mode on,
+so semgrep reads each copy as UTF-8.
+
+```python
+                    *(f"--config={pack}" for pack in packs),
+                    "--json",
+                    "--metrics=off",
+                    "--disable-version-check",
+                    "--no-rewrite-rule-ids",
+                    "--no-git-ignore",
+                    SEMGREP_NO_RULE_TIMEOUT,
+                    *(f"--exclude-rule={rule}" for rule in excluded),
+                    ".",
+                ],
+                cwd=folder,
+                env={**os.environ, "PYTHONUTF8": "1"},
 ```
 
 ## The selection
@@ -150,7 +241,7 @@ ran.
 | Tool | Version on the card | How the card runs it | Rule set |
 | ---- | ------------------- | -------------------- | -------- |
 | bandit | 1.9.4 | `python -P -m bandit -f json -q -t <tests> -`, with the file's bytes on standard input | the selected tests |
-| semgrep | 1.171.0 | `semgrep scan` with `--json --quiet --no-git-ignore` and an `--exclude-rule` for each rule the selection leaves out, in an empty temporary folder that holds a copy of the file under its own name | `p/python` and `p/security-audit` |
+| semgrep | 1.171.0 | `semgrep scan` with `--json --metrics=off --disable-version-check --no-rewrite-rule-ids --no-git-ignore`, `PYTHONUTF8=1` and an `--exclude-rule` for each rule the selection leaves out, in an empty temporary folder that holds a copy of the file under its own name | the held copies of `p/python` and `p/security-audit`, each checked against its sha256 on the card |
 
 ## Rules
 
