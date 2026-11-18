@@ -111,8 +111,9 @@ them, for each input that tier 2 accepts:
 CLEAN means no rule on the list fires. OPTIMIZABLE carries, for each finding,
 the rule id, the rule name, the line and the fix class ruff states: always,
 sometimes or none. OPTIMIZE never holds a merge. The fix class names what
-follows: an automatic fix is applied and the file read again, and a rule with no
-automatic fix becomes a unit of work.
+follows: `python -m dev_harness.sigils.fix_class` applies ruff's fix where ruff
+marks it safe and reads the file again, and a rule with no safe fix becomes a
+unit of work, with its published corrected form.
 
 ## The command
 
