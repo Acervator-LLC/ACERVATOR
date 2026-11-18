@@ -181,3 +181,43 @@ def clean_site_transaction_queries(symbol: str, pages: int) -> list[str]:
         queries.append(query)
         page += 1
     return queries
+
+
+class FaultyAttributeLog:
+    def __init__(self) -> None:
+        self.text = ""
+
+    def write_all(self, words: list[str]) -> None:
+        for word in words:
+            self.text += word
+
+
+class CorrectedAttributeLog:
+    def __init__(self) -> None:
+        self.buffer = io.StringIO()
+
+    def write_all(self, words: list[str]) -> None:
+        for word in words:
+            self.buffer.write(word)
+
+
+class OutsideAttributeLog:
+    def __init__(self) -> None:
+        self.text = ""
+
+    def write_all(self, words: list[str]) -> list[int]:
+        self.text += words[0]
+        return [len(word) for word in words]
+
+
+class CleanAttributeLabel:
+    def __init__(self) -> None:
+        self.label = ""
+
+    def label_all(self, words: list[str]) -> list[str]:
+        labels: list[str] = []
+        for word in words:
+            self.label = f"{word}:"
+            self.label += " present"
+            labels.append(self.label)
+        return labels

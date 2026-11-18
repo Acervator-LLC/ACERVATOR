@@ -90,3 +90,30 @@ def outside_rebind(lines: list[str]) -> list[str]:
     history = [line.strip() for line in lines]
     history = ["start"] + history
     return history
+
+
+class FaultyAttributeHistory:
+    def __init__(self) -> None:
+        self.history: list[str] = []
+
+    def record(self, lines: list[str]) -> None:
+        for line in lines:
+            self.history.insert(0, line)
+
+
+class CorrectedAttributeHistory:
+    def __init__(self) -> None:
+        self.history: deque[str] = deque()
+
+    def record(self, lines: list[str]) -> None:
+        for line in lines:
+            self.history.appendleft(line)
+
+
+class OutsideAttributeHistory:
+    def __init__(self) -> None:
+        self.history: list[str] = []
+
+    def record(self, lines: list[str]) -> list[str]:
+        self.history.insert(0, "start")
+        return [line.strip() for line in lines]

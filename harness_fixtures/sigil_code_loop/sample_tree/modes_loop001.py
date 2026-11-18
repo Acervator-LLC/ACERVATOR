@@ -132,3 +132,70 @@ def outside_site_fetch_all(sources: tuple[str, ...]) -> list[str]:
     outstanding = list(sources)
     source = outstanding.pop(0)
     return [source, *(name for name in outstanding if name)]
+
+
+class FaultyAttributeQueue:
+    def __init__(self, names: list[str]) -> None:
+        self.queue: list[str] = list(names)
+
+    def drain(self) -> list[str]:
+        served: list[str] = []
+        while self.queue:
+            served.append(self.queue.pop(0))
+        return served
+
+
+class CorrectedAttributeQueue:
+    def __init__(self, names: list[str]) -> None:
+        self.queue: deque[str] = deque(names)
+
+    def drain(self) -> list[str]:
+        served: list[str] = []
+        while self.queue:
+            served.append(self.queue.popleft())
+        return served
+
+
+class OutsideAttributeQueue:
+    def __init__(self, names: list[str]) -> None:
+        self.queue: list[str] = list(names)
+
+    def first(self) -> list[str]:
+        head = self.queue.pop(0)
+        return [head, *(name.upper() for name in self.queue)]
+
+
+class FaultySiteBodyCache:
+    def __init__(self, limit: int) -> None:
+        self._tablets: dict[str, str] = {}
+        self._lru: list[str] = []
+        self._limit = limit
+
+    def evict(self) -> None:
+        while len(self._tablets) > self._limit:
+            oldest = self._lru.pop(0)
+            self._tablets.pop(oldest, None)
+
+
+class CorrectedSiteBodyCache:
+    def __init__(self, limit: int) -> None:
+        self._tablets: dict[str, str] = {}
+        self._lru: deque[str] = deque()
+        self._limit = limit
+
+    def evict(self) -> None:
+        while len(self._tablets) > self._limit:
+            oldest = self._lru.popleft()
+            self._tablets.pop(oldest, None)
+
+
+class OutsideSiteBodyCache:
+    def __init__(self, limit: int) -> None:
+        self._tablets: dict[str, str] = {}
+        self._lru: list[str] = []
+        self._limit = limit
+
+    def evict_one(self) -> list[str]:
+        oldest = self._lru.pop(0)
+        self._tablets.pop(oldest, None)
+        return [key for key in self._lru if key in self._tablets]

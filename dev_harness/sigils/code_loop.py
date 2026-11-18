@@ -75,6 +75,7 @@ STR = "str"
 OTHER = "other"
 DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 NESTED = (*DEFS, ast.Lambda)
+METHODS = (ast.FunctionDef, ast.AsyncFunctionDef)
 QUEUE_LINK = (
     "https://docs.python.org/3.14/tutorial/datastructures.html#using-lists-as-queues"
 )
@@ -155,6 +156,15 @@ def _annotation_kind(annotation: ast.expr | None) -> str:
     return OTHER
 
 
+def _key(expr: ast.expr | None) -> str | None:
+    """Return the name `expr` reads, or `owner.attr` for an attribute of a name, else None."""
+    if isinstance(expr, ast.Name):
+        return expr.id
+    if isinstance(expr, ast.Attribute) and isinstance(expr.value, ast.Name):
+        return f"{expr.value.id}.{expr.attr}"
+    return None
+
+
 def _addends(value: ast.expr | None) -> list[ast.expr]:
     """Return the operands of `value` when it is a chain of `+`, else none."""
     if not (isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add)):
@@ -165,17 +175,11 @@ def _addends(value: ast.expr | None) -> list[ast.expr]:
     ]
 
 
-def _derives(value: ast.expr | None, name: str) -> bool:
-    """Report whether `value` slices the name `name` or adds it to something, so it keeps the old value."""
+def _derives(value: ast.expr | None, key: str) -> bool:
+    """Report whether `value` slices `key` or adds `key` to something, so it keeps the old value."""
     if isinstance(value, ast.Subscript):
-        return (
-            isinstance(value.value, ast.Name)
-            and value.value.id == name
-            and isinstance(value.slice, ast.Slice)
-        )
-    return any(
-        isinstance(part, ast.Name) and part.id == name for part in _addends(value)
-    )
+        return _key(value.value) == key and isinstance(value.slice, ast.Slice)
+    return any(_key(part) == key for part in _addends(value))
 
 
 def _inside(scope: Scope) -> Iterator[ast.AST]:
@@ -238,20 +242,75 @@ def _kinds(scope: Scope) -> dict[str, set[str]]:
     return kinds
 
 
+def _first_param(method: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
+    """Return the name of `method`'s first positional parameter, or None."""
+    params = [*method.args.posonlyargs, *method.args.args]
+    return params[0].arg if params else None
+
+
+def _owned(node: ast.AST, owner: str) -> str | None:
+    """Return the attribute `node` names on the name `owner`, else None."""
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == owner
+    ):
+        return node.attr
+    return None
+
+
+def _attribute_kinds(cls: ast.ClassDef) -> dict[str, set[str]]:
+    """Return each attribute `cls`'s methods bind on their first parameter, with the kind of every binding."""
+    kinds: dict[str, set[str]] = {}
+    for method in cls.body:
+        owner = _first_param(method) if isinstance(method, METHODS) else None
+        if owner is None:
+            continue
+        typed: set[int] = set()
+        for node in ast.walk(method):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    attr = _owned(target, owner)
+                    if attr is not None:
+                        typed.add(id(target))
+                        if not _derives(node.value, f"{owner}.{attr}"):
+                            kinds.setdefault(attr, set()).add(_value_kind(node.value))
+            elif isinstance(node, ast.AnnAssign | ast.AugAssign):
+                attr = _owned(node.target, owner)
+                if attr is not None:
+                    typed.add(id(node.target))
+                    if isinstance(node, ast.AnnAssign):
+                        kinds.setdefault(attr, set()).add(
+                            _annotation_kind(node.annotation)
+                        )
+            elif isinstance(node, ast.Attribute) and not isinstance(node.ctx, ast.Load):
+                attr = _owned(node, owner)
+                if attr is not None and id(node) not in typed:
+                    kinds.setdefault(attr, set()).add(OTHER)
+    return kinds
+
+
 def _loops(tree: ast.Module) -> Iterator[tuple[LoopNode, Chain]]:
     """Yield each loop in `tree` with the `_kinds` of each scope its names resolve through, innermost first."""
 
-    def visit(scope: Scope, outer: Chain) -> Iterator[tuple[LoopNode, Chain]]:
-        """Yield each loop of `scope`, then of each `NESTED` scope inside it."""
-        chain = (_kinds(scope), *outer)
+    def visit(
+        scope: Scope, outer: Chain, members: dict[str, set[str]]
+    ) -> Iterator[tuple[LoopNode, Chain]]:
+        """Yield each loop of `scope`, then of each `NESTED` scope, with `members` keyed by `_first_param`."""
+        kinds = _kinds(scope)
+        owner = _first_param(scope) if isinstance(scope, METHODS) else None
+        if owner is not None:
+            kinds.update({f"{owner}.{attr}": found for attr, found in members.items()})
+        chain = (kinds, *outer)
         enclosing = outer if isinstance(scope, ast.ClassDef) else chain
+        inner = _attribute_kinds(scope) if isinstance(scope, ast.ClassDef) else {}
         for node in _inside(scope):
             if isinstance(node, LOOP_NODES):
                 yield node, chain
             elif isinstance(node, NESTED):
-                yield from visit(node, enclosing)
+                yield from visit(node, enclosing, inner)
 
-    yield from visit(tree, ())
+    yield from visit(tree, (), {})
 
 
 def _repeated(loop: LoopNode) -> list[ast.AST]:
@@ -281,7 +340,7 @@ def _walk(parts: list[ast.AST]) -> Iterator[ast.AST]:
 
 
 def _rebound(loop: LoopNode) -> frozenset[str]:
-    """Return each name a `_repeated` part of `loop` binds afresh: not by `+=`, nor from its own value."""
+    """Return each `_key` a `_repeated` part of `loop` binds afresh: not by `+=`, nor from its own value."""
     nodes = list(_walk(_repeated(loop)))
     carrying = {id(node.target) for node in nodes if isinstance(node, ast.AugAssign)}
     carrying |= {
@@ -289,31 +348,31 @@ def _rebound(loop: LoopNode) -> frozenset[str]:
         for node in nodes
         if isinstance(node, ast.Assign)
         for target in node.targets
-        if isinstance(target, ast.Name) and _derives(node.value, target.id)
+        if _derives(node.value, _key(target) or "")
     }
-    return frozenset(
-        node.id
+    keys = (
+        _key(node)
         for node in nodes
-        if isinstance(node, ast.Name)
+        if isinstance(node, ast.Name | ast.Attribute)
         and not isinstance(node.ctx, ast.Load)
         and id(node) not in carrying
     )
+    return frozenset(key for key in keys if key is not None)
 
 
 def _kind(expr: ast.expr, chain: Chain) -> str:
-    """Return the one kind every binding gives the name `expr` in its nearest `chain` scope, else `OTHER`."""
-    if not isinstance(expr, ast.Name):
-        return OTHER
+    """Return the one kind every binding gives the `_key` of `expr` in its nearest `chain` scope, else `OTHER`."""
+    key = _key(expr)
     for kinds in chain:
-        if expr.id in kinds:
-            found = kinds[expr.id]
+        if key is not None and key in kinds:
+            found = kinds[key]
             return next(iter(found)) if len(found) == 1 else OTHER
     return OTHER
 
 
 def _carried(expr: ast.expr, chain: Chain, rebound: frozenset[str]) -> str:
-    """Return `_kind` of `expr` when it names nothing in `rebound`, else `OTHER`."""
-    if isinstance(expr, ast.Name) and expr.id in rebound:
+    """Return `_kind` of `expr` when its `_key` is not in `rebound`, else `OTHER`."""
+    if _key(expr) in rebound:
         return OTHER
     return _kind(expr, chain)
 
@@ -328,7 +387,7 @@ def _int_value(expr: ast.expr | None) -> int | None:
 def _front_call(
     node: Node, chain: Chain, rebound: frozenset[str], method: str, count: int
 ) -> bool:
-    """Report whether `node` calls `method` with `count` arguments, the first 0, on a carried `LIST` name."""
+    """Report whether `node` calls `method` with `count` arguments, the first 0, on a carried `LIST` key."""
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -340,18 +399,19 @@ def _front_call(
     )
 
 
-def _self_assign(node: Node) -> tuple[ast.Name, ast.expr] | None:
-    """Return the one name target and the value of `node` when it assigns that name from itself."""
+def _self_assign(node: Node) -> tuple[ast.expr, ast.expr] | None:
+    """Return the one target and the value of `node` when it assigns that `_key` from itself."""
     if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
         return None
     target = node.targets[0]
-    if isinstance(target, ast.Name) and _derives(node.value, target.id):
+    key = _key(target)
+    if key is not None and _derives(node.value, key):
         return target, node.value
     return None
 
 
 def _pops_front(node: Node, chain: Chain, rebound: frozenset[str]) -> bool:
-    """Report whether `node` calls `pop(0)` on a carried list name, or rebinds one to its slice from 1."""
+    """Report whether `node` calls `pop(0)` on a carried list `_key`, or rebinds one to its slice from 1."""
     if _front_call(node, chain, rebound, "pop", 1):
         return True
     assigned = _self_assign(node)
@@ -369,7 +429,7 @@ def _pops_front(node: Node, chain: Chain, rebound: frozenset[str]) -> bool:
 
 
 def _inserts_front(node: Node, chain: Chain, rebound: frozenset[str]) -> bool:
-    """Report whether `node` calls `insert(0, item)` on a carried list name, or rebinds one to a list plus itself."""
+    """Report whether `node` calls `insert(0, item)` on a carried list `_key`, or rebinds one to a list plus itself."""
     if _front_call(node, chain, rebound, "insert", 2):
         return True
     assigned = _self_assign(node)
@@ -379,14 +439,13 @@ def _inserts_front(node: Node, chain: Chain, rebound: frozenset[str]) -> bool:
     return (
         isinstance(value, ast.BinOp)
         and isinstance(value.left, ast.List)
-        and isinstance(value.right, ast.Name)
-        and value.right.id == target.id
+        and _key(value.right) == _key(target)
         and _carried(target, chain, rebound) == LIST
     )
 
 
 def _concatenates(node: Node, chain: Chain, rebound: frozenset[str]) -> bool:
-    """Report whether `node` adds to a carried str name by `+=`, or rebinds one to a sum holding itself."""
+    """Report whether `node` adds to a carried str `_key` by `+=`, or rebinds one to a sum holding itself."""
     if isinstance(node, ast.AugAssign):
         return (
             isinstance(node.op, ast.Add)
@@ -468,8 +527,8 @@ SETTINGS: dict[str, str] = {
     "own_tool": OWN.tool,
     "own_rules": " ".join(OWN.rules),
     "own_reads": "Python's ast module: each own rule fires only inside a part of a "
-    "loop that runs on each pass, on a name the loop carries from pass to pass, "
-    "with fix class none",
+    "loop that runs on each pass, on a name or attribute the loop carries from pass "
+    "to pass, with fix class none",
     "selection": SELECTION,
     "can_run": str(len(CAN_RUN)),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
@@ -607,8 +666,9 @@ SIGIL = Sigil(
                 "Python's ast module, for each selected own rule: its form in a part "
                 "of a loop that runs on each pass, which is a for or async for body, a "
                 "while test or body, or a builder's element, conditions and later "
-                "sources; a name is a list or a str when every binding in its nearest "
-                "scope builds one, and the loop carries it when no part run on each "
+                "sources; a name, or an attribute of a method's first parameter, is a "
+                "list or a str when every binding in its scope, or in its class's "
+                "methods, builds one, and the loop carries it when no part run on each "
                 "pass assigns it other than by += or from its own value",
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule <code> --output-format json, for each rule "

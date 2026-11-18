@@ -28,6 +28,15 @@ modes_loop001.py, in faulty_site_fetch_all
 modes_loop001.py, in corrected_site_fetch_all
 modes_loop001.py, in outside_site_fetch_all
 
+# LOOP001 on a list attribute, and the site found in src/trading/stone_tablets/registry.py, in
+# StoneTabletRegistry._evict_if_needed
+modes_loop001.py, in FaultyAttributeQueue
+modes_loop001.py, in CorrectedAttributeQueue
+modes_loop001.py, in OutsideAttributeQueue
+modes_loop001.py, in FaultySiteBodyCache
+modes_loop001.py, in CorrectedSiteBodyCache
+modes_loop001.py, in OutsideSiteBodyCache
+
 # LOOP002 list-insert-front-in-loop: the published faulty form, its twins, and a list each pass
 # assigns afresh
 known_bad_loop002.py
@@ -48,6 +57,11 @@ modes_loop002.py, in outside_nested
 modes_loop002.py, in faulty_rebind
 modes_loop002.py, in corrected_rebind
 modes_loop002.py, in outside_rebind
+
+# LOOP002 on a list attribute
+modes_loop002.py, in FaultyAttributeHistory
+modes_loop002.py, in CorrectedAttributeHistory
+modes_loop002.py, in OutsideAttributeHistory
 
 # LOOP003 str-concat-in-loop: the published faulty form, its twins, and a str each pass assigns afresh
 known_bad_loop003.py
@@ -79,3 +93,9 @@ modes_loop003.py, in outside_site_fitted
 modes_loop003.py, in clean_site_usb_labels
 modes_loop003.py, in clean_site_api_details
 modes_loop003.py, in clean_site_transaction_queries
+
+# LOOP003 on a str attribute, and a str attribute each pass assigns afresh
+modes_loop003.py, in FaultyAttributeLog
+modes_loop003.py, in CorrectedAttributeLog
+modes_loop003.py, in OutsideAttributeLog
+modes_loop003.py, in CleanAttributeLabel
