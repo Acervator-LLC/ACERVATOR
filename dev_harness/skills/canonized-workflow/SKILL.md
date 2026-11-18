@@ -12,7 +12,7 @@ Operator, 2026-09-13: *"IMPROVISED TOOLS. IMPROVISED COMMENTS. IMPROVISED
 WORKFLOWS THAT ALWAYS LEAVE GAPS DUE TO SCAFFOLDING. IT MUST STOP."* and
 *"I WANT PYTHON ENFORCEMENT."*
 
-## The four parts, in every brief
+## The six parts, in every brief
 
 ### 1. W5H — what the unit must answer before it changes anything
 
@@ -88,6 +88,43 @@ rather than read, a green called on a run where a required analyzer was missing.
 Every one of those is a class `truth_archetype` exists to catch.
 
 A claim the tree contradicts does not reach him.
+
+### 6. The iteration record — what the Truth Archetype reads before an iteration acts
+
+Operator, 2026-11-18:
+
+*"For any issue that results in Iteration, we should using W5H and OCIR to document and ground such decisions as well as allowing a preceding evaluation to make sure no hallucinatory actions are being taken."*
+
+An iteration is a new attempt on an issue, made because a result came back. A
+new experiment block, a reworked unit and a changed design are each an
+iteration.
+
+Before an iteration acts, the referee writes one record of it:
+
+- **W5H** as six answers: who, what, where, when, why and how.
+- **OCIR** as four lines: Observe, Calibrate, Iterate and Repeat.
+
+Each answer and each line cites a comment, a file, a command or a symbol that
+exists. The referee reads every figure in the record again from its source. A
+figure copied from memory or from an earlier report has no anchor.
+
+The Truth Archetype evaluates the record before any action. Keep this order:
+
+```
+1  write the record to a gitignored folder inside the repository
+2  python -m dev_harness.harness.truth_archetype <record.md> --item <issue number>
+3  fix every flagged claim until passed reads true
+4  post the record on the issue
+5  only then seal the block or dispatch the unit
+```
+
+See Skill: ocir, row C131, for what a draft gated outside the repository
+reports.
+
+The first record is comment 6967123516 on #1633. It holds four OCIR lines and
+six W5H answers for each of two experiment blocks. Those two blocks ran before
+this rule, so that record follows them. Every later record comes before its
+action.
 
 ### The built bundle is the thing he runs, and it is not the source tree
 
