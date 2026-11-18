@@ -118,6 +118,18 @@ ACCESS_WAIT_FORMAT = (
 ACCESS_WAIT_ONE = "1 bot below waits"
 ACCESS_WAIT_MANY_FORMAT = "{count} bots below wait"
 NO_ACCESS_WAIT_TEXT = ""
+#: The box ``MainWindow._offer_released_starts`` raises once a save gives a waiting exchange its keys.
+ACCESS_OFFER_TITLE = "Start the waiting bots?"
+ACCESS_OFFER_FORMAT = (
+    "{venue} now has stored API keys. {bots} on {venue} waited with {required}: "
+    "{names}. Start {them} now?"
+)
+ACCESS_OFFER_ONE = "1 bot"
+ACCESS_OFFER_MANY_FORMAT = "{count} bots"
+ACCESS_OFFER_IT = "it"
+ACCESS_OFFER_THEM = "them"
+ACCESS_OFFER_START = "Start"
+ACCESS_OFFER_LATER = "Not now"
 CLEARED_TAIL_FORMAT = "  ·  {count} {noun} cleared"
 CLEARED_ONE_NOUN = "blocked fetch"
 CLEARED_MANY_NOUN = "blocked fetches"
@@ -451,6 +463,25 @@ def access_wait_words(exchange_name: str, statuses: Any) -> str:
     )
     return ACCESS_WAIT_FORMAT.format(
         required=API_ACCESS_REQUIRED, venue=exchange_name, bots=bots
+    )
+
+
+def access_offer_words(exchange_name: str, bot_ids: Any) -> str:
+    """The question ``ACCESS_OFFER_TITLE`` asks, naming each of ``bot_ids`` on ``exchange_name``."""
+    from ...exchange.api_access import API_ACCESS_REQUIRED
+
+    names = [str(one) for one in bot_ids or ()]
+    single = len(names) == 1
+    return ACCESS_OFFER_FORMAT.format(
+        venue=exchange_name,
+        bots=(
+            ACCESS_OFFER_ONE
+            if single
+            else ACCESS_OFFER_MANY_FORMAT.format(count=len(names))
+        ),
+        required=API_ACCESS_REQUIRED,
+        names=", ".join(names),
+        them=ACCESS_OFFER_IT if single else ACCESS_OFFER_THEM,
     )
 
 

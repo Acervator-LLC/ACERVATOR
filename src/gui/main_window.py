@@ -116,6 +116,11 @@ API_ACCESS_LINE_FORMAT = (
     "Bot {bot_id}: {required}. {venue} has no stored API keys in Settings, "
     "so the bot stays as it is."
 )
+#: The Activity Log line each answer to ``MainWindow._offer_released_starts`` writes.
+OFFER_STARTED_FORMAT = "{venue} has API keys: starting {bots}."
+OFFER_DECLINED_FORMAT = (
+    "{venue} has API keys: {bots} stay Idle until Start or Start All."
+)
 
 #: What the status log carries for a venue the sync keeps off ``remove_refusal``.
 VENUE_KEPT_FORMAT = "{why} Its tab and connection stay."
@@ -4186,7 +4191,9 @@ if _HAS_QT:
             callback()
             return True
 
-        def run_fleet_sequence(self, command: str = "start") -> int:
+        def run_fleet_sequence(
+            self, command: str = "start", bot_ids: Optional[set[str]] = None
+        ) -> int:
             """Move every eligible bot through ``_on_bot_command`` one at a
             time, with the Start All progress window open, waiting for each to
             answer ``start_settled`` before the next, and listing a held bot
@@ -4195,9 +4202,10 @@ if _HAS_QT:
 
             This is the sequence the application runs at launch: ``main.py``
             calls it after the instance consent gate, and the command bar's
-            Start All and Restart All call the same method. A True
-            ``fleet_locked`` takes no bot as eligible. Answers how many bots it
-            took as eligible.
+            Start All and Restart All call the same method.
+            ``_offer_released_starts`` passes ``bot_ids``, and then only those
+            bots are eligible. A True ``fleet_locked`` takes no bot as
+            eligible. Answers how many bots it took as eligible.
             """
             if self.fleet_locked():
                 logger.warning(FLEET_LOCKED_SEQUENCE_LOG, command)
@@ -4209,7 +4217,8 @@ if _HAS_QT:
             eligible = [
                 bot
                 for bot in self._bot_manager._bots.values()
-                if wanted is None or bot.state.value in wanted
+                if (wanted is None or bot.state.value in wanted)
+                and (bot_ids is None or bot.bot_id in bot_ids)
             ]
             total = len(eligible)
             if total == 0:
@@ -4391,11 +4400,70 @@ if _HAS_QT:
                 settings_opened_line(route, wing, dialog.tab, venue, dialog.venue)
             )
             keys_before = self._stored_key_fields()
+            waited = self._access_waits()
             dialog.exec()
             logger.info(settings_closed_line(route, saves["pressed"], saves["applied"]))
             dialog.deleteLater()
             self._release_changed_keys(keys_before)
             self._sync_exchange_tabs()
+            self._offer_released_starts(waited)
+
+        def _access_waits(self) -> dict:
+            """``waiting_bots`` over every bot ``_bot_manager`` holds, read against ``_settings``."""
+            from ..exchange.api_access import waiting_bots
+
+            if not self._bot_manager:
+                return {}
+            return waiting_bots(self._bot_manager.list_bots(), self._settings)
+
+        def _offer_released_starts(self, waited: dict) -> int:
+            """Ask once per ``released_bots`` exchange whether to start its bots, and hand each Start's bots to ``run_fleet_sequence``."""
+            from ..exchange.api_access import released_bots
+            from .main_tabs.exchange_tab_surface import (
+                ACCESS_OFFER_LATER,
+                ACCESS_OFFER_START,
+                ACCESS_OFFER_TITLE,
+                access_offer_words,
+            )
+
+            if not waited or not self._bot_manager:
+                return 0
+            released = released_bots(
+                waited, self._bot_manager.list_bots(), self._settings
+            )
+            if not released:
+                return 0
+            self._refresh_dashboard()
+            chosen: set[str] = set()
+            for eid, bot_ids in released.items():
+                venue = exchange_display_name(
+                    self._settings.get_exchange(eid) or {"exchange_id": eid}
+                )
+                box = QMessageBox(self)
+                box.setIcon(QMessageBox.Icon.Question)
+                box.setWindowTitle(ACCESS_OFFER_TITLE)
+                box.setAccessibleName(ACCESS_OFFER_TITLE)
+                box.setText(access_offer_words(venue, bot_ids))
+                start = box.addButton(
+                    ACCESS_OFFER_START, QMessageBox.ButtonRole.AcceptRole
+                )
+                later = box.addButton(
+                    ACCESS_OFFER_LATER, QMessageBox.ButtonRole.RejectRole
+                )
+                box.setDefaultButton(later)
+                box.setEscapeButton(later)
+                box.exec()
+                taken = box.clickedButton() is start
+                box.deleteLater()
+                line = OFFER_STARTED_FORMAT if taken else OFFER_DECLINED_FORMAT
+                self._status_log.log(
+                    line.format(venue=venue, bots=", ".join(bot_ids)), "info"
+                )
+                if taken:
+                    chosen.update(bot_ids)
+            if not chosen:
+                return 0
+            return self.run_fleet_sequence(START_COMMAND, chosen)
 
         def _stored_key_fields(self) -> dict:
             """Each stored venue's ``_enc`` fields, which ``_release_changed_keys`` compares across a window."""

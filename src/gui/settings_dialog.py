@@ -939,7 +939,12 @@ if _HAS_QT:
                     if pp:
                         config.passphrase_enc = encrypt(pp, master)
 
-                tab_is_new = self._sm.get_exchange(eid) is None
+                fleet_named = getattr(
+                    self._window_fleet(), "list_bots_by_exchange", None
+                )
+                tab_is_new = self._sm.get_exchange(eid) is None and not (
+                    fleet_named(eid) if callable(fleet_named) else []
+                )
                 self._sm.add_exchange(config)
                 self._list_exchange_once(eid)
                 self._refresh_exchange_status()
