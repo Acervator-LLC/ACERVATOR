@@ -800,18 +800,28 @@ def view_model(params: dict) -> dict:
     )
 
 
+def fleet_entries(found: Any, live: Any) -> list:
+    """One entry per exchange a ``live.bot_manager`` bot names that ``found`` leaves out, as ``unstored_venues`` answers."""
+    from ...exchange.api_access import unstored_venues
+
+    reader = getattr(getattr(live, "bot_manager", None), "list_bots", None)
+    statuses = reader() if callable(reader) else []
+    named = (str(one.get("exchange") or "") for one in statuses)
+    return [{"exchange_id": eid} for eid in unstored_venues(found, named)]
+
+
 def live_view_model(params: dict, live: Any) -> dict:
     """Build the tab from the exchanges the running program is configured for.
 
     ``live.settings_manager.list_exchanges`` fills ``EXCHANGES_PARAM`` when
-    the request names none.
+    the request names none, followed by the ``fleet_entries`` it leaves out.
     """
     settings = getattr(live, "settings_manager", None)
     listed: Any = getattr(settings, "list_exchanges", None)
     asked = dict(params or {})
     if asked.get(EXCHANGES_PARAM) is None and callable(listed):
-        found: Any = listed()
-        asked[EXCHANGES_PARAM] = [dict(one) for one in found]
+        found = [dict(one) for one in listed()]
+        asked[EXCHANGES_PARAM] = found + fleet_entries(found, live)
     return view_model(asked)
 
 

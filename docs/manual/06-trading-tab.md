@@ -402,11 +402,12 @@ The class-following tabs are declared in `src/gui/main_tabs/class_filter_tab.py,
 | --- | --- |
 | Get Started tab | Shows until the class has an exchange, with a heading, an Add Exchange button and a hint. `src/gui/main_tabs/trading_tab.py, in TradingTabMixin._build_trading_tab` |
 | Add Exchange corner button | Opens Settings on the Exchanges tab, and greys when the class has no venue. `src/gui/main_window.py, in MainWindow._add_exchange` |
-| Exchange sub-tabs | One page per stored exchange, seated on every class it serves. Reads the stored exchange list, and the tabs change when a Settings window closes. A press changes the page. `src/gui/main_tabs/trading_tab.py, in TradingTabMixin._show_exchange_tab`, `src/gui/main_window.py, in MainWindow._sync_exchange_tabs` |
+| Exchange sub-tabs | One page per stored exchange, seated on every class it serves. Reads the stored exchange list, and the tabs change when a Settings window closes. A press changes the page. An exchange that a saved bot names gets a page too, on the next 2-second refresh, even when Settings does not list it. `src/gui/main_tabs/trading_tab.py, in TradingTabMixin._show_exchange_tab`, `src/gui/main_window.py, in MainWindow._sync_exchange_tabs` |
 | Privacy Mode | Masks all registered fields, or shows them again when all are masked. It reads ON only when all are masked. `src/gui/main_tabs/exchange_tab_surface.py, in flip_privacy_masks` |
 | + New Bot | Opens the Create Auto Trader wizard on this class. It refuses while the fleet is sealed or no stored venue serves the class. `src/gui/main_window.py, in MainWindow._create_bot` |
 | Data pool line | Shows cache slots, freshest and oldest ages, stale count and cache-hit share, each second. `src/gui/main_tabs/exchange_tab_surface.py, in pull_rate_text` |
 | DATA POOL STOPPED banner | A red line. It shows when this venue made no calls and the newest reading is over 60 seconds old. `src/exchange/fetch_stall.py, in stall_seconds` |
+| API ACCESS REQUIRED line | An amber line. It shows while Settings holds no API keys for this exchange, and counts the bots below that wait. `src/gui/main_tabs/exchange_tab_surface.py, in access_wait_words` |
 | News line | One headline each 15 seconds from ten RSS feeds, fetched hourly. Hover pauses it, and a press opens the story. `src/gui/crypto_news_ticker.py, in open_story` |
 
 ### The bot tables
@@ -467,12 +468,12 @@ Each command acts on the selected row. With no row selected it logs "Select a bo
 
 | Button | What it does and what it reads |
 | --- | --- |
-| Start | Connects to the exchange, then starts the bot. `src/gui/main_window.py, in MainWindow._on_bot_command`. A bot keeps one tick loop in any state: Start resumes the loop a paused or errored bot already has. It does not end a hard hold: the log names the breaker and writes no RUNNING line. `src/trading/bot_container.py, in BotContainer.start` |
+| Start | Connects to the exchange, then starts the bot. `src/gui/main_window.py, in MainWindow._on_bot_command`. A bot whose exchange has no stored API keys is not started, as [A bot whose exchange has no keys](#a-bot-whose-exchange-has-no-keys) says. A bot keeps one tick loop in any state: Start resumes the loop a paused or errored bot already has. It does not end a hard hold: the log names the breaker and writes no RUNNING line. `src/trading/bot_container.py, in BotContainer.start` |
 | Pause, Stop | Pauses or stops the bot. `src/gui/main_window.py, in MainWindow._on_bot_command`. A paused or stopped bot reads nothing and sends nothing on its own, and a fill books at the first worked tick after Start. `src/trading/scrumming_bot.py, in ScrummingBot.tick_stop_reason` |
-| Restart | Stops the bot, connects again and starts it. `src/gui/main_window.py, in MainWindow._on_bot_command` |
+| Restart | Stops the bot, connects again and starts it. A bot whose exchange has no stored API keys is left as it is. `src/gui/main_window.py, in MainWindow._on_bot_command` |
 | Delete | Asks Yes or No first. Yes stops the bot and removes it. SHIFT changes nothing. `src/gui/main_window.py, in MainWindow._on_bot_command` |
-| SHIFT: Start All | Starts every idle or stopped bot, one at a time, with a progress window. A held bot is passed at once and listed with its hold. `src/gui/main_window.py, in MainWindow.run_fleet_sequence` |
-| SHIFT: Restart All | Restarts every bot the manager holds, one at a time. `src/gui/main_window.py, in MainWindow.run_fleet_sequence` |
+| SHIFT: Start All | Starts every idle or stopped bot, one at a time, with a progress window. A held bot is passed at once and listed with its hold. A bot whose exchange has no stored API keys is passed at once and listed as held: API Access Required. `src/gui/main_window.py, in MainWindow.run_fleet_sequence` |
+| SHIFT: Restart All | Restarts every bot the manager holds, one at a time. A bot whose exchange has no stored API keys is passed the same way. `src/gui/main_window.py, in MainWindow.run_fleet_sequence` |
 | SHIFT: Pause All, Stop All | Pause All takes every running bot and Stop All takes every bot, on every exchange and class. `src/gui/main_window.py, in MainWindow._global_bot_cmd` |
 
 Each command that reaches the handler writes one BOT COMMAND line to the system log. It names the command, the route it came by, the branch that runs and the venue. The route reads the React Live page command bar, the Live tab command bar on the Qt build, or the fleet sequence, which runs at launch and on Start All and Restart All. A command no branch answers, or a bot the manager no longer holds, writes BOT COMMAND WITH NO BRANCH (`src/gui/main_window.py, in MainWindow._on_bot_command`).
@@ -495,6 +496,23 @@ NO_BRANCH = ""
 REACT_LIVE_COMMAND_ROUTE = "the React Live page command bar"
 LIVE_COMMAND_BAR_ROUTE = "the Live tab command bar"
 FLEET_SEQUENCE_ROUTE = "the fleet sequence"
+```
+
+### A bot whose exchange has no keys
+
+A bot waits when Settings holds no API keys for its exchange. The check reads the same stored fields that a Start reads (`src/exchange/api_access.py, in api_access_required`). A bot whose exchange has keys starts as before.
+
+A waiting bot stays Idle. A press of its own Start or Restart writes one Activity Log line and opens no window. Start All, Restart All and the launch auto-start pass the bot at once. The progress window lists it as held: API Access Required, and the next bot starts.
+
+Each exchange that a saved bot names gets its own sub-tab, so a waiting bot is always on a screen. The API ACCESS REQUIRED line on that sub-tab counts the bots that wait. An imported fleet brings no keys, so each of its exchanges that Settings does not already hold shows this line until its keys are saved.
+
+```python
+def api_access_required(settings: Any, exchange_id: Any, sector: Any = "") -> bool:
+    """True where ``settings`` holds no ``exchange_id`` entry or leaves a ``start_key_fields`` field empty."""
+    entry = settings.get_exchange(exchange_id) if settings is not None else None
+    if not entry:
+        return True
+    return not all(entry.get(name) for name in start_key_fields(exchange_id, sector))
 ```
 
 ### The two log panes

@@ -63,6 +63,10 @@
   var POOL_STOPPED_SHOWN = "pool_stopped_shown";
   var POOL_STOPPED_STYLE = "pool_stopped_style";
   var POOL_STOPPED_TOOLTIP = "pool_stopped_tooltip";
+  var ACCESS_WAIT_TEXT = "access_wait_text";
+  var ACCESS_WAIT_SHOWN = "access_wait_shown";
+  var ACCESS_WAIT_STYLE = "access_wait_style";
+  var ACCESS_WAIT_TOOLTIP = "access_wait_tooltip";
   var ROW_COUNT = "row_count";
   var SCRUM_SECTION_LABEL = "scrum_section_label";
   var SCRUM_SECTION_STYLE = "scrum_section_style";
@@ -92,6 +96,10 @@
   var COMMAND_CLICKED = "command_clicked";
 
   var DECLARED_FIELDS = [
+    ACCESS_WAIT_SHOWN,
+    ACCESS_WAIT_STYLE,
+    ACCESS_WAIT_TEXT,
+    ACCESS_WAIT_TOOLTIP,
     ACCESSIBLE_NAME,
     ACTIONS,
     ADD_BOT_ACCENT,
@@ -258,6 +266,7 @@
   ];
 
   var SHEET_FIELDS = [
+    ACCESS_WAIT_STYLE,
     EXTRACTOR_SECTION_STYLE,
     PRIVACY_STYLE,
     PRIVACY_STYLE_OFF,
@@ -269,6 +278,7 @@
   ];
 
   var WORD_FIELDS = [
+    ACCESS_WAIT_TEXT,
     ADD_BOT_LABEL,
     EXCHANGE_NAME,
     EXTRACTOR_SECTION_LABEL,
@@ -330,6 +340,7 @@
   var FLEX = "flex";
   var GROWN_FLEX = "1 1 0";
   var HELD_FLEX = "0 1 auto";
+  var NO_FLEX = "none";
   var HIDDEN = "hidden";
   var AUTO = "auto";
   var CENTER = "center";
@@ -350,6 +361,7 @@
   var ADD_BOT_PART = "add-bot-button";
   var PULL_RATE_PART = "pull-rate";
   var POOL_STOPPED_PART = "pool-stopped";
+  var ACCESS_WAIT_PART = "access-wait";
   var SCRUM_SECTION_PART = "scrum-section";
   var SCRUM_TABLE_PART = "scrum-table";
   var EXTRACTOR_SECTION_PART = "extractor-section";
@@ -803,6 +815,19 @@
     return element(DIV_TAG, lineProps, text(model[POOL_STOPPED_TEXT]));
   }
 
+  // Hidden until a bot on this venue waits for API keys Settings does not hold.
+  function AccessWait(props) {
+    var model = props.model;
+    var lineProps = {
+      style: styleOf(model[ACCESS_WAIT_STYLE]),
+      title: label(model[ACCESS_WAIT_TOOLTIP]),
+      hidden: model[ACCESS_WAIT_SHOWN] !== true
+    };
+    lineProps.style.flex = NO_FLEX;
+    lineProps[PART_ATTR] = ACCESS_WAIT_PART;
+    return element(DIV_TAG, lineProps, text(model[ACCESS_WAIT_TEXT]));
+  }
+
   function SectionLabel(props) {
     var labelProps = { style: styleOf(props.sheet), hidden: props.visible !== true };
     labelProps.style.whiteSpace = NOWRAP;
@@ -940,6 +965,7 @@
       element(Header, { key: HEADER_PART, model: model }),
       element(PullRate, { key: PULL_RATE_PART, model: model }),
       element(PoolStopped, { key: POOL_STOPPED_PART, model: model }),
+      element(AccessWait, { key: ACCESS_WAIT_PART, model: model }),
       element(SectionLabel, {
         key: SCRUM_SECTION_PART,
         part: SCRUM_SECTION_PART,
