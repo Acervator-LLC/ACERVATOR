@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-14 against `992d1bef`. **Every claim here names one command that
+Written 2026-11-18 against `624dc657`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,50 +18,47 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running, between units. The 15 pull
-requests since `0016f4b0` are #1712 to #1726: four on #1622 and eleven on #1633.
-On 2026-11-13 he moved the work to #1633: "We should be focusing on the
-development and testing of the Coding Archetype." #1622, #1656 and #1695 are
-paused until he points back to them or the Coding Archetype work is done.
+The session that wrote this was still running, between units. The 18 pull
+requests since `4bd0012c` are #1728 to #1750: twelve on #1633, four on #1734 and
+two on #1735. #1622, #1656 and #1695 stay paused, by his 2026-11-13 ruling, until
+he points back to them.
 
 ```bash
-git log --oneline --first-parent 0016f4b0..992d1bef   # the 15 pull requests
-gh issue view 1633 --comments            # each step's result and referee close, newest last
+git log --oneline --first-parent 4bd0012c..624dc657   # the 18 pull requests
+gh issue view 1633 --comments            # each record, result and close, newest last
 gh release view                          # what is published
 gh pr list --state open                  # what is still landing
 ```
 
-- **In flight when written:** #1633 step 2, its first unit, on branch
-  `1633-step2-ocir-cases` and not yet pushed. It restores the code from before
-  and after each fix that an OCIR catalogue row names, and runs the nine coding
-  sigils on both sides. Its six answers are comment 6883684227. The branch also
-  runs CODE.SECURE's semgrep with `--timeout=0`, because the per-rule limit made
-  the verdict depend on machine load.
-- **Built on #1633:** steps 1a to 1c in the step table of the body section "The
-  Coding Archetype's mind". Each coding sigil takes its rules from its discipline
-  skills and runs only the rules its input selects. Step 1c's result is comment
-  6883381301 and its referee close is 6883651850.
-- **Repaired on #1633:** the reply hooks read the session transcript from its
-  end, through `dev_harness/hooks/transcript_tail.py` (#1726, result comment
-  6884607329). Before, three hooks each read the whole 695 MB transcript at every
-  reply's end, about 6.5 GB each, and RAM reached 98%. The loaded copies in the
-  Claude Code user folder equal `992d1bef`.
-- **The release and both trees** hold the same application code, and his app
-  runs it:
+- **In flight when written:** #1633 step 1d, record comment 6971810622: one
+  function in `dev_harness/sigils/core.py` returns the first refusal before
+  tier 3, and `judge` and `dev_harness/sigils/ocir_cases.py, in read_side` both
+  call it. #1735 rows 2 and 3, the release job and the publish job; their proof
+  is the next release run, after a sync of `main`.
+- **Every iteration has a record first:** W5H and OCIR, gated by the Truth
+  Archetype with `--item`, posted, then acted on. The rule is part 6 of Skill:
+  canonized-workflow (#1742).
+- **CODE.SECURE needs its two held packs** in the gitignored folder
+  `dev_harness/sigils/semgrep_rule_packs/`; both trees hold them. A new clone
+  fetches them with the two commands on `docs/manual/16-sigil-project/code-secure.md`,
+  and until then the sigil refuses and names the missing file.
+- **The release and both trees:**
 
 ```
-release      0.2.0-20261113.1928.g5dbab0790e57, from 5dbab079
-             gh release view
-both trees   at 992d1bef; the newest dist/ pair in each is the 1928 build
-since        5dbab079: nothing changed in src, desktop, tools, main.py or the two spec files
-             git diff --stat 5dbab079 origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec
+release      0.2.0-20261117.2009.g3898481e9e05, from 3898481e, 4 assets
+             gh release list      # 2009 and his running 1928 only, since the 2026-11-18 prune
+both trees   at 624dc657; dist/ holds the 2009 pair and his 1928 pair
+since        3898481e: only Acervator_linux.spec and tools/spec_common.py changed
+             git diff --stat 3898481e origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec Acervator_linux.spec
 his app      0.2.0-20261113.1928.g5dbab0790e57, a Qt build, from the Documents tree's dist/
-             git merge-base --is-ancestor 7e0ddb97 5dbab079      # exit 0: the newest #1622 repair is in it
 ```
 
-- **Held for him:** the unruled rows of the Decisions tables on #1643 and #1622,
-  and moving the Coding Archetype's own ruff call onto the step 1c selection,
-  which is a change in `dev_harness/harness/`. Do not raise them as a round.
+- **Held for him:** the Dependabot pull requests #1738, #1739 and #1747 pass
+  `ci-gate`, and the permission classifier refuses a merge of them from this
+  session; #1739 or #1747 closes alert 82 (`minimatch`). Also the unruled rows of
+  the Decisions tables on #1643 and #1622, and moving the Coding Archetype's own
+  ruff call onto the step 1c selection, which is a change in `dev_harness/harness/`.
+  Do not raise them as a round.
 
 ---
 
@@ -204,12 +201,12 @@ there; compare each with `git hash-object` against the merge commit.
 ## THE QUEUE
 
 ```bash
-gh issue list --state open --limit 200          # 35 open when written
+gh issue list --state open --limit 200          # 37 open when written
 ```
 
 | To clear | Excluded, and why |
 |---|---|
-| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540 |
+| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695, #1734, #1735 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540 |
 
 Read the body before dispatching, and grep the symbols a row names in the same
 call: a row's status can be stale, and a scan that calls a row built has been
@@ -219,20 +216,28 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
-- **#1633, the Coding Archetype, first, by his focus ruling.** His plan,
-  verbatim: "1) focus on completing the Coding Archetype's mind by building it
-  from Sigils, 2) use OCIR entries for initial testing and refinement as well as
-  to verify our hypotheses even work, and 3) audit the existing code base using
-  the fully evolved Sigil-Based Coding Archetype." Steps 1a to 1c are built.
-  Step 2's first unit is in flight, as above. When it merges, each catalogue row
-  no sigil reads goes back to step 1, with the rule that would read it or "no
-  tool has one", as the result comment lists. Step 3 runs every coding sigil over
-  `src/`.
+- **#1633, the Coding Archetype, first, by his focus ruling.** His 2026-11-18
+  refocus, verbatim: "the Coding Archetype with and without sigils attempting the
+  same coding task. My goal is to measure this as scientifically as possible."
+  Experiment 2 is closed. The growth record, comment 6969215458, has four steps,
+  each with its own record first: 1, one result on every run; 2, a follow-on
+  runner built from `dev_harness/sigils/fix_class.py, in FOLLOW_ON`; 3, CODE.LOOP
+  holds every loop rule; 4, feedback while code is written. Then experiment 3
+  compares the Coding Archetype with and without the sigils, sealed first. Step 1
+  is built in 1b (#1745), 1a (#1748) and 1c (#1750); 1d is in flight, as above.
 
 ```bash
-gh issue view 1633          # "## The Coding Archetype's mind": the step table and its Status column
-grep -c '| built |' docs/manual/16-sigil-project.md      # 11 sigil pages
+gh issue view 1633 --comments      # records 6969302729 (step 1), 6969372179 (split), 6970998818 (1c), 6971810622 (1d)
 ```
+
+- **#1734, the fleet import and first-run choice.** Rows 1 to 5 and 7 are built.
+  Row 6 is partial: no build workflow presses the import buttons on any system,
+  and the macOS launch adds a web view sandbox switch a user does not have, in
+  `.github/workflows/macos-build.yml`, job env `QTWEBENGINE_CHROMIUM_FLAGS`.
+- **#1735, the Linux build.** Rows 1 and 4 are built: both AppImages open their
+  main window on a Linux runner with no sandbox switch, with Ubuntu's user
+  namespace restriction off and on. Rows 2 and 3 are in flight, as above. Row 5,
+  the manual entry and the PDF, follows them.
 
 - **#1622, #1656 and #1695, the money path, are paused.** When work returns to
   them: #1622's unbuilt rows in row order are 14, 18, 21, 22, 24 to 27, 29 to 31,
@@ -344,10 +349,10 @@ Open on `current`:
   (`src/simulator/back_test.py`, in `ta_direction`); recorded on #433.
 - The Extractor reads the vote's direction alone; it takes the three-indicator line
   in its release work.
-- Two hook docstrings name functions their files do not define: the docstring of
-  `dev_harness/hooks/block_unanchored_claim.py` names a quote-removing step the
-  code lacks, and the docstring of `dev_harness/hooks/block_long_reply.py` names a
-  word-count function it lacks (`git grep -n "def " dev_harness/hooks/block_unanchored_claim.py`).
+- The macOS build workflow launches both variants with the web view sandbox
+  switched off (`.github/workflows/macos-build.yml`, job env
+  `QTWEBENGINE_CHROMIUM_FLAGS`), so its launch reading does not match a user's
+  launch; #1734 row 6.
 
 ---
 
@@ -408,4 +413,4 @@ python -m tools.hop_check                         # exit 0 before any work
 
 ## CITED AS ABSENT
 
-None.
+- `dev_harness/sigils/semgrep_rule_packs/` is gitignored, because the two packs carry the registry's licence. A new clone holds no such folder until the two fetch commands on `docs/manual/16-sigil-project/code-secure.md` run.
