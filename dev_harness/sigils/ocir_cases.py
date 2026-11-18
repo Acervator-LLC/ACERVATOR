@@ -18,7 +18,7 @@ from typing import Any
 
 from .coding_input import SEPARATOR, locate
 from .coding_partition import FactsFault, coding_sigils, selection
-from .core import discipline_fault, repository_root, tool_text, version_fault
+from .core import first_refusal, repository_root, tool_text
 
 REPO = repository_root(Path(__file__).resolve().parent) or Path.cwd()
 CASES_FILE = REPO / "harness_fixtures" / "ocir_cases" / "cases.txt"
@@ -190,15 +190,9 @@ def read_side(
     module: ModuleType, root: Path, path: str, site: set[int]
 ) -> dict[str, Any]:
     """Return `module`'s refusal or fault for `path` under `root`, else its rule ids at `site` and its file count."""
-    sigil = module.SIGIL
-    refusal = (
-        discipline_fault(sigil)
-        or sigil.data_type(path)
-        or sigil.content(path, root)
-        or version_fault(sigil)
-    )
-    if refusal:
-        return {"refused": refusal}
+    refusal = first_refusal(module.SIGIL, path, root)
+    if refusal is not None:
+        return {"refused": refusal.fault}
     faults = (module.ToolFault, FactsFault, OSError, subprocess.SubprocessError)
     try:
         found = module.findings(path, root, selection(path, root, module.CAN_RUN))[1]
