@@ -121,7 +121,7 @@ rules. [16-sigil-project.md](16-sigil-project.md) links every one.
 | [16-sigil-project/code-type.md](16-sigil-project/code-type.md) | CODE.TYPE@1: mypy and pyright errors |
 | [16-sigil-project/code-secure.md](16-sigil-project/code-secure.md) | CODE.SECURE@1: bandit and semgrep findings, each with its CWE id |
 | [16-sigil-project/code-reach.md](16-sigil-project/code-reach.md) | CODE.REACH@1: code that nothing reaches, found by vulture |
-| [16-sigil-project/code-loop.md](16-sigil-project/code-loop.md) | CODE.LOOP@1: 29 ruff rules for loops and builders |
+| [16-sigil-project/code-loop.md](16-sigil-project/code-loop.md) | CODE.LOOP@1: 29 ruff rules and 3 of its own for loops and builders |
 | [16-sigil-project/code-import.md](16-sigil-project/code-import.md) | CODE.IMPORT@1: 25 ruff rules for import statements |
 | [16-sigil-project/code-collection.md](16-sigil-project/code-collection.md) | CODE.COLLECTION@1: 23 ruff rules for tuples, lists, sets and dictionaries |
 | [16-sigil-project/code-flow.md](16-sigil-project/code-flow.md) | CODE.FLOW@1: 33 ruff rules for if, try, with, return, raise, assert, pass and del |
