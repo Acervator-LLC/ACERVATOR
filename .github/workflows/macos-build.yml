@@ -37,6 +37,9 @@ jobs:
       LAUNCH_ROOT: ${{ github.workspace }}/launch
       # One line per screen capture, naming the application in front.
       FRONT_READINGS: ${{ github.workspace }}/launch/front.txt
+      # Parent of each HOME the fleet import is pressed under.
+      IMPORT_ROOT: ${{ github.workspace }}/launch/import
+      IMPORT_VARIANTS: qt react
       # Seconds to wait for a bundle to report its window.
       LAUNCH_WAIT_SECONDS: 180
 
@@ -353,6 +356,527 @@ jobs:
               sys.exit(1)
           print()
           print(f"{APPLICATION} owned the menu bar under both variants")
+
+      # StateManager.save_state writes the fleet file, from two ScrummingBot
+      # records get_full_state exports.
+      - name: Write a fleet file and a file that is not one into each home
+        shell: python
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          HOME: ${{ github.workspace }}/launch/import-maker
+        run: |
+          import os
+          from pathlib import Path
+
+          from src.core.state_manager import StateManager
+          from src.trading.container.config import BotMode, make_bot_config
+          from src.trading.container.restore import (
+              _PlaceholderExchangeForRestore,
+          )
+          from src.trading.scrumming_bot import ScrummingBot
+
+          root = Path(os.environ["IMPORT_ROOT"])
+          for variant in os.environ["IMPORT_VARIANTS"].split():
+              files = root / variant / "fleet-files"
+              records = []
+              for asset in ("ALGO", "ATOM"):
+                  config = make_bot_config(
+                      BotMode.SCRUMMING,
+                      exchange_id="coinbase",
+                      base_currency="EUR",
+                      target_asset=asset,
+                  )
+                  venue = _PlaceholderExchangeForRestore("coinbase")
+                  bot = ScrummingBot(config, venue)
+                  records.append(bot.get_full_state())
+              StateManager(config_dir=files).save_state(records)
+              not_fleet = files / "not_a_fleet.json"
+              not_fleet.write_text("this file holds no fleet\n", "utf-8")
+              for path in sorted(files.iterdir()):
+                  size = path.stat().st_size
+                  print(f"{variant} wrote {path.name}, {size} bytes")
+              ids = [one["bot_id"] for one in records]
+              print(f"{variant} fleet file bots: {ids}")
+
+      # osascript drives System Events UI scripting:
+      # https://developer.apple.com/library/archive/documentation/LanguagesUtilities/Conceptual/MacAutomationScriptingGuide/AutomatetheUserInterface.html
+      - name: Press the fleet import in each bundle and read what it wrote
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          import time
+          import traceback
+          from pathlib import Path
+
+          # A Qt window can carry its accessible name or its title.
+          DIALOG = ("Fleet Import Dialog", "Acervator - no saved fleet")
+          MAIN = ("Acervator Main Window", "Acervator v")
+          # osascript errors naming a missing permission, not a missing window.
+          DENIALS = ("assistive access", "-25211", "-1743", "not authorized")
+          IMPORT = "Import a fleet file..."
+          OPEN = "Open"
+          NEXT = "Show the next bot."
+          PREV = "Show the previous bot."
+          REFUSAL = "is not a fleet file, because it does not hold JSON text."
+          LOADED = "Imported fleet: 2 of 2 bot(s) loaded."
+          READY = "main window displayed"
+          # A log pane or log line naming a symbol is not a listed bot.
+          LOG_KINDS = ("AXTextArea",)
+          LOG_MARKS = ("[INFO]", "[WARNING]", "[ERROR]", "[DEBUG]",
+                       "acervator.")
+          STAMP = re.compile(r"^(?:\S+:? )?\[?\d\d:\d\d:\d\d")
+
+          FIND = """
+            set pidNo to (item 1 of argv) as integer
+            set namePrefix to item 2 of argv
+            tell application "System Events"
+              set procRef to first application process whose unix id is pidNo
+              set winRef to missing value
+              repeat with eachWin in (every window of procRef)
+                if ((name of eachWin) as text) starts with namePrefix then
+                  set winRef to eachWin
+                  exit repeat
+                end if
+              end repeat
+          """
+          SCRIPTS = {
+              "processes": """
+            on run argv
+              set outRows to {}
+              tell application "System Events"
+                repeat with procRef in (every application process)
+                  try
+                    set procName to (name of procRef) as text
+                    set procPid to (unix id of procRef) as text
+                    set end of outRows to procName & tab & procPid
+                  end try
+                end repeat
+              end tell
+              set AppleScript's text item delimiters to linefeed
+              return outRows as text
+            end run
+          """,
+              "windows": """
+            on run argv
+              set pidNo to (item 1 of argv) as integer
+              set nameRows to {}
+              tell application "System Events"
+                set procRef to first application process whose unix id is pidNo
+                repeat with eachWin in (every window of procRef)
+                  try
+                    set end of nameRows to (name of eachWin) as text
+                  end try
+                end repeat
+              end tell
+              set AppleScript's text item delimiters to linefeed
+              return nameRows as text
+            end run
+          """,
+              "tree": "on run argv" + FIND + """
+              if winRef is missing value then return "NO WINDOW " & namePrefix
+              with timeout of 900 seconds
+                set elemList to entire contents of winRef
+              end timeout
+              set outRows to {}
+              repeat with elemRef in elemList
+                set outRow to ""
+                try
+                  set outRow to (role of elemRef) as text
+                end try
+                try
+                  set outRow to outRow & tab & ((name of elemRef) as text)
+                end try
+                try
+                  set outRow to outRow & tab & ((value of elemRef) as text)
+                end try
+                try
+                  set elemDesc to (description of elemRef) as text
+                  set outRow to outRow & tab & elemDesc
+                end try
+                set end of outRows to outRow
+              end repeat
+            end tell
+            set AppleScript's text item delimiters to linefeed
+            return outRows as text
+          end run
+          """,
+              "click": "on run argv" + FIND + """
+              if winRef is missing value then return "NO WINDOW " & namePrefix
+              set wantedLabel to item 3 of argv
+              set wantedRole to item 4 of argv
+              set elemList to entire contents of winRef
+              repeat with elemRef in elemList
+                set elemName to ""
+                set elemDesc to ""
+                try
+                  if (role of elemRef) is wantedRole then
+                    set elemName to (name of elemRef) as text
+                    set elemDesc to (description of elemRef) as text
+                  end if
+                end try
+                if elemName is wantedLabel or elemDesc is wantedLabel then
+                  set {xPos, yPos} to position of elemRef
+                  set {elemWidth, elemHeight} to size of elemRef
+                  set xMid to xPos + (elemWidth div 2)
+                  set yMid to yPos + (elemHeight div 2)
+                  tell procRef to click at {xMid, yMid}
+                  return "clicked " & wantedLabel & " at " & xMid & "," & yMid
+                end if
+              end repeat
+            end tell
+            return "NO " & wantedRole & " " & wantedLabel
+          end run
+          """,
+              "press": "on run argv" + FIND + """
+              if winRef is missing value then return "NO WINDOW " & namePrefix
+              set wantedLabel to item 3 of argv
+              set elemList to entire contents of winRef
+              repeat with elemRef in elemList
+                set elemName to ""
+                set elemDesc to ""
+                try
+                  if (role of elemRef) is "AXButton" then
+                    set elemName to (name of elemRef) as text
+                    set elemDesc to (description of elemRef) as text
+                  end if
+                end try
+                if elemName is wantedLabel or elemDesc is wantedLabel then
+                  perform action "AXPress" of elemRef
+                  return "pressed " & wantedLabel
+                end if
+              end repeat
+            end tell
+            return "NO BUTTON " & wantedLabel
+          end run
+          """,
+              "goto": """
+            on run argv
+              set pidNo to (item 1 of argv) as integer
+              tell application "System Events"
+                set procRef to first application process whose unix id is pidNo
+                set frontmost of procRef to true
+                delay 1
+                keystroke "g" using {command down, shift down}
+                delay 2
+                keystroke (item 2 of argv)
+                delay 2
+                keystroke return
+              end tell
+              return "typed"
+            end run
+          """,
+          }
+
+          root = Path(os.environ["IMPORT_ROOT"])
+          limit = int(os.environ["LAUNCH_WAIT_SECONDS"])
+          scripts = Path(os.environ["RUNNER_TEMP"]) / "fleet-import-scripts"
+          scripts.mkdir(parents=True, exist_ok=True)
+          for key, text in SCRIPTS.items():
+              (scripts / f"{key}.applescript").write_text(text, "utf-8")
+          failures = []
+          errors = []
+          last_rows = []
+          table_reads = {}
+
+
+          class Refused(RuntimeError):
+              """osascript named a permission the runner does not grant."""
+
+
+          def osa(key, *args):
+              """Run one script through osascript and answer its stdout."""
+              done = subprocess.run(
+                  ["osascript", str(scripts / f"{key}.applescript")]
+                  + [str(one) for one in args],
+                  capture_output=True,
+                  text=True,
+                  timeout=1200,
+              )
+              if done.returncode != 0:
+                  said = done.stderr.strip()
+                  told = f"osascript {key} exit {done.returncode}: {said}"
+                  if any(one in said for one in DENIALS):
+                      raise Refused(told)
+                  raise RuntimeError(told)
+              return done.stdout.strip()
+
+
+          def wait_for(read, seconds):
+              """Poll read each second until it answers truthy or time ends."""
+              end = time.monotonic() + seconds
+              while True:
+                  try:
+                      found = read()
+                  except Refused:
+                      raise
+                  except Exception as exc:
+                      errors.append(f"{type(exc).__name__}: {exc}")
+                      found = None
+                  if found or time.monotonic() > end:
+                      return found
+                  time.sleep(1)
+
+
+          def acervator_processes():
+              """Each System Events application process whose name holds it."""
+              rows = osa("processes").splitlines()
+              return [row for row in rows if "acervator" in row.lower()]
+
+
+          def resolve(started):
+              """The unix id System Events gives the running bundle."""
+              rows = acervator_processes()
+              pids = [row.rsplit("\t", 1)[-1] for row in rows]
+              if str(started) in pids:
+                  return started
+              return int(pids[0]) if pids else None
+
+
+          def first(names, wanted):
+              """The first window name that starts with one of wanted."""
+              found = [one for one in names if one.startswith(wanted)]
+              return found[0] if found else None
+
+
+          def ready(home):
+              """True once a file under the home's log tree names READY."""
+              logs = home / ".acervator_logs"
+              for path in logs.rglob("*") if logs.exists() else []:
+                  if not path.is_file():
+                      continue
+                  if READY in path.read_text("utf-8", "ignore"):
+                      return True
+              return False
+
+
+          def windows(pid):
+              """The window names System Events reads for pid."""
+              return [one for one in osa("windows", pid).splitlines() if one]
+
+
+          def tree(pid, prefix):
+              """Each row of role, name, value and description in a window."""
+              rows = osa("tree", pid, prefix).splitlines()
+              return [" ".join(row.split()) for row in rows if row.strip()]
+
+
+          def bot_rows(rows, symbol):
+              """Rows naming symbol that are not log text."""
+              return [
+                  row for row in rows
+                  if symbol in row
+                  and not row.startswith(LOG_KINDS)
+                  and not STAMP.match(row)
+                  and not any(mark in row for mark in LOG_MARKS)
+              ]
+
+
+          def fleet_symbols(good):
+              """Each bot id in the fleet file mapped to its symbol."""
+              bots = json.loads(good.read_text("utf-8"))["bots"]
+              return {bid: one["config"]["symbol"] for bid, one in bots.items()}
+
+
+          def table_rows(rows):
+              """Each table row in rows, followed by the cells under it."""
+              kinds = ("AXRow", "AXCell")
+              return [row for row in rows if row.startswith(kinds)]
+
+
+          def listing(pid, main, symbols, home):
+              """Rows naming each symbol as NEXT steps the menu, else None."""
+              table_reads.clear()
+              rows = tree(pid, main)
+              steps = []
+              # The bot menu stops at each end, so it steps back, then forward.
+              arrows = [PREV] * len(symbols) + [NEXT] * len(symbols)
+              for index, arrow in enumerate(arrows):
+                  steps.append(osa("click", pid, main, arrow, "AXButton"))
+                  time.sleep(6)
+                  capture(home, f"3-step-{index}")
+                  rows += tree(pid, main)
+              # macOS React exposes one bot table row here; the voting
+              # panel's label names each other bot.
+              table_reads["after stepping"] = table_rows(rows)
+              last_rows[:] = steps + rows
+              named = {one: bot_rows(rows, one) for one in symbols}
+              loaded = [row for row in rows if LOADED in row]
+              if all(named.values()):
+                  return {"bot rows": named, "loaded line": loaded}
+              return None
+
+
+          def sha(path):
+              """The SHA-256 of the bytes at path."""
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+          def capture(home, label):
+              """Save the whole screen beside the home's readings."""
+              shot = home / f"import-{label}.png"
+              subprocess.run(["screencapture", "-x", str(shot)], check=False)
+
+
+          def pick(pid, dialog, path, seen, label):
+              """Press IMPORT, then answer the open panel with path."""
+              shown = windows(pid)
+              seen[f"{label} press"] = osa("press", pid, dialog, IMPORT)
+              panel = wait_for(
+                  lambda: [one for one in windows(pid) if one not in shown], 30
+              )
+              seen[f"{label} picker windows"] = panel
+              if not panel:
+                  raise RuntimeError("no picker window opened")
+              seen[f"{label} typed"] = osa("goto", pid, path)
+              time.sleep(3)
+              still = [one for one in windows(pid) if one in panel]
+              if still:
+                  seen[f"{label} open"] = osa("press", pid, still[0], OPEN)
+              gone = wait_for(
+                  lambda: not [one for one in windows(pid) if one in panel], 30
+              )
+              seen[f"{label} picker closed"] = bool(gone)
+
+
+          def press_and_read(variant, started, home, seen):
+              """Take every reading on one running bundle."""
+              files = home / "fleet-files"
+              good = files / "bot_state.json"
+              bad = files / "not_a_fleet.json"
+              expected = home / ".acervator" / "bot_state.json"
+              seen["good file sha256"] = sha(good)
+              symbols = fleet_symbols(good)
+              seen["fleet file bots"] = symbols
+              logged = wait_for(lambda: ready(home), limit)
+              seen["main window line"] = bool(logged)
+              pid = wait_for(lambda: resolve(started), 60)
+              seen["system events processes"] = acervator_processes()
+              seen["system events pid"] = pid
+              if pid is None:
+                  seen["errors while waiting"] = errors[-5:]
+                  failures.append(f"{variant}: System Events lists no bundle")
+                  return
+              dialog = wait_for(lambda: first(windows(pid), DIALOG), 120)
+              main = first(windows(pid), MAIN)
+              seen["windows with the screen up"] = windows(pid)
+              seen["errors while waiting"] = errors[-5:]
+              if not dialog or not main:
+                  failures.append(f"{variant}: the screen never opened")
+                  return
+              time.sleep(15)
+              seen["expected place, nothing pressed"] = expected.exists()
+              if expected.exists():
+                  failures.append(f"{variant}: a fleet appeared unpressed")
+              begun = time.monotonic()
+              before = tree(pid, main)
+              seen["main window rows read"] = len(before)
+              seen["main window read seconds"] = int(time.monotonic() - begun)
+              seen["bot rows before"] = {
+                  one: bot_rows(before, one) for one in symbols.values()
+              }
+              seen["screen strings, open"] = wait_for(
+                  lambda: tree(pid, dialog), 30
+              )
+              capture(home, "1-open")
+
+              pick(pid, dialog, bad, seen, "bad file")
+              shown = []
+
+              def refusal():
+                  shown[:] = tree(pid, dialog)
+                  return [row for row in shown if REFUSAL in row]
+
+              said = wait_for(refusal, 30) or []
+              seen["screen strings, bad file"] = shown
+              seen["refusal sentence read"] = said
+              seen["screen open after bad file"] = dialog in windows(pid)
+              seen["expected place after bad file"] = expected.exists()
+              capture(home, "2-refused")
+              if not said:
+                  failures.append(f"{variant}: no refusal sentence was read")
+              if expected.exists():
+                  failures.append(f"{variant}: the bad file wrote the place")
+
+              pick(pid, dialog, good, seen, "good file")
+              closed = wait_for(lambda: dialog not in windows(pid), 60)
+              seen["screen closed after good file"] = bool(closed)
+              written = wait_for(expected.exists, 30)
+              seen["expected place after good file"] = bool(written)
+              if not written:
+                  failures.append(f"{variant}: the good file wrote nothing")
+                  return
+              seen["expected place sha256"] = sha(expected)
+              if seen["expected place sha256"] != seen["good file sha256"]:
+                  failures.append(f"{variant}: the written bytes differ")
+              found = wait_for(
+                  lambda: listing(pid, main, symbols.values(), home), 180
+              )
+              seen["main window after good file"] = found
+              seen["table rows and their cells"] = dict(table_reads)
+              capture(home, "3-imported")
+              if not found:
+                  seen["windows after good file"] = windows(pid)
+                  seen["errors after good file"] = errors[-5:]
+                  seen["last main window rows"] = last_rows[:300]
+                  failures.append(f"{variant}: the bots were not listed")
+
+
+          def read_variant(variant):
+              """Launch one variant on its import home and read it."""
+              home = root / variant
+              (home / "tmp").mkdir(parents=True, exist_ok=True)
+              app = next(Path("dist").glob(f"*-{variant}.app"))
+              binary = app / "Contents" / "MacOS" / app.stem
+              env = {
+                  "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                  "HOME": str(home),
+                  "TMPDIR": str(home / "tmp"),
+                  "LANG": "en_US.UTF-8",
+                  "ACERVATOR_DEBUG_BOOT": "1",
+              }
+              if variant == "react":
+                  # The switch makes Chromium build the page's whole tree.
+                  env["QTWEBENGINE_CHROMIUM_FLAGS"] = (
+                      "--force-renderer-accessibility"
+                  )
+              console = (home / "import-console.txt").open("w")
+              proc = subprocess.Popen(
+                  [str(binary)], env=env, stdout=console, stderr=console
+              )
+              seen = {"variant": variant, "pid": proc.pid}
+              try:
+                  press_and_read(variant, proc.pid, home, seen)
+              except Refused as exc:
+                  seen["refused"] = str(exc)
+                  failures.append(f"{variant}: the tool was refused: {exc}")
+              except Exception:
+                  failures.append(f"{variant}: {traceback.format_exc()}")
+              finally:
+                  proc.kill()
+                  proc.wait(timeout=30)
+                  for name in (app.stem, "QtWebEngineProcess"):
+                      subprocess.run(["pkill", "-f", name], check=False)
+                  console.close()
+              out = home / "import-readings.json"
+              out.write_text(json.dumps(seen, indent=2), "utf-8")
+              return seen
+
+
+          for variant in os.environ["IMPORT_VARIANTS"].split():
+              print("=" * 50)
+              print(f"=== {variant}: the fleet import, pressed with osascript")
+              print("=" * 50)
+              for key, value in read_variant(variant).items():
+                  dumped = json.dumps(value, indent=2)
+                  print(f"READING {variant} {key}: {dumped}")
+          for failure in failures:
+              print(f"FAILURE {failure}")
+          sys.exit(1 if failures else 0)
 
       - name: Upload the applications and the disk images
         if: always()
