@@ -124,6 +124,10 @@ The card names one tool and the one rule it can run, and every item that tool
 reports in the input file is an output. One row, from the card's settings and
 tier 3. The command prints the version it ran.
 
+When vulture is missing or its installed version is not 2.16,
+`dev_harness/sigils/core.py, in version_fault` refuses the input at tier 3
+before vulture runs.
+
 | Tool | Version on the card | How the card runs it | Floor that holds a merge |
 | ---- | ------------------- | -------------------- | ------------------------ |
 | vulture | 2.16 | `Vulture().scavenge()` over the files git lists, then `get_unused_code()`, as vulture's README shows it, from the root of the target tree | confidence 100 |

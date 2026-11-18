@@ -48,6 +48,10 @@ the file set the Python version, the preview setting of the other 82 rules and
 the complexity limit. The card records ruff 0.16.0, and the command prints the
 ruff version it ran.
 
+When ruff is missing or its installed version is not 0.16.0,
+`dev_harness/sigils/core.py, in version_fault` refuses the input at tier 3
+before ruff runs.
+
 `dev_harness/sigils/code_optimize.py, in FAMILIES` and `in _ruff_findings`:
 
 ```python
