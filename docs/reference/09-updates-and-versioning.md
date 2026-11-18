@@ -1521,7 +1521,12 @@ jobs:
     uses: ./.github/workflows/windows-build.yml
   macos:
     uses: ./.github/workflows/macos-build.yml
+  linux:
+    uses: ./.github/workflows/linux-build.yml
 ```
+
+**Overtaken.** A release calls three platforms, not two. The Linux build is the
+third call, and a release builds all three whatever the watch lists say.
 
 The lock file under `requirements/` is not one of the nine. No build reads it, so
 a change to it builds nothing and ships nothing.
@@ -1603,8 +1608,11 @@ release back. The Windows build of the same run is discarded with it, and the
 Releases panel keeps the version it already carried.
 
 ```yaml
-publish: {needs: [windows, macos]}   # .github/workflows/release.yml
+publish: {needs: [windows, macos, linux]}   # .github/workflows/release.yml
 ```
+
+**Overtaken.** A release needs three platforms, not two, so a macOS packaging
+failure discards the Linux build of the same run as well.
 
 ### Where the macOS build is downloaded
 
@@ -1689,15 +1697,20 @@ repository front page links it. Git cannot hold the builds: `dist` measured
 name: Release                        # .github/workflows/release.yml
 on:
   workflow_dispatch:
+  push: {branches: [main]}
 jobs:
-  windows: {runs-on: windows-latest}
+  windows: {uses: ./.github/workflows/windows-build.yml}
   macos: {uses: ./.github/workflows/macos-build.yml}
-  publish: {needs: [windows, macos]}
+  linux: {uses: ./.github/workflows/linux-build.yml}
+  publish: {needs: [windows, macos, linux]}
 ```
 
 The Run workflow button on the Actions tab starts it. One run builds both
 platforms, launches every application it built, reads the line each one writes
 once its main window is on screen, and attaches four files to one release.
+
+**Overtaken.** A push to `main` starts the same run. One run builds three
+platforms, Windows, macOS and Linux, and attaches six files to one release.
 
 ### The release a visitor downloads
 
@@ -1709,7 +1722,12 @@ Acervator-<version>-qt-windows.zip      Windows, the Qt interface
 Acervator-<version>-react-windows.zip   Windows, the React interface
 Acervator-<version>-qt.dmg              macOS, the Qt interface
 Acervator-<version>-react.dmg           macOS, the React interface
+Acervator-<version>-qt.AppImage         Linux, the Qt interface
+Acervator-<version>-react.AppImage      Linux, the React interface
 ```
+
+**Overtaken.** A release carries six files, not four. The two AppImage rows are
+the Linux pair.
 
 The tag carries that same version behind a `build-` prefix.
 
@@ -1751,7 +1769,7 @@ the Windows step refuses a build folder holding any logo file. Neither guard has
 a way to pass a mixed or a logo-carrying release.
 
 ```
-files to attach: 4          two per platform, or the step fails
+files to attach: 6          two per platform, or the step fails
 qt  logos    0              any other number fails the step
 ```
 
@@ -1776,3 +1794,9 @@ SMARTSCREEN_NOTICE                   # tools/build_launcher.py
 
 A macOS download carries the same unsigned bundle a run page artefact carries, so
 its own first launch is the Gatekeeper step recorded above.
+
+**Overtaken.** On macOS 15 and later, the right-click step no longer opens an
+unsigned application. The release notes send a person to System Settings,
+Privacy & Security and Open Anyway instead. They also give the Linux steps: mark
+the AppImage runnable once per download, then double-click it
+(`.github/workflows/release.yml, in the publish job`).

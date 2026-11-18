@@ -16,6 +16,52 @@ Here you see the first subsystem we are going to cover and this will primarily b
 
 Now: no license check exists, and beyond the exchanges the app calls news feeds, CoinGecko and Yahoo Finance, plus AI, alert and posting services when you switch them on (`src/gui/crypto_news_ticker.py, in fetch_one`).
 
+### Download and open the application
+
+Every build is on the
+[Releases page](https://github.com/Acervator-LLC/ACERVATOR/releases). The
+newest release holds six files, two for each system, and nothing needs
+installing. Pick one file by how its name ends.
+
+| the file ends with | your computer | interface |
+|---|---|---|
+| `-qt-windows.zip` | Windows | Qt |
+| `-react-windows.zip` | Windows | React |
+| `-qt.dmg` | macOS | Qt |
+| `-react.dmg` | macOS | React |
+| `-qt.AppImage` | Linux | Qt |
+| `-react.AppImage` | Linux | React |
+
+On Windows, right-click the zip, choose Extract All, open the folder it makes,
+and double-click the program inside. Windows says *Windows protected your PC*
+the first time, because the program carries no paid code-signing certificate.
+Click More info, then Run anyway.
+
+On macOS, double-click the disk image and drag Acervator to the Applications
+folder. macOS refuses the first launch, because the application carries no
+Apple Developer signature. On macOS 15 and later, open System Settings, choose
+Privacy & Security, click Open Anyway, then confirm. On macOS 14 and earlier,
+right-click the application, choose Open, then choose Open again.
+
+On Linux, the file is for a standard 64-bit PC (x86_64). Right-click it and
+choose Properties to mark it as runnable. In GNOME Files, turn on Executable as
+Program. In other file managers, open Permissions and tick the box that lets
+the file run as a program. In a terminal, `chmod +x` on the file does the same.
+Then double-click it.
+
+An AppImage opens through FUSE, which the `fuse3` package installs. Where FUSE
+is not available, start the file from a terminal with
+`--appimage-extract-and-run` after its name.
+
+You take each of these first-launch steps once per download.
+
+`.github/workflows/release.yml, in the publish job`
+
+```python
+PLATFORM = {".zip": "Windows", ".dmg": "macOS", ".AppImage": "Linux"}
+INTERFACE = {"qt": "Qt", "react": "React"}
+```
+
 ![The Trading tab, with Privacy Mode on.](p15-i0.png)
 
 1 - Add Exchange - User provides valid API key and secret for target exchange - Platforms validates with an API handshake - Exchange Initializes
