@@ -55,6 +55,35 @@ value.
 
 Read the file before naming. The tree's vocabulary wins over a better idea.
 
+## Labels for work follow the same rules
+
+Operator, 2026-11-18:
+
+> "For the sake of avoiding future instances not being able to properly
+> interpret the labels, let's try to avoid of the recent alpha-numeric cryptic
+> naming and stick with rules similar to variable naming. We have to be
+> considerate of future Claude."
+
+A unit's name, a branch, a worktree folder, a scratch file, a data set, a record
+file and an experiment step are read later by a session that was not there.
+Each one says what the thing is or does, in plain words.
+
+| Wrong | Right |
+|---|---|
+| unit `E30` | unit "sigil feedback folder switch" |
+| branch `u1633-e30` | branch `sigil-feedback-folder-switch` |
+| worktree `wt-1633-e30` | worktree `wt-sigil-feedback-folder-switch` |
+| scratch file `u1633e30_drive.py` | scratch file `folder_switch_readings.py` |
+| `GR_pr.md` | `grounding_rule_pull_request.md` |
+| step "E3.0" | "experiment 3's per-folder switch" |
+
+- An issue number may sit beside the words, never replace them:
+  `1633-folder-switch`.
+- Name each scratch artefact for its unit, as `branch-discipline` requires, and
+  make that prefix the unit's words.
+- An id that a registry defines stays as it is: an OCIR row (`C155`), a rule code
+  (`LOOP001`, `B602`), a comment id. Never coin a new code for a label.
+
 ## The test
 
 Read the name alone, with no surrounding code. If it does not say what the value
