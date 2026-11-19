@@ -100,14 +100,6 @@ states the run rule and the proof.
     rules = tuple(code for code in RULES if f"{TOOL} {code}" in to_run)
 ```
 
-Measured on every tracked Python file of `src/` and every def and class in
-them, for each input that tier 2 accepts:
-
-| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
-| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
-| file | 482 | 33 | 9 | 22 | 29 | 202 | 202 |
-| def or class | 11,730 | 33 | 3 | 12 | 29 | 331 | 331 |
-
 ## Outputs and flags
 
 | Output | Flag elsewhere | Flag in application source |

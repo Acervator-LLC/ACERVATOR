@@ -81,14 +81,6 @@ states the run rule and the proof.
         return NO_RULE, []
 ```
 
-Measured on every tracked Python file of `src/` and every def and class in
-them, for each input that tier 2 accepts:
-
-| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
-| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
-| file | 503 | 1 | 1 | 1 | 1 | 1,120 | 1,120 |
-| def or class | 13,885 | 1 | 1 | 1 | 1 | 1,702 | 1,702 |
-
 ## Outputs and flags
 
 | Output | Flag elsewhere | Flag in application source |

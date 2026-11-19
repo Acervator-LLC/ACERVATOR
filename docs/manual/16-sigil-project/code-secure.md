@@ -196,14 +196,6 @@ rules semgrep runs:
     rules = [rule for rule in SEMGREP.rules if f"{SEMGREP.tool} {rule}" in to_run]
 ```
 
-Measured on every tracked Python file of `src/` and every def and class in
-them, for each input that tier 2 accepts:
-
-| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
-| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
-| file | 503 | 291 | 18 | 187 | 202 | 24 | 24 |
-| def or class | 13,885 | 291 | 34 | 176 | 198 | 38 | 38 |
-
 ## Outputs and flags
 
 | Output | Flag elsewhere | Flag in application source |
