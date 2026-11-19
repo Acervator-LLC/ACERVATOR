@@ -32,19 +32,27 @@ gh pr list --state open                  # what is still landing
 ```
 
 - **Next on #1633:** experiment 3, the Coding Archetype with and without the
-  sigils on the same tasks. It needs its own record and a seal before its first
-  run. Its two arms differ by `ACERVATOR_SIGIL_FEEDBACK`, and its result sets
-  that switch's default (comment 6991909014).
-- **Next after it:** the other sigil pages under `docs/manual/16-sigil-project/`
-  still carry selection tables measured on `src/`. A unit moves those figures
-  into data sets, as step 3b did for `code-loop.md` and `rule-partition.md`.
+  sigils on the same tasks. Its design record is comment 6996846187, amended by
+  6997141827: every task cites the failure it is grounded in. Step E3.0 is built
+  (#1772, report 6997952723): a file named `SIGIL_FEEDBACK_ON` in a folder turns
+  the sigil feedback on there, so the two arms run in one session and differ only
+  by that file. Step E3.1, the task set in the gitignored folder
+  `artifacts/sigil_runs/2026-11-18_e3_tasks/`, is in flight. Then the seal, a
+  pilot of 5 tasks, and the 25 counted tasks. Its result sets the feedback's
+  default (comment 6991909014).
+- **No sigil page carries a figure measured on `src/`** (#1770): those figures
+  live in the data sets under `artifacts/sigil_runs/`.
 - **Every iteration has a record first:** W5H and OCIR, gated by the Truth
   Archetype with `--item`, posted, then acted on. The rule is part 6 of Skill:
   canonized-workflow (#1742).
 - **A control is measured on its failure modes, not on a sweep** of `src/`:
   inputs that show each known failure mode, a corrected twin and a near-miss twin
-  each, and a seeded sample stratified by folder where `src/` is used. The rule is
-  in Skill: two-sided-control (#1765).
+  each, and a seeded sample stratified by folder where `src/` is used. Every
+  input cites the failure it is grounded in. The rule is in Skill:
+  two-sided-control (#1765, #1771).
+- **A worktree lacks what git ignores** (Skill: ocir, row C155): run the Truth
+  Archetype's T008 from the main tree, and copy CODE.SECURE's rule packs into a
+  worktree with their sha256 checked.
 - **Running units are watched on a clock.** A loop runs the watcher every 300
   seconds, or sooner or later when a run's time is measured, and wakes the
   referee only on a flag: STALE, SPIRAL, LONG_WAIT, NO_ADVANCE, RUNAWAY or RAM.
@@ -246,8 +254,9 @@ wrong far more often than right.
   rules and three of its own, LOOP001 to LOOP003, in
   `dev_harness/sigils/code_loop.py`. Step 4 is built in #1767: after a `.py`
   write, `dev_harness/hooks/archetype_gate.py` adds the nine coding sigils'
-  findings, only when `ACERVATOR_SIGIL_FEEDBACK=on`. Experiment 3 is next, as
-  above.
+  findings, only when `ACERVATOR_SIGIL_FEEDBACK=on` or, since #1772, when a
+  `SIGIL_FEEDBACK_ON` file sits in the file's folder or a parent. Experiment 3
+  is in flight, as above.
 
 ```bash
 gh issue view 1633 --comments      # step records 6969302729, 6974831108, 6976861545, 6988816286; step 4 report 6993323259
