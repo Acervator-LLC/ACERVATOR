@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-18 against `237369c3`. **Every claim here names one command that
+Written 2026-11-19 against `6f8ab163`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -34,20 +34,28 @@ gh pr list --state open                  # what is still landing
 - **Experiment 3 on #1633 has ended.** Comment 7000447930 holds its result: with
   the sigil feedback the starting fault survived in 5 of 23 counted tasks,
   against 20 of 23 without it, and both arms passed their working cases in 23
-  of 23. Comment 7000669734 names what it tested, and comment 7017521152
-  corrects it: the result holds for seven sigils, CODE.LOOP, CODE.FLOW,
+  of 23. Comment 7000669734 names what it tested, comment 7017521152 corrects
+  it, and #1780 carries the correction into the manual: the result holds for
+  seven sigils, CODE.LOOP, CODE.FLOW,
   CODE.COLLECTION, CODE.TYPE, CODE.VARIABLE, CODE.IMPORT and CODE.OPTIMIZE.
   CODE.OPTIMIZE named its task's rule in task10, task14, task17 and task18, each
   time beside CODE.LOOP or CODE.COLLECTION, so the experiment cannot tell its
   effect apart from theirs. CODE.SECURE printed no line, and CODE.REACH had no
   task.
-- **CODE.SECURE's own rule SECURE001 is built** (#1779). It reports a credential
-  mask list that misses a required word, the redaction-list form of experiment
-  3's tasks 09 and 30: `dev_harness/sigils/code_secure.py, in OWN_RULES`.
-- **Next on #1633:** the CODE.LOOP rule of record 7017033732, `readlines()`
-  iterated on a file that a `.open()` method returned. Then the next trial:
-  tasks whose faults CODE.SECURE and CODE.REACH can read, and a task whose rule
-  only CODE.OPTIMIZE holds.
+- **CODE.SECURE holds one rule of its own, SECURE001** (#1779). It reports a
+  credential mask list that misses a word of `src/exchange/api_logger.py, in _redact`,
+  the redaction-list form of experiment 3's tasks 09 and 30:
+  `dev_harness/sigils/code_secure.py, in OWN_RULES`. Comment 7018280639 holds
+  its readings.
+- **CODE.LOOP holds four rules of its own, LOOP001 to LOOP004.** LOOP004 (#1782)
+  reads readlines() looped over a file an .open() method returned, on the 42
+  binding forms ruff FURB129 reads only on the built-in open:
+  `dev_harness/sigils/code_loop.py, in OWN_RULES`. Comment 7021561848 holds its
+  readings.
+- **Next on #1633:** the next trial, with tasks whose faults CODE.SECURE and
+  CODE.REACH can read and a task whose rule only CODE.OPTIMIZE holds, by
+  comment 7017521152. It needs its own iteration record and seal first, by part
+  6 of Skill: canonized-workflow.
 - **The write hook's sigil feedback is on by default**, by record 7000460425 and
   #1777. The function `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`
   turns it off only when ACERVATOR_SIGIL_FEEDBACK reads off, or when a
@@ -66,11 +74,16 @@ gh pr list --state open                  # what is still landing
 - **A worktree lacks what git ignores** (Skill: ocir, row C155): run the Truth
   Archetype's T008 from the main tree, and copy CODE.SECURE's rule packs into a
   worktree with their sha256 checked.
-- **Skill: ocir holds rows C156 to C158.** Watch a log by polling its line count
+- **Skill: ocir holds rows C156 to C159.** Watch a log by polling its line count
   with `wc -l`, never with `tail -f` (C156). Give no two PowerShell variables in
   one command names that differ only by case (C157). Search for a folder by its
   path form, the name plus its separator, with the run's own folder path as the
-  control (C158).
+  control (C158). A filter on a report's verdict word accepts every word each
+  producer prints, read first on a control text with one line per producer
+  (C159).
+- **The prompt router's own row lists match the catalogue index** (#1781):
+  `dev_harness/hooks/prompt_router.py, in _build_catalogue_gaps` answers an
+  empty string for `_CATALOGUE_RULES` against the index of Skill: ocir.
 - **Running units are watched on a clock.** A loop runs the watcher every 300
   seconds, or sooner or later when a run's time is measured, and wakes the
   referee only on a flag: STALE, SPIRAL, LONG_WAIT, NO_ADVANCE, RUNAWAY or RAM.
@@ -80,15 +93,18 @@ gh pr list --state open                  # what is still landing
   `dev_harness/sigils/semgrep_rule_packs/`; both trees hold them. A new clone
   fetches them with the two commands on `docs/manual/16-sigil-project/code-secure.md`,
   and until then the sigil refuses and names the missing file.
-- **The release and both trees:**
+- **The releases and both trees:**
 
 ```
-release      0.2.0-20261118.2002.g2a5b061dc949, from 2a5b061d, 6 assets
-             gh release list      # one build, 2002
-main         2a5b061d, a merge of current at 25de8c83
-             git describe --tags origin/main     # build-0.2.0-20261118.2002.g2a5b061dc949
-             git log --oneline origin/main..origin/current     # aabadc25 and 237369c3
-both trees   at 237369c3; dist/ holds the 1555 pair and the 2002 pair, and no 1928 pair
+releases     gh release list      # two builds, 1238 and 2002
+             0.2.0-20261119.1238.g6e333fc1cfc0, from 6e333fc1, 6 assets, Latest
+             0.2.0-20261118.2002.g2a5b061dc949, from 2a5b061d, 6 assets
+main         6e333fc1, a merge of current at 6f8ab163
+             git describe --tags origin/main     # build-0.2.0-20261119.1238.g6e333fc1cfc0
+             git log --oneline origin/main..origin/current     # prints nothing
+both trees   at 6f8ab163; dist/ holds the 2002 pair and the 1238 pair
+he runs      2002, the dist folder of each running Acervator process
+             Get-CimInstance Win32_Process -Filter "Name LIKE 'Acervator%'"   # ExecutablePath
 ```
 
 - **The machine took one system crash**, bug check 0x133, at 20:39 on
@@ -274,13 +290,13 @@ wrong far more often than right.
   every reading path refuses a tool version its card does not hold. Step 2 is
   built in #1760: `python -m dev_harness.sigils.fix_class` applies ruff's safe
   fixes for the six ruff sigils and judges the file again, up to
-  `ROUND_LIMIT`. Step 3 is built in #1762 and #1766: CODE.LOOP holds 29 ruff loop
-  rules and three of its own, LOOP001 to LOOP003, in
+  `ROUND_LIMIT`. Step 3 is built in #1762 and #1766, and #1782 adds LOOP004:
+  CODE.LOOP holds 29 ruff loop rules and four of its own, LOOP001 to LOOP004, in
   `dev_harness/sigils/code_loop.py`. Step 4 is built in #1767: after a `.py`
   write, `dev_harness/hooks/archetype_gate.py` adds the nine coding sigils'
   findings, and since #1777 it does so unless the variable or a marker file
   turns the feedback off, as above. Experiment 3 has ended, and the next unit is
-  the CODE.LOOP rule of record 7017033732, as above.
+  the next trial, as above.
 
 ```bash
 gh issue view 1633 --comments      # step records 6969302729, 6974831108, 6976861545, 6988816286; step 4 report 6993323259
