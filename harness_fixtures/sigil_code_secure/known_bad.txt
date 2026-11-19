@@ -13,3 +13,7 @@ known_bad_b608.py
 # WEAK, FIX: narrowed to the one function holding a fault
 known_bad_b506.py, in test_yaml_load
 known_bad_b105.py, in someFunction2
+
+# WEAK, FIX: SECURE001 reads the set _redact in src/exchange/api_logger.py held before commit
+# a703c497, which misses sign, auth and credential
+known_bad_secure001.py
