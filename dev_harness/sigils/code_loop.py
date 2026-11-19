@@ -243,15 +243,27 @@ def _imported(node: ast.AST) -> list[tuple[str, str]]:
     return []
 
 
-def _with_targets(node: ast.AST) -> list[tuple[ast.Name, ast.expr]]:
-    """Return each name a with item of `node` binds by `as`, with that item's context expression."""
-    if not isinstance(node, ast.With | ast.AsyncWith):
+def _calls_open(expr: ast.expr | None) -> bool:
+    """Report whether `expr` calls a method named `open`."""
+    return (
+        isinstance(expr, ast.Call)
+        and isinstance(expr.func, ast.Attribute)
+        and expr.func.attr == "open"
+    )
+
+
+def _file_targets(node: ast.AST) -> list[tuple[ast.Name, ast.expr]]:
+    """Return each name `node` binds by a with item's `as`, or by assigning a `_calls_open` call, with its value."""
+    if isinstance(node, ast.With | ast.AsyncWith):
+        pairs = [(item.optional_vars, item.context_expr) for item in node.items]
+    elif isinstance(node, ast.Assign) and _calls_open(node.value):
+        pairs = [(target, node.value) for target in node.targets]
+    else:
         return []
     targets = []
-    for item in node.items:
-        target = item.optional_vars
+    for target, value in pairs:
         if isinstance(target, ast.Name):
-            targets.append((target, item.context_expr))
+            targets.append((target, value))
     return targets
 
 
@@ -279,14 +291,14 @@ def _kinds(scope: Scope, outer: Chain) -> dict[str, set[str]]:
             if rest is not None:
                 kinds.setdefault(rest.arg, set()).add(OTHER)
     typed: set[int] = set()
-    with_targets: list[tuple[ast.Name, ast.expr]] = []
+    file_targets: list[tuple[ast.Name, ast.expr]] = []
     for node in _inside(scope):
-        found = _with_targets(node)
+        found = _file_targets(node)
         typed.update(id(bound) for bound, _ in found)
-        with_targets.extend(found)
+        file_targets.extend(found)
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name):
+                if isinstance(target, ast.Name) and id(target) not in typed:
                     typed.add(id(target))
                     if not _derives(node.value, target.id):
                         kinds.setdefault(target.id, set()).add(_value_kind(node.value))
@@ -308,10 +320,8 @@ def _kinds(scope: Scope, outer: Chain) -> dict[str, set[str]]:
         for name, qualified in _imported(node):
             kinds.setdefault(name, set()).add(IMPORTED + qualified)
     chain = (kinds, *outer)
-    for bound, context in with_targets:
-        kinds.setdefault(bound.id, set()).add(
-            OPENED if _opens(context, chain) else OTHER
-        )
+    for bound, value in file_targets:
+        kinds.setdefault(bound.id, set()).add(OPENED if _opens(value, chain) else OTHER)
     return kinds
 
 
@@ -829,7 +839,8 @@ SIGIL = Sigil(
                 "Python's ast module, for LOOP004 when selected: readlines() with no "
                 "argument as the iterable of a for or async for loop or of a builder's "
                 "generator, called on a call to a method open, or on a name whose every "
-                "binding in its nearest scope is a with item's name for one; an open "
+                "binding in its nearest scope is a with item's name for one or a plain "
+                "assignment of one; an open "
                 "that ruff FURB129 reads, on a pathlib class call or on the io or os "
                 "module named through an import, does not count",
                 "for a symbol, only the findings inside its lines",

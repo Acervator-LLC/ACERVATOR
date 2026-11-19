@@ -344,3 +344,45 @@ def furb129_pathlib_path_call(name: str) -> int:
             if line.strip():
                 total += 1
     return total
+
+
+def faulty_assigned(path: Path) -> int:
+    handle = path.open(encoding="utf-8")
+    total = 0
+    for line in handle.readlines():
+        if line.strip():
+            total += 1
+    handle.close()
+    return total
+
+
+def corrected_assigned(path: Path) -> int:
+    handle = path.open(encoding="utf-8")
+    total = 0
+    for line in handle:
+        if line.strip():
+            total += 1
+    handle.close()
+    return total
+
+
+def rebound_assigned(path: Path) -> int:
+    handle = path.open(encoding="utf-8")
+    text = handle.read()
+    handle.close()
+    handle = io.StringIO(text)
+    total = 0
+    for line in handle.readlines():
+        if line.strip():
+            total += 1
+    return total
+
+
+def furb129_builtin_assigned(name: str) -> int:
+    handle = open(name, encoding="utf-8")
+    total = 0
+    for line in handle.readlines():
+        if line.strip():
+            total += 1
+    handle.close()
+    return total

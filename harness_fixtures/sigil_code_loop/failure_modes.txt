@@ -165,3 +165,13 @@ modes_loop004.py, in furb129_builtin_direct_loop
 modes_loop004.py, in furb129_io_open
 modes_loop004.py, in furb129_path_call
 modes_loop004.py, in furb129_pathlib_path_call
+
+# LOOP004 on a file an open method returned, bound to a name by plain assignment: the main tree's
+# gitignored probe artifacts/referee/loop_gap_probe/assigned_open_forms.py, in path_assigned, which
+# ruff 0.16.0 FURB129 does not report; its corrected_ twin iterates the file object, its rebound_ twin
+# binds the name again to an io.StringIO before the loop, and its furb129_ twin is the built-in open
+# form of the same probe, in builtin_assigned, which FURB129 reports
+modes_loop004.py, in faulty_assigned
+modes_loop004.py, in corrected_assigned
+modes_loop004.py, in rebound_assigned
+modes_loop004.py, in furb129_builtin_assigned

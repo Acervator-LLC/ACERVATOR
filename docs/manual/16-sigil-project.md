@@ -666,9 +666,9 @@ corrected form on known_bad_loop004.py, and named no CODE.LOOP rule on
 known_good_loop004.py, outside_loop004.py or fresh_loop004.py.
 
 The failure-mode list of CODE.LOOP, `harness_fixtures/sigil_code_loop/failure_modes.txt`,
-holds 25 faulty forms and 73 twins as functions and classes. With each file
-written whole, the feedback named a line of the form's own rule inside 25 of 25
-faulty forms and inside 0 of 73 twins. For LOOP004 that is 6 of 6 and 0 of 31,
+holds 26 faulty forms and 76 twins as functions and classes. With each file
+written whole, the feedback named a line of the form's own rule inside 26 of 26
+faulty forms and inside 0 of 76 twins. For LOOP004 that is 7 of 7 and 0 of 34,
 and no line it named also carries FURB129.
 
 The failure-mode list of CODE.SECURE, `harness_fixtures/sigil_code_secure/failure_modes.txt`,

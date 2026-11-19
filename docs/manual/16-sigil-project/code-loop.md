@@ -237,7 +237,8 @@ rules on.
 CODE.LOOP@1 runs four rules that this project writes, under the tool name
 code_loop. Each reads a slow loop form that none of the 968 rules ruff 0.16.0
 lists reads. Of those 968, only FURB129 names `readlines()`, and it reads the
-fault on the built-in open, io.open and a pathlib class call alone. LOOP004
+fault on the built-in open, io.open, a pathlib class call, and a name annotated
+typing.TextIO. LOOP004
 reads the same fault on a file that any other method named open returned. Each
 rule rests on a section of the Python 3.14 documentation that states the form's
 cost and names the faster form.
@@ -389,9 +390,28 @@ def _iterated(loop: LoopNode) -> list[ast.AST]:
 ```
 
 The iterable must call readlines with no argument, on a call to a method named
-open or on a name. A name counts only when every binding in its nearest scope is
-the name of a with item whose context is such a call. A size hint, a list kept
-in a name, and an object no method open returned do not fire.
+open or on a name. A name counts only when every binding in its nearest scope
+gives it such a call: as a with item's name, or by a plain assignment. A name
+bound again to anything else does not fire. A size hint, a list kept in a name,
+and an object no method open returned do not fire.
+
+`dev_harness/sigils/code_loop.py, in _file_targets`:
+
+```python
+def _file_targets(node: ast.AST) -> list[tuple[ast.Name, ast.expr]]:
+    """Return each name `node` binds by a with item's `as`, or by assigning a `_calls_open` call, with its value."""
+    if isinstance(node, ast.With | ast.AsyncWith):
+        pairs = [(item.optional_vars, item.context_expr) for item in node.items]
+    elif isinstance(node, ast.Assign) and _calls_open(node.value):
+        pairs = [(target, node.value) for target in node.targets]
+    else:
+        return []
+    targets = []
+    for target, value in pairs:
+        if isinstance(target, ast.Name):
+            targets.append((target, value))
+    return targets
+```
 
 `dev_harness/sigils/code_loop.py, in _reads_all_lines`:
 
@@ -466,11 +486,11 @@ name[:0] = [item]               slice assignment: the rules read pop, insert, a 
 bytes or tuple built by +=      the rules read a str alone
 a list on a class by its name   only an attribute of a method's first parameter has a kind
 an unannotated parameter        no binding gives it a kind
-file = path.open() and then     LOOP004 reads a with item's name and the call itself, and no
-file.readlines() in a for loop  plain assignment
+file: TextIO = path.open()      an annotated name takes its annotation's kind; FURB129 reads
+                                this form when the annotation is typing.TextIO
 enumerate(file.readlines())     LOOP004 reads the loop's iterable itself, as FURB129 does
-a with name bound another way   every binding of the name must be a with item's name for a
-in the same scope               method open
+a file name bound another way   every binding of the name must give it a call to a method open
+in the same scope
 ```
 
 The test lists hold each rule's published faulty form, its corrected form, the
@@ -483,12 +503,14 @@ loop. Each faulty input reads its own rule, and no twin does.
 For LOOP004 the list holds the three forms FURB129 misses and the form two
 experiment tasks first held. It also holds a method open on an attribute and on
 a call result. Each has a corrected twin, a kept list, a size hint and an object
-no method open returned. Beside them sit the six forms FURB129 reads and the
-one readlines site in `src/`:
+no method open returned. A file bound by plain assignment has a corrected twin,
+a twin that binds the name again before the loop, and its built-in open twin.
+Beside them sit the six other forms FURB129 reads and the one readlines site in
+`src/`:
 
 `src/core/usb_auth.py, in _list_usb_linux`
 
-7 of 7 faulty inputs read LOOP004, 0 of 34 twins do, and no line carries both
+8 of 8 faulty inputs read LOOP004, 0 of 37 twins do, and no line carries both
 FURB129 and LOOP004.
 
 Every input of `harness_fixtures/sigil_code_loop/known_good.txt` reads CLEAN,
