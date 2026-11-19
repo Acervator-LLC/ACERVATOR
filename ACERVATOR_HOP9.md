@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-18 against `c56a75bb`. **Every claim here names one command that
+Written 2026-11-18 against `a72631a9`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,28 +18,46 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running, with one unit out. The 28 pull
-requests since `4bd0012c` are #1728 to #1760: eighteen on #1633, five on #1734
-and five on #1735. #1735 is closed: every row is built. #1622, #1656 and #1695
-stay paused, by his 2026-11-13 ruling, until he points back to them.
+The session that wrote this was still running, with no unit out. The 35 pull
+requests since `4bd0012c` are #1728 to #1768: 24 on #1633, six on #1734 and
+five on #1735. #1734 and #1735 are closed: every row of each is built. #1622,
+#1656 and #1695 stay paused, by his 2026-11-13 ruling, until he points back to
+them.
 
 ```bash
-git log --oneline --first-parent 4bd0012c..c56a75bb   # the 28 pull requests
+git log --oneline --first-parent 4bd0012c..a72631a9   # the 35 pull requests
 gh issue view 1633 --comments            # each record, result and close, newest last
 gh release view                          # what is published
 gh pr list --state open                  # what is still landing
 ```
 
-- **In flight when written:** unit S3a on #1633, step 3a, record comment
-  6976861545: CODE.LOOP takes every loop rule the Python house holds, the PERF
-  loop-speed rules among them, found by two methods that do not start from
-  `dev_harness/sigils/construct_scope.json`.
-- **Next:** step 3b, CODE.LOOP's own rules for slow loop forms, each on a
-  published pair, with its own record after 3a's report. Both rebuild the PDF,
-  so they run one after the other.
+- **Next on #1633:** experiment 3, the Coding Archetype with and without the
+  sigils on the same tasks. Its design record is comment 6996846187, amended by
+  6997141827: every task cites the failure it is grounded in. Step E3.0 is built
+  (#1772, report 6997952723): a file named `SIGIL_FEEDBACK_ON` in a folder turns
+  the sigil feedback on there, so the two arms run in one session and differ only
+  by that file. Step E3.1, the task set in the gitignored folder
+  `artifacts/sigil_runs/2026-11-18_e3_tasks/`, is in flight. Then the seal, a
+  pilot of 5 tasks, and the 25 counted tasks. Its result sets the feedback's
+  default (comment 6991909014).
+- **No sigil page carries a figure measured on `src/`** (#1770): those figures
+  live in the data sets under `artifacts/sigil_runs/`.
 - **Every iteration has a record first:** W5H and OCIR, gated by the Truth
   Archetype with `--item`, posted, then acted on. The rule is part 6 of Skill:
   canonized-workflow (#1742).
+- **A control is measured on its failure modes, not on a sweep** of `src/`:
+  inputs that show each known failure mode, a corrected twin and a near-miss twin
+  each, and a seeded sample stratified by folder where `src/` is used. Every
+  input cites the failure it is grounded in. The rule is in Skill:
+  two-sided-control (#1765, #1771).
+- **A worktree lacks what git ignores** (Skill: ocir, row C155): run the Truth
+  Archetype's T008 from the main tree, and copy CODE.SECURE's rule packs into a
+  worktree with their sha256 checked.
+- **Running units are watched on a clock.** A loop runs the watcher every 300
+  seconds, or sooner or later when a run's time is measured, and wakes the
+  referee only on a flag: STALE, SPIRAL, LONG_WAIT, NO_ADVANCE, RUNAWAY or RAM.
+  The watcher sits in the session scratchpad until #1764 commits it, and #1764
+  waits on him (comment 6986794671).
 - **CODE.SECURE needs its two held packs** in the gitignored folder
   `dev_harness/sigils/semgrep_rule_packs/`; both trees hold them. A new clone
   fetches them with the two commands on `docs/manual/16-sigil-project/code-secure.md`,
@@ -47,11 +65,11 @@ gh pr list --state open                  # what is still landing
 - **The release and both trees:**
 
 ```
-release      0.2.0-20261118.0251.gd425a18aaeaa, from d425a18a, 6 assets, notes with the macOS 15 step
-             gh release list      # 0251 and his running 1928 only
-both trees   at c56a75bb; dist/ holds the 0251 pair and his 1928 pair
-since        d425a18a: no file the application is built from changed
-             git diff --stat d425a18a origin/current -- src desktop tools main.py Acervator_win.spec Acervator_mac.spec Acervator_linux.spec
+release      0.2.0-20261118.1555.g780745e0ae97, from 780745e0, 6 assets
+             gh release list      # 1555 and his running 1928 only
+main         780745e0, the same files as current a72631a9
+             git diff --stat origin/main origin/current     # empty
+both trees   at a72631a9; dist/ holds the 1555 pair and his 1928 pair
 his app      0.2.0-20261113.1928.g5dbab0790e57, a Qt build, from the Documents tree's dist/
 ```
 
@@ -60,7 +78,9 @@ his app      0.2.0-20261113.1928.g5dbab0790e57, a Qt build, from the Documents t
   session; #1739 or #1747 closes alert 82 (`minimatch`). Also the unruled rows of
   the Decisions tables on #1643 and #1622, and moving the Coding Archetype's own
   ruff call onto the step 1c selection, which is a change in `dev_harness/harness/`.
-  Do not raise them as a round.
+  And #1764: committing the watcher as a new file under `tools/` needs his word,
+  because `dev_harness/hooks/block_detour.py` admits a new file there only when
+  its `COMMISSIONED` set names it. Do not raise them as a round.
 
 ---
 
@@ -208,7 +228,7 @@ gh issue list --state open --limit 200          # 36 open when written
 
 | To clear | Excluded, and why |
 |---|---|
-| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695, #1734 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540 |
+| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540, #1764 |
 
 Read the body before dispatching, and grep the symbols a row names in the same
 call: a row's status can be stale, and a scan that calls a row built has been
@@ -230,20 +250,17 @@ wrong far more often than right.
   every reading path refuses a tool version its card does not hold. Step 2 is
   built in #1760: `python -m dev_harness.sigils.fix_class` applies ruff's safe
   fixes for the six ruff sigils and judges the file again, up to
-  `ROUND_LIMIT`. Step 3a is in flight, as above.
+  `ROUND_LIMIT`. Step 3 is built in #1762 and #1766: CODE.LOOP holds 29 ruff loop
+  rules and three of its own, LOOP001 to LOOP003, in
+  `dev_harness/sigils/code_loop.py`. Step 4 is built in #1767: after a `.py`
+  write, `dev_harness/hooks/archetype_gate.py` adds the nine coding sigils'
+  findings, only when `ACERVATOR_SIGIL_FEEDBACK=on` or, since #1772, when a
+  `SIGIL_FEEDBACK_ON` file sits in the file's folder or a parent. Experiment 3
+  is in flight, as above.
 
 ```bash
-gh issue view 1633 --comments      # records 6969302729 (step 1), 6974831108 (step 2), 6976861545 (step 3)
+gh issue view 1633 --comments      # step records 6969302729, 6974831108, 6976861545, 6988816286; step 4 report 6993323259
 ```
-
-  Found by 1e and not yet changed: the selection proof exits 1 on every run,
-  because `dev_harness/sigils/coding_partition.py, in main` exits 1 while the
-  list of sigils without `CAN_RUN` is not empty; report comment 6974607394.
-
-- **#1734, the fleet import and first-run choice.** Rows 1 to 5 and 7 are built.
-  Row 6 is partial: all three build workflows open both variants on a scratch
-  home with no web view sandbox switch (#1757 removed the macOS one), and no
-  build workflow presses the import buttons on any system.
 
 - **#1622, #1656 and #1695, the money path, are paused.** When work returns to
   them: #1622's unbuilt rows in row order are 14, 18, 21, 22, 24 to 27, 29 to 31,

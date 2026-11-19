@@ -489,17 +489,45 @@ join the feedback the writer gets back. The writer reads them while it still
 holds the file.
 
 The switch is the environment variable ACERVATOR_SIGIL_FEEDBACK, and its default
-is off. The feedback runs only when the variable reads on. Any other value, or no
-value, leaves it off, and the archetype verdict is the same either way.
-Experiment 3 measures whether the feedback improves the code a writer produces,
-and its result decides the default.
+is off. A marker file can also turn the feedback on for one folder. The feedback
+runs for a file that no marker covers only when the variable reads on. Any other
+value, or no value, leaves it off, and the archetype verdict is the same either
+way. Experiment 3 measures whether the feedback improves the code a writer
+produces, and its result decides the default.
 
 `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`:
 
 ```python
-def _sigil_feedback_off() -> bool:
-    """Report the sigil part off unless `SIGIL_SWITCH` reads `SIGIL_ON`."""
-    return os.environ.get(SIGIL_SWITCH, "").strip().lower() != SIGIL_ON
+def _sigil_feedback_off(path: Path) -> bool:
+    """Report off unless `SIGIL_SWITCH` reads `SIGIL_ON` or `_sigil_marked` holds."""
+    if os.environ.get(SIGIL_SWITCH, "").strip().lower() == SIGIL_ON:
+        return False
+    return not _sigil_marked(path)
+```
+
+The marker is a file named SIGIL_FEEDBACK_ON. When it sits in the saved file's
+folder, or in any folder above it up to the repository root, the feedback runs
+for that file whatever the variable reads. The repository root is the nearest
+folder above the file that holds .git. The hook checks only that the marker file
+is there. It never reads what the file holds. A marker in a sibling folder or
+above the repository root does not count, and neither does a folder with that
+name. Two folders in one session can therefore run one with the feedback and one
+without it. The two arms of experiment 3 differ only by this file.
+
+`dev_harness/hooks/archetype_gate.py, in _sigil_marked`:
+
+```python
+def _sigil_marked(path: Path) -> bool:
+    """Report whether a `SIGIL_MARKER` file sits in `path.parents` up to `_git_root`."""
+    root = _git_root(path)
+    if root is None:
+        return False
+    for folder in path.parents:
+        if (folder / SIGIL_MARKER).is_file():
+            return True
+        if folder == root:
+            break
+    return False
 ```
 
 ### What the feedback names
@@ -622,6 +650,16 @@ With the switch unset, off, or set to another value, the feedback on one faulty
 form of each sigil equals, byte for byte, what the hook gave before the sigil
 part existed. The before-write half gives the same decision and the same output
 on 10 of 10 tool calls.
+
+The marker was read on the same faulty form of each sigil, saved two folders
+below the root of a copy of its sample tree, with the variable unset. A marker
+in the file's folder, in the folder above it, or at the root made the feedback
+name the sigil's rule, 9 of 9 each. A marker in a sibling folder, a marker above
+the root, or a folder with the marker's name gave no feedback, 0 of 9 each. With
+no marker, the hook's output equals, byte for byte, its output before the marker
+existed, 9 of 9. The before-write half gives the same decision and the same
+output on the same 10 tool calls with the variable on, with it unset, and with a
+marker beside the file.
 
 ## The shared modules
 
