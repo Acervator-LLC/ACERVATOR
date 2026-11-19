@@ -85,6 +85,22 @@ Each security ground is one of four kinds.
 | cwe, definition, quote | a CWE id from the list, its MITRE description and a quote | the CWE's definition describes what the rule's text says it detects |
 | term, quote | an ISO/IEC 25010 word and a quote | the tool's own text names security |
 
+### A rule CODE.SECURE runs itself
+
+The coding sigil CODE.SECURE runs one rule that this project writes:
+SECURE001, credential-mask-missing-word, with code_secure as its tool. This
+discipline houses it under security, on the CWE id the rule attaches to each
+finding. The 74 ids do not hold it, so the ground is the attached kind:
+
+```text
+CWE-532  Insertion of Sensitive Information into Log File
+```
+
+The rule reports a collection of credential words that a name test reads when
+one of nine required words has no entry inside it.
+[CODE.SECURE@1](../../../docs/manual/16-sigil-project/code-secure.md#rules-of-its-own)
+quotes its two sources and lists the nine words.
+
 ### Security archetypes
 
 An archetype is compatible with security when it runs a rule this discipline

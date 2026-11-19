@@ -506,9 +506,11 @@ The result holds for six of the sigils in CODING_SIGILS: CODE.LOOP, CODE.FLOW,
 CODE.COLLECTION, CODE.TYPE, CODE.VARIABLE and CODE.IMPORT. CODE.OPTIMIZE printed
 no line in any run, because `dev_harness/sigils/construct_scope.json` places the
 rules of its two tasks, C419 and FURB129, on CODE.COLLECTION and CODE.LOOP.
-CODE.SECURE printed no line for its two tasks, because it cannot read the
+CODE.SECURE printed no line for its two tasks, because it held no rule for the
 redaction-list form of the fault, and CODE.REACH had no task. Comment 7000669734
-on #1633 holds the full breakdown for each sigil in CODING_SIGILS.
+on #1633 holds the full breakdown for each sigil in CODING_SIGILS. CODE.SECURE's
+own rule SECURE001 now reads that form, as
+[CODE.SECURE@1](16-sigil-project/code-secure.md#rules-of-its-own) states.
 
 `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`:
 
@@ -654,12 +656,17 @@ feedback names the rule of its faulty partner.
 | CODE.OPTIMIZE | 6 of 6 | 0 of 8 |
 | CODE.TYPE | 7 of 7, rule and lines only | 0 of 5 |
 | CODE.REACH | 1 of 1, rule and lines only | 0 of 3 |
-| CODE.SECURE | 6 of 6, rule and lines only | 0 of 5 |
+| CODE.SECURE | 7 of 7, rule and lines only | 0 of 6 |
 
 The failure-mode list of CODE.LOOP, `harness_fixtures/sigil_code_loop/failure_modes.txt`,
 holds 19 faulty forms and 42 twins as functions and classes. With each file
 written whole, the feedback named a line inside 19 of 19 faulty forms and
 inside 0 of 42 twins.
+
+The failure-mode list of CODE.SECURE, `harness_fixtures/sigil_code_secure/failure_modes.txt`,
+holds 12 faulty forms and 48 twins as functions. With that file written whole,
+the feedback named a SECURE001 line inside 12 of 12 faulty forms and inside 0
+of 48 twins.
 
 The switch was read on one saved Python file, two folders below a gitignored
 folder of the repository, by driving _run_post with a tool record on standard
@@ -771,7 +778,7 @@ to 4.
 
 Each rule row names the characteristics it sits under, with each one's
 standard, and each ground names the characteristic it grounds. The Python
-discipline holds 857 rules: 807 under one characteristic, 46 under two and 4
+discipline holds 858 rules: 808 under one characteristic, 46 under two and 4
 under three.
 
 A placement by definition quotes the CWE's description from the MITRE CWE list
@@ -793,7 +800,7 @@ each one compatible with at least one characteristic below.
 
 | Characteristic | CWE ids in its list | Rules it holds | Compatible archetypes |
 | -------------- | ------------------- | -------------- | --------------------- |
-| security | 74 | 389 | coding, gui, docs, ta |
+| security | 74 | 390 | coding, gui, docs, ta |
 | reliability | 74 | 111 | coding, gui, docs |
 | performance efficiency | 18 | 51 | coding, gui, ta |
 | maintainability | 29 | 30 | coding, gui |
@@ -813,7 +820,8 @@ each one compatible with at least one characteristic below.
 | the six rule modules | 19 | 4 | 15 |
 | the rule CODE.TYPE runs itself | 1 | 1 | 0 |
 | the rules CODE.LOOP runs itself | 3 | 3 | 0 |
-| all | 1,244 | 857 | 387 |
+| the rule CODE.SECURE runs itself | 1 | 1 | 0 |
+| all | 1,245 | 858 | 387 |
 
 Each rule left in unplaced.json carries its reason: no listed CWE definition and
 no PEP or specification section describes it, or its text names a PEP that no
@@ -852,6 +860,12 @@ performance efficiency, each on the Python 3.14 documentation section that
 states its cost.
 [CODE.LOOP@1](16-sigil-project/code-loop.md#rules-of-its-own) lists them with
 their sources.
+
+CODE.SECURE runs one rule of its own the same way, SECURE001, with code_secure
+as its tool. The Python discipline places it under security, on CWE-532, the
+CWE id the rule attaches to each finding.
+[CODE.SECURE@1](16-sigil-project/code-secure.md#rules-of-its-own) states the
+rule and its two sources.
 
 `dev_harness/sigils/coding_house.py, in _card_own`:
 
@@ -1014,7 +1028,7 @@ def hold(
 | ----- | ----- | -------------- | ---------------- | ----------- | --------------- |
 | CODE.OPTIMIZE | each ruff rule in its seven families | 149 | 85 | python | conventions, maintainability, performance efficiency, typing |
 | CODE.TYPE | each mypy error code, each pyright rule the house holds, and its own rule | 121 | 63 | python | conventions, reliability, typing |
-| CODE.SECURE | each bandit test and semgrep rule the house holds | 291 | 291 | python | security |
+| CODE.SECURE | each bandit test and semgrep rule the house holds, and its own rule | 292 | 292 | python | security |
 | CODE.REACH | the vulture rule the house holds | 1 | 1 | python | maintainability |
 
 A tool sigil names its characteristics so that a rule the Python discipline
@@ -1043,7 +1057,7 @@ the card its command prints. A sigil that is not built has no card yet.
 | CITE.SYMBOL@3 | truth | no rule list: its tiers decide | built | `dev_harness/sigils/cite_symbol.py, in SIGIL` |
 | CODE.OPTIMIZE@1 | coding | 85 ruff rules it can run | built | `dev_harness/sigils/code_optimize.py, in SIGIL` |
 | CODE.TYPE@1 | coding | 63 rules it can run: 62 mypy and pyright rules and its own | built | `dev_harness/sigils/code_type.py, in SIGIL` |
-| CODE.SECURE@1 | coding | 291 bandit and semgrep rules it can run | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
+| CODE.SECURE@1 | coding | 292 rules it can run: 291 bandit and semgrep rules and its own | built | `dev_harness/sigils/code_secure.py, in SIGIL` |
 | CODE.REACH@1 | coding | 1 vulture rule it can run | built | `dev_harness/sigils/code_reach.py, in SIGIL` |
 | CODE.LOOP@1 | coding | 32 rules it can run: 29 ruff rules and 3 of its own | built | `dev_harness/sigils/code_loop.py, in SIGIL` |
 | CODE.IMPORT@1 | coding | 25 ruff rules it can run | built | `dev_harness/sigils/code_import.py, in SIGIL` |
