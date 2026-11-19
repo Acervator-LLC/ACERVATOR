@@ -424,6 +424,19 @@ inputs that show its known failure modes:
 
 Each faulty input has a corrected twin and a near-miss twin that must not fire.
 
+**The ground.** Operator, 2026-11-18:
+
+> "it is imperative that each be grounded in preceding guidance such as
+> grounding them in examples of a failure that our controls and mechanisms
+> should either catch or prevent from being written."
+
+Every faulty input cites where its fault comes from. A commit, or an OCIR row
+on this page's sibling `ocir`, where this repository once held the fault comes
+first. The rule's published faulty example, with its link and the
+`harness_fixtures/` file that holds it, comes second. An input with no ground
+that resolves is not built, and an input invented only for the reading proves
+nothing about the faults the control exists to stop.
+
 **The reading.** Per failure mode: faulty inputs caught out of faulty inputs
 held, and twins fired on out of twins held. A miss shows where the control
 fails. Fix it, or name the form as out of reach and say why.
