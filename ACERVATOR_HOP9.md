@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-18 against `a72631a9`. **Every claim here names one command that
+Written 2026-11-18 against `237369c3`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -31,15 +31,19 @@ gh release view                          # what is published
 gh pr list --state open                  # what is still landing
 ```
 
-- **Next on #1633:** experiment 3, the Coding Archetype with and without the
-  sigils on the same tasks. Its design record is comment 6996846187, amended by
-  6997141827: every task cites the failure it is grounded in. Step E3.0 is built
-  (#1772, report 6997952723): a file named `SIGIL_FEEDBACK_ON` in a folder turns
-  the sigil feedback on there, so the two arms run in one session and differ only
-  by that file. Step E3.1, the task set in the gitignored folder
-  `artifacts/sigil_runs/2026-11-18_e3_tasks/`, is in flight. Then the seal, a
-  pilot of 5 tasks, and the 25 counted tasks. Its result sets the feedback's
-  default (comment 6991909014).
+- **Experiment 3 on #1633 has ended.** Comment 7000447930 holds its result: with
+  the sigil feedback the starting fault survived in 5 of 23 counted tasks,
+  against 20 of 23 without it, and both arms passed their working cases in 23
+  of 23. Comment 7000669734 names what it tested: the result holds for six
+  sigils, CODE.LOOP, CODE.FLOW, CODE.COLLECTION, CODE.TYPE, CODE.VARIABLE and
+  CODE.IMPORT. The same comment names the next trial: tasks whose faults
+  CODE.OPTIMIZE, CODE.SECURE and CODE.REACH can read, and a CODE.SECURE rule for
+  the redaction-list form of a credential written to a log.
+- **The write hook's sigil feedback is on by default**, by record 7000460425 and
+  #1777. The function `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`
+  turns it off only when ACERVATOR_SIGIL_FEEDBACK reads off, or when a
+  SIGIL_FEEDBACK_OFF file sits in the file's folder or a folder above it. The
+  hook names no SIGIL_FEEDBACK_ON file, so that old marker decides nothing.
 - **No sigil page carries a figure measured on `src/`** (#1770): those figures
   live in the data sets under `artifacts/sigil_runs/`.
 - **Every iteration has a record first:** W5H and OCIR, gated by the Truth
@@ -53,6 +57,11 @@ gh pr list --state open                  # what is still landing
 - **A worktree lacks what git ignores** (Skill: ocir, row C155): run the Truth
   Archetype's T008 from the main tree, and copy CODE.SECURE's rule packs into a
   worktree with their sha256 checked.
+- **Skill: ocir holds rows C156 to C158.** Watch a log by polling its line count
+  with `wc -l`, never with `tail -f` (C156). Give no two PowerShell variables in
+  one command names that differ only by case (C157). Search for a folder by its
+  path form, the name plus its separator, with the run's own folder path as the
+  control (C158).
 - **Running units are watched on a clock.** A loop runs the watcher every 300
   seconds, or sooner or later when a run's time is measured, and wakes the
   referee only on a flag: STALE, SPIRAL, LONG_WAIT, NO_ADVANCE, RUNAWAY or RAM.
@@ -65,13 +74,19 @@ gh pr list --state open                  # what is still landing
 - **The release and both trees:**
 
 ```
-release      0.2.0-20261118.1555.g780745e0ae97, from 780745e0, 6 assets
-             gh release list      # 1555 and his running 1928 only
-main         780745e0, the same files as current a72631a9
-             git diff --stat origin/main origin/current     # empty
-both trees   at a72631a9; dist/ holds the 1555 pair and his 1928 pair
-his app      0.2.0-20261113.1928.g5dbab0790e57, a Qt build, from the Documents tree's dist/
+release      0.2.0-20261118.2002.g2a5b061dc949, from 2a5b061d, 6 assets
+             gh release list      # one build, 2002
+main         2a5b061d, a merge of current at 25de8c83
+             git describe --tags origin/main     # build-0.2.0-20261118.2002.g2a5b061dc949
+             git log --oneline origin/main..origin/current     # aabadc25 and 237369c3
+both trees   at 237369c3; dist/ holds the 1555 pair and the 2002 pair, and no 1928 pair
 ```
+
+- **The machine took one system crash**, bug check 0x133, at 20:39 on
+  2026-11-18, as events 6008 and 1001 in the Windows System log record. It
+  stopped one reading of experiment 3, as comment 7000447930 records. Windows now
+  writes a kernel memory dump on a crash, with CrashDumpEnabled reading 2, and
+  the machine holds the WinDbg package, so a repeat can name the driver.
 
 - **Held for him:** the Dependabot pull requests #1738, #1739 and #1747 pass
   `ci-gate`, and the permission classifier refuses a merge of them from this
@@ -254,9 +269,8 @@ wrong far more often than right.
   rules and three of its own, LOOP001 to LOOP003, in
   `dev_harness/sigils/code_loop.py`. Step 4 is built in #1767: after a `.py`
   write, `dev_harness/hooks/archetype_gate.py` adds the nine coding sigils'
-  findings, only when `ACERVATOR_SIGIL_FEEDBACK=on` or, since #1772, when a
-  `SIGIL_FEEDBACK_ON` file sits in the file's folder or a parent. Experiment 3
-  is in flight, as above.
+  findings, and since #1777 it does so unless the variable or a marker file
+  turns the feedback off, as above. Experiment 3 has ended, as above.
 
 ```bash
 gh issue view 1633 --comments      # step records 6969302729, 6974831108, 6976861545, 6988816286; step 4 report 6993323259
