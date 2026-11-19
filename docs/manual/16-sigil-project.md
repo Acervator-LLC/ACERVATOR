@@ -502,14 +502,16 @@ starting fault survived in 5 of 23 counted tasks, against 20 of 23 without it.
 The same experiment measured the cost of the feedback from _sigil_part: 2.36
 against 0.89 minutes per run on average.
 
-The result holds for six of the sigils in CODING_SIGILS: CODE.LOOP, CODE.FLOW,
-CODE.COLLECTION, CODE.TYPE, CODE.VARIABLE and CODE.IMPORT. CODE.OPTIMIZE printed
-no line in any run, because `dev_harness/sigils/construct_scope.json` places the
-rules of its two tasks, C419 and FURB129, on CODE.COLLECTION and CODE.LOOP.
-CODE.SECURE printed no line for its two tasks, because it held no rule for the
-redaction-list form of the fault, and CODE.REACH had no task. Comment 7000669734
-on #1633 holds the full breakdown for each sigil in CODING_SIGILS. CODE.SECURE's
-own rule SECURE001 now reads that form, as
+Comment 7000669734 on #1633 holds the breakdown for each sigil in CODING_SIGILS,
+and comment 7017521152 corrects it. The result holds for seven of those sigils:
+CODE.LOOP, CODE.FLOW, CODE.COLLECTION, CODE.TYPE, CODE.VARIABLE, CODE.IMPORT and
+CODE.OPTIMIZE. CODE.OPTIMIZE named its task's rule in task10, task14, task17 and
+task18, each time beside CODE.LOOP or CODE.COLLECTION, so the experiment cannot
+tell its effect apart from theirs. The first reading counted a feedback line only
+when its verdict was FINDINGS or UNSOUND, and CODE.OPTIMIZE reports OPTIMIZABLE,
+so comment 7000669734 read its lines as absent. CODE.SECURE printed no line in
+any run. It held no rule for the redaction-list form of its two tasks' fault, and
+CODE.REACH had no task. CODE.SECURE's own rule SECURE001 now reads that form, as
 [CODE.SECURE@1](16-sigil-project/code-secure.md#rules-of-its-own) states.
 
 `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`:
@@ -733,7 +735,7 @@ Where the code holds each row:
 | card | `dev_harness/sigils/core.py, in render_card`, printed by `--card` |
 | languages | `dev_harness/sigils/coding_input.py, in READERS`: `.py` is the only reader |
 | settings | `dev_harness/sigils/core.py, in APPLICATION_SOURCE`, which `--source` replaces |
-| fixtures | one folder per sigil under `harness_fixtures/`, named `sigil_` and the module name |
+| fixtures | one folder per sigil, named for its module: `harness_fixtures/sigil_code_loop/` serves `dev_harness/sigils/code_loop.py` |
 
 ## What a sigil cannot guarantee
 
