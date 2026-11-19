@@ -99,3 +99,69 @@ modes_loop003.py, in FaultyAttributeLog
 modes_loop003.py, in CorrectedAttributeLog
 modes_loop003.py, in OutsideAttributeLog
 modes_loop003.py, in CleanAttributeLabel
+
+# LOOP004 open-method-readlines-in-for: the faulty form, its corrected twin, the same call kept as a list
+# outside any loop, and a with name bound afresh to a str buffer before the loop
+known_bad_loop004.py
+known_good_loop004.py
+outside_loop004.py
+fresh_loop004.py
+
+# LOOP004 on the three forms ruff 0.16.0 FURB129 misses, measured in artifacts/referee/loop_gap_probe/
+# readlines_forms.py, in path_with_loop, in path_direct_loop and in path_comprehension, the main tree's
+# gitignored probe, and named in issue #1633 comment 7017033732: a with block and a for loop, a for loop
+# on the call itself, and a list builder. Each faulty_ has a corrected_ twin that iterates the file
+# object, a kept_ twin that keeps the list and never iterates it, a hint_ twin with a size hint, and an
+# other_ twin whose readlines() reads an io.StringIO no open method returned
+modes_loop004.py, in faulty_with_loop
+modes_loop004.py, in corrected_with_loop
+modes_loop004.py, in kept_with_loop
+modes_loop004.py, in hint_with_loop
+modes_loop004.py, in other_with_loop
+modes_loop004.py, in faulty_direct_loop
+modes_loop004.py, in corrected_direct_loop
+modes_loop004.py, in kept_direct_loop
+modes_loop004.py, in hint_direct_loop
+modes_loop004.py, in other_direct_loop
+modes_loop004.py, in faulty_comprehension
+modes_loop004.py, in corrected_comprehension
+modes_loop004.py, in kept_comprehension
+modes_loop004.py, in hint_comprehension
+modes_loop004.py, in other_comprehension
+
+# LOOP004 on the form experiment 3's tasks 14 and 17 first held, as the main tree's gitignored
+# artifacts/sigil_runs/2026-11-18_e3_tasks/README.md states under "Changes made while building":
+# tasks/task14/log_scan.py, in count_errors, with path.open in place of the built-in open it now calls
+modes_loop004.py, in faulty_task_count_errors
+modes_loop004.py, in corrected_task_count_errors
+modes_loop004.py, in kept_task_count_errors
+modes_loop004.py, in hint_task_count_errors
+modes_loop004.py, in other_task_count_errors
+
+# LOOP004 on an open method of an attribute, the form src/core/signal_contract.py, in
+# SignalSink.flush opens with self.path.open, and on an open method of a call result, named in
+# comment 7017033732; the other_ twins read an attribute holding a stream and an io.StringIO
+modes_loop004.py, in FaultyAttributeLog
+modes_loop004.py, in CorrectedAttributeLog
+modes_loop004.py, in KeptAttributeLog
+modes_loop004.py, in HintAttributeLog
+modes_loop004.py, in OtherAttributeLog
+modes_loop004.py, in faulty_call_result
+modes_loop004.py, in corrected_call_result
+modes_loop004.py, in kept_call_result
+modes_loop004.py, in hint_call_result
+modes_loop004.py, in other_call_result
+
+# LOOP004 twin: the list kept and iterated after the with block closes the file, the site
+# src/core/usb_auth.py, in _list_usb_linux, with an open method in place of the built-in open
+modes_loop004.py, in kept_site_usb_mounts
+
+# LOOP004 twins: each form ruff 0.16.0 FURB129 reads, as comment 7017033732 measured, and the
+# pathlib.Path call dev_harness/hooks/transcript_tail.py, in rows_from_end opens; each reads FURB129 and
+# not LOOP004
+modes_loop004.py, in furb129_builtin_with_loop
+modes_loop004.py, in furb129_builtin_generator
+modes_loop004.py, in furb129_builtin_direct_loop
+modes_loop004.py, in furb129_io_open
+modes_loop004.py, in furb129_path_call
+modes_loop004.py, in furb129_pathlib_path_call

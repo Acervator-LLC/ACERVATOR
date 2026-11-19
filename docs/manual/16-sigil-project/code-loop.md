@@ -1,7 +1,7 @@
 # CODE.LOOP@1
 
-Reference. CODE.LOOP@1 reads the loops in one Python file against the 32 rules
-it can run: 29 ruff rules and 3 rules of its own. The Coding Archetype owns it.
+Reference. CODE.LOOP@1 reads the loops in one Python file against the 33 rules
+it can run: 29 ruff rules and 4 rules of its own. The Coding Archetype owns it.
 It is one sigil of [the sigil project](../16-sigil-project.md).
 
 ## Function and disciplines
@@ -14,7 +14,7 @@ performance efficiency and reliability.
 The card holds no list of ruff rules. It takes each ruff rule that the
 construct scope places on the loop construct and that the Python discipline
 houses under one of its characteristics. [The construct scope](../16-sigil-project.md#the-construct-scope)
-states how a rule is placed. The card's three rules of its own are under
+states how a rule is placed. The card's four rules of its own are under
 [Rules of its own](#rules-of-its-own).
 
 `dev_harness/sigils/code_loop.py, in TAKEN`:
@@ -139,10 +139,10 @@ LOOP_NODES = (
 
 ## The selection
 
-For each input, CODE.LOOP@1 runs only those of its 32 rules that the run rule
+For each input, CODE.LOOP@1 runs only those of its 33 rules that the run rule
 selects for the input's facts. A rule whose subject the input lacks does not
 run, and an input that selects no ruff rule runs no ruff. The keys file holds
-no keys for the card's 3 rules of its own, so the run rule keeps them for every
+no keys for the card's 4 rules of its own, so the run rule keeps them for every
 input.
 [Rule run partitioning](rule-partition.md#the-selection-each-sigil-runs)
 states the run rule and the proof.
@@ -234,16 +234,20 @@ rules on.
 
 ## Rules of its own
 
-CODE.LOOP@1 runs three rules that this project writes, under the tool name
+CODE.LOOP@1 runs four rules that this project writes, under the tool name
 code_loop. Each reads a slow loop form that none of the 968 rules ruff 0.16.0
-lists reads. Each rests on a section of the Python 3.14 documentation that
-states the form's cost and names the faster form.
+lists reads. Of those 968, only FURB129 names `readlines()`, and it reads the
+fault on the built-in open, io.open and a pathlib class call alone. LOOP004
+reads the same fault on a file that any other method named open returned. Each
+rule rests on a section of the Python 3.14 documentation that states the form's
+cost and names the faster form.
 
 | Rule | Name | What it catches | Faster form | Fix |
 | ---- | ---- | --------------- | ----------- | --- |
 | LOOP001 | list-pop-front-in-loop | `pop(0)` on a list inside a loop, or `name = name[1:]` | `popleft()` on a `collections.deque` | none |
 | LOOP002 | list-insert-front-in-loop | `insert(0, item)` on a list inside a loop, or `name = [item] + name` | `appendleft(item)` on a `collections.deque` | none |
 | LOOP003 | str-concat-in-loop | a str built by `+=` inside a loop, or by `name = name + text` | `write()` to an `io.StringIO`, or a list joined by `str.join()` | none |
+| LOOP004 | open-method-readlines-in-for | `readlines()` iterated by a for loop or a builder, on a file a method `open` returned | the file object itself, iterated | none |
 
 The sources, as the documentation states them:
 
@@ -267,12 +271,35 @@ LOOP003           Python built-ins reference, Common Sequence Operations, note 6
                   objects, you can build a list and use str.join() at the end or
                   else write to an io.StringIO instance and retrieve its value
                   when complete
+
+LOOP004           The Python Tutorial, 7.2.1. Methods of File Objects
+                  https://docs.python.org/3.14/tutorial/inputoutput.html#methods-of-file-objects
+                  For reading lines from a file, you can loop over the file
+                  object. This is memory efficient, fast, and leads to simple
+                  code:
 ```
 
-A rule of the card's own fires only inside a part of a loop that runs on each
-pass: a for or async for body, a while test or body, or a builder's element,
-conditions and later sources. A call in a for header or a for else clause does
-not fire, and neither does one in a function defined inside the loop.
+LOOP004 also quotes the faulty and corrected forms that ruff publishes for
+FURB129, readlines-in-for, at
+[docs.astral.sh/ruff/rules/readlines-in-for](https://docs.astral.sh/ruff/rules/readlines-in-for/):
+
+```text
+Example:
+with open("file.txt") as fp:
+    for line in fp.readlines():
+        ...
+
+Use instead:
+with open("file.txt") as fp:
+    for line in fp:
+        ...
+```
+
+LOOP001, LOOP002 and LOOP003 fire only inside a part of a loop that runs on
+each pass: a for or async for body, a while test or body, or a builder's
+element, conditions and later sources. A call in a for header or a for else
+clause does not fire, and neither does one in a function defined inside the
+loop.
 
 `dev_harness/sigils/code_loop.py, in _repeated`:
 
@@ -345,7 +372,68 @@ def _front_call(
     )
 ```
 
-The Python discipline houses the three under performance efficiency, each on
+LOOP004 reads the loop's iterable instead: the iterable of a for or async for
+loop, and of each generator of a builder. A call anywhere inside the iterable,
+such as inside an enumerate call, does not fire.
+
+`dev_harness/sigils/code_loop.py, in _iterated`:
+
+```python
+def _iterated(loop: LoopNode) -> list[ast.AST]:
+    """Return the iterable of a for `loop`, or of each generator of a builder `loop`."""
+    if isinstance(loop, ast.For | ast.AsyncFor):
+        return [loop.iter]
+    if isinstance(loop, ast.While):
+        return []
+    return [generator.iter for generator in loop.generators]
+```
+
+The iterable must call readlines with no argument, on a call to a method named
+open or on a name. A name counts only when every binding in its nearest scope is
+the name of a with item whose context is such a call. A size hint, a list kept
+in a name, and an object no method open returned do not fire.
+
+`dev_harness/sigils/code_loop.py, in _reads_all_lines`:
+
+```python
+def _reads_all_lines(node: Node, chain: Chain, _rebound: frozenset[str]) -> bool:
+    """Report whether `node` calls `readlines()` with no argument on an `_opens` call or an `OPENED` name."""
+    if not (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "readlines"
+        and not node.args
+        and not node.keywords
+    ):
+        return False
+    file = node.func.value
+    return _opens(file, chain) or (
+        isinstance(file, ast.Name) and _kind(file, chain) == OPENED
+    )
+```
+
+A method open that FURB129 already reads does not count, so no line carries
+both rules. That is a call to a pathlib class, or the io or os module, each
+named through an import in the nearest scope that binds the name.
+
+`dev_harness/sigils/code_loop.py, in _opens`:
+
+```python
+def _opens(expr: ast.expr | None, chain: Chain) -> bool:
+    """Report whether `expr` calls a method `open` on no `FURB129_PATH_CLASSES` call and no `FURB129_OPEN_MODULES` module."""
+    if not (
+        isinstance(expr, ast.Call)
+        and isinstance(expr.func, ast.Attribute)
+        and expr.func.attr == "open"
+    ):
+        return False
+    owner = expr.func.value
+    if isinstance(owner, ast.Call):
+        return _qualified(owner.func, chain) not in FURB129_PATH_CLASSES
+    return _qualified(owner, chain) not in FURB129_OPEN_MODULES
+```
+
+The Python discipline houses the four under performance efficiency, each on
 the section above. LOOP003 also rests on this CWE, which the performance
 efficiency list holds:
 
@@ -361,9 +449,9 @@ The card runs only those rules of its own that the house holds.
 OWN = hold(OWN_TOOL, tuple(OWN_RULES), DISCIPLINES, CHARACTERISTICS)
 ```
 
-Each of the three carries fix class none. The follow-on runner passes none of
+Each of the four carries fix class none. The follow-on runner passes none of
 them to ruff. It prints the rule's corrected form, and the named file keeps
-every byte.
+every byte. LOOP004's corrected form iterates the file object.
 
 These forms have no rule:
 
@@ -378,6 +466,11 @@ name[:0] = [item]               slice assignment: the rules read pop, insert, a 
 bytes or tuple built by +=      the rules read a str alone
 a list on a class by its name   only an attribute of a method's first parameter has a kind
 an unannotated parameter        no binding gives it a kind
+file = path.open() and then     LOOP004 reads a with item's name and the call itself, and no
+file.readlines() in a for loop  plain assignment
+enumerate(file.readlines())     LOOP004 reads the loop's iterable itself, as FURB129 does
+a with name bound another way   every binding of the name must be a with item's name for a
+in the same scope               method open
 ```
 
 The test lists hold each rule's published faulty form, its corrected form, the
@@ -386,6 +479,22 @@ afresh. `harness_fixtures/sigil_code_loop/failure_modes.txt` adds each rule's
 form in a for loop, a while loop, a nested loop, a rebinding and an attribute,
 and the sites found in `src/`, each with a corrected twin and a twin outside any
 loop. Each faulty input reads its own rule, and no twin does.
+
+For LOOP004 the list holds the three forms FURB129 misses and the form two
+experiment tasks first held. It also holds a method open on an attribute and on
+a call result. Each has a corrected twin, a kept list, a size hint and an object
+no method open returned. Beside them sit the six forms FURB129 reads and the
+one readlines site in `src/`:
+
+`src/core/usb_auth.py, in _list_usb_linux`
+
+7 of 7 faulty inputs read LOOP004, 0 of 34 twins do, and no line carries both
+FURB129 and LOOP004.
+
+Every input of `harness_fixtures/sigil_code_loop/known_good.txt` reads CLEAN,
+so the list exits 0, and `known_bad.txt` exits 1. A corrected form that reads
+another rule, or holds no loop once fixed, stays in the sample tree. The head
+of known_good.txt names each such file with its reason.
 
 ## Rules left off
 

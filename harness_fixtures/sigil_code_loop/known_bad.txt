@@ -54,3 +54,4 @@ target_py310/known_bad_perf203.py
 known_bad_loop001.py
 known_bad_loop002.py
 known_bad_loop003.py
+known_bad_loop004.py

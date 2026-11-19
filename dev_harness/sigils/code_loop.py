@@ -73,6 +73,19 @@ OWN_TOOL = "code_loop"
 LIST = "list"
 STR = "str"
 OTHER = "other"
+OPENED = "opened"
+IMPORTED = "import "
+FURB129_PATH_CLASSES = frozenset(
+    {
+        "pathlib.Path",
+        "pathlib.PurePath",
+        "pathlib.PosixPath",
+        "pathlib.PurePosixPath",
+        "pathlib.WindowsPath",
+        "pathlib.PureWindowsPath",
+    }
+)
+FURB129_OPEN_MODULES = frozenset({"io", "os"})
 DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 NESTED = (*DEFS, ast.Lambda)
 METHODS = (ast.FunctionDef, ast.AsyncFunctionDef)
@@ -97,6 +110,24 @@ CONCAT_QUOTE = (
     "must switch to one of the alternatives below: if concatenating str objects, you "
     "can build a list and use str.join() at the end or else write to an io.StringIO "
     "instance and retrieve its value when complete"
+)
+FILE_LOOP_LINK = (
+    "https://docs.python.org/3.14/tutorial/inputoutput.html#methods-of-file-objects"
+)
+FILE_LOOP_QUOTE = (
+    "For reading lines from a file, you can loop over the file object. This is "
+    "memory efficient, fast, and leads to simple code:"
+)
+FURB129_LINK = "https://docs.astral.sh/ruff/rules/readlines-in-for/"
+FURB129_FAULTY = (
+    'with open("file.txt") as fp:\n'
+    "    for line in fp.readlines():\n"
+    "        ...\n"
+)
+FURB129_CORRECTED = (
+    'with open("file.txt") as fp:\n'
+    "    for line in fp:\n"
+    "        ...\n"
 )
 
 Scope = ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda
@@ -124,11 +155,12 @@ class Found:
 
 @dataclass(frozen=True)
 class OwnRule:
-    """One `OWN_RULES` rule: its `page`, each quoted source and link in `sources`, and `matches`."""
+    """One `OWN_RULES` rule: its `page`, quoted `sources` with links, `matches`, and the loop parts `sites` gives."""
 
     page: RulePage
     sources: tuple[tuple[str, str], ...]
     matches: Callable[[Node, Chain, frozenset[str]], bool]
+    sites: Callable[[LoopNode], list[ast.AST]]
 
 
 def _value_kind(value: ast.expr | None) -> str:
@@ -194,12 +226,39 @@ def _inside(scope: Scope) -> Iterator[ast.AST]:
             stack.extend(reversed(list(ast.iter_child_nodes(node))))
 
 
+def _imported(node: ast.AST) -> list[tuple[str, str]]:
+    """Return each name `node` binds by an import, with the module or member it names."""
+    if isinstance(node, ast.Import):
+        bound = []
+        for alias in node.names:
+            top = alias.name.partition(".")[0]
+            bound.append((alias.asname, alias.name) if alias.asname else (top, top))
+        return bound
+    if isinstance(node, ast.ImportFrom):
+        module = "." * node.level + (node.module or "")
+        return [
+            (alias.asname or alias.name, f"{module}.{alias.name}")
+            for alias in node.names
+        ]
+    return []
+
+
+def _with_targets(node: ast.AST) -> list[tuple[ast.Name, ast.expr]]:
+    """Return each name a with item of `node` binds by `as`, with that item's context expression."""
+    if not isinstance(node, ast.With | ast.AsyncWith):
+        return []
+    targets = []
+    for item in node.items:
+        target = item.optional_vars
+        if isinstance(target, ast.Name):
+            targets.append((target, item.context_expr))
+    return targets
+
+
 def _other_names(node: ast.AST) -> list[str]:
-    """Return each name `node` binds by a def, class, import, except, global, nonlocal or match."""
+    """Return each name `node` binds by a def, class, except, global, nonlocal or match."""
     if isinstance(node, DEFS):
         return [node.name]
-    if isinstance(node, ast.Import | ast.ImportFrom):
-        return [(alias.asname or alias.name).partition(".")[0] for alias in node.names]
     if isinstance(node, ast.Global | ast.Nonlocal):
         return list(node.names)
     if isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar):
@@ -209,8 +268,8 @@ def _other_names(node: ast.AST) -> list[str]:
     return []
 
 
-def _kinds(scope: Scope) -> dict[str, set[str]]:
-    """Return each name `scope` binds, with the `LIST`, `STR` or `OTHER` kind of every binding."""
+def _kinds(scope: Scope, outer: Chain) -> dict[str, set[str]]:
+    """Return each name `scope` binds, with every binding's kind: `LIST`, `STR`, `OPENED`, an import, or `OTHER`."""
     kinds: dict[str, set[str]] = {}
     if not isinstance(scope, ast.Module | ast.ClassDef):
         params = scope.args
@@ -220,7 +279,11 @@ def _kinds(scope: Scope) -> dict[str, set[str]]:
             if rest is not None:
                 kinds.setdefault(rest.arg, set()).add(OTHER)
     typed: set[int] = set()
+    with_targets: list[tuple[ast.Name, ast.expr]] = []
     for node in _inside(scope):
+        found = _with_targets(node)
+        typed.update(id(bound) for bound, _ in found)
+        with_targets.extend(found)
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name):
@@ -234,12 +297,45 @@ def _kinds(scope: Scope) -> dict[str, set[str]]:
             typed.add(id(node.target))
         elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
             typed.add(id(node.target))
-        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
-            if id(node) not in typed:
-                kinds.setdefault(node.id, set()).add(OTHER)
+        elif (
+            isinstance(node, ast.Name)
+            and not isinstance(node.ctx, ast.Load)
+            and id(node) not in typed
+        ):
+            kinds.setdefault(node.id, set()).add(OTHER)
         for name in _other_names(node):
             kinds.setdefault(name, set()).add(OTHER)
+        for name, qualified in _imported(node):
+            kinds.setdefault(name, set()).add(IMPORTED + qualified)
+    chain = (kinds, *outer)
+    for bound, context in with_targets:
+        kinds.setdefault(bound.id, set()).add(
+            OPENED if _opens(context, chain) else OTHER
+        )
     return kinds
+
+
+def _qualified(expr: ast.expr, chain: Chain) -> str | None:
+    """Return the module or member `expr` names through an import `_kind` in `chain`, else None."""
+    if isinstance(expr, ast.Attribute):
+        owner = _qualified(expr.value, chain)
+        return None if owner is None else f"{owner}.{expr.attr}"
+    kind = _kind(expr, chain) if isinstance(expr, ast.Name) else OTHER
+    return kind.removeprefix(IMPORTED) if kind.startswith(IMPORTED) else None
+
+
+def _opens(expr: ast.expr | None, chain: Chain) -> bool:
+    """Report whether `expr` calls a method `open` on no `FURB129_PATH_CLASSES` call and no `FURB129_OPEN_MODULES` module."""
+    if not (
+        isinstance(expr, ast.Call)
+        and isinstance(expr.func, ast.Attribute)
+        and expr.func.attr == "open"
+    ):
+        return False
+    owner = expr.func.value
+    if isinstance(owner, ast.Call):
+        return _qualified(owner.func, chain) not in FURB129_PATH_CLASSES
+    return _qualified(owner, chain) not in FURB129_OPEN_MODULES
 
 
 def _first_param(method: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
@@ -297,7 +393,7 @@ def _loops(tree: ast.Module) -> Iterator[tuple[LoopNode, Chain]]:
         scope: Scope, outer: Chain, members: dict[str, set[str]]
     ) -> Iterator[tuple[LoopNode, Chain]]:
         """Yield each loop of `scope`, then of each `NESTED` scope, with `members` keyed by `_first_param`."""
-        kinds = _kinds(scope)
+        kinds = _kinds(scope, outer)
         owner = _first_param(scope) if isinstance(scope, METHODS) else None
         if owner is not None:
             kinds.update({f"{owner}.{attr}": found for attr, found in members.items()})
@@ -337,6 +433,20 @@ def _walk(parts: list[ast.AST]) -> Iterator[ast.AST]:
         yield node
         if not isinstance(node, NESTED):
             stack.extend(ast.iter_child_nodes(node))
+
+
+def _each_pass(loop: LoopNode) -> list[ast.AST]:
+    """Return each node `_walk` yields under the `_repeated` parts of `loop`."""
+    return list(_walk(_repeated(loop)))
+
+
+def _iterated(loop: LoopNode) -> list[ast.AST]:
+    """Return the iterable of a for `loop`, or of each generator of a builder `loop`."""
+    if isinstance(loop, ast.For | ast.AsyncFor):
+        return [loop.iter]
+    if isinstance(loop, ast.While):
+        return []
+    return [generator.iter for generator in loop.generators]
 
 
 def _rebound(loop: LoopNode) -> frozenset[str]:
@@ -459,6 +569,22 @@ def _concatenates(node: Node, chain: Chain, rebound: frozenset[str]) -> bool:
     )
 
 
+def _reads_all_lines(node: Node, chain: Chain, _rebound: frozenset[str]) -> bool:
+    """Report whether `node` calls `readlines()` with no argument on an `_opens` call or an `OPENED` name."""
+    if not (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "readlines"
+        and not node.args
+        and not node.keywords
+    ):
+        return False
+    file = node.func.value
+    return _opens(file, chain) or (
+        isinstance(file, ast.Name) and _kind(file, chain) == OPENED
+    )
+
+
 OWN_RULES: dict[str, OwnRule] = {
     "LOOP001": OwnRule(
         RulePage(
@@ -477,6 +603,7 @@ OWN_RULES: dict[str, OwnRule] = {
         ),
         ((QUEUE_QUOTE, QUEUE_LINK),),
         _pops_front,
+        _each_pass,
     ),
     "LOOP002": OwnRule(
         RulePage(
@@ -493,6 +620,7 @@ OWN_RULES: dict[str, OwnRule] = {
         ),
         ((QUEUE_QUOTE, QUEUE_LINK),),
         _inserts_front,
+        _each_pass,
     ),
     "LOOP003": OwnRule(
         RulePage(
@@ -512,6 +640,32 @@ OWN_RULES: dict[str, OwnRule] = {
         ),
         ((CONCAT_QUOTE, CONCAT_LINK),),
         _concatenates,
+        _each_pass,
+    ),
+    "LOOP004": OwnRule(
+        RulePage(
+            "open-method-readlines-in-for",
+            "none",
+            "from pathlib import Path\n"
+            "\n"
+            'path = Path("file.txt")\n'
+            "with path.open() as fp:\n"
+            "    for line in fp.readlines():\n"
+            '        print(line, end="")\n',
+            "from pathlib import Path\n"
+            "\n"
+            'path = Path("file.txt")\n'
+            "with path.open() as fp:\n"
+            "    for line in fp:\n"
+            '        print(line, end="")\n',
+        ),
+        (
+            (FILE_LOOP_QUOTE, FILE_LOOP_LINK),
+            (FURB129_FAULTY, FURB129_LINK),
+            (FURB129_CORRECTED, FURB129_LINK),
+        ),
+        _reads_all_lines,
+        _iterated,
     ),
 }
 OWN = hold(OWN_TOOL, tuple(OWN_RULES), DISCIPLINES, CHARACTERISTICS)
@@ -526,9 +680,10 @@ SETTINGS: dict[str, str] = {
     **TAKEN.settings(FUNCTION),
     "own_tool": OWN.tool,
     "own_rules": " ".join(OWN.rules),
-    "own_reads": "Python's ast module: each own rule fires only inside a part of a "
-    "loop that runs on each pass, on a name or attribute the loop carries from pass "
-    "to pass, with fix class none",
+    "own_reads": "Python's ast module, each own rule with fix class none: LOOP001 to "
+    "LOOP003 fire only inside a part of a loop that runs on each pass, on a name or "
+    "attribute the loop carries from pass to pass; LOOP004 fires only on the "
+    "iterable of a for loop or a builder's generator",
     "selection": SELECTION,
     "can_run": str(len(CAN_RUN)),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
@@ -554,11 +709,12 @@ def _own_findings(source: bytes, codes: tuple[str, ...]) -> list[tuple[str, int]
     lines: dict[tuple[str, int], int] = {}
     for loop, chain in _loops(ast.parse(source)):
         rebound = _rebound(loop)
-        for node in _walk(_repeated(loop)):
-            if not isinstance(node, ast.expr | ast.stmt):
-                continue
-            for code in codes:
-                if OWN_RULES[code].matches(node, chain, rebound):
+        for code in codes:
+            rule = OWN_RULES[code]
+            for node in rule.sites(loop):
+                if isinstance(node, ast.expr | ast.stmt) and rule.matches(
+                    node, chain, rebound
+                ):
                     lines[code, id(node)] = node.lineno
     return sorted(
         ((code, line) for (code, _), line in lines.items()),
@@ -670,6 +826,12 @@ SIGIL = Sigil(
                 "list or a str when every binding in its scope, or in its class's "
                 "methods, builds one, and the loop carries it when no part run on each "
                 "pass assigns it other than by += or from its own value",
+                "Python's ast module, for LOOP004 when selected: readlines() with no "
+                "argument as the iterable of a for or async for loop or of a builder's "
+                "generator, called on a call to a method open, or on a name whose every "
+                "binding in its nearest scope is a with item's name for one; an open "
+                "that ruff FURB129 reads, on a pathlib class call or on the io or os "
+                "module named through an import, does not count",
                 "for a symbol, only the findings inside its lines",
                 "python -m ruff rule <code> --output-format json, for each rule "
                 "that fires: its name, fix class, and the code under Example, "
