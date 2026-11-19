@@ -77,6 +77,10 @@ Each one says what the thing is or does, in plain words.
 | `GR_pr.md` | `grounding_rule_pull_request.md` |
 | step "E3.0" | "experiment 3's per-folder switch" |
 
+- A task is named `Task_##_Description`, two digits and then its subject in
+  words, such as `Task_10_Stock_Check`. Operator, 2026-11-18: "Task naming
+  should be Task_##_Description. This is just an expansion of our broader
+  naming conventions."
 - An issue number may sit beside the words, never replace them:
   `1633-folder-switch`.
 - Name each scratch artefact for its unit, as `branch-discipline` requires, and
