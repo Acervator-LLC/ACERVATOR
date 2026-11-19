@@ -485,29 +485,6 @@ source file, so pyright runs all 29 on each input of `src/`.
     ]
 ```
 
-Measured on every tracked Python file of `src/` and every def and class in
-them, for each input that tier 2 accepts:
-
-| Input | Inputs | Rules run before | Rules run now, lowest | Median | Highest | Findings with the selection | Findings with every rule |
-| ----- | ------ | ---------------- | --------------------- | ------ | ------- | --------------------------- | ------------------------ |
-| file | 503 | 63 | 32 | 62 | 63 | 6,024 | 6,024 |
-| def or class | 13,885 | 63 | 41 | 59 | 63 | 11,513 | 11,513 |
-
-Its own rule adds no finding in `src/`: each of the 14,388 inputs gives the
-same count of findings as it did before the rule existed. Four statements there
-throw away a builtin's value, and the rule leaves each one out:
-
-```text
-src/gui/main_tabs/exchange_tab_surface.py, in check_refuses
-    a float call in a try body
-src/gui/simulator/sim_react_trading_tab.py, in SimTradingTabReact._way_in
-    a getattr call in a try body; getattr is left out
-src/gui/simulator/sim_trading_tab.py, in SimTradingTab._way_in
-    a getattr call in a try body; getattr is left out
-src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold
-    a sum call; sum is left out, as it iterates its argument
-```
-
 ## Outputs and flags
 
 | Output | Flag elsewhere | Flag in application source |
