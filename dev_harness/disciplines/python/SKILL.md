@@ -85,6 +85,22 @@ Each security ground is one of four kinds.
 | cwe, definition, quote | a CWE id from the list, its MITRE description and a quote | the CWE's definition describes what the rule's text says it detects |
 | term, quote | an ISO/IEC 25010 word and a quote | the tool's own text names security |
 
+### A rule CODE.SECURE runs itself
+
+The coding sigil CODE.SECURE runs one rule that this project writes:
+SECURE001, credential-mask-missing-word, with code_secure as its tool. This
+discipline houses it under security, on the CWE id the rule attaches to each
+finding. The 74 ids do not hold it, so the ground is the attached kind:
+
+```text
+CWE-532  Insertion of Sensitive Information into Log File
+```
+
+The rule reports a collection of credential words that a name test reads when
+one of nine required words has no entry inside it.
+[CODE.SECURE@1](../../../docs/manual/16-sigil-project/code-secure.md#rules-of-its-own)
+quotes its two sources and lists the nine words.
+
 ### Security archetypes
 
 An archetype is compatible with security when it runs a rule this discipline
@@ -198,19 +214,21 @@ Each performance efficiency ground is one of six kinds.
 
 ### Rules CODE.LOOP runs itself
 
-The coding sigil CODE.LOOP runs three rules that this project writes, with
+The coding sigil CODE.LOOP runs four rules that this project writes, with
 code_loop as their tool. This discipline houses each under performance
 efficiency, on the documentation section that states its cost:
 
 ```text
-LOOP001  list-pop-front-in-loop     The Python Tutorial, 5.1.2. Using Lists as Queues
-LOOP002  list-insert-front-in-loop  The Python Tutorial, 5.1.2. Using Lists as Queues
-LOOP003  str-concat-in-loop         Python built-ins reference, Common Sequence Operations,
-                                    and CWE-1046
+LOOP001  list-pop-front-in-loop        The Python Tutorial, 5.1.2. Using Lists as Queues
+LOOP002  list-insert-front-in-loop     The Python Tutorial, 5.1.2. Using Lists as Queues
+LOOP003  str-concat-in-loop            Python built-ins reference, Common Sequence Operations,
+                                       and CWE-1046
+LOOP004  open-method-readlines-in-for  The Python Tutorial, 7.2.1. Methods of File Objects
 ```
 
-Each rule reports its form only on a list or str that a loop carries from one
-pass to the next.
+LOOP001 to LOOP003 report their form only on a list or str that a loop carries
+from one pass to the next. LOOP004 reports readlines() iterated by a loop on a
+file that a method named open returned, where ruff FURB129 does not read it.
 [CODE.LOOP@1](../../../docs/manual/16-sigil-project/code-loop.md#rules-of-its-own)
 quotes each section and gives each rule's forms.
 

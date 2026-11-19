@@ -1,9 +1,9 @@
 # CODE.SECURE@1
 
 Reference. CODE.SECURE@1 reads one Python file with two security scanners,
-bandit and semgrep, and reads each finding against the weakness id the scanner
-reports for it. The Coding Archetype owns it. It is one sigil of
-[the sigil project](../16-sigil-project.md).
+bandit and semgrep, and with one rule of its own, and reads each finding
+against the weakness id its tool reports for it. The Coding Archetype owns it.
+It is one sigil of [the sigil project](../16-sigil-project.md).
 
 ## Function and disciplines
 
@@ -11,10 +11,10 @@ CODE.SECURE@1 reads each call, query, secret, parse and path for a weakness an
 attacker can use, with the CWE id each tool attaches to it. It draws on one
 discipline, Python, under one characteristic: security.
 
-Its scope is each bandit test and semgrep rule the house holds: the 75 tests
-bandit lists and the 216 rules its two semgrep rule sets give. The Python
-discipline houses every one under security, so the card can run 291 rules and
-leaves none off.
+Its scope is each bandit test and semgrep rule the house holds, and one rule of
+its own: the 75 tests bandit lists, the 216 rules its two semgrep rule sets
+give, and SECURE001. The Python discipline houses every one under security, so
+the card can run 292 rules and leaves none off.
 [The tool scope](../16-sigil-project.md#the-tool-scope) states how a rule is
 held.
 
@@ -33,8 +33,9 @@ One input line names a Python file, or one function or class in that file.
 Tiers 1 and 2 come from the Coding Archetype's input module, and this sigil
 adds no condition to tier 2. Tier 3 runs each scanner whose rules the selection keeps, with the rule sets the
 coding archetype runs. Bandit runs only the selected tests, and semgrep skips
-each rule of the card that the selection leaves out. For a function or class, only the findings inside its
-lines count.
+each rule of the card that the selection leaves out. Tier 3 also runs SECURE001
+through Python's ast module, as [the rule of its own](#rules-of-its-own)
+states. For a function or class, only the findings inside its lines count.
 
 A finding counts only under a rule the card holds and the selection keeps. A
 held pack also holds rules outside the scope, and
@@ -175,7 +176,7 @@ so semgrep reads each copy as UTF-8.
 
 ## The selection
 
-For each input, CODE.SECURE@1 runs only those of its 291 rules that the run
+For each input, CODE.SECURE@1 runs only those of its 292 rules that the run
 rule selects for the input's facts. Bandit runs the selected tests and no
 other. Semgrep runs its two rule sets with each rule of the card that the
 selection leaves out excluded. A scanner with no selected rule does not run.
@@ -204,9 +205,11 @@ rules semgrep runs:
 | WEAK | FIX | HOLD |
 | REJECTED | BLOCK | BLOCK |
 
-CLEAN means neither tool reports a finding under a rule the card holds. WEAK
+CLEAN means no tool reports a finding under a rule the card holds. WEAK
 carries, for each finding, the tool, its rule id, its CWE id, its severity and
-the line. WEAK reads HOLD only when the file the input line names sits in
+the line. A SECURE001 finding also names, before its line, each required word
+its collection misses, and the reading quotes the rule's two sources with their
+links. WEAK reads HOLD only when the file the input line names sits in
 application source and a finding reaches the severity floor on the card,
 medium. A file whose findings are all low reads FIX, and the merge proceeds.
 
@@ -214,7 +217,9 @@ medium. A file whose findings are all low reads FIX, and the merge proceeds.
 
 The input file holds one input per line. Its test pair and sample tree sit in
 `harness_fixtures/sigil_code_secure/`. The sample tree holds bandit's own
-example files for six tests: B602, B506, B307, B324, B105 and B608.
+example files for six tests: B602, B506, B307, B324, B105 and B608. It also
+holds the faulty and corrected forms of SECURE001, and its failure-mode list
+reads each form of that fault with its twins.
 
 ```
 python -m dev_harness.sigils.code_secure <file>
@@ -225,7 +230,7 @@ python -m dev_harness.sigils.code_secure --card
 
 ## Tools and rule sets
 
-The card names two tools and their rule sets, and each finding either tool
+The card names three tools and their rule sets, and each finding a tool
 reports in the input file under a rule the card holds is an output. One row per
 tool, from the card's settings and tier 3. The command prints the versions it
 ran.
@@ -238,10 +243,12 @@ card, `dev_harness/sigils/core.py, in version_fault` refuses the input at tier
 | ---- | ------------------- | -------------------- | -------- |
 | bandit | 1.9.4 | `python -P -m bandit -f json -q -t <tests> -`, with the file's bytes on standard input | the selected tests |
 | semgrep | 1.171.0 | `semgrep scan` with `--json --metrics=off --disable-version-check --no-rewrite-rule-ids --no-git-ignore`, `PYTHONUTF8=1` and an `--exclude-rule` for each rule the selection leaves out, in an empty temporary folder that holds a copy of the file under its own name | the held copies of `p/python` and `p/security-audit`, each checked against its sha256 on the card |
+| code_secure | the Python that runs the card | Python's ast module parses the file's bytes | SECURE001 |
 
 ## Rules
 
-The card can run the 75 bandit tests and the 216 semgrep rules below. Each test
+The card can run the 75 bandit tests and the 216 semgrep rules below, and
+SECURE001, which [the rule of its own](#rules-of-its-own) states. Each test
 name comes from `python -m bandit --help`. The last column names each characteristic
 under which the Python discipline houses the test, from `dev_harness/disciplines/python/rules.json`.
 
@@ -548,6 +555,192 @@ python.sqlalchemy.security.sqlalchemy-sql-injection.sqlalchemy-sql-injection
 python.twilio.security.twiml-injection.twiml-injection
 ```
 
+## Rules of its own
+
+CODE.SECURE@1 runs one rule that this project writes, under the tool name
+code_secure. It reads a credential mask list: a collection of credential words
+that a name test reads, so that a value whose name holds a word is masked
+before it reaches an entry or a log. Neither bandit nor semgrep reads the
+collection such a test uses. The held semgrep rule on credentials in logs,
+python-logger-credential-disclosure, reads only the format string of a logger
+call.
+
+| Rule | Name | What it catches | CWE | Severity |
+| ---- | ---- | --------------- | --- | -------- |
+| SECURE001 | credential-mask-missing-word | a collection of two or more str literals, holding two or more credential words, that a name test reads, when one of nine required words has no entry inside it | CWE-532 | medium |
+
+The two sources, as each states them. The first is this repository's own fault
+and its fix. The second is the published form of a mask list: a key, lowered
+with "-" turned to "_", tested against a list of credential names.
+
+```text
+SECURE001  This repository, commit a703c497, src/exchange/api_logger.py, in _redact
+           https://github.com/Acervator-LLC/ACERVATOR/commit/a703c49785626196ff5e0dd50712f240e5c973b1
+           _redact matched credential fields by key-name substring against
+           {apikey, secret, password, passphrase, key, token}. "signature" contains
+           none of them, so a param named signature, sign or CB-ACCESS-SIGN was never
+           masked. A 64-character HMAC arrived at the entry as its first 20
+           characters plus an ellipsis, via the >50-character truncation branch.
+           Added "sign", "auth" and "credential" to the set.
+
+           The Sentry Python SDK, its scrubber module, in DEFAULT_DENYLIST and in
+           EventScrubber.scrub_dict
+           https://github.com/getsentry/sentry-python/blob/12c302b829d008e615e484bff7c24b56eec93f5e/sentry_sdk/scrubber.py
+           :param denylist: A security denylist that is always scrubbed, defaults
+           to DEFAULT_DENYLIST.
+           return key.lower().replace("-", "_")
+           if isinstance(k, str) and self._normalize_key(k) in self.denylist:
+```
+
+The required words are the nine that `_redact` holds since that fix. The card
+prints them as required_words.
+
+`dev_harness/sigils/code_secure.py, in REQUIRED_WORDS`:
+
+```python
+REQUIRED_WORDS = (
+    "apikey",
+    "secret",
+    "password",
+    "passphrase",
+    "key",
+    "token",
+    "sign",
+    "auth",
+    "credential",
+)
+```
+
+A required word is covered when some entry of the collection is a substring of
+it, so the entry "key" covers the word "apikey". Under a substring test, the
+entry "sign" masks a name such as signature or CB-ACCESS-SIGN. The finding names
+each required word that no entry covers.
+
+`dev_harness/sigils/code_secure.py, in _missing`:
+
+```python
+def _missing(entries: tuple[str, ...]) -> tuple[str, ...]:
+    """Return each `REQUIRED_WORDS` word that no entry of `entries` is a substring of."""
+    return tuple(
+        word for word in REQUIRED_WORDS if not any(entry in word for entry in entries)
+    )
+```
+
+The rule reads a collection only when it holds two or more credential words. An
+entry is a credential word when it holds a required word, such as api_key or
+authorization, or when it is a part of one at least three characters long, such
+as pass. A list of param names, or a list with one credential word, reads no
+finding.
+
+`dev_harness/sigils/code_secure.py, in _is_credential`:
+
+```python
+def _is_credential(entry: str) -> bool:
+    """Report whether `entry` holds a `REQUIRED_WORDS` word, or is a part of one `MIN_PART_CHARS` or more long."""
+    return any(
+        word in entry or (len(entry) >= MIN_PART_CHARS and entry in word)
+        for word in REQUIRED_WORDS
+    )
+```
+
+A name test is the right side of in or not in under a left side that is no
+literal, or the iterable that any or all reads, when the builder's element
+tests the builder's name. The collection is a tuple, list or set of str
+literals, or a frozenset, set, tuple or list call on one. It sits in the test
+itself or under a name.
+
+`dev_harness/sigils/code_secure.py, in _tested`:
+
+```python
+    if isinstance(node, ast.Compare):
+        lefts = [node.left, *node.comparators[:-1]]
+        for left, op, right in zip(lefts, node.ops, node.comparators, strict=True):
+            if isinstance(op, ast.In | ast.NotIn) and not isinstance(left, ast.Constant):
+                yield right
+```
+
+A name stands for a collection only when the nearest scope that binds it binds
+it once, by an assignment of the collection, and no add, update, append,
+extend, insert, discard, remove, pop or clear call names it. A method never
+reads its class's names, as in Python.
+
+`dev_harness/sigils/code_secure.py, in _mask_list_gaps`:
+
+```python
+        for scope in chain:
+            if id(scope) not in scopes:
+                scopes[id(scope)] = _bound(scope)
+            bound, globals_ = scopes[id(scope)]
+            if name in globals_ or name not in bound:
+                continue
+            values = bound[name]
+            return _entries(values[0]) if len(values) == 1 else None
+```
+
+SECURE001 takes medium and CWE-532, the grade and the CWE id of the held semgrep
+rule python-logger-credential-disclosure. A SECURE001 finding in application
+source therefore reads HOLD.
+
+`dev_harness/sigils/code_secure.py, in MASK_SEVERITY`:
+
+```python
+MASK_RULE = "SECURE001"
+MASK_CWE = "CWE-532"
+MASK_SEVERITY = SEMGREP_SEVERITY["WARNING"]
+```
+
+The held pack p_python.yaml gives that rule this grade and this CWE id:
+
+```text
+- id: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+  severity: WARNING
+  metadata:
+    cwe:
+    - 'CWE-532: Insertion of Sensitive Information into Log File'
+```
+
+The Python discipline houses SECURE001 under security. CWE-532 is not one of the
+74 ids its security list holds, so the ground is the CWE id the rule attaches
+to each finding, the same kind of ground a bandit test has. The card runs the
+rule only while the house holds it.
+
+`dev_harness/sigils/code_secure.py, in OWN`:
+
+```python
+OWN = hold(OWN_TOOL, tuple(OWN_RULES), DISCIPLINES, CHARACTERISTICS)
+```
+
+SECURE001 carries no corrected form. The finding names the missing words, and
+the write hook's feedback prints its row with them.
+
+These forms have no rule:
+
+```text
+a list on an attribute, such as      only a name bound once in its scope resolves; the Sentry
+self.denylist                        SDK's own list sits on self.denylist, so the rule does not
+                                     read its scrubber
+a name bound twice, or changed by    the rule cannot tell which entries the test reads
+a method call such as add
+a for loop, or a builder other       only in, not in, and the iterable of any or all are read
+than any or all, over the words
+a dictionary of credential names     the rule reads tuples, lists, sets and frozensets
+an exact test of a word covered      coverage is read by substring, so "key" covers "apikey" even
+only through a part                  where an exact test leaves a name apikey unmasked
+a name test for another purpose      a test over two or more credential words reads as a mask
+                                     list, whatever its branch does
+```
+
+The test lists hold the set `_redact` held before commit a703c497, and its form
+since. `harness_fixtures/sigil_code_secure/failure_modes.txt` adds 12 forms of
+the fault: that set as a function, tasks 09 and 30 of experiment 3, and nine
+variant forms. The variants cover tuples, lists, sets and frozensets, module and
+local names, in, not in, any and all, and the Sentry SDK's exact test of a
+normalized key. Each form has a corrected twin with all nine words, a twin that
+reads the same words for no name test, a twin over param names, and a twin over
+one credential word. Each of the 13 faulty inputs reads SECURE001, and none of
+the 49 twins does.
+
 ## Rules left off
 
-The card leaves no scope rule off. Its left setting is empty for both tools.
+The card leaves no scope rule off. Its left setting is empty for each of its
+three tools.

@@ -34,11 +34,20 @@ gh pr list --state open                  # what is still landing
 - **Experiment 3 on #1633 has ended.** Comment 7000447930 holds its result: with
   the sigil feedback the starting fault survived in 5 of 23 counted tasks,
   against 20 of 23 without it, and both arms passed their working cases in 23
-  of 23. Comment 7000669734 names what it tested: the result holds for six
-  sigils, CODE.LOOP, CODE.FLOW, CODE.COLLECTION, CODE.TYPE, CODE.VARIABLE and
-  CODE.IMPORT. The same comment names the next trial: tasks whose faults
-  CODE.OPTIMIZE, CODE.SECURE and CODE.REACH can read, and a CODE.SECURE rule for
-  the redaction-list form of a credential written to a log.
+  of 23. Comment 7000669734 names what it tested, and comment 7017521152
+  corrects it: the result holds for seven sigils, CODE.LOOP, CODE.FLOW,
+  CODE.COLLECTION, CODE.TYPE, CODE.VARIABLE, CODE.IMPORT and CODE.OPTIMIZE.
+  CODE.OPTIMIZE named its task's rule in task10, task14, task17 and task18, each
+  time beside CODE.LOOP or CODE.COLLECTION, so the experiment cannot tell its
+  effect apart from theirs. CODE.SECURE printed no line, and CODE.REACH had no
+  task.
+- **CODE.SECURE's own rule SECURE001 is built** (#1779). It reports a credential
+  mask list that misses a required word, the redaction-list form of experiment
+  3's tasks 09 and 30: `dev_harness/sigils/code_secure.py, in OWN_RULES`.
+- **Next on #1633:** the CODE.LOOP rule of record 7017033732, `readlines()`
+  iterated on a file that a `.open()` method returned. Then the next trial:
+  tasks whose faults CODE.SECURE and CODE.REACH can read, and a task whose rule
+  only CODE.OPTIMIZE holds.
 - **The write hook's sigil feedback is on by default**, by record 7000460425 and
   #1777. The function `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`
   turns it off only when ACERVATOR_SIGIL_FEEDBACK reads off, or when a
@@ -270,7 +279,8 @@ wrong far more often than right.
   `dev_harness/sigils/code_loop.py`. Step 4 is built in #1767: after a `.py`
   write, `dev_harness/hooks/archetype_gate.py` adds the nine coding sigils'
   findings, and since #1777 it does so unless the variable or a marker file
-  turns the feedback off, as above. Experiment 3 has ended, as above.
+  turns the feedback off, as above. Experiment 3 has ended, and the next unit is
+  the CODE.LOOP rule of record 7017033732, as above.
 
 ```bash
 gh issue view 1633 --comments      # step records 6969302729, 6974831108, 6976861545, 6988816286; step 4 report 6993323259

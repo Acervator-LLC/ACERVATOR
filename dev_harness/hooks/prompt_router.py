@@ -306,77 +306,98 @@ _CATALOGUE_RULES = (
         re.compile(
             r"\b(count|counted|counting|how many|number of|search|grep|scan|"
             r"sweep|list of|files? (?:that|which)|remaining|total)\b", re.I),
-        "C15, C25, C26, C30, C33, C45, C56, C82, C83, C87, C89",
+        (
+            "C8, C15, C25, C26, C30, C33, C45, C56, C82, C83, C87, C89, "
+            "C103, C107, C116, C123, C129, C139, C142, C153, C158, C159"
+        ),
     ),
     (
         "A check that cannot fail",
         re.compile(
             r"\b(control|green|passed|no findings|nothing found|zero|clean|"
             r"vacuous|prove|proof|verif\w+|gate)\b", re.I),
-        "C1-C6, C17, C18, C22, C23, C29, C38, C47, C51, C52, C57, C84, C85",
+        (
+            "C1, C2, C3, C4, C5, C6, C7, C9, C10, C17, C18, C22, C23, C29, "
+            "C38, C47, C51, C52, C57, C84, C85, C96, C100, C106, C108, C110, "
+            "C114, C115, C124, C126, C128, C131, C136, C137, C141, C144, "
+            "C145, C159"
+        ),
     ),
     (
         "The machine you are on",
         re.compile(
             r"\b(host|machine|pixel|render|font|platform|windows|linux|"
             r"parallel|worker|timing|ram|memory|cpu)\b", re.I),
-        "C11, C27, C35, C37, C50, C65, C66, C69, C71, C84",
+        (
+            "C11, C27, C35, C37, C50, C65, C66, C69, C71, C84, C98, C104, "
+            "C127, C134, C140"
+        ),
     ),
     (
         "Absence read as a value",
         re.compile(
             r"\b(missing|absent|empty|skipped|did not run|never ran|silent|"
             r"quiet|none|null)\b", re.I),
-        "C13, C30, C40, C41, C57, C59",
+        "C13, C30, C40, C41, C57, C59, C92, C99, C120, C121, C138",
     ),
     (
         "A number from recall instead of measurement",
         re.compile(
             r"\b(assume|assumed|recall|remember|should be|probably|"
             r"typical|usually|known to)\b", re.I),
-        "C48, C67, C86, C88",
+        "C48, C67, C86, C88, C119, C125, C129, C130",
     ),
     (
         "The referee's own conduct",
         re.compile(
             r"\b(brief|dispatch|report(?:ing|ed)? to|my own|invented|"
             r"rule I|directive)\b", re.I),
-        "C25, C82, C83, C86, C88, C89",
+        (
+            "C25, C82, C83, C86, C88, C89, C90, C91, C93, C94, C95, C97, "
+            "C101, C102, C103, C104, C105, C109, C112, C113, C124, C125, "
+            "C126, C131, C147, C148, C149, C150, C151, C152, C154"
+        ),
     ),
     (
         "Order, identity and position",
         re.compile(
             r"\b(order|ordering|sort|sorted|arrangement|sequence|position|"
             r"offset|identity|swapped?)\b", re.I),
-        "",
+        "C3, C19, C24, C43, C46, C60, C128, C143",
     ),
     (
         "Objects, threads and windows that outlive their owner",
         re.compile(
             r"\b(thread|outlive[sd]?|freed|collected|lifetime|owner|"
             r"orphan\w*|leak\w*|destroyed)\b", re.I),
-        "",
+        "C12, C20, C21, C42, C44, C68, C70, C133",
     ),
     (
         "Shells, files and other runs",
         re.compile(
             r"\b(shell|heredoc|exit code|stdout|stderr|redirect\w*|"
             r"tempfile|scratchpad|worktree|concurrent|subprocess)\b", re.I),
-        "",
+        (
+            "C16, C62, C63, C64, C73, C76, C79, C80, C111, C117, C118, C122, "
+            "C126, C127, C131, C132, C135, C155, C156, C157"
+        ),
     ),
     (
         "Comparing values and types",
         re.compile(
             r"\b(compare[sd]?|comparison|equal|equality|isinstance|float|"
             r"decimal|rounding|nan|tolerance|coerce[sd]?)\b", re.I),
-        "",
+        "C14, C31, C32, C36, C77, C122, C130",
     ),
     (
         "Names, markers and registries",
         re.compile(
             r"\b(renamed?|rename|alias\w*|marker|registry|manifest|noqa|"
             r"nosec|suppress\w*|allowlist|accessible name)\b", re.I),
-        "",
+        (
+            "C28, C34, C39, C49, C53, C54, C55, C58, C61, C72, C74, C75, "
+            "C78, C81, C123, C146"
+        ),
     ),
 )
 

@@ -99,3 +99,270 @@ modes_loop003.py, in FaultyAttributeLog
 modes_loop003.py, in CorrectedAttributeLog
 modes_loop003.py, in OutsideAttributeLog
 modes_loop003.py, in CleanAttributeLabel
+
+# LOOP004 open-method-readlines-in-for: the faulty form, its corrected twin, the same call kept as a list
+# outside any loop, and a with name bound afresh to a str buffer before the loop
+known_bad_loop004.py
+known_good_loop004.py
+outside_loop004.py
+fresh_loop004.py
+
+# LOOP004 on the three forms ruff 0.16.0 FURB129 misses, measured in artifacts/referee/loop_gap_probe/
+# readlines_forms.py, in path_with_loop, in path_direct_loop and in path_comprehension, the main tree's
+# gitignored probe, and named in issue #1633 comment 7017033732: a with block and a for loop, a for loop
+# on the call itself, and a list builder. Each faulty_ has a corrected_ twin that iterates the file
+# object, a kept_ twin that keeps the list and never iterates it, a hint_ twin with a size hint, and an
+# other_ twin whose readlines() reads an io.StringIO no open method returned
+modes_loop004.py, in faulty_with_loop
+modes_loop004.py, in corrected_with_loop
+modes_loop004.py, in kept_with_loop
+modes_loop004.py, in hint_with_loop
+modes_loop004.py, in other_with_loop
+modes_loop004.py, in faulty_direct_loop
+modes_loop004.py, in corrected_direct_loop
+modes_loop004.py, in kept_direct_loop
+modes_loop004.py, in hint_direct_loop
+modes_loop004.py, in other_direct_loop
+modes_loop004.py, in faulty_comprehension
+modes_loop004.py, in corrected_comprehension
+modes_loop004.py, in kept_comprehension
+modes_loop004.py, in hint_comprehension
+modes_loop004.py, in other_comprehension
+
+# LOOP004 on the form experiment 3's tasks 14 and 17 first held, as the main tree's gitignored
+# artifacts/sigil_runs/2026-11-18_e3_tasks/README.md states under "Changes made while building":
+# tasks/task14/log_scan.py, in count_errors, with path.open in place of the built-in open it now calls
+modes_loop004.py, in faulty_task_count_errors
+modes_loop004.py, in corrected_task_count_errors
+modes_loop004.py, in kept_task_count_errors
+modes_loop004.py, in hint_task_count_errors
+modes_loop004.py, in other_task_count_errors
+
+# LOOP004 on an open method of an attribute, the form src/core/signal_contract.py, in
+# SignalSink.flush opens with self.path.open, and on an open method of a call result, named in
+# comment 7017033732; the other_ twins read an attribute holding a stream and an io.StringIO
+modes_loop004.py, in FaultyAttributeLog
+modes_loop004.py, in CorrectedAttributeLog
+modes_loop004.py, in KeptAttributeLog
+modes_loop004.py, in HintAttributeLog
+modes_loop004.py, in OtherAttributeLog
+modes_loop004.py, in faulty_call_result
+modes_loop004.py, in corrected_call_result
+modes_loop004.py, in kept_call_result
+modes_loop004.py, in hint_call_result
+modes_loop004.py, in other_call_result
+
+# LOOP004 twin: the list kept and iterated after the with block closes the file, the site
+# src/core/usb_auth.py, in _list_usb_linux, with an open method in place of the built-in open
+modes_loop004.py, in kept_site_usb_mounts
+
+# LOOP004 twins: each form ruff 0.16.0 FURB129 reads, as comment 7017033732 measured, and the
+# pathlib.Path call dev_harness/hooks/transcript_tail.py, in rows_from_end opens; each reads FURB129 and
+# not LOOP004
+modes_loop004.py, in furb129_builtin_with_loop
+modes_loop004.py, in furb129_builtin_generator
+modes_loop004.py, in furb129_builtin_direct_loop
+modes_loop004.py, in furb129_io_open
+modes_loop004.py, in furb129_path_call
+modes_loop004.py, in furb129_pathlib_path_call
+
+# LOOP004 on a file an open method returned, bound to a name by plain assignment: the main tree's
+# gitignored probe artifacts/referee/loop_gap_probe/assigned_open_forms.py, in path_assigned, which
+# ruff 0.16.0 FURB129 does not report; its corrected_ twin iterates the file object, its rebound_ twin
+# binds the name again to an io.StringIO before the loop, and its furb129_ twin is the built-in open
+# form of the same probe, in builtin_assigned, which FURB129 reports
+modes_loop004.py, in faulty_assigned
+modes_loop004.py, in corrected_assigned
+modes_loop004.py, in rebound_assigned
+modes_loop004.py, in furb129_builtin_assigned
+
+# LOOP004's closed table: every way Python binds the object an open call returns and then iterates
+# its readlines(), each measured on ruff 0.16.0 FURB129 with the built-in open() twin and with the
+# PATH.open() method twin, and LOOP004 on the method twin. LOOP004 reports exactly the forms FURB129
+# reads on the built-in twin and not on the method twin (report); it reports nothing where FURB129
+# reads both (both) or neither (outside). The twins and their readings are in the main tree's
+# gitignored artifacts/sigil_runs/2026-11-19_loop_readlines_path_open/closed_table/.
+#
+# form                              FURB129 open()  FURB129 .open()  LOOP004  contract
+# with_as                           yes             no               yes      report
+# async_with_as                     yes             no               yes      report
+# assign_name                       yes             no               yes      report
+# assign_chained                    yes             no               yes      report
+# assign_tuple                      yes             no               yes      report
+# assign_starred                    yes             no               yes      report
+# AssignAttribute                   no              no               no       outside
+# assign_subscript                  no              no               no       outside
+# annotated_textio                  yes             yes              no       both
+# annotated_io                      no              no               no       outside
+# annotated_any                     no              no               no       outside
+# bare_annotation_then_assign       yes             no               yes      report
+# walrus_name                       yes             no               yes      report
+# walrus_in_builder                 yes             no               yes      report
+# walrus_direct                     no              no               no       outside
+# for_target                        no              no               no       outside
+# builder_target                    no              no               no       outside
+# parameter_default                 no              no               no       outside
+# parameter_default_annotated       yes             yes              no       both
+# global_read                       no              no               no       outside
+# closure_read                      yes             no               yes      report
+# nonlocal_assign                   no              no               no       outside
+# ClassBody                         yes             no               yes      report
+# class_attribute_read              no              no               no       outside
+# match_capture                     no              no               no       outside
+# match_as                          no              no               no       outside
+# direct_call                       yes             no               yes      report
+# direct_call_builder               yes             no               yes      report
+# rebound_after_loop                yes             no               yes      report
+# rebound_before_loop               no              no               no       outside
+# branch_open_last                  yes             no               yes      report
+# branch_open_first                 no              no               no       outside
+# bound_in_branch_only              yes             no               yes      report
+# bound_in_loop_body                yes             no               yes      report
+# closure_rebound_after             no              no               no       outside
+# unpack_list_target                yes             no               yes      report
+# unpack_nested                     yes             no               yes      report
+# unpack_second_place               yes             no               yes      report
+# unpack_star_before                yes             no               yes      report
+# unpack_star_value                 yes             no               yes      report
+# unpack_set_value                  yes             no               yes      report
+# unpack_from_call                  no              no               no       outside
+# with_second_item                  yes             no               yes      report
+# with_tuple_target                 no              no               no       outside
+# walrus_in_while                   yes             no               yes      report
+# walrus_then_rebound               no              no               no       outside
+# star_after_longer                 yes             no               yes      report
+# star_before_longer                no              no               no       outside
+# star_middle_longer                no              no               no       outside
+# star_value_before                 yes             no               yes      report
+# star_value_first_place            no              no               no       outside
+# nested_first_place                yes             no               yes      report
+# shorter_values                    yes             no               yes      report  not an input: unpacking into more names than values fails mypy and runs to ValueError
+# list_value_tuple_target           yes             no               yes      report
+# single_list_target                yes             no               yes      report
+# chained_tuple_value               no              no               no       outside
+# bare_annotation_after_assign      yes             no               yes      report  not an input: mypy refuses a bare annotation after the name's assignment
+# textio_annotation_then_assign     yes             no               yes      report
+# try_except_rebind                 no              no               no       outside
+# try_open_in_except                yes             no               yes      report
+# global_same_function              yes             no               yes      report
+# nonlocal_inner_read               yes             no               yes      report
+# outer_open_inner_rebinds          yes             no               yes      report
+# lambda_body_read                  yes             no               yes      report
+# lambda_default                    no              no               no       outside  lambda parameter default, at module scope
+# module_name_read                  yes             no               yes      report  module_loop004.py, in faulty_read_module_file
+# MethodReadsModule                 yes             no               yes      report  module_loop004.py, in FaultyReadsModuleFile
+# module loop                       yes             no               yes      report  module_loop004.py, module scope
+# module walrus                     yes             no               yes      report  module_loop004.py, module scope
+#
+# Bindings that cannot hold the file object, so no row: except ... as binds an exception; def, class,
+# import, a type statement and type parameters bind a function, class, module or type; del unbinds;
+# an augmented assignment computes from the name's old value.
+
+# LOOP004 on each binding form: a faulty_ method twin and its corrected_ twin for each report form,
+# a quiet_ method twin for each both or outside form
+bindings_loop004.py, in faulty_with_as
+bindings_loop004.py, in corrected_with_as
+bindings_loop004.py, in faulty_async_with_as
+bindings_loop004.py, in corrected_async_with_as
+bindings_loop004.py, in faulty_assign_name
+bindings_loop004.py, in corrected_assign_name
+bindings_loop004.py, in faulty_assign_chained
+bindings_loop004.py, in corrected_assign_chained
+bindings_loop004.py, in faulty_assign_tuple
+bindings_loop004.py, in corrected_assign_tuple
+bindings_loop004.py, in faulty_assign_starred
+bindings_loop004.py, in corrected_assign_starred
+bindings_loop004.py, in QuietAssignAttribute
+bindings_loop004.py, in quiet_assign_subscript
+bindings_loop004.py, in quiet_annotated_textio
+bindings_loop004.py, in quiet_annotated_io
+bindings_loop004.py, in quiet_annotated_any
+bindings_loop004.py, in faulty_bare_annotation_then_assign
+bindings_loop004.py, in corrected_bare_annotation_then_assign
+bindings_loop004.py, in faulty_walrus_name
+bindings_loop004.py, in corrected_walrus_name
+bindings_loop004.py, in faulty_walrus_in_builder
+bindings_loop004.py, in corrected_walrus_in_builder
+bindings_loop004.py, in quiet_walrus_direct
+bindings_loop004.py, in quiet_for_target
+bindings_loop004.py, in quiet_builder_target
+bindings_loop004.py, in quiet_parameter_default
+bindings_loop004.py, in quiet_parameter_default_annotated
+bindings_loop004.py, in quiet_global_read
+bindings_loop004.py, in faulty_closure_read
+bindings_loop004.py, in corrected_closure_read
+bindings_loop004.py, in quiet_nonlocal_assign
+bindings_loop004.py, in FaultyClassBody
+bindings_loop004.py, in CorrectedClassBody
+bindings_loop004.py, in quiet_class_attribute_read
+bindings_loop004.py, in quiet_match_capture
+bindings_loop004.py, in quiet_match_as
+bindings_loop004.py, in faulty_direct_call
+bindings_loop004.py, in corrected_direct_call
+bindings_loop004.py, in faulty_direct_call_builder
+bindings_loop004.py, in corrected_direct_call_builder
+bindings_loop004.py, in faulty_rebound_after_loop
+bindings_loop004.py, in corrected_rebound_after_loop
+bindings_loop004.py, in quiet_rebound_before_loop
+bindings_loop004.py, in faulty_branch_open_last
+bindings_loop004.py, in corrected_branch_open_last
+bindings_loop004.py, in quiet_branch_open_first
+bindings_loop004.py, in faulty_bound_in_branch_only
+bindings_loop004.py, in corrected_bound_in_branch_only
+bindings_loop004.py, in faulty_bound_in_loop_body
+bindings_loop004.py, in corrected_bound_in_loop_body
+bindings_loop004.py, in quiet_closure_rebound_after
+bindings_loop004.py, in faulty_unpack_list_target
+bindings_loop004.py, in corrected_unpack_list_target
+bindings_loop004.py, in faulty_unpack_nested
+bindings_loop004.py, in corrected_unpack_nested
+bindings_loop004.py, in faulty_unpack_second_place
+bindings_loop004.py, in corrected_unpack_second_place
+bindings_loop004.py, in faulty_unpack_star_before
+bindings_loop004.py, in corrected_unpack_star_before
+bindings_loop004.py, in faulty_unpack_star_value
+bindings_loop004.py, in corrected_unpack_star_value
+bindings_loop004.py, in faulty_unpack_set_value
+bindings_loop004.py, in corrected_unpack_set_value
+bindings_loop004.py, in quiet_unpack_from_call
+bindings_loop004.py, in faulty_with_second_item
+bindings_loop004.py, in corrected_with_second_item
+bindings_loop004.py, in quiet_with_tuple_target
+bindings_loop004.py, in faulty_walrus_in_while
+bindings_loop004.py, in corrected_walrus_in_while
+bindings_loop004.py, in quiet_walrus_then_rebound
+bindings_loop004.py, in faulty_star_after_longer
+bindings_loop004.py, in corrected_star_after_longer
+bindings_loop004.py, in quiet_star_before_longer
+bindings_loop004.py, in quiet_star_middle_longer
+bindings_loop004.py, in faulty_star_value_before
+bindings_loop004.py, in corrected_star_value_before
+bindings_loop004.py, in quiet_star_value_first_place
+bindings_loop004.py, in faulty_nested_first_place
+bindings_loop004.py, in corrected_nested_first_place
+bindings_loop004.py, in faulty_list_value_tuple_target
+bindings_loop004.py, in corrected_list_value_tuple_target
+bindings_loop004.py, in faulty_single_list_target
+bindings_loop004.py, in corrected_single_list_target
+bindings_loop004.py, in quiet_chained_tuple_value
+bindings_loop004.py, in faulty_textio_annotation_then_assign
+bindings_loop004.py, in corrected_textio_annotation_then_assign
+bindings_loop004.py, in quiet_try_except_rebind
+bindings_loop004.py, in faulty_try_open_in_except
+bindings_loop004.py, in corrected_try_open_in_except
+bindings_loop004.py, in faulty_global_same_function
+bindings_loop004.py, in corrected_global_same_function
+bindings_loop004.py, in faulty_nonlocal_inner_read
+bindings_loop004.py, in corrected_nonlocal_inner_read
+bindings_loop004.py, in faulty_outer_open_inner_rebinds
+bindings_loop004.py, in corrected_outer_open_inner_rebinds
+bindings_loop004.py, in faulty_lambda_body_read
+bindings_loop004.py, in corrected_lambda_body_read
+
+# LOOP004 on the module-scope forms: the whole file holds a module loop, a module := and two readers
+module_loop004.py
+module_corrected_loop004.py
+module_loop004.py, in faulty_read_module_file
+module_corrected_loop004.py, in corrected_read_module_file
+module_loop004.py, in FaultyReadsModuleFile
+module_corrected_loop004.py, in CorrectedReadsModuleFile

@@ -1,0 +1,96 @@
+# Read with --root harness_fixtures/sigil_code_secure/sample_tree
+# One section per form of the fault SECURE001 reads, from OWN_RULES in code_secure.py. A known_bad_
+# file or a faulty_ function must read SECURE001: a miss means the rule cannot see that form. Every
+# other row must not read SECURE001: a corrected_ twin holds all nine required words, a purpose_ twin
+# reads the same words for no name test, a plain_ twin runs the same test over the param names commit
+# a703c497 lists (symbol, side, type, amount, price, attempt, order_id, exchange), and a single_ twin
+# runs it over one credential word.
+
+# The set _redact in src/exchange/api_logger.py held before commit a703c497, and its form since
+known_bad_secure001.py
+known_good_secure001.py
+
+# The same set as a function, from commit a703c497's parent: a local set and a substring test in any
+modes_secure001.py, in faulty_history_redact
+modes_secure001.py, in corrected_history_redact
+modes_secure001.py, in purpose_history_redact
+modes_secure001.py, in plain_history_redact
+modes_secure001.py, in single_history_redact
+
+# Experiment 3, task09, api_record.py, built from commit a703c497: the set read as name.lower()
+modes_secure001.py, in faulty_task09_redact
+modes_secure001.py, in corrected_task09_redact
+modes_secure001.py, in purpose_task09_redact
+modes_secure001.py, in plain_task09_redact
+modes_secure001.py, in single_task09_redact
+
+# Experiment 3, task30, request_trace.py, built from commit a703c497: a module tuple of header words
+modes_secure001.py, in faulty_task30_mask_headers
+modes_secure001.py, in corrected_task30_mask_headers
+modes_secure001.py, in purpose_task30_mask_headers
+modes_secure001.py, in plain_task30_mask_headers
+modes_secure001.py, in single_task30_mask_headers
+
+# Variant forms of the commit a703c497 fault: a local tuple and an exact test of a lowered name
+modes_secure001.py, in faulty_tuple_local_exact
+modes_secure001.py, in corrected_tuple_local_exact
+modes_secure001.py, in purpose_tuple_local_exact
+modes_secure001.py, in plain_tuple_local_exact
+modes_secure001.py, in single_tuple_local_exact
+
+# A module list and a substring test in any
+modes_secure001.py, in faulty_list_module_any
+modes_secure001.py, in corrected_list_module_any
+modes_secure001.py, in purpose_list_module_any
+modes_secure001.py, in plain_list_module_any
+modes_secure001.py, in single_list_module_any
+
+# A set written in the test and an exact test of a lowered name
+modes_secure001.py, in faulty_set_inline_exact
+modes_secure001.py, in corrected_set_inline_exact
+modes_secure001.py, in purpose_set_inline_exact
+modes_secure001.py, in plain_set_inline_exact
+modes_secure001.py, in single_set_inline_exact
+
+# A module frozenset and an exact test of a lowered name
+modes_secure001.py, in faulty_frozenset_module_exact
+modes_secure001.py, in corrected_frozenset_module_exact
+modes_secure001.py, in purpose_frozenset_module_exact
+modes_secure001.py, in plain_frozenset_module_exact
+modes_secure001.py, in single_frozenset_module_exact
+
+# A local frozenset and a substring test in any
+modes_secure001.py, in faulty_frozenset_local_any
+modes_secure001.py, in corrected_frozenset_local_any
+modes_secure001.py, in purpose_frozenset_local_any
+modes_secure001.py, in plain_frozenset_local_any
+modes_secure001.py, in single_frozenset_local_any
+
+# A list written as the iterable any reads
+modes_secure001.py, in faulty_list_inline_any
+modes_secure001.py, in corrected_list_inline_any
+modes_secure001.py, in purpose_list_inline_any
+modes_secure001.py, in plain_list_inline_any
+modes_secure001.py, in single_list_inline_any
+
+# A module tuple and an exact test with not in
+modes_secure001.py, in faulty_tuple_module_not_in
+modes_secure001.py, in corrected_tuple_module_not_in
+modes_secure001.py, in purpose_tuple_module_not_in
+modes_secure001.py, in plain_tuple_module_not_in
+modes_secure001.py, in single_tuple_module_not_in
+
+# A local tuple and a substring test in all
+modes_secure001.py, in faulty_tuple_local_all
+modes_secure001.py, in corrected_tuple_local_all
+modes_secure001.py, in purpose_tuple_local_all
+modes_secure001.py, in plain_tuple_local_all
+modes_secure001.py, in single_tuple_local_all
+
+# The form of the Sentry Python SDK, sentry_sdk/scrubber.py, in EventScrubber.scrub_dict: an exact
+# test of a key lowered with "-" turned to "_" against a module list
+modes_secure001.py, in faulty_normalized_exact
+modes_secure001.py, in corrected_normalized_exact
+modes_secure001.py, in purpose_normalized_exact
+modes_secure001.py, in plain_normalized_exact
+modes_secure001.py, in single_normalized_exact
