@@ -483,47 +483,62 @@ safe fix left, as for C400 under CODE.OPTIMIZE.
 
 ## Feedback while code is written
 
-The write hook reads each file a writer saves, after the save. With the switch
-on, the nine coding sigils then read each saved Python file, and their findings
-join the feedback the writer gets back. The writer reads them while it still
-holds the file.
+The write hook reads each file a writer saves, after the save. Unless the
+feedback is off, the nine sigils in CODING_SIGILS then read each saved Python
+file, and their findings join the feedback the writer gets back. The writer
+reads them while it still holds the file.
 
-The switch is the environment variable ACERVATOR_SIGIL_FEEDBACK, and its default
-is off. A marker file can also turn the feedback on for one folder. The feedback
-runs for a file that no marker covers only when the variable reads on. Any other
-value, or no value, leaves it off, and the archetype verdict is the same either
-way. Experiment 3 measures whether the feedback improves the code a writer
-produces, and its result decides the default.
+The feedback is on by default, and _sigil_feedback_off reports it off in two
+cases only. The environment variable ACERVATOR_SIGIL_FEEDBACK reading off turns
+it off for every file, and the hook ignores the case of that value and the
+spaces around it. A file named SIGIL_FEEDBACK_OFF turns it off for the files
+below it, as _sigil_marked reads it. Any other value of ACERVATOR_SIGIL_FEEDBACK,
+or no value, leaves the feedback on, and the archetype verdict that _run_post
+reports is the same either way.
+
+Experiment 3's result, comment 7000447930, set the default that
+_sigil_feedback_off reports. With the feedback that _sigil_part adds, the
+starting fault survived in 5 of 23 counted tasks, against 20 of 23 without it.
+The same experiment measured the cost of the feedback from _sigil_part: 2.36
+against 0.89 minutes per run on average.
+
+The result holds for six of the sigils in CODING_SIGILS: CODE.LOOP, CODE.FLOW,
+CODE.COLLECTION, CODE.TYPE, CODE.VARIABLE and CODE.IMPORT. CODE.OPTIMIZE printed
+no line in any run, because `dev_harness/sigils/construct_scope.json` places the
+rules of its two tasks, C419 and FURB129, on CODE.COLLECTION and CODE.LOOP.
+CODE.SECURE printed no line for its two tasks, because it cannot read the
+redaction-list form of the fault, and CODE.REACH had no task. Comment 7000669734
+on #1633 holds the full breakdown for each sigil in CODING_SIGILS.
 
 `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`:
 
 ```python
 def _sigil_feedback_off(path: Path) -> bool:
-    """Report off unless `SIGIL_SWITCH` reads `SIGIL_ON` or `_sigil_marked` holds."""
-    if os.environ.get(SIGIL_SWITCH, "").strip().lower() == SIGIL_ON:
-        return False
-    return not _sigil_marked(path)
+    """Report off when `SIGIL_SWITCH` reads `SIGIL_OFF` or `_sigil_marked` holds."""
+    if os.environ.get(SIGIL_SWITCH, "").strip().lower() == SIGIL_OFF:
+        return True
+    return _sigil_marked(path)
 ```
 
-The marker is a file named SIGIL_FEEDBACK_ON. When it sits in the saved file's
-folder, or in any folder above it up to the repository root, the feedback runs
-for that file whatever the variable reads. The repository root is the nearest
-folder above the file that holds .git. The hook checks only that the marker file
-is there. It never reads what the file holds. A marker in a sibling folder or
-above the repository root does not count, and neither does a folder with that
-name. Two folders in one session can therefore run one with the feedback and one
-without it. The two arms of experiment 3 differ only by this file.
+The marker is a file named SIGIL_FEEDBACK_OFF. When it sits in the saved file's
+folder, or in any folder above it up to the repository root, the feedback is off
+for that file whatever ACERVATOR_SIGIL_FEEDBACK reads. The repository root is
+the nearest folder above the file that holds .git. The hook checks only that the
+marker file is there. It never reads what the file holds. A marker in a sibling
+folder or above the repository root does not count, and neither does a folder
+with that name. Two folders in one session can therefore run one with the
+feedback and one without it.
 
 `dev_harness/hooks/archetype_gate.py, in _sigil_marked`:
 
 ```python
 def _sigil_marked(path: Path) -> bool:
-    """Report whether a `SIGIL_MARKER` file sits in `path.parents` up to `_git_root`."""
+    """Report if a `SIGIL_OFF_MARKER` file sits in `path.parents` up to `_git_root`."""
     root = _git_root(path)
     if root is None:
         return False
     for folder in path.parents:
-        if (folder / SIGIL_MARKER).is_file():
+        if (folder / SIGIL_OFF_MARKER).is_file():
             return True
         if folder == root:
             break
@@ -629,37 +644,39 @@ tree as the root, as its lists state. A faulty form passes when the feedback
 names its rule with a corrected form or the safe-fix note. A twin fails when the
 feedback names the rule of its faulty partner.
 
-| Sigil | Faulty forms named with a form or note | Twins naming their partner's rule | Faulty forms with feedback, switch unset |
-| ----- | -------------------------------------- | --------------------------------- | ---------------------------------------- |
-| CODE.LOOP | 32 of 32 | 0 of 39 | 0 of 32 |
-| CODE.IMPORT | 21 of 21 | 0 of 22 | 0 of 21 |
-| CODE.FLOW | 22 of 22 | 0 of 28 | 0 of 22 |
-| CODE.VARIABLE | 18 of 18 | 0 of 21 | 0 of 18 |
-| CODE.COLLECTION | 19 of 19 | 0 of 20 | 0 of 19 |
-| CODE.OPTIMIZE | 6 of 6 | 0 of 8 | 0 of 6 |
-| CODE.TYPE | 7 of 7, rule and lines only | 0 of 5 | 0 of 7 |
-| CODE.REACH | 1 of 1, rule and lines only | 0 of 3 | 0 of 1 |
-| CODE.SECURE | 6 of 6, rule and lines only | 0 of 5 | 0 of 6 |
+| Sigil | Faulty forms named with a form or note | Twins naming their partner's rule |
+| ----- | -------------------------------------- | --------------------------------- |
+| CODE.LOOP | 32 of 32 | 0 of 39 |
+| CODE.IMPORT | 21 of 21 | 0 of 22 |
+| CODE.FLOW | 22 of 22 | 0 of 28 |
+| CODE.VARIABLE | 18 of 18 | 0 of 21 |
+| CODE.COLLECTION | 19 of 19 | 0 of 20 |
+| CODE.OPTIMIZE | 6 of 6 | 0 of 8 |
+| CODE.TYPE | 7 of 7, rule and lines only | 0 of 5 |
+| CODE.REACH | 1 of 1, rule and lines only | 0 of 3 |
+| CODE.SECURE | 6 of 6, rule and lines only | 0 of 5 |
 
 The failure-mode list of CODE.LOOP, `harness_fixtures/sigil_code_loop/failure_modes.txt`,
 holds 19 faulty forms and 42 twins as functions and classes. With each file
 written whole, the feedback named a line inside 19 of 19 faulty forms and
 inside 0 of 42 twins.
 
-With the switch unset, off, or set to another value, the feedback on one faulty
-form of each sigil equals, byte for byte, what the hook gave before the sigil
-part existed. The before-write half gives the same decision and the same output
-on 10 of 10 tool calls.
+The switch was read on one saved Python file, two folders below a gitignored
+folder of the repository, by driving _run_post with a tool record on standard
+input and counting the `[sigil-feedback]` lines it printed:
 
-The marker was read on the same faulty form of each sigil, saved two folders
-below the root of a copy of its sample tree, with the variable unset. A marker
-in the file's folder, in the folder above it, or at the root made the feedback
-name the sigil's rule, 9 of 9 each. A marker in a sibling folder, a marker above
-the root, or a folder with the marker's name gave no feedback, 0 of 9 each. With
-no marker, the hook's output equals, byte for byte, its output before the marker
-existed, 9 of 9. The before-write half gives the same decision and the same
-output on the same 10 tool calls with the variable on, with it unset, and with a
-marker beside the file.
+| ACERVATOR_SIGIL_FEEDBACK | Marker file | Feedback lines |
+| ------------------------ | ----------- | -------------- |
+| unset | none | 2 |
+| off | none | 0 |
+| unset | SIGIL_FEEDBACK_OFF in the folder above the file's folder | 0 |
+| unset | SIGIL_FEEDBACK_OFF in a sibling folder | 2 |
+| " Off " | none | 0 |
+| off | SIGIL_FEEDBACK_ON beside the file | 0 |
+| on | SIGIL_FEEDBACK_OFF in the folder above the file's folder | 0 |
+
+On all seven rows, the archetype part of the _run_post output is the same, byte
+for byte. Where the feedback is on, _sigil_part adds its two lines after it.
 
 ## The shared modules
 
