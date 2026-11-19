@@ -238,8 +238,8 @@ CODE.LOOP@1 runs four rules that this project writes, under the tool name
 code_loop. Each reads a slow loop form that none of the 968 rules ruff 0.16.0
 lists reads. Of those 968, only FURB129 names `readlines()`, and it reads the
 fault on the built-in open, io.open, a pathlib class call, and a name annotated
-typing.TextIO. LOOP004
-reads the same fault on a file that any other method named open returned. Each
+typing.TextIO. LOOP004 reads the same fault on a file that any other method
+named open returned. Each
 rule rests on a section of the Python 3.14 documentation that states the form's
 cost and names the faster form.
 
@@ -390,27 +390,52 @@ def _iterated(loop: LoopNode) -> list[ast.AST]:
 ```
 
 The iterable must call readlines with no argument, on a call to a method named
-open or on a name. A name counts only when every binding in its nearest scope
-gives it such a call: as a with item's name, or by a plain assignment. A name
-bound again to anything else does not fire. A size hint, a list kept in a name,
-and an object no method open returned do not fire.
+open or on a name. A name counts when the binding it reads gives it such a call.
+A with item's name, an assignment, a place in an unpacking of a tuple, list or
+set display, and an assignment expression each give the name the call at that
+place. Places pair up by position, as FURB129 pairs them.
 
 `dev_harness/sigils/code_loop.py, in _file_targets`:
 
 ```python
 def _file_targets(node: ast.AST) -> list[tuple[ast.Name, ast.expr]]:
-    """Return each name `node` binds by a with item's `as`, or by assigning a `_calls_open` call, with its value."""
+    """Return each name `node` binds to a `_calls_open` call by a with item, an assignment or `:=`, with the call."""
+    pairs: list[tuple[ast.expr | None, ast.expr]]
     if isinstance(node, ast.With | ast.AsyncWith):
         pairs = [(item.optional_vars, item.context_expr) for item in node.items]
-    elif isinstance(node, ast.Assign) and _calls_open(node.value):
-        pairs = [(target, node.value) for target in node.targets]
+    elif isinstance(node, ast.Assign):
+        pairs = [
+            pair for target in node.targets for pair in _paired(target, node.value)
+        ]
+    elif isinstance(node, ast.NamedExpr):
+        pairs = [(node.target, node.value)]
     else:
         return []
     targets = []
     for target, value in pairs:
-        if isinstance(target, ast.Name):
+        if isinstance(target, ast.Name) and _calls_open(value):
             targets.append((target, value))
     return targets
+```
+
+The binding a name reads is the one FURB129 resolves for the built-in twin. In
+the name's own scope that is the latest binding before it. Otherwise it is the
+last binding in the nearest enclosing scope that binds the name. A parameter and
+a bare annotation sort before every statement, so a later binding wins. A name
+bound again before the loop, or in a later branch, does not fire. A size hint,
+a list kept in a name, and an object no method open returned do not fire.
+
+`dev_harness/sigils/code_loop.py, in _resolved`:
+
+```python
+def _resolved(name: ast.Name, chain: Chain) -> str:
+    """Return the kind of the binding `name` reads: its scope's latest before it, else an outer scope's last."""
+    at = _position(name)
+    for depth, kinds in enumerate(chain):
+        earlier = [bound for bound in kinds.get(name.id, []) if depth or bound[0] < at]
+        if earlier:
+            return max(earlier)[1]
+    return OTHER
 ```
 
 `dev_harness/sigils/code_loop.py, in _reads_all_lines`:
@@ -428,7 +453,7 @@ def _reads_all_lines(node: Node, chain: Chain, _rebound: frozenset[str]) -> bool
         return False
     file = node.func.value
     return _opens(file, chain) or (
-        isinstance(file, ast.Name) and _kind(file, chain) == OPENED
+        isinstance(file, ast.Name) and _resolved(file, chain) == OPENED
     )
 ```
 
@@ -486,11 +511,7 @@ name[:0] = [item]               slice assignment: the rules read pop, insert, a 
 bytes or tuple built by +=      the rules read a str alone
 a list on a class by its name   only an attribute of a method's first parameter has a kind
 an unannotated parameter        no binding gives it a kind
-file: TextIO = path.open()      an annotated name takes its annotation's kind; FURB129 reads
-                                this form when the annotation is typing.TextIO
 enumerate(file.readlines())     LOOP004 reads the loop's iterable itself, as FURB129 does
-a file name bound another way   every binding of the name must give it a call to a method open
-in the same scope
 ```
 
 The test lists hold each rule's published faulty form, its corrected form, the
@@ -510,7 +531,34 @@ Beside them sit the six other forms FURB129 reads and the one readlines site in
 
 `src/core/usb_auth.py, in _list_usb_linux`
 
-8 of 8 faulty inputs read LOOP004, 0 of 37 twins do, and no line carries both
+The list also holds LOOP004's closed table: each way Python can bind the object
+an open call returns and then loop over its readlines. Each form was measured
+with FURB129 on its built-in open twin and on its method open twin. LOOP004
+reads exactly the forms where FURB129 reads the built-in twin and not the method
+twin. Where FURB129 reads both twins, or neither, LOOP004 stays quiet.
+
+```text
+FURB129 reads the built-in twin only, so LOOP004 reads the method twin (42 forms):
+  a with or async with item's name, any item; a plain or chained assignment; a place in an
+  unpacking of a tuple, list or set display; a bare annotation, then an assignment; := in an
+  if, a while or a builder; the call looped over directly in a for loop or a builder; the name
+  read in a nested function, a lambda, a class body, a method, at module scope, or after
+  global or nonlocal; a name bound again only after the loop, or with the open in the later
+  branch of an if or a try
+FURB129 reads both twins, so LOOP004 stays quiet (2 forms):
+  an assignment or a parameter annotated typing.TextIO
+FURB129 reads neither, outside LOOP004 (25 forms):
+  an attribute or subscript target; another annotation; a for or builder target; a parameter
+  default, also in a lambda; a match capture or as-pattern; := read as the receiver itself; a
+  with target unpacked; an unpacking of a call result, or a place a star shifts; a name bound
+  again before the loop or in a later branch; an outer name bound again after the nested
+  function, or bound by nonlocal in it; a global read from another function
+```
+
+Each of the 42 forms has a faulty input and a corrected twin, and each of the
+27 others a quiet twin. Three forms are not inputs: two that mypy refuses, and
+the lambda default, which was read at module scope.
+47 of 47 faulty inputs read LOOP004, 0 of 102 twins do, and no line carries both
 FURB129 and LOOP004.
 
 Every input of `harness_fixtures/sigil_code_loop/known_good.txt` reads CLEAN,

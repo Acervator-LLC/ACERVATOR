@@ -140,8 +140,11 @@ LoopNode = (
     | ast.DictComp
     | ast.GeneratorExp
 )
-Chain = tuple[dict[str, set[str]], ...]
+Position = tuple[int, int]
+Kinds = dict[str, list[tuple[Position, str]]]
+Chain = tuple[Kinds, ...]
 Node = ast.expr | ast.stmt
+BEFORE_BODY: Position = (0, 0)
 
 
 @dataclass(frozen=True)
@@ -226,6 +229,16 @@ def _inside(scope: Scope) -> Iterator[ast.AST]:
             stack.extend(reversed(list(ast.iter_child_nodes(node))))
 
 
+def _position(node: ast.AST) -> Position:
+    """Return the line and column where `node` starts, or `BEFORE_BODY` when it has none."""
+    return (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
+
+
+def _bind(kinds: Kinds, name: str, at: Position, kind: str) -> None:
+    """Record in `kinds` that `name` is bound at `at` with `kind`."""
+    kinds.setdefault(name, []).append((at, kind))
+
+
 def _imported(node: ast.AST) -> list[tuple[str, str]]:
     """Return each name `node` binds by an import, with the module or member it names."""
     if isinstance(node, ast.Import):
@@ -252,17 +265,35 @@ def _calls_open(expr: ast.expr | None) -> bool:
     )
 
 
+def _paired(target: ast.expr, value: ast.expr) -> list[tuple[ast.expr, ast.expr]]:
+    """Return each part of `target` with the part of `value` at its place, as ruff FURB129 pairs an unpacking."""
+    if isinstance(target, ast.Tuple | ast.List) and isinstance(
+        value, ast.Tuple | ast.List | ast.Set
+    ):
+        return [
+            pair
+            for part, item in zip(target.elts, value.elts, strict=False)
+            for pair in _paired(part, item)
+        ]
+    return [(target, value)]
+
+
 def _file_targets(node: ast.AST) -> list[tuple[ast.Name, ast.expr]]:
-    """Return each name `node` binds by a with item's `as`, or by assigning a `_calls_open` call, with its value."""
+    """Return each name `node` binds to a `_calls_open` call by a with item, an assignment or `:=`, with the call."""
+    pairs: list[tuple[ast.expr | None, ast.expr]]
     if isinstance(node, ast.With | ast.AsyncWith):
         pairs = [(item.optional_vars, item.context_expr) for item in node.items]
-    elif isinstance(node, ast.Assign) and _calls_open(node.value):
-        pairs = [(target, node.value) for target in node.targets]
+    elif isinstance(node, ast.Assign):
+        pairs = [
+            pair for target in node.targets for pair in _paired(target, node.value)
+        ]
+    elif isinstance(node, ast.NamedExpr):
+        pairs = [(node.target, node.value)]
     else:
         return []
     targets = []
     for target, value in pairs:
-        if isinstance(target, ast.Name):
+        if isinstance(target, ast.Name) and _calls_open(value):
             targets.append((target, value))
     return targets
 
@@ -280,16 +311,16 @@ def _other_names(node: ast.AST) -> list[str]:
     return []
 
 
-def _kinds(scope: Scope, outer: Chain) -> dict[str, set[str]]:
-    """Return each name `scope` binds, with every binding's kind: `LIST`, `STR`, `OPENED`, an import, or `OTHER`."""
-    kinds: dict[str, set[str]] = {}
+def _kinds(scope: Scope, outer: Chain) -> Kinds:
+    """Return each name `scope` binds, with each binding's position and kind: `LIST`, `STR`, `OPENED`, an import, or `OTHER`."""
+    kinds: Kinds = {}
     if not isinstance(scope, ast.Module | ast.ClassDef):
         params = scope.args
         for arg in (*params.posonlyargs, *params.args, *params.kwonlyargs):
-            kinds.setdefault(arg.arg, set()).add(_annotation_kind(arg.annotation))
+            _bind(kinds, arg.arg, BEFORE_BODY, _annotation_kind(arg.annotation))
         for rest in (params.vararg, params.kwarg):
             if rest is not None:
-                kinds.setdefault(rest.arg, set()).add(OTHER)
+                _bind(kinds, rest.arg, BEFORE_BODY, OTHER)
     typed: set[int] = set()
     file_targets: list[tuple[ast.Name, ast.expr]] = []
     for node in _inside(scope):
@@ -301,11 +332,11 @@ def _kinds(scope: Scope, outer: Chain) -> dict[str, set[str]]:
                 if isinstance(target, ast.Name) and id(target) not in typed:
                     typed.add(id(target))
                     if not _derives(node.value, target.id):
-                        kinds.setdefault(target.id, set()).add(_value_kind(node.value))
+                        kind = _value_kind(node.value)
+                        _bind(kinds, target.id, _position(target), kind)
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            kinds.setdefault(node.target.id, set()).add(
-                _annotation_kind(node.annotation)
-            )
+            at = BEFORE_BODY if node.value is None else _position(node.target)
+            _bind(kinds, node.target.id, at, _annotation_kind(node.annotation))
             typed.add(id(node.target))
         elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
             typed.add(id(node.target))
@@ -314,23 +345,34 @@ def _kinds(scope: Scope, outer: Chain) -> dict[str, set[str]]:
             and not isinstance(node.ctx, ast.Load)
             and id(node) not in typed
         ):
-            kinds.setdefault(node.id, set()).add(OTHER)
+            _bind(kinds, node.id, _position(node), OTHER)
         for name in _other_names(node):
-            kinds.setdefault(name, set()).add(OTHER)
+            _bind(kinds, name, _position(node), OTHER)
         for name, qualified in _imported(node):
-            kinds.setdefault(name, set()).add(IMPORTED + qualified)
+            _bind(kinds, name, _position(node), IMPORTED + qualified)
     chain = (kinds, *outer)
     for bound, value in file_targets:
-        kinds.setdefault(bound.id, set()).add(OPENED if _opens(value, chain) else OTHER)
+        kind = OPENED if _opens(value, chain) else OTHER
+        _bind(kinds, bound.id, _position(bound), kind)
     return kinds
 
 
+def _resolved(name: ast.Name, chain: Chain) -> str:
+    """Return the kind of the binding `name` reads: its scope's latest before it, else an outer scope's last."""
+    at = _position(name)
+    for depth, kinds in enumerate(chain):
+        earlier = [bound for bound in kinds.get(name.id, []) if depth or bound[0] < at]
+        if earlier:
+            return max(earlier)[1]
+    return OTHER
+
+
 def _qualified(expr: ast.expr, chain: Chain) -> str | None:
-    """Return the module or member `expr` names through an import `_kind` in `chain`, else None."""
+    """Return the module or member `expr` names through an import `_resolved` in `chain`, else None."""
     if isinstance(expr, ast.Attribute):
         owner = _qualified(expr.value, chain)
         return None if owner is None else f"{owner}.{expr.attr}"
-    kind = _kind(expr, chain) if isinstance(expr, ast.Name) else OTHER
+    kind = _resolved(expr, chain) if isinstance(expr, ast.Name) else OTHER
     return kind.removeprefix(IMPORTED) if kind.startswith(IMPORTED) else None
 
 
@@ -406,7 +448,12 @@ def _loops(tree: ast.Module) -> Iterator[tuple[LoopNode, Chain]]:
         kinds = _kinds(scope, outer)
         owner = _first_param(scope) if isinstance(scope, METHODS) else None
         if owner is not None:
-            kinds.update({f"{owner}.{attr}": found for attr, found in members.items()})
+            kinds.update(
+                {
+                    f"{owner}.{attr}": [(BEFORE_BODY, kind) for kind in found]
+                    for attr, found in members.items()
+                }
+            )
         chain = (kinds, *outer)
         enclosing = outer if isinstance(scope, ast.ClassDef) else chain
         inner = _attribute_kinds(scope) if isinstance(scope, ast.ClassDef) else {}
@@ -485,7 +532,7 @@ def _kind(expr: ast.expr, chain: Chain) -> str:
     key = _key(expr)
     for kinds in chain:
         if key is not None and key in kinds:
-            found = kinds[key]
+            found = {kind for _, kind in kinds[key]}
             return next(iter(found)) if len(found) == 1 else OTHER
     return OTHER
 
@@ -591,7 +638,7 @@ def _reads_all_lines(node: Node, chain: Chain, _rebound: frozenset[str]) -> bool
         return False
     file = node.func.value
     return _opens(file, chain) or (
-        isinstance(file, ast.Name) and _kind(file, chain) == OPENED
+        isinstance(file, ast.Name) and _resolved(file, chain) == OPENED
     )
 
 
@@ -838,9 +885,11 @@ SIGIL = Sigil(
                 "pass assigns it other than by += or from its own value",
                 "Python's ast module, for LOOP004 when selected: readlines() with no "
                 "argument as the iterable of a for or async for loop or of a builder's "
-                "generator, called on a call to a method open, or on a name whose every "
-                "binding in its nearest scope is a with item's name for one or a plain "
-                "assignment of one; an open "
+                "generator, called on a call to a method open, or on a name whose "
+                "binding gives it one: the latest binding before the name in its own "
+                "scope, else the last in the nearest enclosing scope that binds it, "
+                "as a with item's name, an assignment, a place in an unpacking of a "
+                "tuple, list or set display, or an assignment expression; an open "
                 "that ruff FURB129 reads, on a pathlib class call or on the io or os "
                 "module named through an import, does not count",
                 "for a symbol, only the findings inside its lines",
