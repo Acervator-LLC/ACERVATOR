@@ -1,8 +1,8 @@
 # Rule run partitioning
 
-Reference. The Coding Archetype can run 1,244 rules. The keys below were
+Reference. The Coding Archetype can run 1,246 rules. The keys below were
 measured over 1,252: 1,241 of those rules, and 11 preview rules no sigil runs
-now. CODE.LOOP's 3 rules of its own carry no keys.
+now. CODE.LOOP's 4 rules of its own and CODE.SECURE's 1 carry no keys.
 For one input it runs only
 the rules that input can hold, and that choice is made before any rule runs.
 This page states the inputs, the facts read from each one, the four keys every
@@ -218,7 +218,7 @@ out. Mypy gets a disabled error code for each mypy rule of the card that the
 selection leaves out. Pyright and vulture count only the selected codes, and
 every one of their rules fits every source file. A tool with no selected rule
 does not run. CODE.TYPE runs its own rule only when the selection keeps it.
-CODE.LOOP runs its three rules of its own the same way. The keys file holds no
+CODE.LOOP runs its four rules of its own the same way. The keys file holds no
 keys for them, so the selection keeps them for every input.
 
 CODE.DEBUG.PYTHON@1 applies no run rule. It reports every finding of the Coding

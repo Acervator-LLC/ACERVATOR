@@ -1,5 +1,13 @@
 # Read with --root harness_fixtures/sigil_code_loop/sample_tree
 # Each file names its rule on line 1, then holds the Use instead block python -m ruff rule <id> prints.
+# Every input here reads CLEAN, PASS. These files stay in sample_tree and out of this list, because
+# their corrected form cannot read CLEAN on this card:
+#   FINDINGS, FIX for another rule alone: known_good_b031.py, known_good_furb129.py,
+#   known_good_plr1736.py and known_good_plc0208.py read B007; known_good_plr1733.py reads B007 and
+#   PERF102; known_good_perf203.py and target_py310/known_good_perf203.py read PERF401, under the
+#   tree's target py314 and under target_py310/ruff.toml, where PERF203 can fire
+#   REJECTED, BLOCK at tier 2, because the fix removes the loop: known_good_async110.py,
+#   known_good_c420.py, known_good_furb140.py and known_good_perf402.py
 
 # CLEAN for its own rule id
 known_good_b007.py
@@ -13,19 +21,6 @@ known_good_ruf006.py
 known_good_sim911.py
 known_good_up028.py
 
-# FINDINGS, FIX for another rule alone: B031's form reads B007, FURB129's form reads B007,
-# PLR1733's form reads B007 and PERF102, PLR1736's form reads B007
-known_good_b031.py
-known_good_furb129.py
-known_good_plr1733.py
-known_good_plr1736.py
-
-# REJECTED, BLOCK at tier 2: the corrected form holds no loop, because the fix removes it
-known_good_async110.py
-known_good_c420.py
-known_good_furb140.py
-known_good_perf402.py
-
 # CLEAN for its own rule id: the loop rules construct_scope.LOOP_PAIRS places
 known_good_b023.py
 known_good_c400.py
@@ -37,26 +32,21 @@ known_good_ret508.py
 known_good_sim110.py
 known_good_sim113.py
 
-# FINDINGS, FIX for another rule alone: PLC0208's form reads B007
-known_good_plc0208.py
-
-# FINDINGS, FIX for another rule alone: PERF203's form reads PERF401, under the tree's target
-# py314 and under target_py310/ruff.toml, where PERF203 can fire
-known_good_perf203.py
-target_py310/known_good_perf203.py
-
 # CLEAN: the corrected form of each rule of OWN in code_loop.py
 known_good_loop001.py
 known_good_loop002.py
 known_good_loop003.py
+known_good_loop004.py
 
 # CLEAN: the same call or statement of each rule of OWN, outside any loop, beside a loop
 outside_loop001.py
 outside_loop002.py
 outside_loop003.py
+outside_loop004.py
 
 # CLEAN: the same call or statement of each rule of OWN inside a loop, on a name each pass
-# assigns afresh
+# assigns afresh; for LOOP004, a with name bound afresh to a str buffer before the loop
 fresh_loop001.py
 fresh_loop002.py
 fresh_loop003.py
+fresh_loop004.py

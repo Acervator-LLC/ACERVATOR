@@ -214,19 +214,21 @@ Each performance efficiency ground is one of six kinds.
 
 ### Rules CODE.LOOP runs itself
 
-The coding sigil CODE.LOOP runs three rules that this project writes, with
+The coding sigil CODE.LOOP runs four rules that this project writes, with
 code_loop as their tool. This discipline houses each under performance
 efficiency, on the documentation section that states its cost:
 
 ```text
-LOOP001  list-pop-front-in-loop     The Python Tutorial, 5.1.2. Using Lists as Queues
-LOOP002  list-insert-front-in-loop  The Python Tutorial, 5.1.2. Using Lists as Queues
-LOOP003  str-concat-in-loop         Python built-ins reference, Common Sequence Operations,
-                                    and CWE-1046
+LOOP001  list-pop-front-in-loop        The Python Tutorial, 5.1.2. Using Lists as Queues
+LOOP002  list-insert-front-in-loop     The Python Tutorial, 5.1.2. Using Lists as Queues
+LOOP003  str-concat-in-loop            Python built-ins reference, Common Sequence Operations,
+                                       and CWE-1046
+LOOP004  open-method-readlines-in-for  The Python Tutorial, 7.2.1. Methods of File Objects
 ```
 
-Each rule reports its form only on a list or str that a loop carries from one
-pass to the next.
+LOOP001 to LOOP003 report their form only on a list or str that a loop carries
+from one pass to the next. LOOP004 reports readlines() iterated by a loop on a
+file that a method named open returned, where ruff FURB129 does not read it.
 [CODE.LOOP@1](../../../docs/manual/16-sigil-project/code-loop.md#rules-of-its-own)
 quotes each section and gives each rule's forms.
 
