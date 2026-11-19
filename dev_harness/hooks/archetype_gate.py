@@ -966,6 +966,7 @@ def _deny_reason(
 
 SIGIL_SWITCH = "ACERVATOR_SIGIL_FEEDBACK"
 SIGIL_ON = "on"
+SIGIL_MARKER = "SIGIL_FEEDBACK_ON"
 SIGIL_SUFFIX = ".py"
 SIGIL_PACKAGE = "dev_harness.sigils"
 FOLLOW_ON_MODULE = f"{SIGIL_PACKAGE}.fix_class"
@@ -1015,9 +1016,24 @@ class SigilReading(NamedTuple):
     text: str
 
 
-def _sigil_feedback_off() -> bool:
-    """Report the sigil part off unless `SIGIL_SWITCH` reads `SIGIL_ON`."""
-    return os.environ.get(SIGIL_SWITCH, "").strip().lower() != SIGIL_ON
+def _sigil_marked(path: Path) -> bool:
+    """Report whether a `SIGIL_MARKER` file sits in `path.parents` up to `_git_root`."""
+    root = _git_root(path)
+    if root is None:
+        return False
+    for folder in path.parents:
+        if (folder / SIGIL_MARKER).is_file():
+            return True
+        if folder == root:
+            break
+    return False
+
+
+def _sigil_feedback_off(path: Path) -> bool:
+    """Report off unless `SIGIL_SWITCH` reads `SIGIL_ON` or `_sigil_marked` holds."""
+    if os.environ.get(SIGIL_SWITCH, "").strip().lower() == SIGIL_ON:
+        return False
+    return not _sigil_marked(path)
 
 
 def _git_root(path: Path) -> Path | None:
@@ -1532,7 +1548,7 @@ def _run_post(data: dict) -> int:
         parts.append(
             _summarize(_run_archetype(module, path, deadline=deadline),
                        module, path))
-    if path.suffix == SIGIL_SUFFIX and not _sigil_feedback_off():
+    if path.suffix == SIGIL_SUFFIX and not _sigil_feedback_off(path):
         _debug_log(f"post: running the coding sigils on {path.name}")
         parts.append(_sigil_part(path, deadline))
     if not parts:
