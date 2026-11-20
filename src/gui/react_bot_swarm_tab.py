@@ -14,6 +14,7 @@ import logging
 from typing import Any, Optional
 
 from .main_tabs import bot_visualizer_surface as surface
+from .main_tabs.quick_routing_surface import LiveRoutingTab
 from .react_history_panel import page_html
 
 try:
@@ -179,6 +180,8 @@ if _HAS_WEBENGINE:
             super().__init__(parent)
             self.setAccessibleName(ACCESSIBLE_NAME)
             self._state = surface.BotVisualizerModel()
+            self._routes = LiveRoutingTab()
+            self._state.save_routes = self._save_routes
             self._page_ready = False
             self._last_model: dict = {}
             self._methods: Optional[dict] = None
@@ -193,6 +196,7 @@ if _HAS_WEBENGINE:
             layout.addWidget(self._web, 1)
             self._bus_unsubs: list = []
             self._subscribe_to_wires()
+            self._hydrate_saved_wires()
 
         def _subscribe_to_wires(self) -> None:
             """Take ``wire.created`` and ``wire.removed`` onto the wire board.
@@ -225,6 +229,20 @@ if _HAS_WEBENGINE:
                 self.take({"action": action, "event": dict(event.data or {})})
 
             return take_event
+
+        def _hydrate_saved_wires(self) -> None:
+            """Send the ``hydrate`` action over ``LiveRoutingTab.load``, as
+            ``BotVisualizationTab`` reads its wires at build."""
+            answer = self.take({"action": "hydrate", "state": self._routes.load()})
+            logger.info("wire hydration: %d wire(s) painted", answer["wire_count"])
+
+        def _save_routes(self, add: list, remove: list) -> None:
+            """Write ``add`` and drop ``remove`` through
+            ``LiveRoutingTab.apply_routes``, logging each refusal it records."""
+            recorded = len(self._routes.shown)
+            self._routes.apply_routes(add, remove)
+            for _kind, title, body in self._routes.shown[recorded:]:
+                logger.error("%s: %s", title, body)
 
         def closeEvent(self, event) -> None:
             """Retract every bus subscription this tab made, then close."""
@@ -286,8 +304,15 @@ if _HAS_WEBENGINE:
         # -- the state the Qt controls used to hold ----------------------
 
         def take(self, params: dict) -> dict:
-            """Apply one action to the model, push the payload and return it."""
+            """Apply one action, put the messages its board added on the bus,
+            push the payload and return it."""
+            sent = len(self._state.board.emitted)
             answer = surface.apply_action(self._state, params)
+            fresh = self._state.board.emitted[sent:]
+            for topic, named in surface.bus_messages(fresh):
+                self._routes.emit(topic, **named)
+            if fresh:
+                answer = surface.build_payload(self._state)
             self._last_model = answer
             if self._page_ready:
                 self._run(push_script(answer))

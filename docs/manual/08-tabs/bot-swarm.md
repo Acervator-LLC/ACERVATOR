@@ -225,6 +225,22 @@ self.emitted.append(
 self.emitted.append([WIRE_CREATED_TOPIC, source_id, target_id, pct])
 ```
 
+**The sentences this overtakes**, from the paragraph above. They are not edited and not removed:
+
+> Read on the running page at 1400 by 900 with a made-up fleet, the React page stores no dragged wire, and its Connect stops at the confirm question because the page sends no reply. The locust grid starts below the window and the routing panel is 0 pixels tall, so neither control can be reached there today.
+
+**The current reading.** The React page saves a wire the way the Qt page does. OK in the drag box writes the wire into the saved fleet before the page draws it, and a set the saved fleet refuses opens the box again with the reason. The drag box also refuses a share of 0, with the words Quick Routing uses for a rate of 0. Connect draws its question on the page: Yes saves the wires and No saves nothing. A page built again reads the saved wires back. Read on the running page at 1400 by 900 with a made-up fleet of 38 bots, the locust grid and the routing panel are each 836 pixels tall, and the pointer reaches all three routing buttons.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — `BotVisualizerModel.answer_panel`
+
+```python
+refusal = (
+    board_refusal(self.board.wires, source, target, share)
+    or zero_share_refusal(share)
+    or self._save_refusal([[source, target, share]], [])
+)
+```
+
 ### The percent a wire is allowed to carry
 
 One rule decides whether a stored percent is a number, and every reader of the
@@ -1488,6 +1504,19 @@ would create wires that route nothing."**, and a rate of 140 answers **"Rate 140
 operator can reach it: only the sub-tab bar and the header strip paint on that page today. The
 section on how wide the tab has to be carries the measurement.
 
+**The sentence this overtakes**, from the paragraph above. It is not edited and not removed:
+
+> It does not mean the operator can reach it: only the sub-tab bar and the header strip paint on that page today.
+
+**The current reading.** The locust grid and the routing panel paint below the header strip, so the operator reaches every control the React column marks yes. Each one that changes a wire saves it as the Qt tab does: the drag, the disconnect question, the picker, Connect, Disconnect and Disconnect All. Each saved change then goes out as the same two messages the Qt tab sends.
+
+`src/gui/react_bot_swarm_tab.py` — `BotSwarmReactTab.take`
+
+```python
+for topic, named in surface.bus_messages(fresh):
+    self._routes.emit(topic, **named)
+```
+
 ### The key every connectivity press writes
 
 **The sentence this overtakes**, from the section above:
@@ -1595,6 +1624,22 @@ children of 17 to 24 px, so `inner-row` starts at y = 931 with a height of 0, `q
 has a height of 0, a routing button sits at y = 1754, and `wire-canvas` is `display: none`.
 The captured page shows the tab bar and the header strip and nothing under them. The locust
 grid, the wires and the routing panel are in the document and are not on the screen.
+
+**The sentences this overtakes**, from the paragraph above. They are not edited and not removed:
+
+> The React page fits every width sideways and **none of it downwards**.
+
+> The locust grid, the wires and the routing panel are in the document and are not on the screen.
+
+**The current reading.** Only the tab root takes the height of the window, and a layer pane that is not on show takes no space. Read at 1400 by 900 with a made-up fleet of 38 bots, the header row is 24 pixels tall and the locust grid and the routing panel are each 836 pixels tall. 37 of the 38 source rows and all three routing buttons sit on the screen.
+
+`src/gui/web/bot_swarm_tab.css` — the tab root
+
+```css
+.acervator-swarm-tab[data-part="tab"] {
+  height: 100vh;
+}
+```
 
 ### Where the wire list sits once a password is set
 
