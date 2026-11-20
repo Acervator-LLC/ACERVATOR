@@ -580,47 +580,10 @@ reached are told apart.
 
 ### The excess the rule measures against
 
-The excess figure is the largest one the saved fleet produces. Every bot in it
-carries the same 5 per cent scrumming interval, so the figure is 5 per cent of
-the highest Target Balance.
-
-The block below leaves that Target Balance out.
-
-```python
-# src/trading/scrumming/sizing.py
-LARGEST_FLEET_TARGET_USD = ...
-FLEET_SCRUMMING_INTERVAL_PCT = 5.0
-
-REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
-    LARGEST_FLEET_TARGET_USD, FLEET_SCRUMMING_INTERVAL_PCT
-)
-```
-
-The largest is the right end of the fleet, not the smallest. `cannot size a
-scrum` has to mean no bot at any target this fleet carries could size one
-there. Read off a copy of the saved fleet: 38 bots, one interval value, and a
-highest target 14 times the lowest, so the largest excess is 14 times the
-smallest. A caller that knows one bot's own interval passes it instead.
-
-OVERTAKEN, quoted whole:
-
-> The excess figure is the largest one the saved fleet produces. Every bot in it
-> carries the same 5 per cent scrumming interval, so the figure is 5 per cent of
-> the highest Target Balance.
-
-> The largest is the right end of the fleet, not the smallest. `cannot size a
-> scrum` has to mean no bot at any target this fleet carries could size one
-> there.
-
-True today: the figure is an assumption for a caller that holds no bot, and it
-is not a reading of the fleet. Driven over the saved records, 0 produce an
-excess equal to it, 38 produce a smaller one and 1 produces a larger one, so
-`cannot size a scrum` from that figure alone does not speak for every bot.
-`src/trading/scrumming/sizing.py, at ASSUMED_TARGET_BALANCE_USD` and
-`src/trading/scrumming/sizing.py, at ASSUMED_SCRUMMING_INTERVAL_PCT` name the
-assumed pair, and
-`src/trading/scrumming/sizing.py, in bot_scrum_excess_usd` answers one bot's
-own excess from its own Target Balance and interval.
+The excess figure is an assumption for a caller that holds no bot, and it is
+not a reading of the fleet. A `cannot size a scrum` from that figure alone does
+not speak for every bot, because each bot answers its own excess from its own
+Target Balance and interval.
 
 `src/trading/scrumming/sizing.py` — the assumed pair and the bot's own excess
 
@@ -10247,23 +10210,10 @@ OKX and three OKX US spot markets publishing `minSz` `1` with a fractional
 market's own served price, the refusal count is 553 and every one is a bitget
 market.
 
-The excess does not vary per bot. `src/trading/scrumming/sizing.py, at
-REFERENCE_SCRUM_EXCESS_USD` fixes it at 5% of the largest fleet target, and
-`src/trading/bot_container.py, in guarded_place_order` passes the market price
-and no excess of its own, so the default holds. The
-constant's own note states what that means: "The largest excess any bot in the
-saved fleet submits ... so `TRADEABLE_NO` means no bot at any target this fleet
-carries could size a scrum there."
-
 OVERTAKEN, quoted whole:
 
 > `src/trading/scrumming/sizing.py, in smallest_order_usd` takes the venue's
 > minimum cost where it is the larger figure, so those 553 refuse at every price.
-
-> The excess does not vary per bot. `src/trading/scrumming/sizing.py, at
-> REFERENCE_SCRUM_EXCESS_USD` fixes it at 5% of the largest fleet target, and
-> `src/trading/bot_container.py, in guarded_place_order` passes the market price
-> and no excess of its own, so the default holds.
 
 True today: the excess varies per bot.
 `src/trading/bot_container.py, in guarded_place_order` passes the asking bot's

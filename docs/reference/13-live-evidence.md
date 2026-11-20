@@ -867,7 +867,7 @@ figure with the rest.
 
 ![Units held now against the units the same net cash buys and holds from the baseline day, by charted base.](../manual/figures/evidence_hodl_units.png)
 
-![Both positions valued at the same final recorded price, by charted base.](../manual/figures/evidence_hodl_dollars.png)
+![Both positions valued at the same final recorded price, as shares of the baseline, by charted base.](../manual/figures/evidence_hodl_shares.png)
 
 ## What the market did across the window
 
