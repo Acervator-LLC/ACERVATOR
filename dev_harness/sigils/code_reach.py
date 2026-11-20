@@ -67,7 +67,8 @@ SETTINGS: dict[str, str] = {
     "can_run": str(len(CAN_RUN)),
     "tree_files": "the .py files "
     + " ".join(TREE_FILES[1:])
-    + " lists from the root of the target tree, else the whole tree outside git",
+    + " lists from the root of the target tree, else the whole tree outside git; "
+    "when git does not list the input file, also that file and each .py file in its folder",
     "confidence_floor": "100",
     "fault_file": "the file the input line names: UNREACHED reads HOLD when it sits "
     "in application_source and an item reaches confidence_floor",
@@ -88,8 +89,15 @@ class Finding:
     line: int
 
 
-def _tree_files(root: Path) -> list[str]:
-    """Return the `TREE_FILES` paths under `root` that exist, or `WHOLE_TREE` when git lists none."""
+def _beside(root: Path, file: Path) -> list[str]:
+    """Return `file` and each .py file in its folder, as sorted paths relative to `root`."""
+    paths = (file, *file.parent.glob("*.py"))
+    names = {path.relative_to(root).as_posix() for path in paths if path.is_file()}
+    return sorted(names)
+
+
+def _tree_files(root: Path, file: Path) -> list[str]:
+    """Return existing `TREE_FILES` paths under `root`, with `_beside` of an unlisted `file`, else `WHOLE_TREE`."""
     try:
         proc = subprocess.run(
             TREE_FILES,
@@ -102,11 +110,16 @@ def _tree_files(root: Path) -> list[str]:
         return [WHOLE_TREE]
     listed = tool_text(proc.stdout).split("\0") if proc.returncode == 0 else []
     files = [name for name in listed if name and (root / name).is_file()]
-    return files or [WHOLE_TREE]
+    if not files:
+        return [WHOLE_TREE]
+    if file.relative_to(root).as_posix() in files:
+        return files
+    held = set(files)
+    return files + [name for name in _beside(root, file) if name not in held]
 
 
-def _vulture_scan(root: Path) -> tuple[str, list[tuple[Path, Finding]]]:
-    """Return the vulture version and each item's file and `Finding` over the `_tree_files` of `root`."""
+def _vulture_scan(root: Path, file: Path) -> tuple[str, list[tuple[Path, Finding]]]:
+    """Return the vulture version and each item's file and `Finding` over `_tree_files` of `root` and `file`."""
     try:
         proc = subprocess.run(
             [
@@ -124,7 +137,7 @@ def _vulture_scan(root: Path) -> tuple[str, list[tuple[Path, Finding]]]:
                     "for item in scan.get_unused_code()]}))"
                 ),
             ],
-            input=json.dumps(_tree_files(root)).encode("utf-8"),
+            input=json.dumps(_tree_files(root, file)).encode("utf-8"),
             cwd=root,
             capture_output=True,
             timeout=VULTURE_TIMEOUT_S,
@@ -162,7 +175,7 @@ def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[
     is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
     if not any(name in to_run for name in CAN_RUN):
         return NO_RULE, []
-    version, items = _vulture_scan(root)
+    version, items = _vulture_scan(root, file)
     target = file.resolve()
     found = [
         finding

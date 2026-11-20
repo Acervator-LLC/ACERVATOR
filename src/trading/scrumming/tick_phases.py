@@ -154,6 +154,7 @@ class TickPhaseMixin:
     _fold_diag_last_blocker_set: str
     _fold_diag_tick: int
     _fold_eligible_tranches: Callable[..., list[dict]]
+    _fold_gain_usd: Callable[..., float]
     _fold_piece_laddered: bool
     _fold_queue_ref_price: float
     _fill_fee_fields: Callable[..., dict]
@@ -2429,7 +2430,8 @@ class TickPhaseMixin:
         sources: Optional[list] = None,
     ) -> None:
         """Book one settled piece of a fold rebuy: a lot per ``eligible`` tranche,
-        ``plan`` settled by the share of ``asked`` filled, and the growth.
+        ``plan`` settled by the share of ``asked`` filled, and the growth
+        ``_fold_gain_usd`` gives the units at scrum the fill restores.
 
         ``sources`` holds the queued tranche objects the plan named when the order went
         out; ``_planned_fold_sources`` finds each again for a piece that settles later.
@@ -2445,7 +2447,9 @@ class TickPhaseMixin:
         asset_at_scrum = sum(units_at_scrum(t) for t in eligible) * _share_filled
         extra_asset = buy_asset - asset_at_scrum
         pct_cheaper = (1 - buy_fill / intended_min_ref) * 100
-        accum_profit = priced_usd(extra_asset, buy_fill)
+        accum_profit = self._fold_gain_usd(
+            priced_usd(buy_asset, buy_fill), asset_at_scrum, buy_fill
+        )
 
         _total_elig_units = sum(t["units"] for t in eligible) + 1e-12
         for _t in eligible:

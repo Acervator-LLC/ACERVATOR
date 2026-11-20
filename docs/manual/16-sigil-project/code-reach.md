@@ -32,8 +32,27 @@ adds no condition to tier 2. Tier 3 runs vulture over every Python file that git
 target tree, tracked or untracked and not ignored, from its root, and keeps only the items in the input file. A name
 that another file of the tree uses is therefore not called unused. For a
 function or class, only the items inside its lines count. A folder that git
-ignores, such as `node_modules`, stays out of the run. Outside git, vulture
-reads every Python file under the root.
+ignores, such as `node_modules`, stays out of the run unless the input file
+sits in it. Outside git, vulture reads every Python file under the root.
+
+When git does not list the input file, because git ignores the file or its
+folder, vulture also reads that file and every Python file in its folder. The
+input file is therefore always in the list vulture reads, so the sigil never
+reads a file as clean without reading it. A function that a file beside it
+calls counts as reached. For a file that git lists, vulture reads only the
+files git lists.
+
+`dev_harness/sigils/code_reach.py, in _tree_files`:
+
+```python
+    files = [name for name in listed if name and (root / name).is_file()]
+    if not files:
+        return [WHOLE_TREE]
+    if file.relative_to(root).as_posix() in files:
+        return files
+    held = set(files)
+    return files + [name for name in _beside(root, file) if name not in held]
+```
 
 An item counts only while the card holds dead-code and the selection keeps it.
 
@@ -58,7 +77,8 @@ SETTINGS: dict[str, str] = {
     "can_run": str(len(CAN_RUN)),
     "tree_files": "the .py files "
     + " ".join(TREE_FILES[1:])
-    + " lists from the root of the target tree, else the whole tree outside git",
+    + " lists from the root of the target tree, else the whole tree outside git; "
+    "when git does not list the input file, also that file and each .py file in its folder",
     "confidence_floor": "100",
     "fault_file": "the file the input line names: UNREACHED reads HOLD when it sits "
     "in application_source and an item reaches confidence_floor",
@@ -122,7 +142,7 @@ before vulture runs.
 
 | Tool | Version on the card | How the card runs it | Floor that holds a merge |
 | ---- | ------------------- | -------------------- | ------------------------ |
-| vulture | 2.16 | `Vulture().scavenge()` over the files git lists, then `get_unused_code()`, as vulture's README shows it, from the root of the target tree | confidence 100 |
+| vulture | 2.16 | `Vulture().scavenge()` over the files git lists, with the input file and the Python files in its folder when git does not list it, then `get_unused_code()`, as vulture's README shows it, from the root of the target tree | confidence 100 |
 
 ## Rules
 
