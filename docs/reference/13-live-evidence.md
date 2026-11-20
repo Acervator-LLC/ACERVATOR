@@ -818,7 +818,7 @@ dollars can hold fewer units, and a rising market lifts both sides at once, so
 units are reported first here.
 
 The account was funded on 2026-04-12. The newest export carries one fill on that
-day, for $200 on one base, so a baseline read as the position held that day is
+day, on one base, so a baseline read as the position held that day is
 one base rather than a portfolio. The baseline is the money instead. For each
 charted base it is the net cash the platform committed to that base, placed at
 that base's own price on 2026-04-12 and left untouched from that day.
@@ -828,8 +828,8 @@ Transaction and Quantity Transacted columns that the charts of
 [Part 9](../manual/10-live-trade-history.md) read, so both metrics run on the same rows.
 
 Four of the 38 bases took no net cash at all. On each of them the sales returned
-more dollars than the purchases spent, and units are still held. A05 is $73.54
-ahead of its own cost, A11 $31.27, A29 $7.56 and A30 $0.34. A buy-and-hold
+more dollars than the purchases spent, and units are still held. A05 is the
+furthest ahead of its own cost, then A11, A29 and A30. A buy-and-hold
 investor has no position to compare against a negative cost, so those four carry
 no ratio and sit in the right-hand panel of the first figure.
 
@@ -847,17 +847,18 @@ widest ahead           5.7905
 widest behind          0.5060
 ```
 
-In dollars, both sides valued at the same final recorded price:
+In dollars, both sides valued at the same final recorded price, each written as
+a share of the baseline:
 
 ```
-held now                      $3,555.04
-the same money held from the baseline   $3,316.34
-difference                      $238.70
-ratio                             1.0720
+held now                                1.0720 of the baseline
+the same money held from the baseline   1.0000, the baseline
+difference                              0.0720 of the baseline
+ratio                                   1.0720
 ```
 
-Across all 38 bases the platform holds $3,894.86 at the final recorded price
-against $3,694.42 of net cash committed.
+Across all 38 bases the platform holds 1.0543 times the net cash it committed,
+valued at the final recorded price.
 
 Read the two together. The dollar figure is one number and it rides whatever the
 market did; the unit figure is 34 separate answers to the question the engine is

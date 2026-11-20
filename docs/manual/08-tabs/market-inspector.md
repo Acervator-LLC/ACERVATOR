@@ -576,14 +576,14 @@ TICKER_UNTRADEABLE_FORMAT = (
 ```
 
 The excess the answer measures against is the largest one the saved fleet can
-produce. The highest Target Balance in the fleet is 350 dollars and every bot
-carries the same 5 per cent scrumming interval, so the largest excess is 17
-dollars 50.
+produce. Every bot carries the same 5 per cent scrumming interval, so the
+largest excess is 5 per cent of the highest Target Balance in the fleet.
 
-`src/trading/scrumming/sizing.py` — the reference excess
+`src/trading/scrumming/sizing.py` — the reference excess, with the fleet's
+highest Target Balance left out
 
 ```python
-LARGEST_FLEET_TARGET_USD = 350.0
+LARGEST_FLEET_TARGET_USD = ...
 FLEET_SCRUMMING_INTERVAL_PCT = 5.0
 REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
     LARGEST_FLEET_TARGET_USD, FLEET_SCRUMMING_INTERVAL_PCT
@@ -593,9 +593,8 @@ REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
 OVERTAKEN, quoted whole:
 
 > The excess the answer measures against is the largest one the saved fleet can
-> produce. The highest Target Balance in the fleet is 350 dollars and every bot
-> carries the same 5 per cent scrumming interval, so the largest excess is 17
-> dollars 50.
+> produce. Every bot carries the same 5 per cent scrumming interval, so the
+> largest excess is 5 per cent of the highest Target Balance in the fleet.
 
 True today: the screen reads the fleet each time it labels a row, and it says
 on the screen which figure it used. The two constants were renamed, because

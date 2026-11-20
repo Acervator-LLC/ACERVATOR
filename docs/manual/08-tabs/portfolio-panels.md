@@ -264,8 +264,8 @@ if joined:
 ```
 
 Before this, one call fetched the newest 500 fills and the figure was FIFO over
-that window alone. On the two symbols past 500 fills the window read $-137.38
-and $119.91 where the complete history reads $-390.53 and $60.27.
+that window alone. On the two symbols past 500 fills, the window read 0.35 times
+the complete history's figure on one and 1.99 times it on the other.
 
 `src/trading/scrumming/reconciliation.py` — `refresh_exchange_position_health`
 
@@ -354,8 +354,8 @@ Five cards close the row, and each one counts a single thing.
 
 | Card | What it counts |
 | ---- | -------------- |
-| Scrummed | Cumulative USD sold across every bot since the process started |
-| Folded | Cumulative USD bought across every bot since the process started |
+| Scrummed | Cumulative dollar value sold across every bot since the process started |
+| Folded | Cumulative dollar value bought across every bot since the process started |
 | Trades | Executed buys and sells across the active bots |
 | Bots | Bots in the RUNNING state |
 | Errors | Errors across every bot since the last reset |

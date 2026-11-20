@@ -214,8 +214,8 @@ backwards.
 
 One row carries a negative fee.
 
-Three A27 rows carry a Subtotal that rounds to $0.00 against a quantity that is
-real. A filter that drops zero-value rows drops those base units with them.
+Three A27 rows carry a Subtotal too small to show at two decimal places against
+a quantity that is real. A filter that drops zero-value rows drops those base units with them.
 
 ## Where the figures live
 
