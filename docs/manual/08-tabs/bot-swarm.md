@@ -197,6 +197,34 @@ ledger per bot.
 
 Now: a sale and a detonation move a share along a wire, and no fold does. A wire moves dollars only between two bots on one exchange and one currency (`src/trading/scrumming/wire_routing.py, in WireRoutingMixin._shares_wallet`).
 
+### A bot's shares, read together
+
+A save that would take one bot's wires past 100% of its surplus, or put a share below zero, is refused before anything is written. On the Qt build the drag box and Quick Routing each show the reason in a message box, and Quick Routing shows it before its confirm question. The fleet file's wire list refuses the same change as a backstop (`src/gui/main_tabs/bot_visualizer_surface.py, in routes_refusal`), and so do the live, Paper and Simulator wire managers.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — `apply_routes`
+
+```python
+refusal = routes_refusal(state, add, remove)
+if refusal:
+    raise WireSetRefused(refusal)
+```
+
+The React page holds the same refusal. Its drag box opens again with the reason above the prompt, and its Quick Routing records the reason as a notice. Read on the running page at 1400 by 900 with a made-up fleet, the React page stores no dragged wire, and its Connect stops at the confirm question because the page sends no reply. The locust grid starts below the window and the routing panel is 0 pixels tall, so neither control can be reached there today.
+
+`src/gui/main_tabs/bot_visualizer_surface.py` — `WireBoard.add`
+
+```python
+self.wires.append(wire)
+self.emitted.append(
+    [
+        BOT_LOG_TOPIC,
+        source_id,
+        WIRE_CONNECTED_LOG_FORMAT.format(pct=pct, target=short_id(target_id)),
+    ]
+)
+self.emitted.append([WIRE_CREATED_TOPIC, source_id, target_id, pct])
+```
+
 ### The percent a wire is allowed to carry
 
 One rule decides whether a stored percent is a number, and every reader of the

@@ -11,10 +11,21 @@ import logging
 from typing import Any, Optional, TYPE_CHECKING
 
 from ...core.event_bus import LINE_KIND_WIRE_FLOW
-from ..otd_math import DistanceSettingUnreadable
+from ..container.config import as_finite_float
+from ..otd_math import WHOLE_PCT, DistanceSettingUnreadable
+from ..smart_wire import (
+    IDLE_NO_BOT,
+    IDLE_OTHER_WALLET,
+    IDLE_UNDER_FLOOR,
+    MIN_WIRE_USD,
+    WireCarry,
+    scaled_wire_pct,
+    wire_total_pct,
+)
 from ..wallet_reservations import wallet_currency, wallet_key
 from .sizing import (
     held_wire_usd,
+    interval_sale_surplus_usd,
     restored_sale_surplus_usd,
     tranche_wire_usd,
     wire_credit_entries,
@@ -129,6 +140,40 @@ class WireRoutingMixin(_Host):
             return 0.0
         return restored_sale_surplus_usd(proceeds_usd, sold_units, sale_price, distance)
 
+    def _interval_sale_surplus_usd(self) -> float:
+        """``interval_sale_surplus_usd`` of ``_target_balance`` at ``opposing_distance_settings``, 0.0 where either is unreadable."""
+        target = as_finite_float(getattr(self, "_target_balance", None))
+        if target is None:
+            return 0.0
+        try:
+            distance = self.opposing_distance_settings()
+        except DistanceSettingUnreadable:
+            return 0.0
+        return interval_sale_surplus_usd(target, distance)
+
+    def wire_carry(self, target_id: str) -> WireCarry:
+        """The ``WireCarry`` of this bot's wire to ``target_id`` on a sale the size of the scrumming interval.
+
+        Its share is ``scaled_wire_pct`` of ``_interval_sale_surplus_usd`` over
+        ``get_outgoing_wires``, the shares ``_route_scrum_proceeds_via_wires`` splits a sale by.
+        """
+        manager = self._smart_wire_mgr
+        wires = manager.get_outgoing_wires(self.bot_id)
+        surplus = self._interval_sale_surplus_usd()
+        share_pct = scaled_wire_pct(
+            wires.get(target_id), wire_total_pct(wires.values())
+        )
+        share_usd = surplus * share_pct / 100.0
+        target = (getattr(manager, "_bot_refs", {}) or {}).get(target_id)
+        reason: Optional[str] = None
+        if target is None:
+            reason = IDLE_NO_BOT
+        elif not self._shares_wallet(target):
+            reason = IDLE_OTHER_WALLET
+        elif share_usd < MIN_WIRE_USD:
+            reason = IDLE_UNDER_FLOOR
+        return WireCarry(share_usd=share_usd, surplus_usd=surplus, idle_reason=reason)
+
     def _route_scrum_proceeds_via_wires(
         self,
         scrum_usd: float,
@@ -177,18 +222,15 @@ class WireRoutingMixin(_Host):
                 )
                 self._bus.emit("bot.log", bot_id=self.bot_id, message=_held)
                 return 0.0
-            # Clamp total pct to 100% (operator config could sum > 100%).
-            _total_pct = sum(float(p) for p in _wires.values())
-            _scaling = 1.0
-            if _total_pct > 100.0:
-                _scaling = 100.0 / _total_pct
+            _total_pct = wire_total_pct(_wires.values())
+            if _total_pct > WHOLE_PCT:
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
                         f"WIRE WARNING: outgoing wires sum to "
                         f"{_total_pct:.1f}% (>100%); clamping to "
-                        f"100% via {_scaling:.4f}× scaling factor."
+                        f"100% via {WHOLE_PCT / _total_pct:.4f}× scaling factor."
                     ),
                 )
             _bot_refs = getattr(_wire_mgr, "_bot_refs", {}) or {}
@@ -224,9 +266,15 @@ class WireRoutingMixin(_Host):
                 )
             for _tgt_id, _pct in _wires.items():
                 try:
-                    _eff_pct = min(float(_pct) * _scaling, _per_wire_safe_pct)
-                    _routed = _surplus * (_eff_pct / 100.0)
-                    if _routed < 0.01:  # dust floor
+                    _eff_pct = min(
+                        scaled_wire_pct(_pct, _total_pct), _per_wire_safe_pct
+                    )
+                    # _routed_usd stops at _surplus less _scrum_routed_total.
+                    _routed_usd = min(
+                        _surplus * (_eff_pct / 100.0),
+                        _surplus - _scrum_routed_total,
+                    )
+                    if _routed_usd < MIN_WIRE_USD:
                         continue
                     _tgt_bot = _bot_refs.get(_tgt_id)
                     if _tgt_bot is None:
@@ -239,15 +287,17 @@ class WireRoutingMixin(_Host):
                             bot_id=self.bot_id,
                             message=(
                                 f"WIRE HELD ({label.upper()}): {_tgt_id} trades "
-                                f"another wallet, so ${_routed:.4f} stays with this "
-                                f"bot."
+                                f"another wallet, so ${_routed_usd:.4f} stays with "
+                                f"this bot."
                             ),
                         )
                         continue
                     _apply_result = _tgt_bot.apply_wire_income(
-                        usd=_routed, source=self.bot_id, ref=f"{label}@{sell_fill:.8f}"
+                        usd=_routed_usd,
+                        source=self.bot_id,
+                        ref=f"{label}@{sell_fill:.8f}",
                     )
-                    _scrum_routed_total += _routed
+                    _scrum_routed_total += _routed_usd
                     try:
                         _mode = (
                             _apply_result.get("mode", "?")
@@ -263,7 +313,7 @@ class WireRoutingMixin(_Host):
                             "bot.log",
                             bot_id=self.bot_id,
                             message=(
-                                f"[WIRE FIRE] scrum-route: ${_routed:.4f} "
+                                f"[WIRE FIRE] scrum-route: ${_routed_usd:.4f} "
                                 f"→ {_tgt_short} (pct={_eff_pct:.2f}%, "
                                 f"landed: {_mode})"
                             ),
@@ -286,7 +336,7 @@ class WireRoutingMixin(_Host):
                                     timestamp=int(_wt_time.time()),
                                     source_bot=self.bot_id,
                                     target_bot=str(_tgt_id),
-                                    amount=float(_routed),
+                                    amount=float(_routed_usd),
                                     wire_type=f"{label.upper()}_ROUTE",
                                     reason=(
                                         f"{_eff_pct:.2f}% of "
@@ -309,11 +359,11 @@ class WireRoutingMixin(_Host):
                             "wire totals nor the provenance breakdown the "
                             "Bot Swarm tab draws records this transfer",
                             self.bot_id,
-                            _routed,
+                            _routed_usd,
                             _tgt_id,
                         )
                     else:
-                        _booker(self.bot_id, _tgt_id, _routed)
+                        _booker(self.bot_id, _tgt_id, _routed_usd)
                 except Exception as _wone_exc:
                     logger.warning(
                         "Bot %s wire route to %s failed (label=%s): %s",

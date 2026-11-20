@@ -26,6 +26,40 @@ from typing import Any, Optional
 
 from .. import design_system as ds
 from ..visualizer import growth_stage
+from ...trading.smart_wire import wire_change_refusal, wire_set_refusal
+
+
+class WireSetRefused(ValueError):
+    """``apply_routes`` refused the change ``routes_refusal`` names; its text is that reason."""
+
+
+def routes_refusal(state: dict, add: list, remove: list) -> Optional[str]:
+    """``wire_set_refusal`` of each source ``add`` names, over ``stored_wires`` as ``add`` and ``remove`` would leave them, or None."""
+    shares: dict = {}
+    for source, target, pct in stored_wires(state):
+        shares.setdefault(source, {})[target] = pct
+    for source, target in remove:
+        shares.get(str(source), {}).pop(str(target), None)
+    for source, target, pct in add:
+        shares.setdefault(str(source), {})[str(target)] = pct
+    for source in dict.fromkeys(str(one[0]) for one in add):
+        refusal = wire_set_refusal(shares.get(source, {}).values())
+        if refusal:
+            return refusal
+    return None
+
+
+def board_refusal(
+    wires: list, source_id: str, target_id: str, pct: Any
+) -> Optional[str]:
+    """``wire_change_refusal`` of ``source_id``'s shares in ``wires`` with ``target_id`` set to ``pct``."""
+    shares = {
+        str(one.get("target_id", "")): one.get("pct")
+        for one in wires
+        if one.get("source_id") == source_id
+    }
+    return wire_change_refusal(shares, str(target_id), pct)
+
 
 METHOD = "bot_visualizer.state"
 
@@ -1097,6 +1131,7 @@ def wire_menu_entries(wire: dict, bidirectional: bool) -> list:
 WIRE_CONFIG_TITLE = "Configure Profit Wire"
 WIRE_CONFIG_WIDTH_PX = 350
 WIRE_CONFIG_PROMPT_FORMAT = "Route profits from bot {source}\nto bot {target}"
+WIRE_REFUSED_PROMPT_FORMAT = "{why}\n\n{prompt}"
 WIRE_CONFIG_ROW_LABEL = "Routing:"
 
 
@@ -1150,8 +1185,12 @@ def apply_routes(state: dict, add: list, remove: list) -> dict:
     """Write each ``add`` pair into ``WIRES_KEY`` and drop each ``remove`` pair.
 
     ``stored_wires``, ``clear_all_routes`` and ``hydration_plan`` read
-    that same list.
+    that same list, and ``WireSetRefused`` leaves it unwritten where
+    ``routes_refusal`` names a reason.
     """
+    refusal = routes_refusal(state, add, remove)
+    if refusal:
+        raise WireSetRefused(refusal)
     held = state.get(WIRES_KEY)
     records = [one for one in (held or []) if isinstance(one, dict)]
 
@@ -1590,6 +1629,21 @@ class BotVisualizerModel:
         kind = panel.get("kind")
         if kind == PANEL_CONFIG and choice == PANEL_OK:
             share = WIRE_PCT_START if pct is None else pct
+            refusal = board_refusal(
+                self.board.wires, panel["source_id"], panel["target_id"], share
+            )
+            if refusal:
+                self.panel = dict(
+                    panel,
+                    value=share,
+                    prompt=WIRE_REFUSED_PROMPT_FORMAT.format(
+                        why=refusal,
+                        prompt=wire_config_prompt(
+                            panel["source_id"], panel["target_id"]
+                        ),
+                    ),
+                )
+                return
             self.board.add(panel["source_id"], panel["target_id"], share)
         elif kind == PANEL_CONFIRM and choice == PANEL_YES:
             for source, target in panel.get("pairs") or []:

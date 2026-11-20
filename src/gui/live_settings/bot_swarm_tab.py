@@ -29,6 +29,8 @@ from ..main_tabs.bot_swarm_tab_surface import (
     SUMMARY_GROUP_TITLE_QT,
     TRANSACTIONS_HEADER_TOOLTIPS,
     TRANSACTIONS_HEADERS,
+    inbound_carry_text,
+    outbound_carry_text,
 )
 from ..tooltips import set_description
 
@@ -82,7 +84,7 @@ class BotSwarmTabMixin:
         wires_dict = getattr(mgr, "_wires", {}) or {}
         ledgers = getattr(mgr, "_ledgers", {}) or {}
         transactions = getattr(mgr, "_transactions", []) or []
-        getattr(mgr, "_bot_refs", {}) or {}
+        bot_refs = getattr(mgr, "_bot_refs", {}) or {}
 
         # The key is kept when the percentage is refused, the same way
         # the inbound side keeps it.
@@ -253,6 +255,9 @@ class BotSwarmTabMixin:
                         "—" if tgt_id in out_unreadable else f"${lifetime:,.4f}"
                     ),
                 )
+                out_tbl.setItem(
+                    row, 3, QTableWidgetItem(outbound_carry_text(self._bot, tgt_id))
+                )
 
             ol.addWidget(out_tbl)
             layout.addWidget(out_group)
@@ -302,6 +307,11 @@ class BotSwarmTabMixin:
                     QTableWidgetItem(
                         "—" if src_id in in_unreadable else f"${lifetime:,.4f}"
                     ),
+                )
+                in_tbl.setItem(
+                    row,
+                    3,
+                    QTableWidgetItem(inbound_carry_text(bot_refs, src_id, bot_id)),
                 )
 
             il.addWidget(in_tbl)

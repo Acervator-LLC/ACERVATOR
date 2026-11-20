@@ -222,6 +222,7 @@ TAB_CLEAR_ROUTES = "tab.clear_routes"
 TAB_EMIT = "tab.emit"
 TAB_WARN = "tab.warn"
 TAB_ASK = "tab.ask"
+TAB_ROUTES_REFUSAL = "tab.routes_refusal"
 ROUTE_NAMES = (
     TAB_WIDGET_SYMBOL,
     TAB_STATE_SYMBOL,
@@ -230,6 +231,7 @@ ROUTE_NAMES = (
     TAB_EMIT,
     TAB_WARN,
     TAB_ASK,
+    TAB_ROUTES_REFUSAL,
 )
 
 READ_SCROLL = "read_scroll"
@@ -244,6 +246,7 @@ REFUSED_NO_SOURCES = "refused.no_sources"
 REFUSED_NO_DESTINATIONS = "refused.no_destinations"
 REFUSED_ZERO_RATE = "refused.zero_rate"
 REFUSED_SELF_WIRE = "refused.self_wire"
+REFUSED_PAST_WHOLE = "refused.past_whole"
 REFUSED_UNCONFIRMED = "refused.unconfirmed"
 REFUSED_SAVE_FAILED = "refused.save_failed"
 REDRAW_FAILED = "redraw.failed"
@@ -256,6 +259,7 @@ BRANCH_NAMES = (
     REFUSED_NO_DESTINATIONS,
     REFUSED_ZERO_RATE,
     REFUSED_SELF_WIRE,
+    REFUSED_PAST_WHOLE,
     REFUSED_UNCONFIRMED,
     REFUSED_SAVE_FAILED,
     REDRAW_FAILED,
@@ -361,7 +365,9 @@ class RoutingTabState:
         warn_refusal: Any = None,
         ask_refusal: Any = None,
         masked: Any = False,
+        stored_wires: Any = None,
     ) -> None:
+        self.stored_wires = [dict(one) for one in (stored_wires or [])]
         self.widget_symbols = dict(widget_symbols or {})
         self.state_symbols = dict(state_symbols or {})
         self.cleared_pairs = [list(one) for one in (cleared_pairs or [])]
@@ -408,6 +414,15 @@ class RoutingTabState:
         if self.apply_refusal:
             raise RuntimeError(self.apply_refusal)
         self.saved.append([added, dropped])
+
+    def routes_refusal(self, add: Any) -> Optional[str]:
+        """``bot_visualizer_surface.routes_refusal`` of ``add`` over ``stored_wires``."""
+        from . import bot_visualizer_surface
+
+        added = [list(one) for one in add]
+        self.record(TAB_ROUTES_REFUSAL, added)
+        held = {bot_visualizer_surface.WIRES_KEY: self.stored_wires}
+        return bot_visualizer_surface.routes_refusal(held, added, [])
 
     def clear_all_routes(self) -> list:
         """Remove every wire in the swarm and answer which ones went."""
@@ -555,6 +570,14 @@ class LiveRoutingTab:
         bot_visualizer_surface.apply_routes(state, added, dropped)
         self.save(state)
         self.saved.append([added, dropped])
+
+    def routes_refusal(self, add: Any) -> Optional[str]:
+        """``bot_visualizer_surface.routes_refusal`` of ``add`` over the saved fleet load."""
+        from . import bot_visualizer_surface
+
+        added = [list(one) for one in add]
+        self.record(TAB_ROUTES_REFUSAL, added)
+        return bot_visualizer_surface.routes_refusal(self.load(), added, [])
 
     def clear_all_routes(self) -> list:
         """Empty the stored wire list and answer the pairs that were in it."""
@@ -826,6 +849,10 @@ class QuickRoutingModel:
         if not wires:
             self.reject(SELF_WIRE_CONNECT_TEXT)
             return REFUSED_SELF_WIRE
+        refusal = self.tab.routes_refusal(wires)
+        if refusal:
+            self.reject(refusal)
+            return REFUSED_PAST_WHOLE
         detail = CONNECT_DETAIL_FORMAT.format(
             sources=len(sources), dests=len(dests), pct=pct
         )

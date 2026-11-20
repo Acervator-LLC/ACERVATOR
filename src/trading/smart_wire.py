@@ -13,12 +13,53 @@ import logging
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+from .otd_math import WHOLE_PCT
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = logging.getLogger("acervator.smart_wire")
 
 MATURE_GROWTH_PCT: float = 200.0
 """A position is mature once its value exceeds its cost basis by this percent."""
+
+MIN_WIRE_USD: float = 0.01
+"""The share of one sale's surplus under which a wire carries nothing."""
+
+SHARE_UNREADABLE_FORMAT = (
+    "A wire share of {share!r} is not a number, so it is not saved."
+)
+SHARE_BELOW_ZERO_FORMAT = (
+    "A wire share of {share:.6g}% is below zero. A wire carries 0% to 100% of "
+    "the surplus."
+)
+SET_PAST_WHOLE_FORMAT = (
+    "This bot's wires would carry {total:.6g}% of its surplus. Together they "
+    "carry at most {whole:.6g}%. Lower a share or remove a wire first."
+)
+SET_SCALED_FORMAT = (
+    "SmartWire: %s's saved wires total %.6g%%, past %.6g%%; each sale scales "
+    "every share by %.6f, so the wires carry the whole surplus and no more"
+)
+
+IDLE_NO_BOT = "no bot by this id is in the fleet"
+IDLE_OTHER_WALLET = "the target trades another wallet"
+IDLE_UNDER_FLOOR = "its share is under the floor"
+
+
+@dataclass(frozen=True)
+class WireCarry:
+    """What one wire takes from the surplus of a sale the size of the scrumming interval.
+
+    ``idle_reason`` is ``IDLE_NO_BOT``, ``IDLE_OTHER_WALLET`` or
+    ``IDLE_UNDER_FLOOR`` for a wire that carries nothing, and None otherwise.
+    """
+
+    share_usd: float
+    surplus_usd: float
+    idle_reason: Optional[str]
 
 
 def routable_pct(value) -> Optional[float]:
@@ -47,6 +88,58 @@ def pct_kind_refusal(pct) -> Optional[str]:
             f"that figure"
         )
     return None
+
+
+def wire_total_pct(shares: Iterable) -> float:
+    """``math.fsum`` of each share in ``shares`` that ``routable_pct`` admits above zero."""
+    admitted = [routable_pct(share) for share in shares]
+    return math.fsum(share for share in admitted if share is not None and share > 0.0)
+
+
+def scaled_wire_pct(share, total_pct: float) -> float:
+    """``share`` times ``WHOLE_PCT`` over a ``total_pct`` past ``WHOLE_PCT``, else ``share``, and 0.0 for a share ``routable_pct`` refuses or at or below zero.
+
+    Every router splits a sale's surplus by it, so a saved set past ``WHOLE_PCT``
+    carries the whole surplus and no more.
+    """
+    admitted = routable_pct(share)
+    if admitted is None or admitted <= 0.0:
+        return 0.0
+    if total_pct > WHOLE_PCT:
+        return admitted * WHOLE_PCT / total_pct
+    return admitted
+
+
+def wire_set_refusal(shares: Iterable) -> Optional[str]:
+    """Why one bot's wire ``shares`` cannot be saved together, or None when they can.
+
+    A share ``routable_pct`` refuses, a share below zero and a ``wire_total_pct``
+    past ``WHOLE_PCT`` are each refused, so a saved set never carries more than
+    its surplus.
+    """
+    held = list(shares)
+    for share in held:
+        admitted = routable_pct(share)
+        if admitted is None:
+            return SHARE_UNREADABLE_FORMAT.format(share=share)
+        if admitted < 0.0:
+            return SHARE_BELOW_ZERO_FORMAT.format(share=admitted)
+    total = wire_total_pct(held)
+    if total > WHOLE_PCT:
+        return SET_PAST_WHOLE_FORMAT.format(total=total, whole=WHOLE_PCT)
+    return None
+
+
+def wire_change_refusal(shares: dict, target_id: str, pct: float) -> Optional[str]:
+    """``wire_set_refusal`` of one bot's ``shares`` with ``target_id`` set to ``pct``, and None where ``target_id`` already holds ``pct``.
+
+    ``SmartWireManager.register_wire`` and the Paper and Simulator wire managers read it.
+    """
+    if shares.get(target_id) == pct:
+        return None
+    proposed = dict(shares)
+    proposed[target_id] = pct
+    return wire_set_refusal(proposed.values())
 
 
 def mature_threshold_usd(cost_basis_usd: float) -> float:
@@ -302,6 +395,9 @@ class SmartWireManager:
             }
         if p <= 0 or p > 100:
             return {"applied": False, "reason": f"pct must be in (0, 100]; got {p}"}
+        set_refusal = wire_change_refusal(self._wires.get(source_id, {}), target_id, p)
+        if set_refusal:
+            return {"applied": False, "reason": set_refusal}
         prior = self._wires.get(source_id, {}).get(target_id)
         self._wires.setdefault(source_id, {})[target_id] = p
         if prior is None:
@@ -637,6 +733,12 @@ class SmartWireManager:
 
         if n > 0:
             logger.info("SmartWire: imported %d wire(s) from saved state", n)
+        for source_id, targets in self._wires.items():
+            total = wire_total_pct(targets.values())
+            if total > WHOLE_PCT:
+                logger.warning(
+                    SET_SCALED_FORMAT, source_id, total, WHOLE_PCT, WHOLE_PCT / total
+                )
         lost = malformed + unreadable + unroutable
         if lost:
             logger.warning(

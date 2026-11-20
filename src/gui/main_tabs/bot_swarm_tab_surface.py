@@ -29,6 +29,49 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from .. import design_system as ds
+from ...trading.smart_wire import IDLE_NO_BOT, IDLE_UNDER_FLOOR, MIN_WIRE_USD
+
+CARRIES_FORMAT = "Yes: ${share:.4f} of ${surplus:.4f}"
+UNDER_FLOOR_FORMAT = "No: ${share:.4f} of ${surplus:.4f} is under ${floor:.2f}"
+IDLE_FORMAT = "No: {reason}"
+
+
+def wire_carry_of(source_bot: Any, target_id: Any) -> Any:
+    """``source_bot.wire_carry`` of ``target_id``, or None where ``source_bot`` reads none."""
+    reader = getattr(source_bot, "wire_carry", None)
+    if reader is None:
+        return None
+    try:
+        return reader(str(target_id))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def carry_text(carry: Any) -> str:
+    """The Carries money cell for one ``WireCarry``, and ``NO_VALUE`` for None."""
+    if carry is None:
+        return NO_VALUE
+    if carry.idle_reason is None:
+        return CARRIES_FORMAT.format(share=carry.share_usd, surplus=carry.surplus_usd)
+    if carry.idle_reason == IDLE_UNDER_FLOOR:
+        return UNDER_FLOOR_FORMAT.format(
+            share=carry.share_usd, surplus=carry.surplus_usd, floor=MIN_WIRE_USD
+        )
+    return IDLE_FORMAT.format(reason=carry.idle_reason)
+
+
+def outbound_carry_text(bot: Any, target_id: Any) -> str:
+    """The Carries money cell of ``bot``'s wire to ``target_id``."""
+    return carry_text(wire_carry_of(bot, target_id))
+
+
+def inbound_carry_text(bot_refs: Any, source_id: Any, bot_id: Any) -> str:
+    """The Carries money cell of the wire from ``source_id`` to ``bot_id``, read on the source bot in ``bot_refs``."""
+    source = (bot_refs or {}).get(source_id)
+    if source is None:
+        return IDLE_FORMAT.format(reason=IDLE_NO_BOT)
+    return carry_text(wire_carry_of(source, bot_id))
+
 
 METHOD = "bot_swarm_tab.state"
 
@@ -47,7 +90,7 @@ BOT_REFS_ATTRIBUTE = "_bot_refs"
 WIRE_CREDITS_ATTRIBUTE = "_pending_wire_credits"
 WIRE_LEDGER_ATTRIBUTE = "_pending_wire_ledger"
 
-BOT_REFS_READ_IS_UNUSED = True
+BOT_REFS_READ_IS_UNUSED = False
 
 STORED_SOURCE_KEY = "source_id"
 STORED_TARGET_KEY = "target_id"
@@ -172,20 +215,26 @@ INBOUND_GROUP_TITLE_FORMAT = "Inbound Wires ({count})"
 PENDING_GROUP_TITLE_FORMAT = "Pending Wire Credits ({count})"
 TRANSACTIONS_GROUP_TITLE_FORMAT = "Recent Wire Transactions (last {count})"
 
-OUTBOUND_HEADERS = ("Target Bot", "Wire %", "Lifetime $ to target")
-INBOUND_HEADERS = ("Source Bot", "Wire %", "Lifetime $ from source")
+OUTBOUND_HEADERS = ("Target Bot", "Wire %", "Lifetime $ to target", "Carries money")
+INBOUND_HEADERS = ("Source Bot", "Wire %", "Lifetime $ from source", "Carries money")
 PENDING_HEADERS = ("Age", "Source", "USD", "Ref")
 TRANSACTIONS_HEADERS = ("Age", "Direction", "Other Bot", "USD", "Type")
 
+CARRIES_HEADER_TOOLTIP = (
+    "Yes, with the dollars this wire takes from the surplus of a sale the size "
+    "of the scrumming interval, or No and the reason it carries nothing."
+)
 OUTBOUND_HEADER_TOOLTIPS = (
     "The bot this wire carries profit to, with its asset when known.",
     "The share of this bot's routed profit that this wire is set to carry.",
     "Dollars this bot has sent to the target, summed over the transfers on record.",
+    CARRIES_HEADER_TOOLTIP,
 )
 INBOUND_HEADER_TOOLTIPS = (
     "The bot this wire carries profit from, with its asset when known.",
     "The share of the source's routed profit that this wire is set to carry.",
     "Dollars the source has sent to this bot, summed over the transfers on record.",
+    CARRIES_HEADER_TOOLTIP,
 )
 PENDING_HEADER_TOOLTIPS = (
     "How long ago this credit arrived.",
@@ -513,6 +562,7 @@ class BotSwarmTabModel:
         wires = getattr(fleet, WIRES_ATTRIBUTE, {}) or {}
         ledgers = getattr(fleet, LEDGERS_ATTRIBUTE, {}) or {}
         transactions = getattr(fleet, TRANSACTIONS_ATTRIBUTE, []) or []
+        bot_refs = getattr(fleet, BOT_REFS_ATTRIBUTE, {}) or {}
         outbound = {
             target_id: as_finite_float(pct)
             for target_id, pct in dict(wires.get(bot_id, {})).items()
@@ -530,7 +580,7 @@ class BotSwarmTabModel:
         if outbound:
             self._outbound(bot_id, outbound, ledgers, transactions)
         if inbound:
-            self._inbound(bot_id, inbound, ledgers, transactions)
+            self._inbound(bot_id, inbound, ledgers, transactions, bot_refs)
         if pending_ledger:
             self._pending(pending_ledger, now_ts)
         recent = [
@@ -703,10 +753,11 @@ class BotSwarmTabModel:
                         if target_id in unreadable
                         else MONEY_FORMAT.format(value=totals.get(target_id, 0.0))
                     ),
+                    outbound_carry_text(self.bot, target_id),
                 ]
             )
 
-    def _inbound(self, bot_id, inbound: dict, ledgers, transactions) -> None:
+    def _inbound(self, bot_id, inbound: dict, ledgers, transactions, bot_refs) -> None:
         self._record(STEP_INBOUND)
         self.state.inbound_shown = True
         self.state.inbound_title = INBOUND_GROUP_TITLE_FORMAT.format(count=len(inbound))
@@ -723,6 +774,7 @@ class BotSwarmTabModel:
                         if source_id in unreadable
                         else MONEY_FORMAT.format(value=totals.get(source_id, 0.0))
                     ),
+                    inbound_carry_text(bot_refs, source_id, bot_id),
                 ]
             )
 
