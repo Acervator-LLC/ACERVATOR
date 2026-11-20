@@ -22,11 +22,17 @@ Nothing here imports Qt, reads a file or reads the clock.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from typing import Any, Optional
 
 from .. import design_system as ds
 from ..visualizer import growth_stage
-from ...trading.smart_wire import wire_change_refusal, wire_set_refusal
+from ...trading.smart_wire import routable_pct, wire_change_refusal, wire_set_refusal
+from .quick_routing_surface import ZERO_RATE_TEXT
+
+#: What ``BotVisualizerModel.save_routes`` holds: it takes the ``apply_routes``
+#: add and remove lists.
+RoutesWriter = Callable[[list, list], None]
 
 
 class WireSetRefused(ValueError):
@@ -59,6 +65,15 @@ def board_refusal(
         if one.get("source_id") == source_id
     }
     return wire_change_refusal(shares, str(target_id), pct)
+
+
+def zero_share_refusal(share: Any) -> Optional[str]:
+    """``ZERO_RATE_TEXT`` where ``routable_pct`` reads ``share`` at or below
+    ``MIN_WIRE_PCT``, else None."""
+    admitted = routable_pct(share)
+    if admitted is not None and admitted <= MIN_WIRE_PCT:
+        return ZERO_RATE_TEXT
+    return None
 
 
 METHOD = "bot_visualizer.state"
@@ -633,6 +648,24 @@ BUS_EMITTED = (WIRE_CREATED_TOPIC, WIRE_REMOVED_TOPIC, BOT_LOG_TOPIC)
 
 WIRE_CONNECTED_LOG_FORMAT = "WIRE CONNECTED: {pct}% of profit → bot {target}"
 WIRE_DISCONNECTED_LOG_FORMAT = "WIRE DISCONNECTED from bot {target}"
+
+#: The names ``EventBus.emit`` takes for each ``WireBoard.emitted`` topic, in
+#: entry order.
+BUS_FIELDS = {
+    BOT_LOG_TOPIC: ("bot_id", "message"),
+    WIRE_CREATED_TOPIC: ("source_id", "target_id", "pct"),
+    WIRE_REMOVED_TOPIC: ("source_id", "target_id"),
+}
+
+
+def bus_messages(emitted: list) -> list:
+    """Each ``WireBoard.emitted`` entry as its topic and the ``BUS_FIELDS`` values
+    it carries."""
+    return [
+        [entry[0], dict(zip(BUS_FIELDS[entry[0]], entry[1:], strict=True))]
+        for entry in emitted
+        if entry and entry[0] in BUS_FIELDS
+    ]
 
 
 def short_id(bot_id: Any) -> str:
@@ -1487,6 +1520,7 @@ class BotVisualizerModel:
         self.log_lines: list[list] = []
         self.panel: Optional[dict] = None
         self.sheet: dict = {}
+        self.save_routes: Optional[RoutesWriter] = None
 
     def update_bots(self, bot_statuses: list) -> None:
         """Take one fleet load, then cut the wires of every bot that left."""
@@ -1618,9 +1652,8 @@ class BotVisualizerModel:
     def answer_panel(self, choice: str, pct: Any = None, entry: Any = None) -> None:
         """Take the operator's answer to ``panel`` and clear it.
 
-        ``ok`` makes the wire the rate box was set for, ``yes`` cuts every
-        pair the confirmation named, and an ``entry`` from the picker cuts
-        the one wire it names.
+        ``ok`` saves and draws the wire the rate box was set for, and ``yes``
+        or a picker ``entry`` hands its pairs to ``cut``.
         """
         panel = self.panel
         self.panel = None
@@ -1629,29 +1662,46 @@ class BotVisualizerModel:
         kind = panel.get("kind")
         if kind == PANEL_CONFIG and choice == PANEL_OK:
             share = WIRE_PCT_START if pct is None else pct
-            refusal = board_refusal(
-                self.board.wires, panel["source_id"], panel["target_id"], share
+            source, target = panel["source_id"], panel["target_id"]
+            refusal = (
+                board_refusal(self.board.wires, source, target, share)
+                or zero_share_refusal(share)
+                or self._save_refusal([[source, target, share]], [])
             )
             if refusal:
                 self.panel = dict(
                     panel,
                     value=share,
                     prompt=WIRE_REFUSED_PROMPT_FORMAT.format(
-                        why=refusal,
-                        prompt=wire_config_prompt(
-                            panel["source_id"], panel["target_id"]
-                        ),
+                        why=refusal, prompt=wire_config_prompt(source, target)
                     ),
                 )
                 return
-            self.board.add(panel["source_id"], panel["target_id"], share)
+            self.board.add(source, target, share)
         elif kind == PANEL_CONFIRM and choice == PANEL_YES:
-            for source, target in panel.get("pairs") or []:
-                self.board.remove(source, target)
+            self.cut([list(pair) for pair in panel.get("pairs") or []])
         elif kind == PANEL_PICKER and isinstance(entry, (list, tuple)):
             chosen = list(entry)
             if len(chosen) == 3:
-                self.board.remove(chosen[1], chosen[2])
+                self.cut([chosen[1:]])
+
+    def _save_refusal(self, add: list, remove: list) -> Optional[str]:
+        """Hand ``add`` and ``remove`` to ``save_routes``, and answer the
+        ``WireSetRefused`` reason or None."""
+        if self.save_routes is None:
+            return None
+        try:
+            self.save_routes(add, remove)
+        except WireSetRefused as refused:
+            return str(refused)
+        return None
+
+    def cut(self, pairs: list) -> None:
+        """Remove each source and target pair in ``pairs`` through ``save_routes``,
+        then from ``board``."""
+        self._save_refusal([], pairs)
+        for source, target in pairs:
+            self.board.remove(source, target)
 
     def toggle_privacy_mode(self) -> None:
         """Set every mask in ``mask_registry`` on, or every one off.
@@ -2001,7 +2051,7 @@ def apply_action(model: BotVisualizerModel, params: dict) -> dict:
     elif action == "wire_removed":
         model.board.on_removed(params.get("event") or {})
     elif action == "remove_wire":
-        model.board.remove(params.get("source_id", ""), params.get("target_id", ""))
+        model.cut([[params.get("source_id", ""), params.get("target_id", "")]])
     elif action == "animate":
         model.board.advance(float(params.get("dt", 0.0)))
     elif action == "set_opacity":

@@ -1108,6 +1108,8 @@ def build_view_model(
             "panel_calls": list(PANEL_CALL_NAMES),
             "branches": list(BRANCH_NAMES),
             "steps": list(STEP_NAMES),
+            "unconfirmed_branch": REFUSED_UNCONFIRMED,
+            "ask_route": TAB_ASK,
         },
         "rows": {
             "source": [dict(one) for one in model.source_rows],
