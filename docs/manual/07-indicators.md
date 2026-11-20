@@ -580,7 +580,8 @@ market itself set. The indicator remembers where the z-score last turned
 around, averages those turning points, and uses each average as the level that
 decides a vote. Until it has remembered a turn, the fixed level of two
 deviations decides, exactly as before. Each average is also projected back into
-a price, which is the upper and lower zone the hover text carries.
+a price, which is the upper and lower zone the ATA-SMP sentence names
+(`src/trading/ata_spm.py, in READINGS`).
 
 `src/trading/indicators/zscore.py` — the level that decides, and its price
 

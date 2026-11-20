@@ -25,7 +25,7 @@ from typing import Any, Optional
 from ...exchange.timeframes import ALL_TIMEFRAMES
 
 from .. import design_system as ds
-from ..descriptions import INDICATOR_PANEL_DESCRIPTIONS
+from ..descriptions import INDICATOR_PANEL_DESCRIPTIONS, fitted
 from . import privacy_dot_surface
 from .native_chart_surface import (
     ARROW_GLYPH_FAMILY,
@@ -606,22 +606,23 @@ def indicator_cell_text(indicator_key: str, signal: Optional[dict]) -> str:
 
 
 def indicator_cell_tooltip(indicator_key: str, signal: Optional[dict]) -> str:
-    """The hover text one indicator cell carries: its vote, then its details."""
+    """The hover text one indicator cell carries: its vote, then each detail line ``fitted`` keeps."""
     reading = signal if isinstance(signal, dict) else {}
     direction = str(reading.get("direction", DEFAULT_DIRECTION))
     read = as_finite_float(reading.get("confidence"))
     confidence = REFUSED_READING if read is None else read
-    lines = [f"{str(indicator_key).upper()}: {direction}  ({confidence:.0%} conf)"]
+    vote_line = f"{str(indicator_key).upper()}: {direction}  ({confidence:.0%} conf)"
+    detail_lines: list[str] = []
     details = reading.get("details")
     for name, value in (details if isinstance(details, dict) else {}).items():
         if isinstance(value, bool):
             if value:
-                lines.append(f"  {name}: ✓")
+                detail_lines.append(f"\n  {name}: ✓")
         elif isinstance(value, float):
-            lines.append(f"  {name}: {value:.3f}")
+            detail_lines.append(f"\n  {name}: {value:.3f}")
         else:
-            lines.append(f"  {name}: {value}")
-    return "\n".join(lines)
+            detail_lines.append(f"\n  {name}: {value}")
+    return fitted(vote_line, *detail_lines)
 
 
 def indicator_cell_colors(signal: Optional[dict]) -> dict:
