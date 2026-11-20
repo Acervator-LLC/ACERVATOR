@@ -17,7 +17,7 @@ import json
 import math
 import re
 import sys
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import Counter
 from dataclasses import dataclass, fields
 from datetime import datetime, timezone
@@ -27,7 +27,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pptx
-from matplotlib.dates import DateFormatter
+from matplotlib.collections import LineCollection
+from matplotlib.dates import DateFormatter, date2num
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 from pptx.enum.text import PP_ALIGN
@@ -1725,6 +1726,15 @@ QUOTE_ASSETS = frozenset({"USD", "USDC"})
 BUY_KINDS = frozenset({"Advanced Trade Buy", "Buy"})
 SELL_KINDS = frozenset({"Advanced Trade Sell", "Sell"})
 EXPORT_HEADER_CELL = "Transaction Type"
+EXPORT_COLUMNS = frozenset(
+    {
+        "Timestamp",
+        EXPORT_HEADER_CELL,
+        "Asset",
+        "Quantity Transacted",
+        "Price at Transaction",
+    },
+)
 FIGURE_SIZE = (11.0, 8.0)
 ASSET_FIGURE_SIZE = (9.0, 4.5)
 WEEKLY_TICK_STEP = 8
@@ -1734,14 +1744,15 @@ WEEK_MS = 604_800_000
 MONDAY_OFFSET_MS = 259_200_000
 LOG_AXIS_SPAN = 8.0
 CHART_BAND = BollingerBands(period=20, std_dev=2.0)
-BAND_BAR_MS = DAY_MS
-BAND_BAR_NAME = "1d"
+BAND_BAR_MS = 300_000
+BAND_BAR_NAME = "five-minute"
 BAND_FILL_ALPHA = 0.55
 STEP_DOT_MAX_FILLS = 30
 COMBINED_BASES = 8
 RANKED_BASES = 38
-PRICE_PANEL = (0.08, 0.34, 0.77, 0.50)
-UNITS_PANEL = (0.08, 0.12, 0.77, 0.16)
+PRICE_PANEL = (0.08, 0.42, 0.77, 0.46)
+PAIRS_PANEL = (0.08, 0.25, 0.77, 0.12)
+UNITS_PANEL = (0.08, 0.08, 0.77, 0.13)
 COMBINED_PANEL = (0.08, 0.16, 0.74, 0.68)
 COMBINED_NOTE_AT = (0.08, 0.06)
 BUY_PEN = 0
@@ -1752,13 +1763,6 @@ DEFAULT_DECK = (
 )
 DECK_ASSET_BOX = Box(SLIDE_MARGIN, Inches(1.76), BODY_W, Inches(4.9))
 RATIO_MIN_SIDE_FILLS = 4
-BAND_BAR_LENGTHS = (
-    ("5 minutes", 300_000),
-    ("15 minutes", 900_000),
-    ("1 hour", 3_600_000),
-    ("4 hours", 14_400_000),
-    ("1 day", DAY_MS),
-)
 WORKED_BUYS = ((10.0, 1.0), (20.0, 3.0))
 
 
@@ -1831,7 +1835,7 @@ class Evidence:
 
 @dataclass(frozen=True)
 class BandTally:
-    """``CHART_BAND`` entries over ``fill_bars`` at one bar length, and the fills at
+    """``candle_band`` entries across a chart's ``window_candles``, and the fills at
     their edges."""
 
     bands: int
@@ -1850,6 +1854,17 @@ class BandTally:
 
 
 EMPTY_TALLY = BandTally(0, 0, 0, 0, 0, 0, 0)
+
+
+@dataclass(frozen=True)
+class BandBar:
+    """A ``CHART_BAND`` entry at candle opening ``start_ms``, with its ``flat`` flag."""
+
+    start_ms: int
+    upper: float
+    middle: float
+    lower: float
+    flat: bool
 
 
 @dataclass(frozen=True)
@@ -1885,23 +1900,37 @@ def parse_stamp(text: str) -> datetime:
     return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
 
+def _body_row(header: list[str], cells: list[str], line: int) -> dict[str, str]:
+    """Return ``cells`` keyed by ``header``, refusing a ``line`` of another width."""
+    if len(cells) != len(header):
+        message = f"line {line} holds {len(cells)} cells against {len(header)}"
+        raise ValueError(message)
+    return dict(zip(header, cells, strict=True))
+
+
 def export_rows(src: Path) -> list[dict[str, str]]:
-    """Return the body rows of a venue export, skipping the lines above the header."""
-    lines = src.read_text(encoding="utf-8-sig").splitlines()
-    start = next(
-        (i for i, line in enumerate(lines) if EXPORT_HEADER_CELL in line),
-        0,
-    )
-    return [dict(row) for row in csv.DictReader(lines[start:])]
+    """Return an export's body rows, keyed by the row holding ``EXPORT_COLUMNS``."""
+    with src.open(encoding="utf-8-sig", newline="") as handle:
+        reader = csv.reader(handle)
+        for header in reader:
+            if set(header) >= EXPORT_COLUMNS:
+                return [
+                    _body_row(header, cells, reader.line_num)
+                    for cells in reader
+                    if cells
+                ]
+    columns = ", ".join(sorted(EXPORT_COLUMNS))
+    message = f"no row of the export holds every column of {columns}"
+    raise ValueError(message)
 
 
 def load_fills(src: Path) -> tuple[list[Fill], Counter[str]]:
-    """Return the Fill list and a Counter keyed by drop cause."""
+    """Return the fills and drop causes, refusing a non-positive price or quantity."""
     fills: list[Fill] = []
     drops: Counter[str] = Counter()
-    for row in export_rows(src):
-        kind = row.get(EXPORT_HEADER_CELL, "")
-        asset = (row.get("Asset") or "").strip().upper()
+    for number, row in enumerate(export_rows(src), 1):
+        kind = row[EXPORT_HEADER_CELL]
+        asset = row["Asset"].strip().upper()
         if kind in BUY_KINDS:
             side = "buy"
         elif kind in SELL_KINDS:
@@ -1912,13 +1941,18 @@ def load_fills(src: Path) -> tuple[list[Fill], Counter[str]]:
         if asset in QUOTE_ASSETS:
             drops["quote cash leg"] += 1
             continue
+        price = parse_money(row["Price at Transaction"])
+        qty = abs(parse_money(row["Quantity Transacted"]))
+        if not (0.0 < price < math.inf and 0.0 < qty < math.inf):
+            message = f"body row {number} carries no positive price and quantity"
+            raise ValueError(message)
         fills.append(
             Fill(
                 asset=asset,
-                when=parse_stamp(row.get("Timestamp", "")),
+                when=parse_stamp(row["Timestamp"]),
                 side=side,
-                price=parse_money(row.get("Price at Transaction", "")),
-                qty=abs(parse_money(row.get("Quantity Transacted", ""))),
+                price=price,
+                qty=qty,
             )
         )
     return fills, drops
@@ -2261,71 +2295,163 @@ def _write_asset_traces(
     return out
 
 
-def fill_bars(fills: Sequence[Fill], bar_ms: int) -> list[Candle]:
-    """Return a ``Candle`` per ``bar_ms`` bar, carrying the close over an empty bar."""
-    grouped: dict[int, list[Fill]] = {}
-    for fill in sorted(fills, key=lambda f: f.when):
-        grouped.setdefault(int(fill.when.timestamp() * 1000) // bar_ms, []).append(fill)
-    rows: list[list[float]] = []
-    close = 0.0
-    for bar in range(min(grouped, default=0), max(grouped, default=-1) + 1):
-        held = grouped.get(bar, [])
-        prices = [fill.price for fill in held] or [close]
-        close = prices[-1]
-        volume = sum((fill.qty for fill in held), 0.0)
-        row = [float(bar * bar_ms), prices[0], max(prices), min(prices), close, volume]
-        rows.append(row)
-    return candles_from_raw(rows)
+def utc_ms(stamp_ms: float) -> datetime:
+    """Return the UTC datetime that ``stamp_ms`` epoch milliseconds name."""
+    return datetime.fromtimestamp(stamp_ms / 1000.0, tz=timezone.utc)
 
 
-def fill_band(
+def bar_start_ms(when: datetime) -> int:
+    """Return the opening, in epoch ms, of the ``BAND_BAR_MS`` bar holding ``when``."""
+    stamp_ms = int(when.timestamp() * 1000)
+    return stamp_ms - stamp_ms % BAND_BAR_MS
+
+
+def bar_time(when: datetime) -> datetime:
+    """Return the ``bar_start_ms`` of ``when`` as a UTC datetime."""
+    return utc_ms(bar_start_ms(when))
+
+
+def chart_window(fills: Sequence[Fill]) -> tuple[int, int]:
+    """Return the ``bar_start_ms`` of the earliest and the latest of ``fills``."""
+    return (
+        bar_start_ms(min(fill.when for fill in fills)),
+        bar_start_ms(max(fill.when for fill in fills)),
+    )
+
+
+def window_candles(
+    rows: Sequence[Sequence[float]],
     fills: Sequence[Fill],
-) -> tuple[list[datetime], list[float], list[float], list[float]]:
-    """Return the ``CHART_BAND`` lines over ``fill_bars``, with each bar's start."""
-    candles = fill_bars(fills, BAND_BAR_MS)
-    times: list[datetime] = []
-    upper: list[float] = []
-    middle: list[float] = []
-    lower: list[float] = []
-    for candle, entry in zip(candles, CHART_BAND.bands(candles), strict=True):
-        if entry is None:
+) -> list[Candle]:
+    """Return the ``chart_window`` ``rows`` as ``Candle``, led by band warm-up rows."""
+    start_ms, end_ms = chart_window(fills)
+    stamps = [row[0] for row in rows]
+    first = max(bisect_left(stamps, start_ms) - (CHART_BAND.period - 1), 0)
+    return candles_from_raw(rows[first : bisect_right(stamps, end_ms)])
+
+
+def candle_band(candles: Sequence[Candle]) -> list[BandBar]:
+    """Return a ``BandBar`` for every one of ``candles`` that ``CHART_BAND`` covers."""
+    closes = [candle.close for candle in candles]
+    span = CHART_BAND.period
+    return [
+        BandBar(
+            start_ms=int(candle.timestamp),
+            upper=entry[0],
+            middle=entry[1],
+            lower=entry[2],
+            flat=_window_has_no_range(closes[index - span + 1 : index + 1]),
+        )
+        for index, (candle, entry) in enumerate(
+            zip(candles, CHART_BAND.bands(list(candles)), strict=True),
+        )
+        if entry is not None
+    ]
+
+
+def uncovered_spans(
+    rows: Sequence[Sequence[float]],
+    fills: Sequence[Fill],
+) -> list[tuple[int, int]]:
+    """Return the first and last opening of each ``chart_window`` gap in ``rows``."""
+    start_ms, end_ms = chart_window(fills)
+    if not rows:
+        return [(start_ms, end_ms)]
+    first_ms = int(rows[0][0])
+    last_ms = int(rows[-1][0])
+    spans: list[tuple[int, int]] = []
+    if start_ms < first_ms:
+        spans.append((start_ms, min(first_ms - BAND_BAR_MS, end_ms)))
+    if end_ms > last_ms:
+        spans.append((max(last_ms + BAND_BAR_MS, start_ms), end_ms))
+    return spans
+
+
+def uncovered_text(spans: Sequence[tuple[int, int]]) -> str:
+    """Return the dates ``spans`` from ``uncovered_spans`` name, or an empty string."""
+    if not spans:
+        return ""
+    dates = ", ".join(
+        f"{day_label(utc_ms(first))} to {day_label(utc_ms(last))}"
+        for first, last in spans
+    )
+    return f"no {BAND_BAR_NAME} candles {dates}"
+
+
+def scrum_fold_pairs(fills: Sequence[Fill]) -> list[tuple[Fill, Fill]]:
+    """Return each buy paired with the sell directly before it on its ``asset``."""
+    pairs: list[tuple[Fill, Fill]] = []
+    previous: dict[str, Fill] = {}
+    for fill in sorted(fills, key=lambda f: f.when):
+        before = previous.get(fill.asset)
+        previous[fill.asset] = fill
+        if before is None or (before.side, fill.side) != ("sell", "buy"):
             continue
-        times.append(datetime.fromtimestamp(candle.timestamp / 1000.0, tz=timezone.utc))
-        upper.append(entry[0])
-        middle.append(entry[1])
-        lower.append(entry[2])
-    return times, upper, middle, lower
+        if before.when < fill.when:
+            pairs.append((before, fill))
+    return pairs
 
 
-def _draw_band(axis: Axes, fills: Sequence[Fill]) -> str:
-    """Shade the ``fill_band`` channel on axis and return the title note naming it."""
-    times, upper, middle, lower = fill_band(fills)
-    if not times:
+def pair_change_pct(scrum: Fill, fold: Fill) -> float:
+    """Return the percent change from the ``scrum`` price to the ``fold`` price."""
+    return (fold.price / scrum.price - 1.0) * 100.0
+
+
+def label_candles(
+    labels: Mapping[str, str],
+    candles: Mapping[str, list[list[float]]],
+) -> dict[str, list[list[float]]]:
+    """Return ``candles`` keyed by each base's label in ``labels``."""
+    return {label: candles.get(asset) or [] for asset, label in labels.items()}
+
+
+def _draw_candles(axis: Axes, candles: Sequence[Candle]) -> None:
+    """Draw each of ``candles`` as a line from its low to its high at its opening."""
+    if not candles:
+        return
+    axis.vlines(
+        np.asarray([utc_ms(candle.timestamp) for candle in candles]),
+        [candle.low for candle in candles],
+        [candle.high for candle in candles],
+        color=ink("ink_faint"),
+        linewidth=0.6,
+        zorder=1,
+        label=f"{BAND_BAR_NAME} candles ({len(candles):,})",
+    )
+
+
+def _draw_band(axis: Axes, band: Sequence[BandBar]) -> str:
+    """Shade the ``candle_band`` channel on axis and return the title note naming it."""
+    if not band:
         return "no band"
-    stamps = np.asarray(times)
+    stamps = np.asarray([utc_ms(bar.start_ms) for bar in band])
     setting = f"Bollinger {CHART_BAND.period} / {CHART_BAND.std_dev:g}"
     axis.fill_between(
         stamps,
-        lower,
-        upper,
+        [bar.lower for bar in band],
+        [bar.upper for bar in band],
         color=ink("rule"),
         alpha=BAND_FILL_ALPHA,
         linewidth=0.0,
         zorder=0,
         label=f"{setting} sigma",
     )
-    for line, style in ((upper, "-"), (lower, "-"), (middle, (0, (4, 3)))):
-        axis.plot(stamps, line, color=ink("ink_faint"), lw=0.5, ls=style, zorder=0.4)
-    return f"{setting} on {BAND_BAR_NAME} bars"
+    for line, style, depth in (
+        ([bar.upper for bar in band], "-", 1.5),
+        ([bar.lower for bar in band], "-", 1.5),
+        ([bar.middle for bar in band], (0, (4, 3)), 0.4),
+    ):
+        axis.plot(stamps, line, color=ink("ink_mute"), lw=0.4, ls=style, zorder=depth)
+    return f"{setting} on {BAND_BAR_NAME} candles"
 
 
 def _draw_dots(axis: Axes, fills: Sequence[Fill]) -> dict[str, str]:
-    """Dot every buy and sell at its price, and return the pen each side drew in."""
+    """Dot each buy and sell on its ``bar_time`` and return each side's pen."""
     pens = {"buy": series()[BUY_PEN], "sell": series()[SELL_PEN]}
     for side, pen in pens.items():
         own = [fill for fill in fills if fill.side == side]
         axis.plot(
-            np.asarray([fill.when for fill in own]),
+            np.asarray([bar_time(fill.when) for fill in own]),
             [fill.price for fill in own],
             linestyle="none",
             marker=".",
@@ -2338,6 +2464,79 @@ def _draw_dots(axis: Axes, fills: Sequence[Fill]) -> dict[str, str]:
     return pens
 
 
+def _draw_pairs(price: Axes, changes: Axes, pairs: Sequence[tuple[Fill, Fill]]) -> None:
+    """Join ``pairs`` on ``price`` and mark each ``pair_change_pct`` on ``changes``."""
+    changes.axhline(0.0, color=ink("ink_strong"), linewidth=0.8)
+    changes.set_ylabel("Fold vs Scrum, %")
+    if not pairs:
+        changes.set_title(
+            "no Scrum-Fold pair",
+            loc="left",
+            fontsize=size("cap"),
+            color=ink("ink_mute"),
+        )
+        return
+    shifts = [pair_change_pct(*pair) for pair in pairs]
+    pens = [ink("win") if shift < 0.0 else ink("loss") for shift in shifts]
+    segments = [
+        [
+            (float(date2num(bar_time(scrum.when))), scrum.price),
+            (float(date2num(bar_time(fold.when))), fold.price),
+        ]
+        for scrum, fold in pairs
+    ]
+    price.add_collection(
+        LineCollection(
+            segments,
+            colors=pens,
+            linewidths=0.7,
+            zorder=2.5,
+            label=f"Scrum-Fold pairs ({len(pairs)})",
+        ),
+    )
+    changes.scatter(
+        np.asarray([bar_time(fold.when) for _, fold in pairs]),
+        shifts,
+        c=pens,
+        s=6,
+        zorder=2,
+    )
+    below = sum(1 for shift in shifts if shift < 0.0)
+    changes.set_title(
+        f"{len(pairs)} Scrum-Fold pairs, {below} with the Fold below its Scrum,"
+        f" median change {median(shifts):+.2f}%",
+        loc="left",
+        fontsize=size("cap"),
+        color=ink("ink_strong"),
+    )
+
+
+def _draw_uncovered(axis: Axes, spans: Sequence[tuple[int, int]]) -> None:
+    """Hatch each of ``spans`` on axis and name its dates with ``uncovered_text``."""
+    for first, last in spans:
+        opening = float(date2num(utc_ms(first)))
+        closing = float(date2num(utc_ms(last + BAND_BAR_MS)))
+        axis.axvspan(
+            opening,
+            closing,
+            facecolor=ink("bg_subtle"),
+            edgecolor=ink("rule"),
+            hatch="///",
+            linewidth=0.0,
+            zorder=0,
+        )
+        axis.text(
+            (opening + closing) / 2,
+            0.02,
+            uncovered_text([(first, last)]),
+            transform=axis.get_xaxis_transform(),
+            ha="center",
+            va="bottom",
+            fontsize=size("cap"),
+            color=ink("ink_mute"),
+        )
+
+
 def _page_figure() -> Figure:
     """Return a figure the ``GRID`` page size, on the page ground."""
     apply_rcparams()
@@ -2348,14 +2547,23 @@ def _page_figure() -> Figure:
     )
 
 
-def _draw_vwap(label: str, fills: Sequence[Fill]) -> Figure:
-    """Return the chart of ``label``: price, fills, band and VWAPs, then net units."""
+def _draw_vwap(
+    label: str,
+    fills: Sequence[Fill],
+    rows: Sequence[Sequence[float]],
+) -> Figure:
+    """Return the chart of ``label``: candles, band, fills, pairs, VWAPs and units."""
     times, buy_v, sell_v, held = trajectory(fills)
-    stamps = np.asarray(times)
+    stamps = np.asarray([bar_time(when) for when in times])
+    candles = window_candles(rows, fills)
+    start_ms, _ = chart_window(fills)
+    drawn = [candle for candle in candles if candle.timestamp >= start_ms]
     figure = _page_figure()
     price = figure.add_axes(PRICE_PANEL)
+    changes = figure.add_axes(PAIRS_PANEL, sharex=price)
     units = figure.add_axes(UNITS_PANEL, sharex=price)
-    note = _draw_band(price, fills)
+    note = _draw_band(price, candle_band(candles))
+    _draw_candles(price, drawn)
     pens = _draw_dots(price, fills)
     marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
     for side, line in (("buy", buy_v), ("sell", sell_v)):
@@ -2369,6 +2577,8 @@ def _draw_vwap(label: str, fills: Sequence[Fill]) -> Figure:
             zorder=3,
             label=f"running {side} VWAP",
         )
+    _draw_pairs(price, changes, scrum_fold_pairs(fills))
+    _draw_uncovered(price, uncovered_spans(rows, fills))
     lowest = min(fill.price for fill in fills)
     if lowest > 0 and max(fill.price for fill in fills) / lowest > LOG_AXIS_SPAN:
         price.set_yscale("log")
@@ -2376,6 +2586,7 @@ def _draw_vwap(label: str, fills: Sequence[Fill]) -> Figure:
     price.set_title(f"{label} — {len(fills)} fills, {note}")
     price.legend(ncols=3, loc="upper right")
     price.tick_params(labelbottom=False)
+    changes.tick_params(labelbottom=False)
     units.fill_between(
         stamps,
         held,
@@ -2443,9 +2654,11 @@ def _write_asset_vwap(
     figures_dir: Path,
     labels: Mapping[str, str],
     fills: Sequence[Fill],
+    candles: Mapping[str, list[list[float]]],
 ) -> list[tuple[str, str]]:
-    """Write ``vwap_combined.png`` and one VWAP chart per label of ``fills``."""
+    """Write ``vwap_combined.png`` and one VWAP chart per label, on its ``candles``."""
     groups = label_groups(labels, fills)
+    rows = label_candles(labels, candles)
     combined = "vwap_combined.png"
     out = [(combined, _save(_draw_combined(groups), figures_dir / combined))]
     for label in sorted(labels.values()):
@@ -2454,7 +2667,9 @@ def _write_asset_vwap(
         if not held:
             out.append((name, f"absent - no fill for {label} in the newest export"))
             continue
-        out.append((name, _save(_draw_vwap(label, held), figures_dir / name)))
+        outcome = _save(_draw_vwap(label, held, rows[label]), figures_dir / name)
+        gaps = uncovered_text(uncovered_spans(rows[label], held))
+        out.append((name, f"{outcome} - {gaps}" if gaps else outcome))
     return out
 
 
@@ -2671,7 +2886,7 @@ def write_evidence_figures(
         missing = evidence_dir / TRANSACTIONS_FOLDER
         return [(name, f"absent - no venue export under {missing}") for name in names]
     labels, fills, candles = evidence.labels, evidence.fills, evidence.candles
-    out = _write_asset_vwap(figures_dir, labels, fills)
+    out = _write_asset_vwap(figures_dir, labels, fills, candles)
     out += _write_asset_weekly(figures_dir, labels, candles)
     out += _write_asset_traces(figures_dir, labels, candles)
     rows = hodl_rows(fills, labels, candles)
@@ -2794,37 +3009,28 @@ def measurement_lines(evidence_dir: Path) -> list[str]:
     return out
 
 
-def band_tally(fills: Sequence[Fill], interval_ms: int) -> BandTally:
-    """Return ``fills`` counted against ``CHART_BAND`` over ``fill_bars`` of
-    ``interval_ms``."""
-    candles = fill_bars(fills, interval_ms)
-    if not candles:
+def band_tally(fills: Sequence[Fill], rows: Sequence[Sequence[float]]) -> BandTally:
+    """Return ``fills`` counted against the ``candle_band`` their chart draws on
+    ``rows``."""
+    if not fills:
         return EMPTY_TALLY
-    closes = [candle.close for candle in candles]
-    bands = CHART_BAND.bands(candles)
-    span = CHART_BAND.period
-    flat = sum(
-        1
-        for index, entry in enumerate(bands)
-        if entry is not None
-        and _window_has_no_range(closes[index - span + 1 : index + 1])
-    )
-    first = int(candles[0].timestamp) // interval_ms
+    band = candle_band(window_candles(rows, fills))
+    at_open = {bar.start_ms: bar for bar in band}
     counts: Counter[str] = Counter()
     for fill in fills:
-        entry = bands[int(fill.when.timestamp() * 1000) // interval_ms - first]
-        if entry is None:
+        bar = at_open.get(bar_start_ms(fill.when))
+        if bar is None:
             continue
         counts["banded"] += 1
-        if fill.price >= entry[0]:
+        if fill.price >= bar.upper:
             counts["upper"] += 1
             counts["upper_sells"] += int(fill.side == "sell")
-        if fill.price <= entry[2]:
+        if fill.price <= bar.lower:
             counts["lower"] += 1
             counts["lower_buys"] += int(fill.side == "buy")
     return BandTally(
-        bands=sum(1 for entry in bands if entry is not None),
-        flat=flat,
+        bands=len(band),
+        flat=sum(1 for bar in band if bar.flat),
         banded=counts["banded"],
         upper=counts["upper"],
         lower=counts["lower"],
@@ -3093,43 +3299,38 @@ def _share(tally: BandTally) -> str:
 
 
 def _deck_band_bars(prs: Presentation, source: DeckSource) -> None:
-    """Add the slide measuring ``CHART_BAND`` at every ``BAND_BAR_LENGTHS`` length."""
-    measured = [
-        (
-            name,
-            sum(
-                (band_tally(held, bar_ms) for held in source.groups.values()),
-                EMPTY_TALLY,
-            ),
-        )
-        for name, bar_ms in BAND_BAR_LENGTHS
-    ]
-    chart_bar = next(name for name, bar_ms in BAND_BAR_LENGTHS if bar_ms == BAND_BAR_MS)
-    (short_name, short), (long_name, long) = measured[0], measured[-1]
+    """Add the slide measuring the ``candle_band`` every chart draws."""
+    rows = label_candles(source.evidence.labels, source.evidence.candles)
+    total = sum(
+        (band_tally(held, rows[label]) for label, held in source.groups.items()),
+        EMPTY_TALLY,
+    )
+    fills = sum(len(held) for held in source.groups.values())
     slide = blank(prs)
     heading(
         slide,
-        "Why the band's bar is a day long",
+        f"The band is drawn on {BAND_BAR_NAME} candles",
         "The grey channel behind the fills is a Bollinger band at period"
-        f" {CHART_BAND.period} and width {CHART_BAND.std_dev:g}. It puts a trade at"
-        " a volatility extreme on the picture.",
+        f" {CHART_BAND.period} and width {CHART_BAND.std_dev:g}, on the same"
+        f" {BAND_BAR_NAME} candles the bots trade on.",
     )
     table(
         slide,
-        ["Bar length", "Bands drawn", "Zero width", "Share", "Fills in a banded bar"],
+        ["Reading", "Value"],
         [
-            [name, f"{t.bands:,}", f"{t.flat:,}", _share(t), f"{t.banded:,}"]
-            for name, t in measured
+            ["Bands drawn", f"{total.bands:,}"],
+            ["Bands with no width", f"{total.flat:,}"],
+            ["Share with no width", _share(total)],
+            ["Fills on a candle carrying a band", f"{total.banded:,} of {fills:,}"],
         ],
         Box(SLIDE_MARGIN, Inches(1.9), BODY_W, Inches(3.2)),
     )
     text_box(
         slide,
         Box(SLIDE_MARGIN, Inches(5.4), BODY_W, Inches(1.3)),
-        f"At {short_name}, {_share(short)} of the channel has no width, so the band"
-        f" traces the price line and shows no extreme. At {long_name}, {_share(long)}"
-        f" has no width. The charts use bars of {chart_bar}, and"
-        f" {CHART_BAND.period} of them must close before the first band appears.",
+        f"A band needs {CHART_BAND.period} closed candles before it appears. Where"
+        " the tablet store holds no candle, the chart hatches those dates and draws"
+        " no band there.",
         size=13,
         color=MUTE,
     )
@@ -3137,9 +3338,10 @@ def _deck_band_bars(prs: Presentation, source: DeckSource) -> None:
 
 
 def _deck_band_edges(prs: Presentation, source: DeckSource) -> None:
-    """Add the slide counting fills at the ``CHART_BAND`` edges of the charts' bars."""
+    """Add the slide counting fills at the ``CHART_BAND`` edges of the charts."""
+    rows = label_candles(source.evidence.labels, source.evidence.candles)
     tallies = {
-        label: band_tally(held, BAND_BAR_MS)
+        label: band_tally(held, rows[label])
         for label, held in sorted(source.groups.items())
     }
     total = sum(tallies.values(), EMPTY_TALLY)
