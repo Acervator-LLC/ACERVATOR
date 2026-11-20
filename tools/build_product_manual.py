@@ -1757,6 +1757,8 @@ DAY_MS = 86_400_000
 WEEK_MS = 604_800_000
 MONDAY_OFFSET_MS = 259_200_000
 LOG_AXIS_SPAN = 8.0
+PRICE_LOG_SUBS = (1.0, 2.0, 3.0, 5.0, 7.0)
+PRICE_LABEL_DIGITS = 6
 CHART_BAND = BollingerBands(period=20, std_dev=2.0)
 BAND_BAR_MS = 300_000
 BAND_BAR_NAME = "five-minute"
@@ -2601,6 +2603,29 @@ def _page_figure() -> Figure:
     )
 
 
+def price_label(value: float, _position: float | None = None) -> str:
+    """Return ``value`` as a decimal of ``PRICE_LABEL_DIGITS`` significant digits."""
+    return np.format_float_positional(
+        value,
+        precision=PRICE_LABEL_DIGITS,
+        unique=False,
+        fractional=False,
+        trim="-",
+    )
+
+
+def _label_price_axis(axis: Axes, fills: Sequence[Fill]) -> None:
+    """Scale ``axis`` to ``fills`` and label each price tick as a plain decimal."""
+    lowest = min(fill.price for fill in fills)
+    if lowest > 0 and max(fill.price for fill in fills) / lowest > LOG_AXIS_SPAN:
+        axis.set_yscale("log")
+        axis.locator_params(axis="y", subs=PRICE_LOG_SUBS)
+        axis.yaxis.set_major_formatter(price_label)
+        axis.tick_params(axis="y", which="minor", labelleft=False)
+        return
+    axis.ticklabel_format(axis="y", style="plain", useOffset=False)
+
+
 def _draw_vwap(
     label: str,
     fills: Sequence[Fill],
@@ -2633,9 +2658,7 @@ def _draw_vwap(
         )
     _draw_pairs(price, changes, scrum_fold_pairs(fills))
     _draw_uncovered(price, uncovered_spans(rows, fills))
-    lowest = min(fill.price for fill in fills)
-    if lowest > 0 and max(fill.price for fill in fills) / lowest > LOG_AXIS_SPAN:
-        price.set_yscale("log")
+    _label_price_axis(price, fills)
     price.set_ylabel(f"{label} price, USD")
     price.set_title(f"{label} — {len(fills)} fills, {note}")
     price.legend(ncols=3, loc="upper right")

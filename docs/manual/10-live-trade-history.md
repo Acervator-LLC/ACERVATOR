@@ -1163,6 +1163,10 @@ price axis, the minor ticks that axis needs, a tick label small enough to go
 scientific, and a fill count low enough to mark every step. The other 34 are
 drawn by the two functions above and nothing else.
 
+The code has overtaken the paragraph above, and the paragraph stays word for word.
+
+Now: the builder draws every VWAP chart, and no VWAP chart labels its price axis in scientific notation. The A01, A03 and A10 blocks below show the code that draws the price axis today (`tools/build_product_manual.py, in _label_price_axis`).
+
 Each of the 38 headings below holds three charts for one base, under one label:
 its VWAP chart, its weekly chart and its price trace. The VWAP chart draws the
 fills. The weekly chart and the price trace draw the market those fills ran in,
@@ -1186,11 +1190,14 @@ The axis is a measurement, not a choice. A01's fills run from 0.2118 to
 2.1805, a span of 10.30, and the module turns the axis logarithmic above eight.
 A03 is the only other chart over that line.
 
+The code has overtaken the paragraph above, and the paragraph stays word for word.
+
+Now: the builder turns the axis logarithmic above eight. On the 20 November export that covers A01 at 20.71, A03 at 57.57 and A06 at 9.30, and no other chart (`tools/build_product_manual.py, in _label_price_axis`).
+
 ```python
-lo = min(f.price for f in fills)
-hi = max(f.price for f in fills)
-if hi / lo > 8:
-    ax.set_yscale("log")
+lowest = min(fill.price for fill in fills)
+if lowest > 0 and max(fill.price for fill in fills) / lowest > LOG_AXIS_SPAN:
+    axis.set_yscale("log")
 ```
 
 ### A02
@@ -1221,12 +1228,17 @@ A logarithmic axis labels the powers of ten. A03's fills run from 0.01682 to
 module adds five minor ticks per decade and gives them the same price formatter
 as the major ones, which is what puts 0.2000 down to 0.0200 on this axis.
 
-```python
-SUBS = (1.0, 2.0, 3.0, 5.0, 7.0)
+The code has overtaken the paragraph above, and the paragraph stays word for word.
 
-ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=SUBS, numticks=99))
-ax.yaxis.set_minor_formatter(FuncFormatter(fmt_price))
-ax.tick_params(axis="y", which="minor", labelsize=TYPE["cap"]["size"])
+Now: a logarithmic price axis labels 1, 2, 3, 5 and 7 times each power of ten, written as plain decimals. On the 20 November export the A03 axis reads nine prices, from 0.005 up to 0.2, where it read only two powers of ten. A01 reads seven, from 0.1 up to 2, and A06 reads six, from 0.003 up to 0.03 (`tools/build_product_manual.py, in _label_price_axis`).
+
+```python
+PRICE_LOG_SUBS = (1.0, 2.0, 3.0, 5.0, 7.0)
+
+axis.set_yscale("log")
+axis.locator_params(axis="y", subs=PRICE_LOG_SUBS)
+axis.yaxis.set_major_formatter(price_label)
+axis.tick_params(axis="y", which="minor", labelleft=False)
 ```
 
 ### A04
@@ -1315,18 +1327,25 @@ is A29 at 0.001479, so A10 alone reaches the last branch of the tick
 formatter, and this is the only chart of the 38 labelled in scientific
 notation.
 
+The code has overtaken the paragraph above, and the paragraph stays word for word.
+
+Now: no VWAP chart labels its price axis in scientific notation. The A10 axis is linear and reads 0.000002 up to 0.000008, where it read 2 up to 8 under a 1e-6 multiplier, and a logarithmic axis writes each label with `price_label` (`tools/build_product_manual.py, in _label_price_axis`).
+
 ```python
-def fmt_price(v, _pos=None) -> str:
-    """Format a y-axis price tick, keeping a micro-cap significand visible."""
-    if v == 0:
-        return "0"
-    if abs(v) >= 1000:
-        return f"{v:,.0f}"
-    if abs(v) >= 1:
-        return f"{v:,.2f}"
-    if abs(v) >= 0.001:
-        return f"{v:.4f}"
-    return f"{v:.2e}"
+PRICE_LABEL_DIGITS = 6
+
+
+def price_label(value: float, _position: float | None = None) -> str:
+    return np.format_float_positional(
+        value,
+        precision=PRICE_LABEL_DIGITS,
+        unique=False,
+        fractional=False,
+        trim="-",
+    )
+
+
+axis.ticklabel_format(axis="y", style="plain", useOffset=False)
 ```
 
 ### A11
