@@ -1167,6 +1167,8 @@ The code has overtaken the paragraph above, and the paragraph stays word for wor
 
 Now: the builder draws every VWAP chart, and no VWAP chart labels its price axis in scientific notation. The A01, A03 and A10 blocks below show the code that draws the price axis today (`tools/build_product_manual.py, in _label_price_axis`).
 
+Now: no axis on a VWAP chart, a weekly chart or a price trace carries an offset or a multiplier (`tools/build_product_manual.py, in _label_plain_axis`). The A31 block below shows the code that marks every step today (`tools/build_product_manual.py, in _draw_vwap`).
+
 Each of the 38 headings below holds three charts for one base, under one label:
 its VWAP chart, its weekly chart and its price trace. The VWAP chart draws the
 fills. The weekly chart and the price trace draw the market those fills ran in,
@@ -1195,9 +1197,11 @@ The code has overtaken the paragraph above, and the paragraph stays word for wor
 Now: the builder turns the axis logarithmic above eight. On the 20 November export that covers A01 at 20.71, A03 at 57.57 and A06 at 9.30, and no other chart (`tools/build_product_manual.py, in _label_price_axis`).
 
 ```python
-lowest = min(fill.price for fill in fills)
-if lowest > 0 and max(fill.price for fill in fills) / lowest > LOG_AXIS_SPAN:
-    axis.set_yscale("log")
+def _label_price_axis(axis: Axes, prices: Sequence[float]) -> None:
+    lowest = min(prices, default=0.0)
+    if lowest > 0 and max(prices) / lowest > LOG_AXIS_SPAN:
+        axis.set_yscale("log")
+    _label_plain_axis(axis.yaxis)
 ```
 
 ### A02
@@ -1235,10 +1239,11 @@ Now: a logarithmic price axis labels 1, 2, 3, 5 and 7 times each power of ten, w
 ```python
 PRICE_LOG_SUBS = (1.0, 2.0, 3.0, 5.0, 7.0)
 
-axis.set_yscale("log")
-axis.locator_params(axis="y", subs=PRICE_LOG_SUBS)
-axis.yaxis.set_major_formatter(price_label)
-axis.tick_params(axis="y", which="minor", labelleft=False)
+if axis.get_scale() == "log":
+    axis.get_major_locator().set_params(subs=PRICE_LOG_SUBS)
+    axis.set_major_formatter(price_label)
+    axis.set_tick_params(which="minor", label1On=False)
+    return
 ```
 
 ### A04
@@ -1331,6 +1336,8 @@ The code has overtaken the paragraph above, and the paragraph stays word for wor
 
 Now: no VWAP chart labels its price axis in scientific notation. The A10 axis is linear and reads 0.000002 up to 0.000008, where it read 2 up to 8 under a 1e-6 multiplier, and a logarithmic axis writes each label with `price_label` (`tools/build_product_manual.py, in _label_price_axis`).
 
+Now: the A10 net-units panel reads 0 up to 100000000 whole units, where it read 0.0 up to 1.0 under a 1e8 multiplier. Every number axis the builder draws takes its labels from `_label_plain_axis`, so none carries an offset or a multiplier (`tools/build_product_manual.py, in _label_plain_axis`).
+
 ```python
 PRICE_LABEL_DIGITS = 6
 
@@ -1345,7 +1352,7 @@ def price_label(value: float, _position: float | None = None) -> str:
     )
 
 
-axis.ticklabel_format(axis="y", style="plain", useOffset=False)
+axis.axes.ticklabel_format(axis=axis.axis_name, style="plain", useOffset=False)
 ```
 
 ### A11
@@ -1591,12 +1598,25 @@ end at 626.
 every step. Sixteen dots sit on the buy line and nine on the sell line. The
 seven charts after this one are drawn the same way.
 
-```python
-THIN_FILLS = 30
+The code has overtaken the paragraph above, and the paragraph stays word for word.
 
-dot = "o" if len(fills) <= THIN_FILLS else None
-ax.plot(t, buy_v, color=COLORS["series"][0], lw=2.0, marker=dot,
-        markersize=4, label="running buy VWAP")
+Now: the builder marks every step only on a chart of 30 fills or fewer. On the 20 November export A31 holds 73 fills, so its chart carries no step marker, and the two charts that mark every step are A37 and A38 (`tools/build_product_manual.py, in _draw_vwap`).
+
+```python
+STEP_DOT_MAX_FILLS = 30
+
+marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
+for side, line in (("buy", buy_v), ("sell", sell_v)):
+    price.plot(
+        stamps,
+        line,
+        color=pens[side],
+        lw=1.4,
+        marker=marker,
+        markersize=4,
+        zorder=3,
+        label=f"running {side} VWAP",
+    )
 ```
 
 ### A32
@@ -1883,6 +1903,18 @@ above, beside that base's VWAP chart.
 `_write_asset_weekly` in `tools/build_product_manual.py` writes one figure per
 base, named for the base's label and titled with it.
 
+Each weekly chart labels its price axis with `_label_price_axis`, the helper
+every VWAP chart uses, on the lows and highs of its bars. Five of them run
+logarithmic: A01, A03, A04, A05 and A13. Each reads its prices at 1, 2, 3, 5 and
+7 times each power of ten, where it read only the powers of ten. A01 reads
+twelve prices from 0.2 up to 30, and A05 reads five from 200 up to 1000. The A10
+axis reads 0.000002 up to 0.000012, where it read 0.2 up to 1.2 under a 1e-5
+multiplier.
+
+```python
+_label_price_axis(axis, [bar[3] for bar in bars] + [bar[2] for bar in bars])
+```
+
 ## The price at the finest resolution the record carries
 
 Five minutes is the finest resolution the Stone Tablets hold.
@@ -1901,3 +1933,14 @@ above, under the same label as that base's VWAP chart and weekly chart.
 
 `_write_asset_traces` in `tools/build_product_manual.py` writes one figure per
 base, from the same five-minute rows the weekly bars are built from.
+
+Each price trace labels its price axis with `_label_price_axis` on its
+five-minute closes. The traces of A01, A03, A04, A05 and A13 run logarithmic
+and read the same prices as their weekly charts. The A10 trace reads 0.000002
+up to 0.000012, where it read 0.2 up to 1.2 under a 1e-5 multiplier.
+
+```python
+closes = [row[4] for row in rows]
+axis.plot(stamps, closes, color=accessible_series()[0], linewidth=0.5)
+_label_price_axis(axis, closes)
+```

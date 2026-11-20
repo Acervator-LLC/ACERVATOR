@@ -2227,8 +2227,8 @@ def regime_turn(
 
 
 def _draw_weekly(axis: Any, label: str, bars: Sequence[Sequence[float]]) -> None:
-    """Draw one base's weekly candles on axis, with a logarithmic price axis on a
-    wide span."""
+    """Draw one base's weekly candles on axis, with ``_label_price_axis`` on their lows
+    and highs."""
     up = ink("win")
     down = ink("loss")
     for index, bar in enumerate(bars):
@@ -2244,22 +2244,18 @@ def _draw_weekly(axis: Any, label: str, bars: Sequence[Sequence[float]]) -> None
                 linewidth=0.4,
             )
         )
-    lows = [bar[3] for bar in bars if bar[3] > 0]
-    highs = [bar[2] for bar in bars if bar[2] > 0]
-    if lows and highs and max(highs) / min(lows) > LOG_AXIS_SPAN:
-        axis.set_yscale("log")
+    _label_price_axis(axis, [bar[3] for bar in bars] + [bar[2] for bar in bars])
     axis.set_title(label, fontsize=size("cap"), color=ink("ink_strong"))
     axis.tick_params(labelsize=size("cap") * 0.7, colors=ink("ink_mute"))
 
 
 def _draw_trace(axis: Any, label: str, rows: Sequence[Sequence[float]]) -> None:
-    """Draw one base's five-minute closes on axis against the candle stamp."""
+    """Draw one base's five-minute closes on axis against the candle stamp, with
+    ``_label_price_axis`` on the closes."""
     stamps = [datetime.fromtimestamp(row[0] / 1000.0, tz=timezone.utc) for row in rows]
     closes = [row[4] for row in rows]
     axis.plot(stamps, closes, color=accessible_series()[0], linewidth=0.5)
-    if closes and min(c for c in closes if c > 0) > 0:
-        if max(closes) / min(c for c in closes if c > 0) > LOG_AXIS_SPAN:
-            axis.set_yscale("log")
+    _label_price_axis(axis, closes)
     axis.set_title(label, fontsize=size("cap"), color=ink("ink_strong"))
     axis.tick_params(labelsize=size("cap") * 0.7, colors=ink("ink_mute"))
 
@@ -2614,16 +2610,24 @@ def price_label(value: float, _position: float | None = None) -> str:
     )
 
 
-def _label_price_axis(axis: Axes, fills: Sequence[Fill]) -> None:
-    """Scale ``axis`` to ``fills`` and label each price tick as a plain decimal."""
-    lowest = min(fill.price for fill in fills)
-    if lowest > 0 and max(fill.price for fill in fills) / lowest > LOG_AXIS_SPAN:
-        axis.set_yscale("log")
-        axis.locator_params(axis="y", subs=PRICE_LOG_SUBS)
-        axis.yaxis.set_major_formatter(price_label)
-        axis.tick_params(axis="y", which="minor", labelleft=False)
+def _label_plain_axis(axis: Any) -> None:
+    """Label ``axis`` in plain decimals: ``PRICE_LOG_SUBS`` per decade when logarithmic,
+    no offset or multiplier when linear."""
+    if axis.get_scale() == "log":
+        axis.get_major_locator().set_params(subs=PRICE_LOG_SUBS)
+        axis.set_major_formatter(price_label)
+        axis.set_tick_params(which="minor", label1On=False)
         return
-    axis.ticklabel_format(axis="y", style="plain", useOffset=False)
+    axis.axes.ticklabel_format(axis=axis.axis_name, style="plain", useOffset=False)
+
+
+def _label_price_axis(axis: Axes, prices: Sequence[float]) -> None:
+    """Scale ``axis`` to ``prices``, logarithmic past ``LOG_AXIS_SPAN``, and label it
+    with ``_label_plain_axis``."""
+    lowest = min(prices, default=0.0)
+    if lowest > 0 and max(prices) / lowest > LOG_AXIS_SPAN:
+        axis.set_yscale("log")
+    _label_plain_axis(axis.yaxis)
 
 
 def _draw_vwap(
@@ -2658,7 +2662,7 @@ def _draw_vwap(
         )
     _draw_pairs(price, changes, scrum_fold_pairs(fills))
     _draw_uncovered(price, uncovered_spans(rows, fills))
-    _label_price_axis(price, fills)
+    _label_price_axis(price, [fill.price for fill in fills])
     price.set_ylabel(f"{label} price, USD")
     price.set_title(f"{label} — {len(fills)} fills, {note}")
     price.legend(ncols=3, loc="upper right")
@@ -2674,6 +2678,8 @@ def _draw_vwap(
     )
     units.plot(stamps, held, color=ink("accent"), lw=1.0)
     units.set_ylabel("net units")
+    _label_plain_axis(changes.yaxis)
+    _label_plain_axis(units.yaxis)
     units.xaxis.set_major_formatter(DateFormatter("%d %b"))
     return figure
 
@@ -2713,6 +2719,7 @@ def _draw_combined(groups: Mapping[str, Sequence[Fill]]) -> Figure:
             label=f"{label} ({len(groups[label])})",
         )
     axis.axhline(1.0, color=ink("rule"), lw=0.8)
+    _label_plain_axis(axis.yaxis)
     axis.set_ylabel("running buy VWAP / first buy VWAP")
     axis.set_title("Running buy VWAP, each asset indexed to its own first buy VWAP")
     axis.legend(ncols=3, loc="upper right")
@@ -2780,6 +2787,7 @@ def _write_hodl_units(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str, 
     )
     axes[0].axvline(1.0, color=ink("ink_strong"), linewidth=1.0)
     axes[0].set_xscale("log")
+    _label_plain_axis(axes[0].xaxis)
     axes[0].set_xlabel(
         "units held now, over the units the same net cash buys at the baseline"
     )
@@ -2791,6 +2799,7 @@ def _write_hodl_units(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str, 
         color=ink("accent"),
     )
     axes[1].set_xlabel("dollars out above dollars in")
+    _label_plain_axis(axes[1].xaxis)
     axes[1].tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
     figure.suptitle(
         "Accumulation against buy and hold, in units",
@@ -2831,6 +2840,7 @@ def _write_hodl_dollars(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str
     axis.set_yticks(places)
     axis.set_yticklabels([r.label for r in priced])
     axis.set_xlabel("dollars at the final recorded price")
+    _label_plain_axis(axis.xaxis)
     axis.tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
     axis.legend(fontsize=size("cap"), frameon=False)
     figure.suptitle(
@@ -2883,6 +2893,7 @@ def _write_market(
     axes[0].set_yticklabels([labels[assets[i]] for i in order])
     axes[0].axvline(0.0, color=ink("ink_strong"), linewidth=1.0)
     axes[0].set_xlabel("change across each stretch, percent")
+    _label_plain_axis(axes[0].xaxis)
     axes[0].legend(fontsize=size("cap"), frameon=False, loc="lower right")
     axes[0].tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
     days = list(range(start, end + 1, DAY_MS))
@@ -2908,6 +2919,7 @@ def _write_market(
         label="median",
     )
     axes[1].axhline(1.0, color=ink("ink_strong"), linewidth=1.0)
+    _label_plain_axis(axes[1].yaxis)
     axes[1].axvline(
         turn_day,
         color=ink("ink_strong"),
