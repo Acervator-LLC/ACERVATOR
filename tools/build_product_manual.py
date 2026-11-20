@@ -1799,6 +1799,7 @@ CYCLE_LEGEND_AT = (0.5, 0.0)
 CYCLE_LEGEND_COLUMNS = 3
 CYCLE_BODY_SHARE = 0.7
 CYCLE_MARKER_SIZE = 12
+CYCLE_DPI = 110
 BUY_PEN = 0
 SELL_PEN = 5
 DECK_TITLE = "Ekthelius's Prototyping Trading Evidence"
@@ -2248,9 +2249,9 @@ def _draw_trace(axis: Any, label: str, rows: Sequence[Sequence[float]]) -> None:
 
 
 def _save(figure: Figure, target: Path) -> str:
-    """Write figure to target on the page ground and close it."""
+    """Write figure to target at its own dpi on the page ground and close it."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    figure.savefig(target, facecolor=ink("bg"), bbox_inches="tight")
+    figure.savefig(target, facecolor=ink("bg"), bbox_inches="tight", dpi="figure")
     plt.close(figure)
     return "wrote"
 
@@ -2800,12 +2801,12 @@ def _draw_uncovered(axis: Axes, spans: Sequence[tuple[int, int]]) -> None:
         )
 
 
-def _page_figure() -> Figure:
-    """Return a figure the ``GRID`` page size, on the page ground."""
+def _page_figure(dpi: float = FIGURE_DPI) -> Figure:
+    """Return a figure the ``GRID`` page size at ``dpi``, on the page ground."""
     apply_rcparams()
     return plt.figure(
         figsize=(space("page_w_in"), space("page_h_in")),
-        dpi=FIGURE_DPI,
+        dpi=dpi,
         facecolor=ink("bg"),
     )
 
@@ -3157,7 +3158,7 @@ def _draw_cycles(
     label: str, pairs: Sequence[CyclePair], rows: Sequence[Sequence[float]]
 ) -> Figure:
     """Return ``label``'s cycle view: one ``_draw_cycle`` panel per pair, its legend below the panels."""
-    figure = _page_figure()
+    figure = _page_figure(CYCLE_DPI)
     axes = [
         figure.add_axes(
             (CYCLE_PANEL_LEFT, bottom, CYCLE_PANEL_WIDTH, CYCLE_PANEL_HEIGHT)
