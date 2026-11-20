@@ -618,7 +618,7 @@ def released_bots(
 | Rate strip | A15 and A14 dollar prices, small units per dollar and per cent, and the source. `src/gui/indicator_panel.py, in IndicatorVotingPanel.update_currency_rates` |
 | Privacy dot | Masks the selector text. The votes stay visible. `src/gui/indicator_panel.py, in IndicatorVotingPanel._apply_privacy_mask` |
 | TF column | One row per timeframe, the bot's own plus its phantoms', shortest first. `src/gui/main_tabs/indicator_panel_surface.py, in timeframe_rows` |
-| Twelve voter columns | BB, VTX, MACD, SRsi, Ichi, Vol, Sling, ADX, STrd, ZSc, KER and RSI. Each cell shows direction and confidence; ADX, ZSc and KER show raw readings. `src/gui/main_tabs/indicator_panel_surface.py, in indicator_cell_text` |
+| Twelve voter columns | BB, VTX, MACD, SRsi, Ichi, Vol, Sling, ADX, STrd, ZSc, KER and RSI. Each cell shows direction and confidence; ADX, ZSc and KER show raw readings. `src/gui/main_tabs/indicator_panel_surface.py, in indicator_cell_text`. A cell's mouse-over shows its vote, then the readings that fit within twenty words. `src/gui/main_tabs/indicator_panel_surface.py, in indicator_cell_tooltip` |
 | Net | The signed bull-minus-bear tally for that row. `src/gui/main_tabs/indicator_panel_surface.py, in net_cell` |
 | Comp | Net blended with the higher-timeframe phantoms, and a dash on phantom rows. `src/gui/main_tabs/indicator_panel_surface.py, in comp_cell` |
 | Conf | A block bar and an agreement percentage. `src/gui/main_tabs/indicator_panel_surface.py, in conf_cell` |
