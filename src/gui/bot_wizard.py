@@ -51,9 +51,6 @@ from src.trading.container.config import (
     DETONATION_BAR_MAX,
     DETONATION_BAR_MIN,
     DETONATION_CONFIDENCE_MIN_DEFAULT,
-    FOLD_RATIO_MAX_PCT,
-    FOLD_RATIO_MIN_PCT,
-    FOLD_RATIO_PCT_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
     BotConfig,
     as_finite_float,
@@ -1030,15 +1027,6 @@ if _HAS_QT:
             )
             sf.addRow("Max Target Growth %:", self._max_target_growth_pct)
 
-            self._scrum_fold_pct = QSpinBox()
-            self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
-            self._scrum_fold_pct.setValue(FOLD_RATIO_PCT_DEFAULT)
-            self._scrum_fold_pct.setSuffix(" %")
-            set_description(
-                self._scrum_fold_pct, BOT_WIZARD_DESCRIPTIONS["scrum_fold_pct"]
-            )
-            sf.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
-
             from .main_tabs.bot_wizard_surface import UNIT_NOTES
 
             self._unit_rule = ""
@@ -1596,7 +1584,6 @@ if _HAS_QT:
                     "min_entry_price": (float(_min_ep) if _min_ep > 0 else None),
                     "trading_fee_pct": self._trading_fee.value(),
                     "max_target_growth_pct": self._max_target_growth_pct.value(),
-                    "scrum_fold_pct": self._scrum_fold_pct.value(),
                     "scrum_detect_pct": self._scrum_detect_pct.value(),
                     "scrum_fire_pct": self._scrum_fire_pct.value(),
                     "bb_midline_gate": self._bb_midline_gate.isChecked(),

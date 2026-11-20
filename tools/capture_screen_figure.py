@@ -1054,13 +1054,12 @@ def step_the_price_window(app, state: dict) -> dict:
 
 
 def step_what_a_cycle_keeps(app, state: dict) -> dict:
-    """The last three rows of the Scrumming Settings group."""
+    """The last two rows of the Scrumming Settings group."""
     wizard, page = state["wizard"], state["params"]
-    field = page._scrum_fold_pct
+    field = page._max_target_growth_pct
     scroll_to(app, page, field)
     label, shown = scrum_reading(page, field)
-    for other in (page._trading_fee, page._max_target_growth_pct):
-        scrum_reading(page, other)
+    scrum_reading(page, page._trading_fee)
     return {
         "name": "step-15-what-a-cycle-keeps.png",
         "widget": wizard,
