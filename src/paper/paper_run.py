@@ -64,7 +64,7 @@ from ..simulator.back_test import (
 from ..exchange.base import MarketRules
 from ..exchange.market_rules_store import recorded_rules
 from ..simulator.validation import BB_MIDLINE, bb_reading, latch
-from ..trading.container.config import BotState, fold_ratio_pct
+from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext, effective_gate_flags
 from ..trading.otd_math import BAND_TRAVEL_OFF_PCT, DistanceSettings
 from ..trading.scrumming.sizing import (
@@ -382,7 +382,6 @@ def paper_tape_context(
 def route_sale_surplus(
     wires: Any,
     bot: PaperBot,
-    balance: FakeBalance,
     proceeds_usd: float,
     units: float,
     price: float,
@@ -400,8 +399,6 @@ def route_sale_surplus(
         DistanceSettings(
             bot.scrumming_interval_pct, taker_fee_pct(bot), BAND_TRAVEL_OFF_PCT
         ),
-        fold_ratio_pct(bot),
-        cycle_growth_cap_usd(float(balance.target_usd), 0.0, bot.max_target_growth_pct),
     )
     try:
         rows = wires.distribute_sale_surplus(
@@ -514,9 +511,7 @@ def apply_scrum(
     fee = estimated_fee_usd(notional, taker_fee_pct(bot))
     proceeds = sale_proceeds_usd(notional, fee)
     if wires is not None:
-        proceeds -= route_sale_surplus(
-            wires, bot, balance, proceeds, units, float(price)
-        )
+        proceeds -= route_sale_surplus(wires, bot, proceeds, units, float(price))
     balance.units -= units
     balance.cash_usd += proceeds
     balance.last_trade_price = float(price)

@@ -2722,22 +2722,18 @@ def sale_surplus_usd(
     proceeds_usd: float,
     sold_units: float,
     restore_price: float,
-    fold_ratio_pct: float,
-    cap_remaining_usd: float,
+    buy_fee_pct: Optional[float],
 ) -> float:
-    """``fold_ratio_pct`` of what ``proceeds_usd`` holds past ``sold_units`` times
-    ``restore_price``, less ``cap_remaining_usd``, never below zero."""
+    """``gain_after_fees_usd`` of ``proceeds_usd`` once ``sold_units`` are bought
+    back at ``restore_price`` with ``buy_fee_pct``, 0.0 where a figure is unreadable."""
     proceeds = as_finite_float(proceeds_usd)
     units = as_finite_float(sold_units)
     price = as_finite_float(restore_price)
-    ratio = as_finite_float(fold_ratio_pct)
-    room = as_finite_float(cap_remaining_usd)
-    if proceeds is None or units is None or price is None or ratio is None:
+    if proceeds is None or units is None or price is None:
         return 0.0
-    if room is None or units <= 0.0 or price <= 0.0:
+    if units <= 0.0 or price <= 0.0:
         return 0.0
-    share = max(0.0, min(1.0, ratio / 100.0))
-    return max(0.0, (proceeds - units * price) * share - max(0.0, room))
+    return gain_after_fees_usd(proceeds, units, price, buy_fee_pct)
 
 
 def restored_sale_surplus_usd(
@@ -2745,17 +2741,15 @@ def restored_sale_surplus_usd(
     sold_units: float,
     sale_price: float,
     distance: DistanceSettings,
-    fold_ratio_pct: float,
-    cap_remaining_usd: float,
 ) -> float:
     """``sale_surplus_usd`` of one sale restored at ``fold_rebuy_price`` of
-    ``sale_price`` at the unbanded ``distance``, the reading all three engines take."""
+    ``sale_price`` at the unbanded ``distance`` with its ``fee_pct``, the reading
+    all three engines take."""
     return sale_surplus_usd(
         proceeds_usd,
         sold_units,
         fold_rebuy_price(sale_price, distance.distance_pct()),
-        fold_ratio_pct,
-        cap_remaining_usd,
+        distance.fee_pct,
     )
 
 
