@@ -15,7 +15,6 @@ from ..bot_container import as_finite_float, despawn_threshold_days
 from ..container.config import (
     TRANCHE_HELD_SECONDS_KEY,
     despawn_age_seconds,
-    fold_ratio_pct,
 )
 from ..otd_math import DistanceSettings
 from ..stack_math import (
@@ -97,64 +96,6 @@ class FoldTrancheAccountingMixin:
         """
         return eligible_fold_tranches(self._fold_tranches, ticker_last, distance, band)
 
-    def _apply_scrum_fold_pct(
-        self, _tranche_count_before: int, scrum_usd: float, scrum_asset: float
-    ) -> None:
-        """Scale the tranches this sell just appended by scrum_fold_pct.
-
-        Runs before ``_top_up_remnant_fold_tranches``, which merges this
-        sale's money into an older record outside the slice, and before
-        ``_fold_queue_usd`` is refreshed. Money outside the sale's own
-        rate is wired-in credit and keeps its full USD.
-
-        Args:
-            _tranche_count_before: ``len(self._fold_tranches)`` sampled
-                before this sale's build loop ran. The slice from there
-                to the end is exactly what this sale appended.
-            scrum_usd: dollars this sale left with THIS bot, already net
-                of Smart Wire routing, and the same figure the build
-                loop divided.
-            scrum_asset: units this sale sold, the same figure the build
-                loop divided. The two give the sale's own net rate.
-        """
-        _fold_pct = fold_ratio_pct(self.config)
-        _new_tranches = self._fold_tranches[_tranche_count_before:]
-        if _fold_pct < 100 and _new_tranches:
-            _fold_frac = _fold_pct / 100.0
-            _rate_known = scrum_asset > 0
-            _unit_rate = (scrum_usd / scrum_asset) if _rate_known else 0.0
-            _skim_usd = 0.0
-            _skim_cost_basis = 0.0
-            _queued_usd = 0.0
-            for _t in _new_tranches:
-                _full_usd = _t["usd"]
-                _full_units = _t["units"]
-                _scrummed_usd = (
-                    min(max(_full_units * _unit_rate, 0.0), _full_usd)
-                    if _rate_known
-                    else _full_usd
-                )
-                _wire_usd = _full_usd - _scrummed_usd
-                _t["usd"] = _wire_usd + _scrummed_usd * _fold_frac
-                _t["units"] = _full_units * _fold_frac
-                _skim_units = _full_units * (1 - _fold_frac)
-                _skim_proceeds = _scrummed_usd * (1 - _fold_frac)
-                _skim_usd += _skim_proceeds
-                _skim_cost_basis += _skim_units * _t["initial_buy_price"]
-                _queued_usd += _t["usd"]
-            _skim_profit = _skim_usd - _skim_cost_basis
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"FOLD RATIO: scrum_fold_pct={_fold_pct}% — "
-                    f"queued ${_queued_usd:.4f} for "
-                    f"fold, retired ${_skim_usd:.4f} as cash "
-                    f"(realised profit ${_skim_profit:+.4f}). "
-                    f"Cash buffer preserved against further drops."
-                ),
-            )
-
     def _plan_fold_consumption(
         self, eligible: list, cap_remaining: float
     ) -> tuple[list, list, int]:
@@ -226,8 +167,7 @@ class FoldTrancheAccountingMixin:
 
         Each source gives up the USD and units the plan took from it. A
         source drained to nothing is removed BY IDENTITY, so two records
-        holding identical numbers -- routine after the proportional
-        ``scrum_fold_pct`` rescale -- cannot retire together. A source
+        holding identical numbers cannot retire together. A source
         with a balance left stays, keeping the ``initial_buy_price`` and
         ``ref`` it came in with, and is tagged ``fold_partial_spent``.
 
@@ -460,9 +400,8 @@ class FoldTrancheAccountingMixin:
         ``initial_buy_price`` is the one field that differs, and the
         survivor takes it units-weighted, conserving
         ``units x initial_buy_price`` -- the cost basis behind unrealised
-        P/L and behind the skim in ``_apply_scrum_fold_pct``. Taking the
-        minimum instead understates that basis by up to 91.6% on a
-        20,000-sale sweep, and ``initial_buy_price`` is not a term of
+        P/L. Taking the minimum instead understates that basis by up to
+        91.6% on a 20,000-sale sweep, and ``initial_buy_price`` is not a term of
         fold eligibility, which is ``ticker.last <= ref x (1 - OTD/100)``.
 
         Args:

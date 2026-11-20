@@ -24,6 +24,12 @@ and kept as cash, which is the safer choice when price keeps falling after a sal
 and the queue would otherwise spend everything on the way down. The live fleet is
 split here: 30 bots run 100 %, and 8 run 50 %. The field opens at 100 %.
 
+**The picture's caption, the bold line and the two Scrum Fold Ratio paragraphs
+above are overtaken.** None is edited and none is removed. The Scrum Fold Ratio
+is retired: the wizard draws Trading Fee % and Max Target Growth % as the last
+two rows, and each sale queues every unit it sold to be bought back on the dip.
+The picture above shows the group before the row was removed.
+
 Max Target Growth % accepts 0 % to 100 %, and it is the only thing in the program
 allowed to raise Target Balance. At 1 % a cycle may lift the line by one percent
 of itself and no more. At 0 % the line is frozen and the bot accumulates the asset

@@ -190,6 +190,17 @@ Scrum Fold Ratio - This precedes Surplus calculation as described under Max Targ
 
 Now: on a plain scrum or cartridge sale this share of proceeds, after wire routing, queues for buy-back and the rest stays cash; a Stack tranche fill queues nothing (`src/trading/scrumming/fold_tranches.py, in FoldTrancheAccountingMixin._apply_scrum_fold_pct`).
 
+**The Scrum Fold Ratio passage above and its Now line are overtaken.** Neither is edited and neither is removed.
+
+Now: the Scrum Fold Ratio is retired, so no screen offers it and a sale's buy-back tranche keeps every unit it sold and every dollar the sale leaves after the wires; a saved bot that still holds a figure loads as if it read 100%, because the figure is dropped before the bot is built (`src/trading/container/config.py, in _sanitize_deprecated_kwargs`).
+
+`src/trading/container/config.py, in _DEPRECATED_KWARGS`
+
+```python
+"wire_inflow_stack_pct",
+"scrum_fold_pct",
+```
+
 ![The Advanced Scrumming and Hedge Rebalance groups.](p20-i0.png)
 
 Next are the “advanced” Scrumming settings which primarily affect when the bot is allowed to fire a trade. These can be thought of as “calibrating the scope”.
@@ -677,6 +688,8 @@ The first column gives each row's range and factory opening value. Order Visibil
 | Max Target Growth % (0 to 100%, 1%) | Caps target growth per cycle and the size of each fold order. 0% freezes the target and stops folds. Reads `max_target_growth_pct`. `src/trading/scrumming_bot.py, in ScrummingBot.cycle_growth_cap_usd` |
 | Scrum Fold Ratio (1 to 100%, 100%) | On a plain scrum or cartridge sale, queues this share of proceeds for buy-back, and the rest stays cash. A Stack tranche fill queues nothing. Reads `scrum_fold_pct`. `src/trading/scrumming/fold_tranches.py, in FoldTrancheAccountingMixin._apply_scrum_fold_pct` |
 | Unit lines under this group | Name the market's unit rule. A whole-unit market adds its minimum, interval and position notes. `src/gui/main_tabs/bot_wizard_surface.py, in unit_notes` |
+
+**The Scrum Fold Ratio row above is overtaken.** It is not edited and not removed. No screen offers the row now, and a sale's tranche keeps every unit it sold (`src/trading/scrumming/sizing.py, in fold_tranche_records`).
 
 ### Advanced Scrumming rows
 

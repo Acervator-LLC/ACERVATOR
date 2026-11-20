@@ -78,9 +78,6 @@ from ...trading.container.config import (
     DETONATION_BAR_MAX,
     DETONATION_BAR_MIN,
     DETONATION_CONFIDENCE_MIN_DEFAULT,
-    FOLD_RATIO_MAX_PCT,
-    FOLD_RATIO_MIN_PCT,
-    FOLD_RATIO_PCT_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
     BotConfig,
 )
@@ -299,13 +296,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "step": 0.25,
         "suffix": " %",
         "value": 1.0,
-    },
-    "scrum_fold_pct": {
-        "kind": SPIN_INT,
-        "minimum": FOLD_RATIO_MIN_PCT,
-        "maximum": FOLD_RATIO_MAX_PCT,
-        "value": FOLD_RATIO_PCT_DEFAULT,
-        "suffix": " %",
     },
     "scrum_detect_pct": {
         "kind": SPIN_INT,
@@ -577,7 +567,6 @@ GROUP_ROWS = {
         "min_entry_px",
         "trading_fee",
         "max_target_growth_pct",
-        "scrum_fold_pct",
     ),
     "adv_group": (
         "scrum_detect_pct",
@@ -682,7 +671,6 @@ ROW_LABELS = {
     "min_entry_px": "Min Entry Price:",
     "trading_fee": "Trading Fee %:",
     "max_target_growth_pct": "Max Target Growth %:",
-    "scrum_fold_pct": "Scrum Fold Ratio:",
     "scrum_detect_pct": "Detect Threshold:",
     "scrum_fire_pct": "Fire Threshold:",
     "scrum_read_rate_min": "Read Rate:",
@@ -2735,7 +2723,6 @@ class BotWizardModel:
                 "min_entry_price": (float(lowest_entry) if lowest_entry > 0 else None),
                 "trading_fee_pct": self.numbers["trading_fee"],
                 "max_target_growth_pct": self.numbers["max_target_growth_pct"],
-                "scrum_fold_pct": int(self.numbers["scrum_fold_pct"]),
                 "scrum_detect_pct": int(self.numbers["scrum_detect_pct"]),
                 "scrum_fire_pct": self.numbers["scrum_fire_pct"],
                 "bb_midline_gate": self.checks["bb_midline_gate"],

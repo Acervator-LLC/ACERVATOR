@@ -786,24 +786,6 @@ class SettingsTabMixin:
         )
         sf.addRow("Max Target Growth %:", self._max_target_growth)
 
-        from ...trading.container.config import (
-            FOLD_RATIO_MAX_PCT,
-            FOLD_RATIO_MIN_PCT,
-            fold_ratio_pct,
-        )
-
-        self._scrum_fold_pct = QSpinBox()
-        self._scrum_fold_pct.setRange(FOLD_RATIO_MIN_PCT, FOLD_RATIO_MAX_PCT)
-        self._scrum_fold_pct.setSuffix(" %")
-        self._scrum_fold_pct.setValue(fold_ratio_pct(cfg))
-        set_description(
-            self._scrum_fold_pct, SETTINGS_TAB_DESCRIPTIONS["scrum_fold_pct"]
-        )
-        self._scrum_fold_pct.valueChanged.connect(
-            lambda v: self._mark_changed("scrum_fold_pct", v)
-        )
-        sf.addRow("Scrum Fold Ratio:", self._scrum_fold_pct)
-
         self._profit_folding_active = QCheckBox("Profit Folding Active")
         self._profit_folding_active.setChecked(
             bool(getattr(cfg, "profit_folding_active", True))

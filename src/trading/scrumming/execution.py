@@ -251,7 +251,6 @@ class ExecutionEngineMixin:
     _anchor_target_balance: float
     _announce_fill: Callable[..., None]
     _apply_fold_target_growth: Callable[..., Any]
-    _apply_scrum_fold_pct: Callable[..., None]
     _asset_class: Callable[..., str]
     _bound_new_fold_tranches: Callable[..., Any]
     _bus: Any
@@ -1923,9 +1922,6 @@ class ExecutionEngineMixin:
         )
         if not operator_initiated:
             self._mark_shadow_rows(_manual_tranche_count_before)
-
-        # Must precede the _fold_queue_usd sum below.
-        self._apply_scrum_fold_pct(_manual_tranche_count_before, fill_usd, fill_amount)
 
         _bb_last = getattr(self, "_last_bb", None)
         _merged_n, _ = self._top_up_remnant_fold_tranches(

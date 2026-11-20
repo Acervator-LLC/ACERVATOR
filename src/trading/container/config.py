@@ -131,11 +131,6 @@ POSITION_CEILING_MULTIPLE_DEFAULT: float = 5.0
 CEILING_MULTIPLE_MIN: float = 1.0
 CEILING_MULTIPLE_MAX: float = 10.0
 
-#: The span every Scrum Fold Ratio box offers and ``fold_ratio_pct`` admits, in
-#: per cent of one sale's own proceeds.
-FOLD_RATIO_MIN_PCT: int = 1
-FOLD_RATIO_MAX_PCT: int = 100
-
 #: ``hunger_pace_candles`` holding no typed pace; ``hunger_gain_per_candle`` then
 #: reads 0.0.
 HUNGER_PACE_NONE: int = 0
@@ -162,8 +157,6 @@ class BotConfig:
 
     target_balance: float = 200.0  # Balance the bot trades relative to
     scrumming_interval_pct: float = 1.0  # % market move between actions
-
-    scrum_fold_pct: int = 100  # 1-100: % of scrum proceeds queued for fold
 
     # Read via despawn_threshold_days() below, never raw; 0 = off.
     tranche_despawn_days: int = 0  # 0 = off; else remove at >= N days
@@ -440,7 +433,6 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "own_ta_weights",
         # Scrumming-specific accumulation
         "scrumming_interval_pct",
-        "scrum_fold_pct",
         "max_target_growth_pct",
         # tranche_despawn_days sweeps the fold and stack ledgers, both
         # ScrummingBot-only.
@@ -515,6 +507,7 @@ _DEPRECATED_KWARGS: frozenset = frozenset(
         "distribute_target_count",
         "personal_hold_qty",
         "wire_inflow_stack_pct",
+        "scrum_fold_pct",
     }
 )
 
@@ -607,12 +600,6 @@ PUSHED_TARGET_DEFAULT: float = float(
     next(one.default for one in fields(BotConfig) if one.name == "target_balance")
 )
 
-#: What `fold_ratio_pct` answers for a record outside `FOLD_RATIO_MIN_PCT` to
-#: `FOLD_RATIO_MAX_PCT`, read off `BotConfig`'s own `scrum_fold_pct` default.
-FOLD_RATIO_PCT_DEFAULT: int = int(
-    next(one.default for one in fields(BotConfig) if one.name == "scrum_fold_pct")
-)
-
 #: The per-cycle Target Balance growth cap every box opens at and
 #: `target_growth_pct` answers for an object carrying no such field.
 TARGET_GROWTH_PCT_DEFAULT: float = float(
@@ -667,23 +654,6 @@ def smart_cartridge_ceiling_pct(config) -> float:
             MAX_CARTRIDGE_SMART_CEILING_PCT_DEFAULT,
         )
     )
-
-
-def fold_ratio_pct(config) -> int:
-    """`config.scrum_fold_pct` as the whole per cent a Scrum Fold Ratio box offers.
-
-    `as_box_figure` over `FOLD_RATIO_MIN_PCT` to `FOLD_RATIO_MAX_PCT` is the
-    admission, a figure it refuses answers `FOLD_RATIO_PCT_DEFAULT`, and
-    `_apply_scrum_fold_pct` and all three settings pages call it.
-    """
-    read = as_box_figure(
-        getattr(config, "scrum_fold_pct", FOLD_RATIO_PCT_DEFAULT),
-        FOLD_RATIO_MIN_PCT,
-        FOLD_RATIO_MAX_PCT,
-    )
-    if read is None:
-        return FOLD_RATIO_PCT_DEFAULT
-    return int(read)
 
 
 def hunger_switched_on(config) -> bool:
