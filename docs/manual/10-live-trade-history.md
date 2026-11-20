@@ -237,9 +237,9 @@ one chart of its own.
 docs/manual/figures/
     p<page>-i<index>.png        the manual's own 38 images
     vwap_combined.png           the eight-line combined chart
-    vwap_a<NN>.png              one per charted base, 38 of them
-    weekly_a<NN>.png            one weekly chart per charted base, 38 of them
-    trace_a<NN>.png             one price trace per charted base, 38 of them
+    vwap_a<NN>.png              one per charted base, 40 of them
+    cycle_a<NN>.png             one cycle view per base with a covered cycle, 38 of them
+    trace_a<NN>.png             one price trace per charted base, 40 of them
 ```
 
 Now: the folder holds one cycle view per base, `cycle_a<NN>.png`, and no weekly chart (`tools/build_product_manual.py, in write_evidence_figures`).
@@ -1099,6 +1099,8 @@ def preserved_usd(pair: CyclePair) -> float:
 ```
 
 The manual, the PDF and the tracked deck give each part as a percent of the sale, and the extra units as a count. A deck the builder writes outside the repository adds each cycle's dollars.
+
+Now: a pair's captured part counts only the extra units its own gain could pay for, and the rest of its share of the Fold's extra units counts in no pair. Each title prints preserved as its gain less its captured part, so the three printed figures sum (`tools/build_product_manual.py, in captured_usd`).
 
 ### The buy-back level on each cycle
 

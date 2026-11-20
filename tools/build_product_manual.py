@@ -2649,18 +2649,34 @@ def gain_usd(pair: CyclePair) -> float:
 
 
 def captured_usd(pair: CyclePair) -> float:
-    """Return what ``pair.fold`` paid for ``pair.extra_units``, the units past those it restored."""
-    return pair.extra_units * unit_cost_usd(pair.fold)
+    """Return the cost of ``pair.extra_units`` the pair's own ``gain_usd`` could pay."""
+    return min(pair.extra_units * unit_cost_usd(pair.fold), max(0.0, gain_usd(pair)))
 
 
-def preserved_usd(pair: CyclePair) -> float:
-    """Return ``sale_usd`` less what ``pair.fold`` paid for ``pair.units`` and ``pair.extra_units``."""
-    return sale_usd(pair) - (pair.units + pair.extra_units) * unit_cost_usd(pair.fold)
+def captured_units(pair: CyclePair) -> float:
+    """Return the units ``captured_usd`` bought at ``pair.fold``'s ``unit_cost_usd``."""
+    return captured_usd(pair) / unit_cost_usd(pair.fold)
 
 
 def sale_share_pct(pair: CyclePair, usd: float) -> float:
     """Return ``usd`` as a percent of ``pair.units`` at the ``pair.scrum`` price."""
     return usd / (pair.units * pair.scrum.price) * 100.0
+
+
+def split_hundredths(gain: float, captured: float) -> tuple[int, int, int]:
+    """Return ``gain``, ``captured`` and ``gain`` less ``captured``, in hundredths."""
+    gain_hundredths = round(gain * 100)
+    captured_hundredths = round(captured * 100)
+    return gain_hundredths, captured_hundredths, gain_hundredths - captured_hundredths
+
+
+def split_dollars(pairs: Sequence[CyclePair]) -> list[str]:
+    """Return the summed gain, captured and preserved of ``pairs`` as dollar cells."""
+    cents = split_hundredths(
+        math.fsum(gain_usd(pair) for pair in pairs),
+        math.fsum(captured_usd(pair) for pair in pairs),
+    )
+    return [f"${value / 100:,.2f}" for value in cents]
 
 
 def label_candles(
@@ -3121,14 +3137,15 @@ def _draw_cycle_orders(axis: Axes, pair: CyclePair, end_ms: int) -> None:
 def cycle_title(number: int, total: int, pair: CyclePair) -> str:
     """Return cycle ``number`` of ``total``'s two title lines: its times, then ``gain_usd`` split by share."""
     hours = (bar_start_ms(pair.fold.when) - bar_start_ms(pair.scrum.when)) / HOUR_MS
-    gain = sale_share_pct(pair, gain_usd(pair))
-    captured = sale_share_pct(pair, captured_usd(pair))
-    preserved = sale_share_pct(pair, preserved_usd(pair))
+    gain, captured, preserved = split_hundredths(
+        sale_share_pct(pair, gain_usd(pair)),
+        sale_share_pct(pair, captured_usd(pair)),
+    )
     return (
         f"Cycle {number} of {total}: Scrum {pair.scrum.when:%d %b %H:%M}, Fold"
         f" {pair.fold.when:%d %b %H:%M} UTC, {hours:.1f} hours apart\n"
-        f"gain {gain:+.2f}% of the sale = captured {captured:+.2f}%"
-        f" ({pair.extra_units:+.6g} units) + preserved {preserved:+.2f}%"
+        f"gain {gain / 100:+.2f}% of the sale = captured {captured / 100:+.2f}%"
+        f" ({captured_units(pair):+.6g} units) + preserved {preserved / 100:+.2f}%"
     )
 
 
@@ -4119,9 +4136,7 @@ def _deck_cycle_dollars(prs: Presentation, source: DeckSource, label: str) -> No
             f"{pair.fold.when:%d %b %H:%M}",
             f"{pair.units:.6g}",
             f"${sale_usd(pair):,.2f}",
-            f"${gain_usd(pair):,.2f}",
-            f"${captured_usd(pair):,.2f}",
-            f"${preserved_usd(pair):,.2f}",
+            *split_dollars([pair]),
         ]
         for pair in latest_cycles(replay.pairs, rows[label])
     ]
@@ -4131,9 +4146,7 @@ def _deck_cycle_dollars(prs: Presentation, source: DeckSource, label: str) -> No
             "",
             f"{math.fsum(pair.units for pair in replay.pairs):.6g}",
             f"${math.fsum(sale_usd(pair) for pair in replay.pairs):,.2f}",
-            f"${math.fsum(gain_usd(pair) for pair in replay.pairs):,.2f}",
-            f"${math.fsum(captured_usd(pair) for pair in replay.pairs):,.2f}",
-            f"${math.fsum(preserved_usd(pair) for pair in replay.pairs):,.2f}",
+            *split_dollars(replay.pairs),
         ]
     )
     slide = blank(prs)
