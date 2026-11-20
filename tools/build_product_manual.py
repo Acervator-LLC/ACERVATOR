@@ -17,13 +17,17 @@ import json
 import math
 import re
 import sys
+import time
+import urllib.parse
 from bisect import bisect_left, bisect_right
 from collections import Counter
 from dataclasses import dataclass, fields
 from datetime import datetime, timezone
+from http import HTTPStatus
 from statistics import median
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from urllib.error import HTTPError
 
 import numpy as np
 import pptx
@@ -53,6 +57,9 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from src.core.io_utils import atomic_write_json
+from src.core.retry import exponential_delay, retry_sync
+from src.core.safe_url import SafeRequest, safe_urlopen
 from src.design_system import (
     COLORS,
     GRID,
@@ -65,6 +72,12 @@ from src.trading import trade_grader
 from src.trading.indicators.bollinger import BollingerBands
 from src.trading.indicators.helpers import _window_has_no_range
 from src.trading.indicators.types import candles_from_raw
+from src.trading.stone_tablets.ra_fetcher import (
+    RA_CHUNK_DAYS,
+    CoinbasePublicCandles,
+    RaCoinbaseAdapter,
+    is_transient_http,
+)
 from tools.build_vwap_deck import ACCENT, BODY_W, MUTE, SLIDE_H, SLIDE_W, Box, Ledger
 from tools.build_vwap_deck import MARGIN as SLIDE_MARGIN
 from tools.build_vwap_deck import (
@@ -1721,6 +1734,7 @@ def verify_count_word(intro: str, total: int) -> tuple[bool, str]:
 EVIDENCE_DIR = REPO_ROOT / "artifacts" / "evidence-input"
 TRANSACTIONS_FOLDER = "transactions"
 TABLETS_DIR = REPO_ROOT / "stone_tablets"
+CANDLE_CACHE_FOLDER = "five_minute_candles"
 BASELINE_DAY = datetime(2026, 4, 12, tzinfo=timezone.utc)
 QUOTE_ASSETS = frozenset({"USD", "USDC"})
 BUY_KINDS = frozenset({"Advanced Trade Buy", "Buy"})
@@ -1823,14 +1837,16 @@ class ExportReading:
 
 @dataclass(frozen=True)
 class Evidence:
-    """The newest export's labels, fills, reading and tablet rows, read once for
-    ``write_evidence_figures`` and ``write_evidence_deck``."""
+    """The newest export's labels, fills and reading, its tablet rows and the
+    ``fill_slots`` rows its VWAP charts draw, read once for ``write_evidence_figures``
+    and ``write_evidence_deck``."""
 
     exports: int
     labels: dict[str, str]
     fills: list[Fill]
     reading: ExportReading
     candles: dict[str, list[list[float]]]
+    filled_candles: dict[str, list[list[float]]]
 
 
 @dataclass(frozen=True)
@@ -2030,15 +2046,44 @@ def labels_across(indexed: Mapping[Path, list[Fill]]) -> dict[str, str]:
     return out
 
 
-def tablet_candles(asset: str) -> list[list[float]]:
-    """Return one base's five-minute candles from the Stone Tablet store, oldest first."""
-    path = TABLETS_DIR / f"{asset.upper()}_5m_2026_coinbase.json"
+def candle_file(store: Path, asset: str) -> Path:
+    """Return the file under ``store`` holding one base's five-minute candles."""
+    return store / f"{asset.upper()}_5m_2026_coinbase.json"
+
+
+def stored_candles(path: Path) -> list[list[float]]:
+    """Return the ``candles`` rows of the file at ``path``, oldest first, or none."""
     if not path.is_file():
         return []
     body = json.loads(path.read_text(encoding="utf-8"))
     rows = [[float(cell) for cell in row] for row in body.get("candles", [])]
     rows.sort(key=lambda row: row[0])
     return rows
+
+
+def tablet_candles(asset: str) -> list[list[float]]:
+    """Return one base's five-minute Stone Tablet candles, oldest first."""
+    return stored_candles(candle_file(TABLETS_DIR, asset))
+
+
+def cache_candles(asset: str, cache_dir: Path) -> list[list[float]]:
+    """Return one base's five-minute candles from ``cache_dir``, oldest first."""
+    return stored_candles(candle_file(cache_dir, asset))
+
+
+def fill_slots(
+    rows: Sequence[Sequence[float]],
+    extra: Sequence[Sequence[float]],
+) -> list[list[float]]:
+    """Return ``rows`` with each ``extra`` row in a slot it lacks, oldest first."""
+    held = {row[0] for row in rows}
+    out = [list(row) for row in rows]
+    for row in extra:
+        if row[0] not in held:
+            held.add(row[0])
+            out.append(list(row))
+    out.sort(key=lambda row: row[0])
+    return out
 
 
 def week_start_ms(ts_ms: float) -> int:
@@ -2349,12 +2394,13 @@ def candle_band(candles: Sequence[Candle]) -> list[BandBar]:
     ]
 
 
-def uncovered_spans(
+def lacking_spans(
     rows: Sequence[Sequence[float]],
-    fills: Sequence[Fill],
+    start_ms: int,
+    end_ms: int,
 ) -> list[tuple[int, int]]:
-    """Return the first and last opening of each ``chart_window`` gap in ``rows``."""
-    start_ms, end_ms = chart_window(fills)
+    """Return the first and last opening of each stretch of ``start_ms`` to ``end_ms``
+    before the first or after the last of ``rows``."""
     if not rows:
         return [(start_ms, end_ms)]
     first_ms = int(rows[0][0])
@@ -2365,6 +2411,14 @@ def uncovered_spans(
     if end_ms > last_ms:
         spans.append((max(last_ms + BAND_BAR_MS, start_ms), end_ms))
     return spans
+
+
+def uncovered_spans(
+    rows: Sequence[Sequence[float]],
+    fills: Sequence[Fill],
+) -> list[tuple[int, int]]:
+    """Return the first and last opening of each ``chart_window`` gap in ``rows``."""
+    return lacking_spans(rows, *chart_window(fills))
 
 
 def uncovered_text(spans: Sequence[tuple[int, int]]) -> str:
@@ -2858,12 +2912,18 @@ def read_evidence(evidence_dir: Path) -> Evidence | None:
     indexed = {path: load_fills(path)[0] for path in paths}
     labels = labels_across(indexed)
     newest = newest_export(indexed)
+    candles = {asset: tablet_candles(asset) for asset in labels}
+    cache_dir = evidence_dir / CANDLE_CACHE_FOLDER
     return Evidence(
         exports=len(paths),
         labels=labels,
         fills=indexed[newest],
         reading=export_reading(newest),
-        candles={asset: tablet_candles(asset) for asset in labels},
+        candles=candles,
+        filled_candles={
+            asset: fill_slots(rows, cache_candles(asset, cache_dir))
+            for asset, rows in candles.items()
+        },
     )
 
 
@@ -2886,7 +2946,7 @@ def write_evidence_figures(
         missing = evidence_dir / TRANSACTIONS_FOLDER
         return [(name, f"absent - no venue export under {missing}") for name in names]
     labels, fills, candles = evidence.labels, evidence.fills, evidence.candles
-    out = _write_asset_vwap(figures_dir, labels, fills, candles)
+    out = _write_asset_vwap(figures_dir, labels, fills, evidence.filled_candles)
     out += _write_asset_weekly(figures_dir, labels, candles)
     out += _write_asset_traces(figures_dir, labels, candles)
     rows = hodl_rows(fills, labels, candles)
@@ -3300,7 +3360,7 @@ def _share(tally: BandTally) -> str:
 
 def _deck_band_bars(prs: Presentation, source: DeckSource) -> None:
     """Add the slide measuring the ``candle_band`` every chart draws."""
-    rows = label_candles(source.evidence.labels, source.evidence.candles)
+    rows = label_candles(source.evidence.labels, source.evidence.filled_candles)
     total = sum(
         (band_tally(held, rows[label]) for label, held in source.groups.items()),
         EMPTY_TALLY,
@@ -3329,8 +3389,8 @@ def _deck_band_bars(prs: Presentation, source: DeckSource) -> None:
         slide,
         Box(SLIDE_MARGIN, Inches(5.4), BODY_W, Inches(1.3)),
         f"A band needs {CHART_BAND.period} closed candles before it appears. Where"
-        " the tablet store holds no candle, the chart hatches those dates and draws"
-        " no band there.",
+        " neither the tablet store nor the candle cache holds a candle, the chart"
+        " hatches those dates and draws no band there.",
         size=13,
         color=MUTE,
     )
@@ -3339,7 +3399,7 @@ def _deck_band_bars(prs: Presentation, source: DeckSource) -> None:
 
 def _deck_band_edges(prs: Presentation, source: DeckSource) -> None:
     """Add the slide counting fills at the ``CHART_BAND`` edges of the charts."""
-    rows = label_candles(source.evidence.labels, source.evidence.candles)
+    rows = label_candles(source.evidence.labels, source.evidence.filled_candles)
     tallies = {
         label: band_tally(held, rows[label])
         for label, held in sorted(source.groups.items())
@@ -3615,6 +3675,231 @@ def console_safe(text: str) -> str:
     return text.encode(encoding, "replace").decode(encoding, "replace")
 
 
+VENUE_QUOTE = "USD"
+VENUE_AGENT = "five-minute-candle-cache"
+REQUEST_SLOTS = RA_CHUNK_DAYS - 2
+FETCH_LEAD_MS = REQUEST_SLOTS * BAND_BAR_MS
+
+
+@dataclass(frozen=True)
+class CacheFill:
+    """One base's asset, label and the ``fetch_spans`` its cache file is asked for."""
+
+    asset: str
+    label: str
+    spans: tuple[tuple[int, int], ...]
+
+
+def fetch_spans(
+    rows: Sequence[Sequence[float]],
+    fills: Sequence[Fill],
+) -> list[tuple[int, int]]:
+    """Return the ``lacking_spans`` of the ``chart_window`` opened ``FETCH_LEAD_MS``
+    early, so the venue supplies the band's warm-up candles."""
+    start_ms, end_ms = chart_window(fills)
+    return lacking_spans(rows, start_ms - FETCH_LEAD_MS, end_ms)
+
+
+def request_windows(first_ms: int, last_ms: int) -> list[tuple[int, int]]:
+    """Return each request's first and last opening: ``REQUEST_SLOTS`` slots of
+    ``first_ms`` to ``last_ms`` and one slot more on each side."""
+    step_ms = REQUEST_SLOTS * BAND_BAR_MS
+    windows: list[tuple[int, int]] = []
+    for opening_ms in range(first_ms, last_ms + 1, step_ms):
+        closing_ms = min(opening_ms + step_ms - BAND_BAR_MS, last_ms)
+        windows.append((opening_ms - BAND_BAR_MS, closing_ms + BAND_BAR_MS))
+    return windows
+
+
+def venue_rows(payload: object) -> list[list[float]]:
+    """Return the venue's ``[time, low, high, open, close, volume]`` rows as tablet
+    rows: TypeError for an answer that is not a list, ValueError for a row off the
+    ``BAND_BAR_MS`` grid or whose high and low do not hold its open and close."""
+    if not isinstance(payload, list):
+        message = f"the venue answered {payload!r}"
+        raise TypeError(message)
+    out: list[list[float]] = []
+    for cells in payload:
+        stamp_s, low, high, opening, closing, volume = (float(cell) for cell in cells)
+        stamp_ms = round(stamp_s * 1000)
+        if (
+            stamp_ms % BAND_BAR_MS
+            or not all(math.isfinite(value) for value in (low, high, volume))
+            or not low <= min(opening, closing) <= max(opening, closing) <= high
+            or volume < 0.0
+        ):
+            message = f"venue row {cells!r} is not a {BAND_BAR_NAME} candle"
+            raise ValueError(message)
+        out.append([stamp_ms, opening, high, low, closing, volume])
+    return out
+
+
+def venue_candles(product: str, window: tuple[int, int]) -> list[list[float]]:
+    """Return ``product``'s ``venue_rows`` from ``window``'s first to last opening."""
+    opening_ms, closing_ms = window
+    query = urllib.parse.urlencode(
+        {
+            "granularity": BAND_BAR_MS // 1000,
+            "start": utc_ms(opening_ms).isoformat(),
+            "end": utc_ms(closing_ms).isoformat(),
+        },
+    )
+    request = SafeRequest(f"{CoinbasePublicCandles.BASE_URL}/{product}/candles?{query}")
+    request.add_header("User-Agent", VENUE_AGENT)
+    with safe_urlopen(request) as response:
+        return venue_rows(json.loads(response.read().decode("utf-8")))
+
+
+class VenueRequests:
+    """One fetch's venue requests, each sent ``RaCoinbaseAdapter.chunk_sleep_s`` or
+    more after the one before."""
+
+    def __init__(self) -> None:
+        """Start with no request sent and no refusal heard."""
+        self.count = 0
+        self.last_s = -math.inf
+        self.closest_s = math.inf
+        self.refusals: list[str] = []
+
+    def _send(self, product: str, window: tuple[int, int]) -> list[list[float]]:
+        """Wait out ``RaCoinbaseAdapter.chunk_sleep_s`` after ``last_s``, then send."""
+        due_s = self.last_s + RaCoinbaseAdapter.chunk_sleep_s
+        time.sleep(max(0.0, due_s - time.monotonic()))
+        sent_s = time.monotonic()
+        self.closest_s = min(self.closest_s, sent_s - self.last_s)
+        self.last_s = sent_s
+        self.count += 1
+        return venue_candles(product, window)
+
+    def _refused(
+        self,
+        error: BaseException,
+        attempt: int,
+        retry: bool,
+        wait_s: float,
+    ) -> None:
+        """Record one refused request, its attempt and the wait before the next."""
+        self.refusals.append(
+            f"attempt {attempt + 1}: {error}; asks again {retry}, after {wait_s:g} s",
+        )
+
+    def ask(self, product: str, window: tuple[int, int]) -> list[list[float]]:
+        """Return ``venue_candles``, asking again after a 429 or a server error."""
+        return retry_sync(
+            lambda: self._send(product, window),
+            attempts=RaCoinbaseAdapter.retry_max,
+            delay_for=exponential_delay(RaCoinbaseAdapter.retry_base_s),
+            is_retryable=is_transient_http,
+            on_failure=self._refused,
+        )
+
+
+def cached_spans(asset: str, cache_dir: Path) -> tuple[tuple[int, int], ...]:
+    """Return the spans one base's cache file was asked for, or none."""
+    path = candle_file(cache_dir, asset)
+    if not path.is_file():
+        return ()
+    body = json.loads(path.read_text(encoding="utf-8"))
+    return tuple((int(first), int(last)) for first, last in body.get("spans", []))
+
+
+def cache_plan(evidence: Evidence, closed_ms: int) -> list[CacheFill]:
+    """Return a ``CacheFill`` for each charted base whose ``fetch_spans`` hold a slot
+    up to ``closed_ms``."""
+    groups = label_groups(evidence.labels, evidence.fills)
+    plan: list[CacheFill] = []
+    for asset, label in sorted(evidence.labels.items(), key=lambda pair: pair[1]):
+        held = groups.get(label)
+        if not held:
+            continue
+        spans = tuple(
+            (first_ms, min(last_ms, closed_ms))
+            for first_ms, last_ms in fetch_spans(evidence.candles[asset], held)
+            if first_ms <= closed_ms
+        )
+        if spans:
+            plan.append(CacheFill(asset, label, spans))
+    return plan
+
+
+def write_cache_file(
+    venue: VenueRequests,
+    fill: CacheFill,
+    tablet: Sequence[Sequence[float]],
+    cache_dir: Path,
+) -> str:
+    """Write ``fill``'s venue candles in slots ``tablet`` lacks, and return its line."""
+    product = f"{fill.asset.upper()}-{VENUE_QUOTE}"
+    windows = [
+        window for first, last in fill.spans for window in request_windows(first, last)
+    ]
+    try:
+        answers = [venue.ask(product, window) for window in windows]
+    except HTTPError as error:
+        if error.code != HTTPStatus.NOT_FOUND:
+            raise
+        return f"{fill.label}: the venue lists no {VENUE_QUOTE} product, no file"
+    tablet_ms = {int(row[0]) for row in tablet}
+    kept: dict[int, list[float]] = {}
+    for answer in answers:
+        for row in answer:
+            stamp_ms = int(row[0])
+            asked = any(
+                first_ms <= stamp_ms <= last_ms for first_ms, last_ms in fill.spans
+            )
+            if asked and stamp_ms not in tablet_ms:
+                kept.setdefault(stamp_ms, row)
+    candles = [kept[stamp_ms] for stamp_ms in sorted(kept)]
+    atomic_write_json(
+        candle_file(cache_dir, fill.asset),
+        {
+            "asset": fill.asset,
+            "product": product,
+            "source": f"{CoinbasePublicCandles.BASE_URL}/{product}/candles",
+            "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "spans": [list(span) for span in fill.spans],
+            "requests": len(windows),
+            "candles": candles,
+        },
+        indent=None,
+        separators=(",", ":"),
+    )
+    slots = sum((last - first) // BAND_BAR_MS + 1 for first, last in fill.spans)
+    return (
+        f"{fill.label}: {len(candles)} candles in {slots} slots,"
+        f" {len(windows)} requests"
+    )
+
+
+def fill_candle_cache(evidence_dir: Path) -> Iterator[str]:
+    """Write each ``cache_plan`` base's file under ``CANDLE_CACHE_FOLDER``, yielding
+    the request count before the first request and one line per base."""
+    evidence = read_evidence(evidence_dir)
+    if evidence is None:
+        yield f"absent - no venue export under {evidence_dir / TRANSACTIONS_FOLDER}"
+        return
+    cache_dir = evidence_dir / CANDLE_CACHE_FOLDER
+    closed_ms = bar_start_ms(datetime.now(timezone.utc)) - BAND_BAR_MS
+    plan = [
+        fill
+        for fill in cache_plan(evidence, closed_ms)
+        if cached_spans(fill.asset, cache_dir) != fill.spans
+    ]
+    total = sum(len(request_windows(*span)) for fill in plan for span in fill.spans)
+    yield (
+        f"requests: {total} for {len(plan)} bases, at most one each"
+        f" {RaCoinbaseAdapter.chunk_sleep_s:g} s"
+    )
+    venue = VenueRequests()
+    for fill in plan:
+        yield write_cache_file(venue, fill, evidence.candles[fill.asset], cache_dir)
+    yield (
+        f"sent {venue.count} requests, the closest two {venue.closest_s:.2f} s apart,"
+        f" {len(venue.refusals)} refused"
+    )
+    yield from venue.refusals
+
+
 def main(argv: list[str] | None = None) -> int:
     """Build the manual, print its contents and every check, and return the exit code."""
     parser = argparse.ArgumentParser(description="Render docs/manual to a PDF.")
@@ -3628,11 +3913,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="print the venue exports' reading and tables, and build no PDF",
     )
+    parser.add_argument(
+        "--fetch-candles",
+        action="store_true",
+        help="fill the five-minute candle cache from the venue, and build no PDF",
+    )
     args = parser.parse_args(argv)
 
     if args.measure:
         for line in measurement_lines(args.evidence_dir):
             print(console_safe(line))
+        return 0
+
+    if args.fetch_candles:
+        for line in fill_candle_cache(args.evidence_dir):
+            print(console_safe(line), flush=True)
         return 0
 
     evidence = read_evidence(args.evidence_dir)
