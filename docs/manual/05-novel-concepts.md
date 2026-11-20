@@ -16,6 +16,10 @@ Acervator addresses ‘fundamental market unpredictability’ by allowing volati
 
 Now: a buy-back waits for this distance, wired or not, because a wire takes only the profit a sale leaves past the dollars that buy back its units and the room the growth cap leaves, and a tranche whose own dollars cannot restore its units at this distance waits until they can (`src/trading/scrumming/sizing.py, in tranche_rebuy_price`).
 
+**The clause above naming the room the growth cap leaves is overtaken.** It is not edited and not removed.
+
+Now: a buy-back waits for this distance, wired or not, because a wire takes only a share of what a sale leaves past buying its units back at this distance with the buy fee, and a tranche whose own dollars cannot restore its units at this distance waits until they can (`src/trading/scrumming/sizing.py, in sale_surplus_usd` and `tranche_rebuy_price`).
+
 The harvest-fold method itself was manually executed and tested on a multiple cryptocurrency pairs throughout 2023~2026 but it has always been the aspiration to automate it and have it executed at a high rate of frequency with the operating theory that this approach to investment, being a hybrid a HODL and active trading, creates frontline area of support for whatever markets in which it participates long term. It does this by maintaining and, utilizing as directed, all earned profits. It turns any user into an active participant and liquidity provider.
 
 After entering the space full time in 2017, I immediately began to parse and breakdown how price charts were being interpreted. This also allowed me to perform ever deeper introspections on my own response to how my mind was responding to the value of my portfolio fluctuating. I did myself absolutely no psychological favors in this pursuit but, as you will see, I had plenty of reasons to take this reckless approach. By this point, my undiagnosed and untreated military injuries had worn me down to the point where I realized I was running out of time to continue working as normal. I had, by then, been walking a torsioned pelvis for 17 years that had seized in place and, by 2020, would be causing enough pain to induce panic attacks. I could have joined the pill-mill club but I declined. In combination with the pain, the forced TA self-training, physical job, and broken marriage, I also assembled an entire GPU-based mining farm…alone. I had some business partners but their participation was basically nonexistent. The VA was providing no support and would not until 2022. The Navy and Pentagon had spit in my face by sending me PDBR paperwork that they had no intention of ever honoring no matter what I wrote down. My family more or less remained ignorant of all my turmoil while I kept the paychecks coming. So really the story of Acervator’s and Harvest-Fold is one of betrayal to a degree that allowed me to see through things more clearly than would otherwise have been possible. It has been invented out of necessity and it is my intuition that Acervator can become that necessary tool for other people as well.
@@ -1349,6 +1353,18 @@ wires. No mechanism funds a new bot out of a parent's mature profit. Deploying
 a pre-connected cluster from the Market Inspector is an intention.
 
 Now: the scrum routing sends each wire its share of a sale's surplus alone, the Scrum Fold Ratio's share of what the sale leaves past the dollars that buy back every unit it sold, less the room the growth cap leaves. A detonation sends each wire its percentage of the proceeds, because none of them can be folded back, and a fold sends nothing (`src/trading/scrumming/wire_routing.py, in _route_scrum_proceeds_via_wires`).
+
+**The first sentence above is overtaken.** It is not edited and not removed.
+
+Now: a sale's surplus is what its proceeds after the sale fee hold past the cost of buying back every unit it sold at the Minimum Opposing Trade Distance with the buy fee, never below zero. Each wire takes its percentage of that surplus, and the wires together never take more than the whole. Neither the room left under the growth cap nor the Scrum Fold Ratio comes out of it (`src/trading/scrumming/sizing.py, in sale_surplus_usd`).
+
+`src/trading/scrumming/sizing.py` — `sale_surplus_usd`
+
+```python
+if units <= 0.0 or price <= 0.0:
+    return 0.0
+return gain_after_fees_usd(proceeds, units, price, buy_fee_pct)
+```
 
 ## 8 - Hunger and Satiety Indices
 
