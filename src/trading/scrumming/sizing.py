@@ -2806,13 +2806,6 @@ def rate_after_wire(ref: float, wire_share_pct: float) -> float:
     return float(ref) * (1.0 - clamped_wire_pct(wire_share_pct) / 100.0)
 
 
-def ref_after_wire(record: dict, fee_pct: Optional[float]) -> float:
-    """``rate_after_wire`` of ``record``'s ``ref`` at its ``tranche_wire_share_pct``."""
-    return rate_after_wire(
-        float(record.get("ref", 0.0) or 0.0), tranche_wire_share_pct(record, fee_pct)
-    )
-
-
 def tranche_restore_price(record: dict) -> Optional[float]:
     """The price at which ``tranche_sale_usd`` of ``record`` buys back its
     ``units_at_scrum``, None where it holds no units or no readable ``usd``."""
@@ -2859,14 +2852,16 @@ def eligible_fold_tranches(
 
 
 def discharge_gain_usd(
-    record: dict, units: float, price: float, fee_pct: Optional[float]
+    record: dict, units: float, price: float, buy_fee_pct: Optional[float]
 ) -> float:
-    """``units`` taken off ``record`` at ``price`` times what ``ref_after_wire``
-    exceeds ``price`` by, 0.0 where it does not exceed it."""
-    rate = ref_after_wire(record, fee_pct)
-    if rate > price:
-        return units * (rate - price)
-    return 0.0
+    """``units`` at ``record``'s ``tranche_restore_price`` less ``units`` at ``price``
+    plus ``buy_fee_pct``, never below zero."""
+    restore = tranche_restore_price(record)
+    fee = as_finite_float(buy_fee_pct)
+    if restore is None or fee is None:
+        return 0.0
+    restore_cost = priced_usd(units, price) * (1.0 + fee / 100.0)
+    return max(0.0, units * restore - restore_cost)
 
 
 WIRE_CREDIT_DETAIL_KEY = "wire_credits"

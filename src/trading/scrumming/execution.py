@@ -763,16 +763,31 @@ class ExecutionEngineMixin:
             return None
         return _rec
 
-    def _note_venue_fee_pct(
+    def _charged_fee_pct(
         self, record: Optional[SettledFillFee], fill_price: float
-    ) -> None:
-        """Raise ``highest_venue_fee_pct`` to the ``venue_fee_pct`` of ``record`` and log each rise."""
-        charged = venue_fee_pct(
+    ) -> Optional[float]:
+        """``venue_fee_pct`` of ``record`` at ``fill_price``, charged in
+        ``_venue_quote_currency`` or ``config.target_asset``."""
+        return venue_fee_pct(
             record,
             fill_price,
             self._venue_quote_currency(),
             str(getattr(self.config, "target_asset", "") or "").strip().upper(),
         )
+
+    def _buy_fee_pct(
+        self, fill_price: float, fee_pct: Optional[float]
+    ) -> Optional[float]:
+        """The ``_charged_fee_pct`` of ``_last_fill_venue_fee`` at ``fill_price``, else
+        ``fee_pct``."""
+        charged = self._charged_fee_pct(self._last_fill_venue_fee, fill_price)
+        return fee_pct if charged is None else charged
+
+    def _note_venue_fee_pct(
+        self, record: Optional[SettledFillFee], fill_price: float
+    ) -> None:
+        """Raise ``highest_venue_fee_pct`` to the ``venue_fee_pct`` of ``record`` and log each rise."""
+        charged = self._charged_fee_pct(record, fill_price)
         if charged is None:
             return
         held = self.highest_venue_fee_pct
@@ -2110,6 +2125,7 @@ class ExecutionEngineMixin:
         lot at its tranche's ``initial_buy_price`` and the rest one at ``fill_price``, and
         answer the ``discharge_gain_usd`` and how many tranches ended.
 
+        The gain prices each restore at ``_buy_fee_pct`` of ``fee_pct``.
         With ``floor``, a tranche whose ``tranche_rebuy_price`` sits under ``fill_price``
         stays unpaid. A tranche pays its units from its own sale dollars, and one that
         ends returns its wire credit to the pool. A tranche ``queued_by`` refuses at
@@ -2127,6 +2143,7 @@ class ExecutionEngineMixin:
             )
             return 0.0, 0
         gain_usd = 0.0
+        buy_fee_pct = self._buy_fee_pct(fill_price, fee_pct)
         remaining = fill_amount
         consumed = []
         named = set(paid_events or ())
@@ -2148,7 +2165,7 @@ class ExecutionEngineMixin:
             take = min(t_units, remaining)
             if take <= 1e-12:
                 continue
-            gain_usd += discharge_gain_usd(t, take, fill_price, fee_pct)
+            gain_usd += discharge_gain_usd(t, take, fill_price, buy_fee_pct)
             self._main_lots.append(
                 {
                     "units": take,

@@ -1082,15 +1082,15 @@ class ScrummingBot(
 
         Returns:
           The growth in USD, capped off the cycle-open target and NOT the
-          anchor, overshooting what the applier later books by
-          ``1 / (1 - venue_fee)``.
+          anchor.
 
         Args:
           units: base units the prospective buy would acquire.
           price: quote price used in place of the unknown fill price.
           distance: where given, a tranche whose ``tranche_rebuy_price`` sits
             under ``price`` takes none of ``units``.
-          fee_pct: the fee ``discharge_gain_usd`` reads each wire share at.
+          fee_pct: the buy fee ``discharge_gain_usd`` prices each restore at, in
+            place of the unknown fee the venue charges the fill.
 
         """
         if not self.config.profit_folding_active:
@@ -1899,8 +1899,9 @@ class ScrummingBot(
         **fingerprint: Any,
     ) -> None:
         """Book one settled piece of a manual tranche fire: a lot at ``ibp``, the
-        tranche settled by the share of ``asked`` filled, and the growth at
-        ``rate_after_wire`` of ``ref`` and ``wire_share_pct``.
+        tranche settled by the share of ``asked`` filled, and the growth
+        ``discharge_gain_usd`` gives that share of ``tranche_units`` sold at
+        ``rate_after_wire`` of ``ref`` and ``wire_share_pct`` less ``_fee_pct_read``.
 
         ``_planned_fold_sources`` finds the tranche again through ``sources`` or the
         ``fingerprint`` it carried when the order went out. A tranche that ends
@@ -1909,9 +1910,18 @@ class ScrummingBot(
         rebought_units = float(units)
         _share_filled = min(1.0, rebought_units / asked) if asked > 0 else 1.0
         _cost = float(cost) * _share_filled
-        _mf_rate = rate_after_wire(ref, wire_share_pct)
-        _mf_profit = (
-            _cost * (1.0 - float(fill_price) / _mf_rate) if _mf_rate > 0 else 0.0
+        _mf_units = float(tranche_units) * _share_filled
+        _mf_fee = self._fee_pct_read()
+        _mf_sale_usd = (
+            _mf_units * rate_after_wire(ref, wire_share_pct) * (1.0 - _mf_fee / 100.0)
+            if _mf_fee is not None
+            else 0.0
+        )
+        _mf_profit = discharge_gain_usd(
+            {"units": _mf_units, "usd": _mf_sale_usd},
+            _mf_units,
+            float(fill_price),
+            self._buy_fee_pct(fill_price, _mf_fee),
         )
         try:
             _mf_growth = self._apply_fold_target_growth(
