@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-19 against `6f8ab163`. **Every claim here names one command that
+Written 2026-11-20 against `a055b393`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,72 +18,74 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running, with no unit out. The 35 pull
-requests since `4bd0012c` are #1728 to #1768: 24 on #1633, six on #1734 and
-five on #1735. #1734 and #1735 are closed: every row of each is built. #1622,
-#1656 and #1695 stay paused, by his 2026-11-13 ruling, until he points back to
-them.
+The session that wrote this was still running. The 12 pull requests since
+`a4392bb9` are #1784, #1787, #1788 and #1790 to #1798: one on
+#1633, one on #1786, three on #1622 and seven on #1789. #1786 and #1789 are
+closed.
 
 ```bash
-git log --oneline --first-parent 4bd0012c..a72631a9   # the 35 pull requests
-gh issue view 1633 --comments            # each record, result and close, newest last
-gh release view                          # what is published
-gh pr list --state open                  # what is still landing
+git log --oneline --first-parent a4392bb9..a055b393   # the 12 pull requests
+gh pr view 1798 --json state --jq .state              # MERGED, and the same for the other 11
+gh issue view 1633 --comments                         # each record, result and close, newest last
+gh issue view 1622 --comments                         # the wire rulings and the units that built them
+gh release list                                       # what is published
+gh pr list --state open                               # what is still landing
 ```
 
-- **Experiment 3 on #1633 has ended.** Comment 7000447930 holds its result: with
-  the sigil feedback the starting fault survived in 5 of 23 counted tasks,
-  against 20 of 23 without it, and both arms passed their working cases in 23
-  of 23. Comment 7000669734 names what it tested, comment 7017521152 corrects
-  it, and #1780 carries the correction into the manual: the result holds for
-  seven sigils, CODE.LOOP, CODE.FLOW,
-  CODE.COLLECTION, CODE.TYPE, CODE.VARIABLE, CODE.IMPORT and CODE.OPTIMIZE.
-  CODE.OPTIMIZE named its task's rule in task10, task14, task17 and task18, each
-  time beside CODE.LOOP or CODE.COLLECTION, so the experiment cannot tell its
-  effect apart from theirs. CODE.SECURE printed no line, and CODE.REACH had no
-  task.
-- **CODE.SECURE holds one rule of its own, SECURE001** (#1779). It reports a
-  credential mask list that misses a word of `src/exchange/api_logger.py, in _redact`,
-  the redaction-list form of experiment 3's tasks 09 and 30:
-  `dev_harness/sigils/code_secure.py, in OWN_RULES`. Comment 7018280639 holds
-  its readings.
-- **CODE.LOOP holds four rules of its own, LOOP001 to LOOP004.** LOOP004 (#1782)
-  reads readlines() looped over a file an .open() method returned, on the 42
-  binding forms ruff FURB129 reads only on the built-in open:
-  `dev_harness/sigils/code_loop.py, in OWN_RULES`. Comment 7021561848 holds its
-  readings.
-- **Next on #1633:** the next trial, with tasks whose faults CODE.SECURE and
-  CODE.REACH can read and a task whose rule only CODE.OPTIMIZE holds, by
-  comment 7017521152. It needs its own iteration record and seal first, by part
-  6 of Skill: canonized-workflow.
-- **The write hook's sigil feedback is on by default**, by record 7000460425 and
-  #1777. The function `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off`
-  turns it off only when ACERVATOR_SIGIL_FEEDBACK reads off, or when a
-  SIGIL_FEEDBACK_OFF file sits in the file's folder or a folder above it. The
-  hook names no SIGIL_FEEDBACK_ON file, so that old marker decides nothing.
-- **No sigil page carries a figure measured on `src/`** (#1770): those figures
-  live in the data sets under `artifacts/sigil_runs/`.
+- **Experiment 4 on #1633 runs as a one-task calibration loop.** Comment
+  7029421149 sealed it. Task_14_Config_Dump left both arms before any result was
+  read (comment 7030292555). The batch stopped after 14 counted pairs: the
+  feedback alone removed the fault in 6, and the fault survived both arms in 8.
+  Comment 7030709520 records those scores and turns the batch into the loop: one
+  task, both arms, scored as soon as both end, then one change.
+- **Task_07_Control_Tips has run three request forms** (comments 7030835431 and
+  7031025142). Under the request a user would type, both arms removed the fault.
+  Comment 7031761559 holds the code each version wrote, pair by pair: the version
+  with feedback ended with fewer archetype findings in 10 of 17 pairs, the same in
+  5 and more in 2. Each task's W5H file and each pair's code report sit in the
+  gitignored folder artifacts/referee/.
+- **CODE.REACH reads a file git ignores** (#1784, comment 7025635026). Before, it
+  read such a file as REACHED without reading it, so it reported nothing on any
+  run of experiment 3. OCIR row C160 records the shape.
+- **The wire work on the money path.** #1787 grows the Target Balance on a
+  buy-back only by its gain after both fees, and comment 7030618732 closes #1786.
+  On #1622, #1788 sends each wire a share of the surplus, #1791 retires the Scrum
+  Fold Ratio, and #1798 makes Settings refuse a wire set past 100% (comments
+  7032645599, 7035168776 and 7044828212). HIS RULINGS THAT BIND THE CODE carries
+  each rule with its symbol.
+- **The VWAP charts draw five-minute candles and bands, with each Scrum-Fold
+  pair** (#1790, #1792 to #1795), and no tracked text or image carries a dollar
+  figure read from the account (#1796, #1797). Comment 7041401558 closes #1789.
+
+### Standing state
+
+- **The write hook's sigil feedback is on by default** (#1777). The function
+  `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off` turns it off only
+  when ACERVATOR_SIGIL_FEEDBACK reads off, or when a SIGIL_FEEDBACK_OFF file sits
+  in the file's folder or a folder above it.
+- **The sigils hold rules of their own.** CODE.SECURE holds SECURE001 (#1779) and
+  CODE.LOOP holds LOOP001 to LOOP004 (#1782), each in its module's OWN_RULES.
+- **No sigil page carries a figure measured on src/** (#1770): those figures live
+  in the data sets under the gitignored artifacts/sigil_runs/.
 - **Every iteration has a record first:** W5H and OCIR, gated by the Truth
   Archetype with `--item`, posted, then acted on. The rule is part 6 of Skill:
-  canonized-workflow (#1742).
-- **A control is measured on its failure modes, not on a sweep** of `src/`:
-  inputs that show each known failure mode, a corrected twin and a near-miss twin
-  each, and a seeded sample stratified by folder where `src/` is used. Every
-  input cites the failure it is grounded in. The rule is in Skill:
-  two-sided-control (#1765, #1771).
+  canonized-workflow (#1742). In experiment 4 each task also carries its own W5H
+  file (comment 7030835431).
+- **A control is measured on its failure modes, not on a sweep** of src/: inputs
+  that show each known failure mode, a corrected twin and a near-miss twin each,
+  and a seeded sample stratified by folder where src/ is used. Every input cites
+  the failure it is grounded in. The rule is in Skill: two-sided-control (#1765,
+  #1771).
 - **A worktree lacks what git ignores** (Skill: ocir, row C155): run the Truth
   Archetype's T008 from the main tree, and copy CODE.SECURE's rule packs into a
   worktree with their sha256 checked.
-- **Skill: ocir holds rows C156 to C159.** Watch a log by polling its line count
+- **Skill: ocir holds rows C156 to C160.** Watch a log by polling its line count
   with `wc -l`, never with `tail -f` (C156). Give no two PowerShell variables in
   one command names that differ only by case (C157). Search for a folder by its
   path form, the name plus its separator, with the run's own folder path as the
   control (C158). A filter on a report's verdict word accepts every word each
-  producer prints, read first on a control text with one line per producer
-  (C159).
-- **The prompt router's own row lists match the catalogue index** (#1781):
-  `dev_harness/hooks/prompt_router.py, in _build_catalogue_gaps` answers an
-  empty string for `_CATALOGUE_RULES` against the index of Skill: ocir.
+  producer prints (C159). A tool that picks its files through git never reads a
+  gitignored input, so run its listing on the input alone first (C160).
 - **Running units are watched on a clock.** A loop runs the watcher every 300
   seconds, or sooner or later when a run's time is measured, and wakes the
   referee only on a flag: STALE, SPIRAL, LONG_WAIT, NO_ADVANCE, RUNAWAY or RAM.
@@ -93,34 +95,38 @@ gh pr list --state open                  # what is still landing
   `dev_harness/sigils/semgrep_rule_packs/`; both trees hold them. A new clone
   fetches them with the two commands on `docs/manual/16-sigil-project/code-secure.md`,
   and until then the sigil refuses and names the missing file.
-- **The releases and both trees:**
+
+### The releases and both trees
 
 ```
-releases     gh release list      # two builds, 1238 and 2002
-             0.2.0-20261119.1238.g6e333fc1cfc0, from 6e333fc1, 6 assets, Latest
-             0.2.0-20261118.2002.g2a5b061dc949, from 2a5b061d, 6 assets
-main         6e333fc1, a merge of current at 6f8ab163
-             git describe --tags origin/main     # build-0.2.0-20261119.1238.g6e333fc1cfc0
+releases     gh release list      # three builds, 0831, 0106 and 2042
+             0.2.0-20261120.0831.g041bde6396a5, from 041bde63, 6 assets, Latest
+             0.2.0-20261120.0106.g5ae2c16acea1, from 5ae2c16a, 6 assets
+             0.2.0-20261119.2042.g9db41524c4b6, from 9db41524, 6 assets
+main         041bde63, a merge of current at a055b393
+             git describe --tags origin/main     # build-0.2.0-20261120.0831.g041bde6396a5
              git log --oneline origin/main..origin/current     # prints nothing
-both trees   at 6f8ab163; dist/ holds the 2002 pair and the 1238 pair
-he runs      2002, the dist folder of each running Acervator process
+both trees   the same content: one on current at a055b393, one detached at 041bde63
+             git diff --stat a055b393 041bde63     # prints nothing
+             dist/ in each holds four pairs: 2042, 2251, 0106 and 0831; 0831 is the newest
+             and holds every pull request named above
+he runs      2042, the dist folder of each running Acervator process
              Get-CimInstance Win32_Process -Filter "Name LIKE 'Acervator%'"   # ExecutablePath
+             2042 holds #1784 and #1787 and none of #1788 to #1798
+             git merge-base --is-ancestor 00ab281b 9db41524     # exit 0
+             git merge-base --is-ancestor a1294458 9db41524     # exit 1
 ```
-
-- **The machine took one system crash**, bug check 0x133, at 20:39 on
-  2026-11-18, as events 6008 and 1001 in the Windows System log record. It
-  stopped one reading of experiment 3, as comment 7000447930 records. Windows now
-  writes a kernel memory dump on a crash, with CrashDumpEnabled reading 2, and
-  the machine holds the WinDbg package, so a repeat can name the driver.
 
 - **Held for him:** the Dependabot pull requests #1738, #1739 and #1747 pass
-  `ci-gate`, and the permission classifier refuses a merge of them from this
-  session; #1739 or #1747 closes alert 82 (`minimatch`). Also the unruled rows of
-  the Decisions tables on #1643 and #1622, and moving the Coding Archetype's own
-  ruff call onto the step 1c selection, which is a change in `dev_harness/harness/`.
-  And #1764: committing the watcher as a new file under `tools/` needs his word,
-  because `dev_harness/hooks/block_detour.py` admits a new file there only when
-  its `COMMISSIONED` set names it. Do not raise them as a round.
+  ci-gate (`gh pr checks <n>`), and #1739 or #1747 closes alert 82, minimatch,
+  which reads open. The unruled rows of the Decisions tables on #1643 and #1622.
+  Moving the Coding Archetype's own ruff call onto the step 1c selection, a
+  change in dev_harness/harness/ (comment 6870001755). #1764: committing the
+  watcher as a new file under tools/ needs his word, because
+  `dev_harness/hooks/block_detour.py` admits a new file there only when its
+  COMMISSIONED set names it. The proposed rule in comment 7030292555: the dispatch
+  hook's build pattern reads a word inside quoted data, such as a dictionary key,
+  as a build verb. Do not raise them as a round.
 
 ---
 
@@ -263,12 +269,12 @@ there; compare each with `git hash-object` against the merge commit.
 ## THE QUEUE
 
 ```bash
-gh issue list --state open --limit 200          # 36 open when written
+gh issue list --state open --limit 200          # 37 open when written
 ```
 
 | To clear | Excluded, and why |
 |---|---|
-| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540, #1764 |
+| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695, #1785 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540, #1764 |
 
 Read the body before dispatching, and grep the symbols a row names in the same
 call: a row's status can be stale, and a scan that calls a row built has been
@@ -281,32 +287,52 @@ wrong far more often than right.
 - **#1633, the Coding Archetype, first, by his focus ruling.** His 2026-11-18
   refocus, verbatim: "the Coding Archetype with and without sigils attempting the
   same coding task. My goal is to measure this as scientifically as possible."
-  Experiment 2 is closed. The growth record, comment 6969215458, has four steps,
-  each with its own record first: 1, one result on every run; 2, a follow-on
-  runner built from `dev_harness/sigils/fix_class.py, in FOLLOW_ON`; 3, CODE.LOOP
-  holds every loop rule; 4, feedback while code is written. Then experiment 3
-  compares the Coding Archetype with and without the sigils, sealed first. Step 1
-  is built in 1b (#1745), 1a (#1748), 1c (#1750), 1d (#1753) and 1e (#1754):
-  every reading path refuses a tool version its card does not hold. Step 2 is
-  built in #1760: `python -m dev_harness.sigils.fix_class` applies ruff's safe
-  fixes for the six ruff sigils and judges the file again, up to
-  `ROUND_LIMIT`. Step 3 is built in #1762 and #1766, and #1782 adds LOOP004:
-  CODE.LOOP holds 29 ruff loop rules and four of its own, LOOP001 to LOOP004, in
-  `dev_harness/sigils/code_loop.py`. Step 4 is built in #1767: after a `.py`
-  write, `dev_harness/hooks/archetype_gate.py` adds the nine coding sigils'
-  findings, and since #1777 it does so unless the variable or a marker file
-  turns the feedback off, as above. Experiment 3 has ended, and the next unit is
-  the next trial, as above.
+  The growth record, comment 6969215458, has four steps, and all four are built:
+  step 1 in #1745, #1748, #1750, #1753 and #1754; step 2 in #1760; step 3 in
+  #1762, #1766 and #1782; step 4 in #1767 and #1777. Experiment 3 has ended, and
+  experiment 4 runs as the loop above. **Next:** the loop's next task, with its
+  own iteration record first, by part 6 of Skill: canonized-workflow. Left, by
+  comment 7030709520: the 8 tasks whose fault survived both arms, of which
+  Task_07_Control_Tips has run, and the 7 counted tasks not yet run. **His alpha gate, 2026-11-19:** the comparison on a real
+  Issue unit, with sigils against without, waits until the referee judges the
+  sigil-based Coding Archetype ready for alpha. Until then the one-task loop runs,
+  with organic requests.
 
 ```bash
-gh issue view 1633 --comments      # step records 6969302729, 6974831108, 6976861545, 6988816286; step 4 report 6993323259
+gh issue view 1633 --comments      # loop 7030709520; Task_07 7030835431, 7031025142; code reports 7031761559
+grep -n "ready for alpha" ~/.claude/projects/*/memory/project_sigil_alpha_gate.md
 ```
 
-- **#1622, #1656 and #1695, the money path, are paused.** When work returns to
-  them: #1622's unbuilt rows in row order are 14, 18, 21, 22, 24 to 27, 29 to 31,
-  33, 35, 36, 38 and 39; rows 28, 32, 34 and 37 wait on his answers in the
-  Decisions table; row 20 is partial. Every row of #1656 and #1695 is built and
-  is in the build he runs, so read his logs, read only, for each row's lines:
+- **#1622, the wire rows, on his rulings of 2026-11-19** (comments 7028680362 to
+  7029270222). #1787, #1788, #1791 and #1798 are built. The body's spine still
+  describes a wire's share through the Scrum Fold Ratio and the growth cap's room,
+  which #1788 and #1791 removed, so read the comments from 7028680362 for the
+  wire model. Next, in this order:
+
+```
+the arriving-credit limit   a credit fills a tranche only up to full compounding growth at its
+                            minimum entry price; today it spreads evenly, with no limit
+                            src/trading/scrumming/wire_routing.py, in WireRoutingMixin.apply_wire_income
+                            comments 7028937235 and 7029003659
+the Extractor's stack share the arrival spread across the parent's stack tranches, unbuilt
+                            src/trading/scrumming_bot.py, in ScrummingBot.apply_extractor_tranche_return
+                            comment 7029071374
+row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each wire at 100%
+                            divided by the wire count, and Live leaves each at 100%
+                            src/paper/paper_wire.py, in PaperWireManager.distribute_sale_surplus
+                            src/simulator/sim_wire.py, in SimWireManager.distribute_sale_surplus
+                            src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires
+the React swarm page        a dragged wire is drawn and never saved, and Connect stops at its
+                            own confirm question, comment 7044828212
+```
+
+  The body's other unbuilt rows, in row order: 14, 18, 21, 22, 24 to 27, 30, 31,
+  33, 35, 36, 38 and 39. Rows 28, 32, 34 and 37 wait on his answers in the
+  Decisions table, and row 20 is partial (`gh issue view 1622`, the Status
+  column).
+
+- **#1656 and #1695: every row is built** and is in the build he runs, so read
+  his logs, read only, for each row's lines:
 
 ```
 #1695 rows 1 and 3   no Max Cartridge fold, fold rebuy or hedge top-up line names CCXTQueueFullError
@@ -321,9 +347,13 @@ gh issue view 1633 --comments      # step records 6969302729, 6974831108, 697686
 #1656 row 8          VENUE KEPT, VENUE REMOVED, VENUE KEPT AT CLOSE or VENUE DROPPED AT CLOSE
 #1656 row 9          ORDER LOST, LOST ORDER UNMATCHED, LOST ORDER ENDED and LOST ORDER ANSWERED
                      gh issue view 1695 and gh issue view 1656, the Status column
-                     git merge-base --is-ancestor cd3af6d1 5dbab079      # exit 0
+                     git merge-base --is-ancestor efd0e18a 9db41524      # exit 0, #1656 in 2042
+                     git merge-base --is-ancestor a1429717 9db41524      # exit 0, #1695 in 2042
 ```
 
+- **#1785, a slow venue link, waits.** His words in comment 7028058664 put it for
+  later: "If we have an optimization opportunity here, we should make it an Issue
+  and address it later." Its Decisions table holds two figures only he sets.
 - **#1657, public text that breaks the writing rules.** Read the body before
   dispatch.
 - **#1643, what the manual rewrites found.** Next, in order: row 66, the breaker
@@ -358,11 +388,27 @@ the opposing distance       never under two fees, on the venue's reported fee wh
                             src/trading/otd_math.py, in distance_settings
 the distribution sale       keeps the distance from the buy price of the fold that bought it
                             src/trading/scrumming/distribution.py
+a buy-back's growth         its gain after both fees, never below zero, on every buy-back path
+                            src/trading/scrumming/sizing.py, in gain_after_fees_usd, #1786
+a wire's surplus            what a sale leaves past the dollars that re-zero its units at the
+                            Minimum Opposing Trade Distance, buy fee included; the buy-back
+                            distance carries no wire term
+                            src/trading/scrumming/sizing.py, in sale_surplus_usd,
+                            #1622 comments 7028937235 and 7029165701
+wire shares                 each wire takes its share of the surplus; a bot's set never passes
+                            100% and no share sits below zero
+                            src/trading/smart_wire.py, in wire_set_refusal, #1622 comment 7044828212
+the Scrum Fold Ratio        retired; a sale's tranche keeps every unit it sold
+                            src/trading/container/config.py, in _DEPRECATED_KWARGS,
+                            #1622 comment 7029270222
 wire credits                surplus, never a hedge fund; spent only inside a fold tranche,
                             capped at the maximum growth per cycle; a remainder returns
                             to the pool, src/trading/scrumming/wire_routing.py
-smart wires                 carry surplus only, never the dollars a buy-back needs;
-                            the buy-back distance carries no wire term, #1622 row 6
+an arriving credit          waits in its bucket until a tranche spawns and never spawns one,
+                            on fold and stack tranches alike, #1622 comment 7029003659
+the Extractor's return      reaches its parent through their association, never a Smart Wire
+                            src/trading/container/registry.py, in find_parent_bot_for_base_currency,
+                            #1622 comment 7029071374
 shared cash                 a cartridge leaves other bots' reserved dollars alone,
                             #1622 row 5
 hunger                      off by default, a per-bot switch and pace
@@ -407,11 +453,28 @@ Open on `current`:
 - A Gemini lost order that filled is still not booked; #1622 row 20 is partial
   (`gh issue view 1622`, row 20's Status).
 - The React Bot Swarm page's layer buttons do nothing when pressed
-  (`src/gui/web/bot_visualizer.js`, in `LayerHeader`); recorded on #23.
+  (`src/gui/web/bot_visualizer.js`, in `LayerHeader`); recorded on #23. Read at
+  1400 by 900, the same page draws a dragged wire and never saves it, and its
+  locust grid starts below the window (#1622, comment 7044828212).
 - Paper and the Simulator judge the vote at the plain floor
   (`src/simulator/back_test.py`, in `ta_direction`); recorded on #433.
-- The Extractor reads the vote's direction alone; it takes the three-indicator line
-  in its release work.
+- The Extractor does not read the three-indicator line, and takes it in its
+  release work: `grep -c three_agree src/trading/extractor_bot.py` reads 0.
+- The New User Procedure's step 15 picture still shows the retired Scrum Fold
+  Ratio row, as its page states. The picture's last commit, 542a615f, comes before
+  #1791:
+
+```bash
+git log -1 --format=%h -- docs/new-user-procedure/figures/step-15-what-a-cycle-keeps.png   # 542a615f
+```
+
+- The prompt router's own row lists sit 2 of 11 entries short of the catalogue
+  index of Skill: ocir. #1784 added C160 to the skill and left the router's
+  `_CATALOGUE_RULES` as it was. An empty line means the two match:
+
+```bash
+python -c "from dev_harness.hooks.prompt_router import _build_catalogue_gaps; print(_build_catalogue_gaps())"
+```
 
 ---
 
