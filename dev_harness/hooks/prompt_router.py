@@ -320,7 +320,7 @@ _CATALOGUE_RULES = (
             "C1, C2, C3, C4, C5, C6, C7, C9, C10, C17, C18, C22, C23, C29, "
             "C38, C47, C51, C52, C57, C84, C85, C96, C100, C106, C108, C110, "
             "C114, C115, C124, C126, C128, C131, C136, C137, C141, C144, "
-            "C145, C159"
+            "C145, C159, C160"
         ),
     ),
     (
@@ -338,7 +338,7 @@ _CATALOGUE_RULES = (
         re.compile(
             r"\b(missing|absent|empty|skipped|did not run|never ran|silent|"
             r"quiet|none|null)\b", re.I),
-        "C13, C30, C40, C41, C57, C59, C92, C99, C120, C121, C138",
+        "C13, C30, C40, C41, C57, C59, C92, C99, C120, C121, C138, C160",
     ),
     (
         "A number from recall instead of measurement",
