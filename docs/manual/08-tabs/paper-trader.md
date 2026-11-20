@@ -1707,7 +1707,8 @@ def opening_balance(bot: PaperBot, price: float, rule: str) -> FakeBalance:
 
 The ledger opens at the fleet total. `opening_ledger` sets Paper Spendable
 and Paper Locked to `fleet_target_usd` over every held record; on the
-operator's 38 records that is $3,698.46. `PaperLedger.figures` keeps both
+operator's 38 records that is the sum of their 38 Target Balances, the fleet
+total. `PaperLedger.figures` keeps both
 figures whole: each open balance replaces its `anchor_target_usd` share of
 the opening with its `cash_usd` for Spendable and its `value_usd` for
 Locked, so a record the runner has not opened still counts its target. No
@@ -1828,9 +1829,10 @@ planted on one ticker answer. The two records started on the bar read
 about eight percent over five bars in a zig-zag and fell about fourteen over
 the four after. On the commit before this unit, in both builds, Start Paper
 Run wrote *"Start Paper Run: no paper run is built; nothing started."*, no
-thread started, `BUDGET_MULTIPLE` read 2.0, the fleet budget read $7,396.91,
-twice the target, and `apply_scrum` filled at the price it was handed with
-no bid and no ask in its signature.
+thread started, `BUDGET_MULTIPLE` read 2.0, the fleet budget read twice the
+fleet total, and `apply_scrum` filled at the price it was handed with no bid
+and no ask in its signature. The table below writes the fleet total as total,
+and a strip figure near it as its distance from total.
 
 ```
 reading                                         Qt                          React
@@ -1838,8 +1840,8 @@ Import Live Fleet, rows                         38                          38
 Start on two rows through the command bar       both running                both running
 thread after Start Paper Run                    paper-run                   paper-run
 the started line                                2 of 38 running,            2 of 38 running,
-                                                target $3,698.46            target $3,698.46
-ledger at the press, Spendable and Locked       3,698.4572 each             3,698.4572 each
+                                                target at the total         target at the total
+ledger at the press, Spendable and Locked       the total each              the total each
 the run button while up                         Stop Paper Run, 4 seats     Stop Paper Run, 3 seats
 ticks in the first minute, two bots             24 (one per bot per 5 s)    24
 worked ticks in the first minute                4 (one per bot per 60 s)    4
@@ -1849,8 +1851,8 @@ first scrum, A32/USDC                          at 929.390286 = the bid     the s
 scrum units against scrum_units on the          0.00241917, equal;          equal, equal
 log row's delta, bid and rule                   0.00188792, equal
 scrum fee against 0.6% of the notional          0.01052768, equal, twice    equal, twice
-strip after the scrums                          $3,701.95 / $0.00 /         the same
-                                                $3,698.46 / $0.00 / 1
+strip after the scrums                          total + 3.49 / $0.00 /      the same
+                                                total / $0.00 / 1
 first fold, A34/USDC, bar 57                    at 654.668976 = the ask;    the same
                                                 last 654.341805
 fold units against fold_units on the row's      0.00038187, equal;          equal, equal
@@ -1858,8 +1860,8 @@ usd, ask and rule                               0.00029801, equal
 fold fee against 0.6% of the spend              0.0015, equal, twice        equal, twice
 realized per fold, fold_surplus_usd             0.02434372, twice           the same
 Realized on the ledger against the sum          0.04868745 = 0.04868745     the same
-strip after the folds                           $3,701.44 / $0.05 /         the same
-                                                $3,694.04 / $0.00 / 1
+strip after the folds                           total + 2.98 / $0.05 /      the same
+                                                total - 4.42 / $0.00 / 1
 fills at last                                   0 of 4                      0 of 4
 a 15 s delay on one ticker answer               the answer waited 15.0 s;   15.0 s; 378 paints
                                                 803 paints over 40 s        over 40 s
@@ -1906,12 +1908,13 @@ the container; a Detail press on two rows, the window it opened closed, and
 Start on the bar moved the two records to running; Start Paper Run started
 the runner and turned the seat to Stop Paper Run; over about 97 s the runner
 made 8 refused reads, 4 tickers and 4 candle windows, and wrote 4 paper rows
-each carrying *"The live feed answered no candle."*; the strip read $3,698.46
-for Spendable and Locked; Stop Paper Run ended the runner and the seat read
+each carrying *"The live feed answered no candle."*; the strip read the fleet
+total for Spendable and Locked; Stop Paper Run ended the runner and the seat read
 Start Paper Run again.
 
 The one real reading, both bundles against the public host alone, no
-credential file, the adapter's own pace, the two same records running:
+credential file, the adapter's own pace, the two same records running. As in
+the run reading above, total is the fleet total:
 
 ```
 reading                                   Qt bundle                 React bundle
@@ -1928,8 +1931,8 @@ the A34/USDC book on one read             last 0.221450,            last 0.22184
                                           ask 0.221430              ask 0.221840
 paper rows written                        6, 3 per bot              6, 3 per bot
 fills                                     0, none expected          0
-strip while running                       $3,698.46 / $0.00 /       $3,698.46 / $0.00 /
-                                          $3,698.52 / $0.00 / 1     $3,698.46 / $0.00 / 1
+strip while running                       total / $0.00 /           total / $0.00 /
+                                          total + 0.06 / $0.00 / 1  total / $0.00 / 1
 Stop Paper Run                            52 ticks, 6 worked,       the seat read Start
                                           the seat read Start       Paper Run again
 thread-violation lines                    0                         0
@@ -1937,8 +1940,8 @@ thread-violation lines                    0                         0
 
 The 100-bar window the venue answers is served from the adapter's cache for
 300 s, so the second worked tick of each bot read a fresh ticker and no
-candles. Locked moved with the venue's last price on the Qt run, from
-$3,698.46 to $3,698.52, and read $3,698.46 on the React run, whose two
+candles. Locked moved with the venue's last price on the Qt run, up 6 cents
+from the fleet total, and read the fleet total on the React run, whose two
 prices sat within a cent of their openings. The Activity
 Log's lines are not readable through UI Automation's text pattern on the
 React page, so the bundle's own `system.log` and the paper log carry the
