@@ -8,15 +8,12 @@ open), and keeps per-tranche wire-credit provenance bounded.
 from __future__ import annotations
 
 import logging
-import math
 from typing import Any, Optional, TYPE_CHECKING
 
 from ...core.event_bus import LINE_KIND_WIRE_FLOW
-from ..container.config import fold_ratio_pct
 from ..otd_math import DistanceSettingUnreadable
 from ..wallet_reservations import wallet_currency, wallet_key
 from .sizing import (
-    fold_cap_remaining_usd,
     held_wire_usd,
     restored_sale_surplus_usd,
     tranche_wire_usd,
@@ -40,8 +37,8 @@ totals exactly.
 
 _WIRE_HELD_FORMAT = (
     "WIRE HELD ({label}): the ${proceeds:.4f} this sale left holds no surplus "
-    "past the dollars that buy back its {units:.6f} units and the room the "
-    "cycle growth cap leaves, so no wire carries any of it."
+    "past the dollars that buy back its {units:.6f} units at the Minimum "
+    "Opposing Trade Distance with the buy fee, so no wire carries any of it."
 )
 """The ``bot.log`` line ``_route_scrum_proceeds_via_wires`` writes for a sale
 with no ``_sale_surplus_usd``."""
@@ -125,26 +122,12 @@ class WireRoutingMixin(_Host):
         self, proceeds_usd: float, sold_units: float, sale_price: float
     ) -> float:
         """``restored_sale_surplus_usd`` of one sale at
-        ``opposing_distance_settings``, under ``fold_cap_remaining_usd`` in
-        quote units."""
+        ``opposing_distance_settings``, 0.0 where a distance setting is unreadable."""
         try:
             distance = self.opposing_distance_settings()
         except DistanceSettingUnreadable:
             return 0.0
-        quote = float(self._quote_to_usd or 1.0)
-        if not math.isfinite(quote) or quote <= 0.0:
-            return 0.0
-        cap_remaining = fold_cap_remaining_usd(
-            self.cycle_growth_cap_usd, self._fold_cycle_cap_consumed
-        )
-        return restored_sale_surplus_usd(
-            proceeds_usd,
-            sold_units,
-            sale_price,
-            distance,
-            fold_ratio_pct(self.config),
-            cap_remaining / quote,
-        )
+        return restored_sale_surplus_usd(proceeds_usd, sold_units, sale_price, distance)
 
     def _route_scrum_proceeds_via_wires(
         self,

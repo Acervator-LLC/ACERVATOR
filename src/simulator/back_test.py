@@ -47,7 +47,7 @@ from typing import Any, Callable, Optional, Sequence
 from ..core.signal_contract import emit as pin_emit
 from ..exchange.base import MarketRules
 from ..exchange.market_rules_store import recorded_rules
-from ..trading.container.config import BotState, fold_ratio_pct
+from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext, effective_gate_flags
 from ..trading.otd_math import (
     BAND_TRAVEL_OFF_PCT,
@@ -1175,7 +1175,6 @@ def tape_context(
 def route_sale_surplus(
     wires: Any,
     bot: SimBot,
-    position: SimPosition,
     proceeds_usd: float,
     units: float,
     price: float,
@@ -1194,10 +1193,6 @@ def route_sale_surplus(
             bot.scrumming_interval_pct,
             bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT,
             BAND_TRAVEL_OFF_PCT,
-        ),
-        fold_ratio_pct(bot),
-        cycle_growth_cap_usd(
-            float(position.target_usd), 0.0, bot.max_target_growth_pct
         ),
     )
     try:
@@ -1306,9 +1301,7 @@ def apply_scrum(
     fee = estimated_fee_usd(notional, bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT)
     proceeds = sale_proceeds_usd(notional, fee)
     if wires is not None:
-        proceeds -= route_sale_surplus(
-            wires, bot, position, proceeds, units, float(price)
-        )
+        proceeds -= route_sale_surplus(wires, bot, proceeds, units, float(price))
     position.units -= units
     position.cash_usd += proceeds
     position.last_trade_price = float(price)
