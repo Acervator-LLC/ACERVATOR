@@ -253,6 +253,8 @@
   var PANEL_CALLS = "panel_calls";
   var BRANCHES = "branches";
   var STEPS = "steps";
+  var UNCONFIRMED_BRANCH = "unconfirmed_branch";
+  var ASK_ROUTE = "ask_route";
   var NAME_FIELDS = [
     COLUMNS,
     SOURCE_COLUMN,
@@ -263,7 +265,9 @@
     CHECKED_PARAMS,
     PANEL_CALLS,
     BRANCHES,
-    STEPS
+    STEPS,
+    UNCONFIRMED_BRANCH,
+    ASK_ROUTE
   ];
 
   var DEFERRED = "deferred";
@@ -388,7 +392,9 @@
   var HIDDEN = "hidden";
   var AUTO = "auto";
   var NOWRAP = "nowrap";
+  var PRE_WRAP = "pre-wrap";
   var NONE = "none";
+  var FUNCTION_KIND = "function";
   var CENTER = "center";
   var ELLIPSIS = "ellipsis";
   var POINTER = "pointer";
@@ -1034,10 +1040,12 @@
     return element(DIV_TAG, rowProps, drawn);
   }
 
-  // The question Disconnect All puts before it runs, drawn from the confirmation bag.
+  // The question a press puts before it runs: props.title and props.body, else Disconnect All's.
   function Confirm(props) {
     var model = props.model;
     var words = objectField(model, CONFIRMATION);
+    var title = props.title === undefined ? words[ALL_TITLE] : props.title;
+    var body = props.body === undefined ? words[ALL_BODY] : props.body;
     var panelProps = {
       className: MATRIX_CLASS,
       style: { display: FLEX, flexDirection: COLUMN }
@@ -1045,7 +1053,7 @@
     panelProps[PART_ATTR] = CONFIRM_PART;
     var titleProps = {};
     titleProps[PART_ATTR] = CONFIRM_TITLE_PART;
-    var bodyProps = {};
+    var bodyProps = { style: { whiteSpace: PRE_WRAP } };
     bodyProps[PART_ATTR] = CONFIRM_BODY_PART;
     var yesProps = {
       className: INPUT_CLASS,
@@ -1053,28 +1061,47 @@
       onClick: props.onYes
     };
     yesProps[PART_ATTR] = CONFIRM_YES_PART;
-    yesProps[ARIA_LABEL] = label(words[ALL_TITLE]);
+    yesProps[ARIA_LABEL] = label(title);
     var noProps = {
       className: INPUT_CLASS,
       type: BUTTON_TYPE,
       onClick: props.onNo
     };
     noProps[PART_ATTR] = CONFIRM_NO_PART;
-    noProps[ARIA_LABEL] = label(words[ALL_TITLE]);
+    noProps[ARIA_LABEL] = label(title);
     return element(
       DIV_TAG,
       panelProps,
-      element(DIV_TAG, titleProps, text(words[ALL_TITLE])),
-      element(DIV_TAG, bodyProps, text(words[ALL_BODY])),
+      element(DIV_TAG, titleProps, text(title)),
+      element(DIV_TAG, bodyProps, text(body)),
       element(BUTTON_TAG, yesProps, text(words[CONFIRM_YES])),
       element(BUTTON_TAG, noProps, text(words[CONFIRM_NO]))
     );
   }
 
-  // Every notice the panel showed the operator, drawn as words and not as markup.
+  // The question a press stopped on: the tab's last ask, when its last stop is the unconfirmed branch.
+  function questionOf(model) {
+    var names = objectField(model, NAMES);
+    var stops = listField(model, STOPS);
+    if (!stops.length || stops[stops.length - 1] !== names[UNCONFIRMED_BRANCH]) {
+      return null;
+    }
+    var shown = listField(objectField(model, TAB), SHOWN);
+    var last = shown.length ? shown[shown.length - 1] : null;
+    if (!Array.isArray(last) || last[0] !== names[ASK_ROUTE]) {
+      return null;
+    }
+    return { title: text(last[1]), body: text(last[2]) };
+  }
+
+  // The refusals the tab showed from props.from on, drawn as words and not as markup.
   function Notices(props) {
     var model = props.model;
-    var shown = listField(objectField(model, TAB), SHOWN);
+    var asks = objectField(model, NAMES)[ASK_ROUTE];
+    var from = typeof props.from === "number" ? props.from : ZERO;
+    var shown = listField(objectField(model, TAB), SHOWN).slice(from).filter(function (one) {
+      return !Array.isArray(one) || one[0] !== asks;
+    });
     var noticesProps = { className: MATRIX_CLASS, style: { display: FLEX, flexDirection: COLUMN } };
     noticesProps[PART_ATTR] = NOTICES_PART;
     noticesProps[COUNT_ATTR] = String(shown.length);
@@ -1110,6 +1137,27 @@
     var pending = hooks().useState(null);
     var asking = pending.shift();
     var setAsking = pending.shift();
+    var marked = hooks().useState(listField(objectField(model, TAB), SHOWN).length);
+    var noticeFrom = marked.shift();
+    var setNoticeFrom = marked.shift();
+    // send dispatches one change and hands the surface's answer to props.onAnswer.
+    function send(name, params) {
+      var asked = dispatch(name, params);
+      if (asked === null || typeof asked.then !== FUNCTION_KIND) {
+        return Promise.resolve(null);
+      }
+      return asked.then(function (answer) {
+        if (isPlainObject(answer) && typeof props.onAnswer === FUNCTION_KIND) {
+          props.onAnswer(answer);
+        }
+        return answer;
+      });
+    }
+    // press sets noticeFrom to the tab's shown count, then sends one button press.
+    function press(name, params) {
+      setNoticeFrom(listField(objectField(model, TAB), SHOWN).length);
+      return send(name, params);
+    }
     var matrixProps = { className: MATRIX_CLASS, style: outerStyle(model) };
     matrixProps[PART_ATTR] = MATRIX_PART;
     matrixProps[SLOT_ATTR] = MATRIX_PART;
@@ -1129,7 +1177,7 @@
           tooltip: tooltips[at],
           model: model,
           onTick: function (botId, ticking) {
-            dispatch(
+            send(
               listField(names, CHECKED_PARAMS)[at],
               tickParams(model, String(name), botId, ticking)
             );
@@ -1146,7 +1194,7 @@
               setTyped(entered);
               var params = {};
               params[names[RATE_PARAM]] = entered;
-              dispatch(names[RATE_PARAM], params);
+              send(names[RATE_PARAM], params);
             }
           })
         );
@@ -1162,10 +1210,20 @@
             setAsking({ step: step, at: at });
             return;
           }
-          dispatch(
-            listField(wiring, ACTION_ORDER)[at],
-            pressParams(model, step, typed)
-          );
+          var params = pressParams(model, step, typed);
+          params[text(names[ANSWERS_PARAM])] = [];
+          press(listField(wiring, ACTION_ORDER)[at], params).then(function (answer) {
+            var question = isPlainObject(answer) ? questionOf(answer) : null;
+            if (question !== null) {
+              setAsking({
+                step: step,
+                at: at,
+                params: params,
+                title: question.title,
+                body: question.body
+              });
+            }
+          });
         }
       })
     ];
@@ -1174,11 +1232,15 @@
         element(Confirm, {
           key: CONFIRM_PART,
           model: model,
+          title: asking.title,
+          body: asking.body,
           onYes: function () {
-            var params = pressParams(model, asking.step, typed);
+            var params = isPlainObject(asking.params)
+              ? copyOf(asking.params)
+              : pressParams(model, asking.step, typed);
             params[text(names[ANSWERS_PARAM])] = [true];
             setAsking(null);
-            dispatch(listField(wiring, ACTION_ORDER)[asking.at], params);
+            press(listField(wiring, ACTION_ORDER)[asking.at], params);
           },
           onNo: function () {
             setAsking(null);
@@ -1186,7 +1248,7 @@
         })
       );
     }
-    drawn.push(element(Notices, { key: NOTICES_PART, model: model }));
+    drawn.push(element(Notices, { key: NOTICES_PART, model: model, from: noticeFrom }));
     return element(DIV_TAG, matrixProps, drawn);
   }
 

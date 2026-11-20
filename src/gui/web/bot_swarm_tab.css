@@ -24,9 +24,12 @@ body {
 .acervator-swarm-tab {
   display: flex;
   flex-direction: column;
-  height: 100vh;
   padding: 4px;
   gap: 4px;
+}
+
+.acervator-swarm-tab[data-part="tab"] {
+  height: 100vh;
 }
 
 .acervator-swarm-tab [data-part="tab-bar"] {
