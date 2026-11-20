@@ -1542,7 +1542,9 @@ def apply_fold(
     position.total_buys += 1
     position.total_folded_usd += spend
     position.trade_volume += spend
-    growth = grow_target(bot, position, units, slices, float(price), int(ts_ms))
+    growth = grow_target(
+        bot, position, units, slices, float(price), int(ts_ms), fee_pct
+    )
     return SimTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,
@@ -1567,10 +1569,12 @@ def grow_target(
     slices: list,
     price: float,
     ts_ms: int,
+    fee_pct: float,
 ) -> float:
     """Grow ``position.target_usd`` by the fold's surplus as
     ``_apply_fold_target_growth`` grows a live bot's: ``fold_surplus_usd``
-    over the consumed ``slices``, ``target_growth_applied`` under what
+    over the consumed ``slices`` at the buy fee ``fee_pct``,
+    ``target_growth_applied`` under what
     ``cycle_growth_cap_usd`` leaves of the cycle, the applied growth added to
     the target and to the consumed cap, the rest parked as standing surplus,
     the growth side set to ``GROWTH_SIDE_LOWER``; nothing moves with
@@ -1579,7 +1583,7 @@ def grow_target(
     """
     if not bot.profit_folding_active:
         return 0.0
-    surplus = fold_surplus_usd(units_bought, slices, price)
+    surplus = fold_surplus_usd(units_bought, slices, price, fee_pct)
     standing_before = float(position.standing_surplus_usd)
     if surplus <= 1e-9 and standing_before <= 1e-9:
         return 0.0

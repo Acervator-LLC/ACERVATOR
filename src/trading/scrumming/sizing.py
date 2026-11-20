@@ -2806,13 +2806,6 @@ def rate_after_wire(ref: float, wire_share_pct: float) -> float:
     return float(ref) * (1.0 - clamped_wire_pct(wire_share_pct) / 100.0)
 
 
-def ref_after_wire(record: dict, fee_pct: Optional[float]) -> float:
-    """``rate_after_wire`` of ``record``'s ``ref`` at its ``tranche_wire_share_pct``."""
-    return rate_after_wire(
-        float(record.get("ref", 0.0) or 0.0), tranche_wire_share_pct(record, fee_pct)
-    )
-
-
 def tranche_restore_price(record: dict) -> Optional[float]:
     """The price at which ``tranche_sale_usd`` of ``record`` buys back its
     ``units_at_scrum``, None where it holds no units or no readable ``usd``."""
@@ -2858,15 +2851,25 @@ def eligible_fold_tranches(
     ]
 
 
-def discharge_gain_usd(
-    record: dict, units: float, price: float, fee_pct: Optional[float]
+def gain_after_fees_usd(
+    dollars_usd: float, units: float, price: float, buy_fee_pct: Optional[float]
 ) -> float:
-    """``units`` taken off ``record`` at ``price`` times what ``ref_after_wire``
-    exceeds ``price`` by, 0.0 where it does not exceed it."""
-    rate = ref_after_wire(record, fee_pct)
-    if rate > price:
-        return units * (rate - price)
-    return 0.0
+    """``dollars_usd`` less ``units`` at ``price`` plus ``buy_fee_pct``, never below
+    zero, and 0.0 where ``buy_fee_pct`` is unreadable."""
+    fee = as_finite_float(buy_fee_pct)
+    if fee is None:
+        return 0.0
+    return max(0.0, dollars_usd - priced_usd(units, price) * (1.0 + fee / 100.0))
+
+
+def discharge_gain_usd(
+    record: dict, units: float, price: float, buy_fee_pct: Optional[float]
+) -> float:
+    """``gain_after_fees_usd`` of ``units`` at ``record``'s ``tranche_restore_price``."""
+    restore = tranche_restore_price(record)
+    if restore is None:
+        return 0.0
+    return gain_after_fees_usd(units * restore, units, price, buy_fee_pct)
 
 
 WIRE_CREDIT_DETAIL_KEY = "wire_credits"
@@ -3732,12 +3735,16 @@ def fold_spend_usd(eligible_usd: float, taper: float) -> float:
     return eligible_usd * taper
 
 
-def fold_surplus_usd(units_bought: float, slices: list, fill_price: float) -> float:
-    """The surplus one fold realised, as ``_tick_execute_fold`` books it:
-    the units bought less the ``units_at_scrum`` of the consumed ``slices``,
-    priced at ``fill_price``; never below zero."""
+def fold_surplus_usd(
+    units_bought: float, slices: list, fill_price: float, buy_fee_pct: Optional[float]
+) -> float:
+    """The surplus one fold realised: ``gain_after_fees_usd`` of ``units_bought`` at
+    ``fill_price`` past the ``units_at_scrum`` of the consumed ``slices``."""
     asset_at_scrum = sum(units_at_scrum(one) for one in slices)
-    return max(0.0, priced_usd(float(units_bought) - asset_at_scrum, float(fill_price)))
+    fill = float(fill_price)
+    return gain_after_fees_usd(
+        priced_usd(float(units_bought), fill), asset_at_scrum, fill, buy_fee_pct
+    )
 
 
 def target_growth_applied(

@@ -2028,8 +2028,8 @@ opened on the upper side when it reaches 0.25.
 `src/paper/paper_run.py` — the growth step inside the fold
 
 ```python
-    realized = fold_surplus_usd(units, slices, float(price))
-    grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
+    realized = fold_surplus_usd(units, slices, float(price), fee_pct)
+    grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms), fee_pct)
 ```
 
 `FakeBalance` in `src/paper/fake_balance.py` gains the two fields
@@ -2037,17 +2037,22 @@ opened on the upper side when it reaches 0.25.
 `PaperTrade` now carries `target_usd_after`, the balance's target once the
 growth has been taken.
 
-**Current reading.** The surplus a fold books is the units it bought less the
-units its scrum sold, priced at the fold. Live, Paper and the Simulator read it
-through one function, so all three book the same figure. A scrum of 0.1 units at
-$100 and a fold at $98, at a 0.6 per cent fee, book $0.14 of surplus in Paper and
-in the Simulator alike.
+**Current reading.** The surplus a fold books is what the units it bought are
+worth at the fold, less the units its scrum sold bought back at the fold with the
+buy fee, never below zero. Live, Paper and the Simulator read it through one
+function, `gain_after_fees_usd`, and so do the Fire button, the cartridge and the
+per-tranche fire, so every buy-back books the same figure for the same fill. A
+scrum of 0.1 units at $100 and a fold at $98, at a 0.6 per cent fee, book $0.08 of
+surplus in Paper and in the Simulator alike.
 
 `src/trading/scrumming/sizing.py` — `fold_surplus_usd`
 
 ```python
 asset_at_scrum = sum(units_at_scrum(one) for one in slices)
-return max(0.0, priced_usd(float(units_bought) - asset_at_scrum, float(fill_price)))
+fill = float(fill_price)
+return gain_after_fees_usd(
+    priced_usd(float(units_bought), fill), asset_at_scrum, fill, buy_fee_pct
+)
 ```
 
 ### The run writes the record, and the row follows
