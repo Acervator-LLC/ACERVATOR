@@ -151,6 +151,8 @@ combined view carries none, because it plots an index rather than a price.
 and what a fill at its edge means, and measures why the bar is one day rather
 than five minutes.
 
+Now: each of the 40 per-base charts carries the band on five-minute candles at period 20 and width 2, a Scrum-Fold pair panel under its price panel, and a hatch over any slot with no candle. The combined view still carries no band (`tools/build_product_manual.py, in _draw_vwap`).
+
 | File | Asset | Fills | Described in |
 | ---- | ----- | ----: | ------------ |
 | `vwap_combined.png` | top eight by fill count | 3,113 | [10-live-trade-history.md](10-live-trade-history.md), under the combined-chart section |
@@ -250,6 +252,8 @@ folder, 8,310 fills to 19 October, and each chart's title states its own fill
 count.
 
 Now: the newest export in the input folder holds 9,052 fills to 31 October (`tools/build_product_manual.py, in newest_export`).
+
+Now: the newest export in the input folder holds 9,630 fills to 20 November (`tools/build_product_manual.py, in newest_export`).
 
 > A file name carries the label the manual uses, `vwap_a01.png` through
 > `vwap_a38.png`, and never the asset.
