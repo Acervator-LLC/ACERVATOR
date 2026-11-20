@@ -768,10 +768,10 @@
     });
   }
 
-  // Each locust's box in its page's own coordinates, keyed by bot id.
+  // Each locust's box in its page's own coordinates, keyed by bot id; none while the page is not laid out.
   function boxesIn(page) {
     var found = {};
-    if (page === null) {
+    if (page === null || !page.getClientRects().length) {
       return found;
     }
     var box = page.getBoundingClientRect();
@@ -869,7 +869,7 @@
     if (!api || typeof api.Matrix !== FUNCTION_KIND || !isPlainObject(held)) {
       return null;
     }
-    return element(api.Matrix, { model: held });
+    return element(api.Matrix, { model: held, onAnswer: setHeld });
   }
 
   // The bot a pointer landed on, read off the nearest ancestor naming one.
@@ -1328,6 +1328,9 @@
     var style = boxStyle(model, LAYER_MARGINS, LAYER_SPACING, COLUMN);
     style.flex = AUTO;
     style.overflow = HIDDEN;
+    if (props.current !== true) {
+      style.display = NONE;
+    }
     var paneProps = {
       className: TAB_CLASS,
       style: style,
@@ -1388,6 +1391,9 @@
     var style = boxStyle(model, VIZ_MARGINS, VIZ_SPACING, COLUMN);
     style.flex = AUTO;
     style.overflow = HIDDEN;
+    if (props.current !== true) {
+      style.display = NONE;
+    }
     var paneProps = {
       className: TAB_CLASS,
       style: style,
@@ -1402,7 +1408,16 @@
     var innerProps = { key: INNER_ROW_PART, className: TAB_CLASS, style: innerStyle };
     innerProps[PART_ATTR] = INNER_ROW_PART;
 
-    var routingProps = { key: QUICK_ROUTING_PART, style: { flex: STEP } };
+    var routingProps = {
+      key: QUICK_ROUTING_PART,
+      style: {
+        flex: STEP,
+        display: FLEX,
+        flexDirection: COLUMN,
+        minWidth: ZERO,
+        minHeight: ZERO
+      }
+    };
     routingProps[PART_ATTR] = QUICK_ROUTING_PART;
     routingProps[SLOT_ATTR] = QUICK_ROUTING_PART;
     var routingBody = element(QuickRouting, { model: model });
