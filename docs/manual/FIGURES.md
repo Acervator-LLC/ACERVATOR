@@ -153,6 +153,8 @@ than five minutes.
 
 Now: each of the 40 per-base charts carries the band on five-minute candles at period 20 and width 2, a Scrum-Fold pair panel under its price panel, and a hatch over any slot with no candle. The combined view still carries no band (`tools/build_product_manual.py, in _draw_vwap`).
 
+Now: the set also holds one cycle view per base with a covered cycle, and every chart's legend sits below its plot (`tools/build_product_manual.py, in _write_cycle_views`).
+
 | File | Asset | Fills | Described in |
 | ---- | ----- | ----: | ------------ |
 | `vwap_combined.png` | top eight by fill count | 3,113 | [10-live-trade-history.md](10-live-trade-history.md), under the combined-chart section |
