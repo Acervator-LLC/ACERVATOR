@@ -109,7 +109,7 @@ ACCESS_WAIT_STYLE = (
 )
 ACCESS_WAIT_TOOLTIP = (
     "Shows while Settings holds no API keys for this exchange. Start and "
-    "Start All pass these bots, and nothing is sent to the exchange."
+    "Start All skip these bots and send nothing."
 )
 ACCESS_WAIT_FORMAT = (
     "{required}: {venue} has no stored API keys, so {bots} until its keys "
