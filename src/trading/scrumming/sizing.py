@@ -1722,21 +1722,13 @@ TRADEABLE_YES = "can size a scrum"
 TRADEABLE_NO = "cannot size a scrum"
 TRADEABLE_UNKNOWN = "size rules not read"
 
-#: The Target Balance and interval a caller holding no bot assumes. Neither
-#: reads the saved fleet: of the 39 records saved on 2026-10-11, 0 carry this
-#: pair, 38 produce a smaller excess and 1 a larger one.
-# OVERTAKEN, the comment that read "The highest Target Balance in the saved
-# fleet and the interval every one of its bots carries, read from
-# bot_state.json on 2026-09-24": the fleet moved off that one-day snapshot.
+#: The Target Balance and interval a caller holding no bot assumes.
 ASSUMED_TARGET_BALANCE_USD = 350.0
 ASSUMED_SCRUMMING_INTERVAL_PCT = 5.0
 
 #: The excess ``tradeable_answer`` assumes for a caller holding no bot, so a
 #: ``TRADEABLE_NO`` from this figure speaks for the assumed target alone.
 #: ``bot_scrum_excess_usd`` answers one bot's own excess.
-# OVERTAKEN, the comment that read "The largest excess any bot in the saved
-# fleet submits ... so TRADEABLE_NO means no bot at any target this fleet
-# carries could size a scrum there": one saved record's own excess is above it.
 REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
     ASSUMED_TARGET_BALANCE_USD, ASSUMED_SCRUMMING_INTERVAL_PCT
 )
@@ -2750,6 +2742,26 @@ def restored_sale_surplus_usd(
         sold_units,
         fold_rebuy_price(sale_price, distance.distance_pct()),
         distance.fee_pct,
+    )
+
+
+INTERVAL_SALE_PRICE = 1.0
+"""The price ``interval_sale_surplus_usd`` sells at; ``restored_sale_surplus_usd`` answers the same surplus at every price."""
+
+
+def interval_sale_surplus_usd(
+    target_balance: float, distance: DistanceSettings
+) -> float:
+    """``restored_sale_surplus_usd`` of a sale of ``scrumming_interval_usd`` at ``distance``, its proceeds after ``estimated_fee_usd`` at ``distance.fee_pct``.
+
+    The Bot Swarm settings tab reads each wire's share of it.
+    """
+    interval = scrumming_interval_usd(target_balance, distance.interval_pct)
+    proceeds = sale_proceeds_usd(
+        interval, estimated_fee_usd(interval, distance.fee_pct)
+    )
+    return restored_sale_surplus_usd(
+        proceeds, interval / INTERVAL_SALE_PRICE, INTERVAL_SALE_PRICE, distance
     )
 
 
@@ -3934,6 +3946,7 @@ __all__ = [
     "fold_units",
     "grained_units",
     "growth_cycle_side",
+    "interval_sale_surplus_usd",
     "market_buy_names_cash",
     "market_permits_close",
     "market_replaces_market_order",

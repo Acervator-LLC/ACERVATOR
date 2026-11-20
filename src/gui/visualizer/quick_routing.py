@@ -351,6 +351,14 @@ if _HAS_QT:
                     "wire to itself."
                 )
                 return
+            from ..main_tabs.bot_visualizer_surface import routes_refusal
+
+            refusal = routes_refusal(
+                self._viz._load_bot_state_dict(), wires_created, []
+            )
+            if refusal:
+                self._reject(refusal)
+                return
             if not self._confirm_mass(
                 "Create",
                 len(wires_created),

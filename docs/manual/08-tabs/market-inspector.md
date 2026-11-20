@@ -576,30 +576,8 @@ TICKER_UNTRADEABLE_FORMAT = (
 ```
 
 The excess the answer measures against is the largest one the saved fleet can
-produce. The highest Target Balance in the fleet is 350 dollars and every bot
-carries the same 5 per cent scrumming interval, so the largest excess is 17
-dollars 50.
-
-`src/trading/scrumming/sizing.py` — the reference excess
-
-```python
-LARGEST_FLEET_TARGET_USD = 350.0
-FLEET_SCRUMMING_INTERVAL_PCT = 5.0
-REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
-    LARGEST_FLEET_TARGET_USD, FLEET_SCRUMMING_INTERVAL_PCT
-)
-```
-
-OVERTAKEN, quoted whole:
-
-> The excess the answer measures against is the largest one the saved fleet can
-> produce. The highest Target Balance in the fleet is 350 dollars and every bot
-> carries the same 5 per cent scrumming interval, so the largest excess is 17
-> dollars 50.
-
-True today: the screen reads the fleet each time it labels a row, and it says
-on the screen which figure it used. The two constants were renamed, because
-neither one reads the fleet.
+produce. The screen reads the fleet each time it labels a row, and it says on
+the screen which figure it used.
 
 `src/gui/main_tabs/market_inspector_surface.py, in fleet_scrum_excess` reads
 `bot_state.json` read-only and answers the largest excess the saved records

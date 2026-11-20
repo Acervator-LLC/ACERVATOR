@@ -214,8 +214,8 @@ backwards.
 
 One row carries a negative fee.
 
-Three A27 rows carry a Subtotal that rounds to $0.00 against a quantity that is
-real. A filter that drops zero-value rows drops those base units with them.
+Three A27 rows carry a Subtotal too small to show at two decimal places against
+a quantity that is real. A filter that drops zero-value rows drops those base units with them.
 
 ## Where the figures live
 
@@ -271,6 +271,14 @@ which this repository does not carry.
 
 Every chart carries two panels over one time axis.
 
+Now: every chart carries three panels over one time axis: the price panel, the Scrum-Fold pair panel under it, and the net-units panel at the bottom (`tools/build_product_manual.py, in _draw_vwap`).
+
+```python
+PRICE_PANEL = (0.08, 0.42, 0.77, 0.46)
+PAIRS_PANEL = (0.08, 0.25, 0.77, 0.12)
+UNITS_PANEL = (0.08, 0.08, 0.77, 0.13)
+```
+
 The upper panel draws every fill as a dot at its price, buys in
 `COLORS["series"][0]` and sells in `COLORS["series"][5]`. Two lines cross it:
 the running buy VWAP and the running sell VWAP, in those same two colours. Each
@@ -279,6 +287,8 @@ side. The price axis turns logarithmic when the highest fill price exceeds the
 lowest more than eightfold, which covers A01 at 10.30 and A03 at 13.25 and no
 other asset. A chart of 30 fills or fewer marks each step with a dot: A31,
 A32, A33, A34, A35, A36, A37 and A38.
+
+Now: the upper panel also draws each five-minute candle as a grey line from its low to its high, and a thin line from each Scrum to the Fold paired with it. The sections under "The builder draws every VWAP chart" describe both (`tools/build_product_manual.py, in _draw_candles`).
 
 The lower panel draws net units accumulated — every bought quantity minus every
 sold quantity, running — in `COLORS["accent"]`, filled down to zero. It answers
@@ -359,6 +369,8 @@ short bar can carry a band at all. Twenty consecutive bars with no trade have
 no spread between them, so the deviation is zero and the band collapses onto
 the price line.
 
+Now: the bars are the venue's own five-minute candles. The Stone Tablets hold them up to the day each tablet ends, and the candle cache holds them after it, so the builder builds no bar from fills (`tools/build_product_manual.py, in read_evidence`).
+
 Measured over all 38 charted bases, counting every band the method returned and
 how many of them had zero width:
 
@@ -375,9 +387,13 @@ price line as a hairline and shows no extreme at all. At one day, 0.9 percent
 has no width and the channel is wide enough to read across the whole window.
 The charts use one-day bars.
 
+Now: the charts use five-minute candles. On those candles, 10 of the 1,598,134 bands the 40 charts draw have no width (`tools/build_product_manual.py, in band_tally`).
+
 The cost of the coarse bar is the warm-up. Twenty one-day bars must close
 before the first band appears, so the first twenty days of each asset carry no
 channel, and 4,955 of the 6,997 fills land in a bar that has one.
+
+Now: `window_candles` leads each chart with the 19 candles before its first fill, so the channel starts at the first fill. 9,353 of the 9,630 fills sit on a candle that carries a band (`tools/build_product_manual.py, in band_tally`).
 
 ### The band edges, counted over every base
 
@@ -429,6 +445,8 @@ width 2.
 Across the 38, 605 fills sit at or above the upper band and 460 at or below the
 lower one. A02 and A11 sell into the top most often, at 57 and 49. A01 buys
 into the bottom most often, at 56.
+
+Now: on five-minute candles across the 40 charts, 1,604 fills sit at or above the upper band and 1,608 at or below the lower one. A01 and A02 sell into the top most often, at 141 and 124, and buy into the bottom most often, at 140 and 94 (`tools/build_product_manual.py, in band_tally`).
 
 ## The newest export, beside the one the figures above measure
 
@@ -656,6 +674,8 @@ figure that cannot be reproduced is not republished here, so this section
 carries the columns the export alone fixes and leaves the three band columns to
 the reading above.
 
+Now: the builder builds no bar from fills, and `candle_band` reads the venue's five-minute candles. The totals on those candles sit under "The band edges, counted over every base" (`tools/build_product_manual.py, in candle_band`).
+
 The combined chart near the top of this part draws the eight assets with the
 most fills of the earlier export. Those are no longer the eight with the most
 fills, and nothing in this repository redraws that chart.
@@ -690,6 +710,8 @@ A39.
 
 Now: the A39 chart draws 20 fills, dots every step, and carries a band over the last 8 of its 27 one-day bars (`tools/build_product_manual.py, in fill_band`).
 
+Now: the A39 chart draws 38 fills, 28 buys and 10 sells, from 4 October to 15 November. Its band runs on five-minute candles across the whole window, it carries 6 Scrum-Fold pairs, and at 38 fills it no longer dots every step (`tools/build_product_manual.py, in _draw_vwap`).
+
 ### A40
 
 ![A40, 21 fills with every step dotted, and no band: its 4 one-day bars are fewer than the 20 the band needs.](figures/vwap_a40.png)
@@ -699,6 +721,8 @@ Now: the A39 chart draws 20 fills, dots every step, and carries a band over the 
 ![A40 price trace, 28,776 five-minute closes across the recorded window.](figures/trace_a40.png)
 
 A40 has 21 fills, 15 buys and 6 sells, between 27 October and 30 October. Its Stone Tablet rows end on 1 August, so its weekly chart and price trace stop before its first fill (`tools/build_product_manual.py, in tablet_candles`).
+
+Now: the A40 chart draws 63 fills, 40 buys and 23 sells, from 27 October to 20 November. Its band runs on five-minute candles from the candle cache across the whole window, it carries 11 Scrum-Fold pairs, and at 63 fills it does not dot every step (`tools/build_product_manual.py, in _draw_vwap`).
 
 
 ## What this repository holds for these charts
@@ -887,6 +911,8 @@ marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
 
 Now: the axis turns logarithmic for A01 at 16.72 and A03 at 43.35, and the four charts that dot every step are A37, A38, A39 and A40 (`tools/build_product_manual.py, in _draw_vwap`).
 
+Now: on the 20 November export the axis turns logarithmic for A01 at 20.71, A03 at 57.57 and A06 at 9.30, and the two charts that dot every step are A37 and A38 (`tools/build_product_manual.py, in _draw_vwap`).
+
 ### What a redrawn chart reads
 
 Every chart reads the newest export in the input folder: 8,310 fills on 39
@@ -895,11 +921,15 @@ table under "Every base, measured on the October export".
 
 Now: every chart reads 9,052 fills on 40 bases, the last on 31 October, and each title's fill count matches the table `python -m tools.build_product_manual --measure` prints (`tools/build_product_manual.py, in measurement_lines`).
 
+Now: every chart reads 9,630 fills on 40 bases, the last on 20 November, and each title's fill count matches the table `python -m tools.build_product_manual --measure` prints (`tools/build_product_manual.py, in measurement_lines`).
+
 The band table, the table under "The 38 per-asset charts" and the description
 under each base's heading take their numbers from the earlier exports. They
 stand as published.
 
 ### Where a one-day bar opens
+
+The builder builds no one-day bar now. The code has overtaken each passage in this section, and a "Now:" line under it gives what the code does today.
 
 > No committed file builds them.
 
@@ -907,12 +937,24 @@ stand as published.
 UTC. The last fill in a bar closes it, and a bar with no fill closes where the
 bar before it closed.
 
+Now: the builder builds no bar from fills, and `window_candles` reads the five-minute candles that the Stone Tablets and the candle cache hold (`tools/build_product_manual.py, in window_candles`).
+
 `fill_band` hands those bars to the platform's own band, at period 20 and width
 2.
+
+Now: `candle_band` hands those candles to the platform's own band, at period 20 and width 2 (`tools/build_product_manual.py, in candle_band`).
 
 ```python
 CHART_BAND = BollingerBands(period=20, std_dev=2.0)
 BAND_BAR_MS = DAY_MS
+```
+
+Now: the bar is five minutes long. The block below is the setting in the builder today.
+
+```python
+CHART_BAND = BollingerBands(period=20, std_dev=2.0)
+BAND_BAR_MS = 300_000
+BAND_BAR_NAME = "five-minute"
 ```
 
 The band table above counts one-day bars that open at 17:00 UTC. A recount of
@@ -930,6 +972,83 @@ bars at 00:00 UTC  3,797       36             653                 455           
 The channel on a redrawn chart sits on bars that open seven hours later than
 the bars that table counts. The builder opens every bar at 00:00 UTC, the
 boundary `week_start_ms` also uses, on any machine that runs it.
+
+Now: the channel sits on the venue's five-minute candles. On all 40 charts no band candle opens off the five-minute grid, and the closest two open 300 seconds apart (`tools/build_product_manual.py, in candle_band`).
+
+### The band on five-minute candles
+
+Each per-base chart draws its Bollinger band on the venue's five-minute candles. The Stone Tablets hold those candles up to the day each tablet ends. The candle cache holds the venue's candles after that, and a cache candle only fills a slot the tablet lacks.
+
+```python
+filled_candles={
+    asset: fill_slots(rows, cache_candles(asset, cache_dir))
+    for asset, rows in candles.items()
+},
+```
+
+`window_candles` takes a chart's candles from its first fill to its last, led by the 19 candles before the first. Then `candle_band` hands them to the platform's own band and returns one entry for each candle the band covers.
+
+```python
+def window_candles(
+    rows: Sequence[Sequence[float]],
+    fills: Sequence[Fill],
+) -> list[Candle]:
+    start_ms, end_ms = chart_window(fills)
+    stamps = [row[0] for row in rows]
+    first = max(bisect_left(stamps, start_ms) - (CHART_BAND.period - 1), 0)
+    return candles_from_raw(rows[first : bisect_right(stamps, end_ms)])
+```
+
+The 40 charts draw 1,598,134 band entries, and 10 of them have no width. Each chart's title ends "Bollinger 20 / 2 on five-minute candles". The grey lines behind the band are the candles themselves, each drawn from its low to its high.
+
+### Each Scrum-Fold pair and its percent change
+
+A Scrum is a sale and a Fold is the buy back. The function `scrum_fold_pairs` walks one base's fills in time order and pairs each buy with the sell directly before it. A buy after another buy has no pair, a sell followed by another sell has no pair, and a Fold must come later than its Scrum.
+
+```python
+def scrum_fold_pairs(fills: Sequence[Fill]) -> list[tuple[Fill, Fill]]:
+    pairs: list[tuple[Fill, Fill]] = []
+    previous: dict[str, Fill] = {}
+    for fill in sorted(fills, key=lambda f: f.when):
+        before = previous.get(fill.asset)
+        previous[fill.asset] = fill
+        if before is None or (before.side, fill.side) != ("sell", "buy"):
+            continue
+        if before.when < fill.when:
+            pairs.append((before, fill))
+    return pairs
+
+
+def pair_change_pct(scrum: Fill, fold: Fill) -> float:
+    return (fold.price / scrum.price - 1.0) * 100.0
+```
+
+A thin line on the price panel joins each Scrum to its Fold. The panel under it marks each pair's percent change against a zero line. The function `_draw_pairs` gives a pair the win colour when the Fold lands below its Scrum and the loss colour when it does not, and titles the panel with the pair count and the median change.
+
+```python
+shifts = [pair_change_pct(*pair) for pair in pairs]
+pens = [ink("win") if shift < 0.0 else ink("loss") for shift in shifts]
+```
+
+Across the 40 charts the builder draws 1,743 pairs. 1,712 Folds land below their Scrum, 29 above and 2 level, and the median change is minus 5.56 percent. Each of those 1,712 Folds bought back below the price its Scrum sold at.
+
+### Where a chart draws a hatch
+
+A chart hatches any stretch of its window where neither the Stone Tablets nor the candle cache holds a candle, and writes the dates in the hatch. The chart draws no band there. The function `lacking_spans` finds the stretch before the first candle or after the last one, and `_draw_uncovered` hatches it.
+
+```python
+if start_ms < first_ms:
+    spans.append((start_ms, min(first_ms - BAND_BAR_MS, end_ms)))
+if end_ms > last_ms:
+    spans.append((max(last_ms + BAND_BAR_MS, start_ms), end_ms))
+```
+
+Two charts carry a hatch on the 20 November export: A09 over 1 five-minute slot on 14 November, and A35 over 25 slots on 15 November. Each hatch covers the last slots of its chart's window, up to and including the final fill. The cache asked the venue for all 26 slots, and the venue printed no candle in them. The build names both hatches when it writes the charts:
+
+```
+figure vwap_a09.png: wrote - no five-minute candles 14 Nov to 14 Nov
+figure vwap_a35.png: wrote - no five-minute candles 15 Nov to 15 Nov
+```
 
 ### The evidence slides
 
@@ -1044,6 +1163,12 @@ price axis, the minor ticks that axis needs, a tick label small enough to go
 scientific, and a fill count low enough to mark every step. The other 34 are
 drawn by the two functions above and nothing else.
 
+The code has overtaken the paragraph above, and the paragraph stays word for word.
+
+Now: the builder draws every VWAP chart, and no VWAP chart labels its price axis in scientific notation. The A01, A03 and A10 blocks below show the code that draws the price axis today (`tools/build_product_manual.py, in _label_price_axis`).
+
+Now: no axis on a VWAP chart, a weekly chart or a price trace carries an offset or a multiplier (`tools/build_product_manual.py, in _label_plain_axis`). The A31 block below shows the code that marks every step today (`tools/build_product_manual.py, in _draw_vwap`).
+
 Each of the 38 headings below holds three charts for one base, under one label:
 its VWAP chart, its weekly chart and its price trace. The VWAP chart draws the
 fills. The weekly chart and the price trace draw the market those fills ran in,
@@ -1067,11 +1192,16 @@ The axis is a measurement, not a choice. A01's fills run from 0.2118 to
 2.1805, a span of 10.30, and the module turns the axis logarithmic above eight.
 A03 is the only other chart over that line.
 
+The code has overtaken the paragraph above, and the paragraph stays word for word.
+
+Now: the builder turns the axis logarithmic above eight. On the 20 November export that covers A01 at 20.71, A03 at 57.57 and A06 at 9.30, and no other chart (`tools/build_product_manual.py, in _label_price_axis`).
+
 ```python
-lo = min(f.price for f in fills)
-hi = max(f.price for f in fills)
-if hi / lo > 8:
-    ax.set_yscale("log")
+def _label_price_axis(axis: Axes, prices: Sequence[float]) -> None:
+    lowest = min(prices, default=0.0)
+    if lowest > 0 and max(prices) / lowest > LOG_AXIS_SPAN:
+        axis.set_yscale("log")
+    _label_plain_axis(axis.yaxis)
 ```
 
 ### A02
@@ -1102,12 +1232,18 @@ A logarithmic axis labels the powers of ten. A03's fills run from 0.01682 to
 module adds five minor ticks per decade and gives them the same price formatter
 as the major ones, which is what puts 0.2000 down to 0.0200 on this axis.
 
-```python
-SUBS = (1.0, 2.0, 3.0, 5.0, 7.0)
+The code has overtaken the paragraph above, and the paragraph stays word for word.
 
-ax.yaxis.set_minor_locator(LogLocator(base=10.0, subs=SUBS, numticks=99))
-ax.yaxis.set_minor_formatter(FuncFormatter(fmt_price))
-ax.tick_params(axis="y", which="minor", labelsize=TYPE["cap"]["size"])
+Now: a logarithmic price axis labels 1, 2, 3, 5 and 7 times each power of ten, written as plain decimals. On the 20 November export the A03 axis reads nine prices, from 0.005 up to 0.2, where it read only two powers of ten. A01 reads seven, from 0.1 up to 2, and A06 reads six, from 0.003 up to 0.03 (`tools/build_product_manual.py, in _label_price_axis`).
+
+```python
+PRICE_LOG_SUBS = (1.0, 2.0, 3.0, 5.0, 7.0)
+
+if axis.get_scale() == "log":
+    axis.get_major_locator().set_params(subs=PRICE_LOG_SUBS)
+    axis.set_major_formatter(price_label)
+    axis.set_tick_params(which="minor", label1On=False)
+    return
 ```
 
 ### A04
@@ -1196,18 +1332,27 @@ is A29 at 0.001479, so A10 alone reaches the last branch of the tick
 formatter, and this is the only chart of the 38 labelled in scientific
 notation.
 
+The code has overtaken the paragraph above, and the paragraph stays word for word.
+
+Now: no VWAP chart labels its price axis in scientific notation. The A10 axis is linear and reads 0.000002 up to 0.000008, where it read 2 up to 8 under a 1e-6 multiplier, and a logarithmic axis writes each label with `price_label` (`tools/build_product_manual.py, in _label_price_axis`).
+
+Now: the A10 net-units panel reads 0 up to 100000000 whole units, where it read 0.0 up to 1.0 under a 1e8 multiplier. Every number axis the builder draws takes its labels from `_label_plain_axis`, so none carries an offset or a multiplier (`tools/build_product_manual.py, in _label_plain_axis`).
+
 ```python
-def fmt_price(v, _pos=None) -> str:
-    """Format a y-axis price tick, keeping a micro-cap significand visible."""
-    if v == 0:
-        return "0"
-    if abs(v) >= 1000:
-        return f"{v:,.0f}"
-    if abs(v) >= 1:
-        return f"{v:,.2f}"
-    if abs(v) >= 0.001:
-        return f"{v:.4f}"
-    return f"{v:.2e}"
+PRICE_LABEL_DIGITS = 6
+
+
+def price_label(value: float, _position: float | None = None) -> str:
+    return np.format_float_positional(
+        value,
+        precision=PRICE_LABEL_DIGITS,
+        unique=False,
+        fractional=False,
+        trim="-",
+    )
+
+
+axis.axes.ticklabel_format(axis=axis.axis_name, style="plain", useOffset=False)
 ```
 
 ### A11
@@ -1453,12 +1598,25 @@ end at 626.
 every step. Sixteen dots sit on the buy line and nine on the sell line. The
 seven charts after this one are drawn the same way.
 
-```python
-THIN_FILLS = 30
+The code has overtaken the paragraph above, and the paragraph stays word for word.
 
-dot = "o" if len(fills) <= THIN_FILLS else None
-ax.plot(t, buy_v, color=COLORS["series"][0], lw=2.0, marker=dot,
-        markersize=4, label="running buy VWAP")
+Now: the builder marks every step only on a chart of 30 fills or fewer. On the 20 November export A31 holds 73 fills, so its chart carries no step marker, and the two charts that mark every step are A37 and A38 (`tools/build_product_manual.py, in _draw_vwap`).
+
+```python
+STEP_DOT_MAX_FILLS = 30
+
+marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
+for side, line in (("buy", buy_v), ("sell", sell_v)):
+    price.plot(
+        stamps,
+        line,
+        color=pens[side],
+        lw=1.4,
+        marker=marker,
+        markersize=4,
+        zorder=3,
+        label=f"running {side} VWAP",
+    )
 ```
 
 ### A32
@@ -1745,6 +1903,18 @@ above, beside that base's VWAP chart.
 `_write_asset_weekly` in `tools/build_product_manual.py` writes one figure per
 base, named for the base's label and titled with it.
 
+Each weekly chart labels its price axis with `_label_price_axis`, the helper
+every VWAP chart uses, on the lows and highs of its bars. Five of them run
+logarithmic: A01, A03, A04, A05 and A13. Each reads its prices at 1, 2, 3, 5 and
+7 times each power of ten, where it read only the powers of ten. A01 reads
+twelve prices from 0.2 up to 30, and A05 reads five from 200 up to 1000. The A10
+axis reads 0.000002 up to 0.000012, where it read 0.2 up to 1.2 under a 1e-5
+multiplier.
+
+```python
+_label_price_axis(axis, [bar[3] for bar in bars] + [bar[2] for bar in bars])
+```
+
 ## The price at the finest resolution the record carries
 
 Five minutes is the finest resolution the Stone Tablets hold.
@@ -1763,3 +1933,14 @@ above, under the same label as that base's VWAP chart and weekly chart.
 
 `_write_asset_traces` in `tools/build_product_manual.py` writes one figure per
 base, from the same five-minute rows the weekly bars are built from.
+
+Each price trace labels its price axis with `_label_price_axis` on its
+five-minute closes. The traces of A01, A03, A04, A05 and A13 run logarithmic
+and read the same prices as their weekly charts. The A10 trace reads 0.000002
+up to 0.000012, where it read 0.2 up to 1.2 under a 1e-5 multiplier.
+
+```python
+closes = [row[4] for row in rows]
+axis.plot(stamps, closes, color=accessible_series()[0], linewidth=0.5)
+_label_price_axis(axis, closes)
+```
