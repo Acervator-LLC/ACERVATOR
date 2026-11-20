@@ -1722,21 +1722,13 @@ TRADEABLE_YES = "can size a scrum"
 TRADEABLE_NO = "cannot size a scrum"
 TRADEABLE_UNKNOWN = "size rules not read"
 
-#: The Target Balance and interval a caller holding no bot assumes. Neither
-#: reads the saved fleet: of the 39 records saved on 2026-10-11, 0 carry this
-#: pair, 38 produce a smaller excess and 1 a larger one.
-# OVERTAKEN, the comment that read "The highest Target Balance in the saved
-# fleet and the interval every one of its bots carries, read from
-# bot_state.json on 2026-09-24": the fleet moved off that one-day snapshot.
+#: The Target Balance and interval a caller holding no bot assumes.
 ASSUMED_TARGET_BALANCE_USD = 350.0
 ASSUMED_SCRUMMING_INTERVAL_PCT = 5.0
 
 #: The excess ``tradeable_answer`` assumes for a caller holding no bot, so a
 #: ``TRADEABLE_NO`` from this figure speaks for the assumed target alone.
 #: ``bot_scrum_excess_usd`` answers one bot's own excess.
-# OVERTAKEN, the comment that read "The largest excess any bot in the saved
-# fleet submits ... so TRADEABLE_NO means no bot at any target this fleet
-# carries could size a scrum there": one saved record's own excess is above it.
 REFERENCE_SCRUM_EXCESS_USD = scrumming_interval_usd(
     ASSUMED_TARGET_BALANCE_USD, ASSUMED_SCRUMMING_INTERVAL_PCT
 )

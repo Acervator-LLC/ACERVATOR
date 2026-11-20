@@ -2757,13 +2757,27 @@ def _write_asset_vwap(
     return out
 
 
+def priced_rows(rows: Sequence[HodlRow]) -> list[HodlRow]:
+    """Return the ``rows`` that took positive net cash and carry a baseline price."""
+    return [r for r in rows if r.net_cash > 0 and r.units_hodl > 0]
+
+
+def baseline_value(rows: Sequence[HodlRow]) -> float:
+    """Return the ``priced_rows`` baseline positions valued at their final price, the
+    figure both holding charts divide by."""
+    return sum(r.units_hodl * r.final_price for r in priced_rows(rows))
+
+
 def _write_hodl_units(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str, str]:
     """Write the units held against the units the same money would hold from the
     baseline day."""
     name = "evidence_hodl_units.png"
-    priced = [r for r in rows if r.net_cash > 0 and r.units_hodl > 0]
+    priced = priced_rows(rows)
     if not priced:
         return (name, "absent - no base carries a baseline price and positive net cash")
+    baseline = baseline_value(rows)
+    if baseline <= 0.0:
+        return (name, "absent - the baseline positions carry no final-price value")
     priced = sorted(priced, key=lambda r: r.units_now / r.units_hodl)
     baseline_ms = int(BASELINE_DAY.timestamp() * 1000)
     apply_rcparams()
@@ -2795,10 +2809,10 @@ def _write_hodl_units(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str, 
     free = [r for r in rows if r.net_cash <= 0]
     axes[1].barh(
         [r.label for r in free] or ["none"],
-        [-r.net_cash for r in free] or [0.0],
+        [-r.net_cash / baseline for r in free] or [0.0],
         color=ink("accent"),
     )
-    axes[1].set_xlabel("dollars out above dollars in")
+    axes[1].set_xlabel("dollars out above dollars in,\nas a share of the baseline")
     _label_plain_axis(axes[1].xaxis)
     axes[1].tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
     figure.suptitle(
@@ -2809,42 +2823,46 @@ def _write_hodl_units(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str, 
     return (name, _save(figure, figures_dir / name))
 
 
-def _write_hodl_dollars(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str, str]:
-    """Write both positions valued at the same final price."""
-    name = "evidence_hodl_dollars.png"
-    priced = [r for r in rows if r.net_cash > 0 and r.units_hodl > 0]
+def _write_hodl_shares(figures_dir: Path, rows: Sequence[HodlRow]) -> tuple[str, str]:
+    """Write both positions valued at the same final price, each as a share of
+    ``baseline_value``."""
+    name = "evidence_hodl_shares.png"
+    priced = priced_rows(rows)
     if not priced:
         return (name, "absent - no base carries a baseline price and positive net cash")
+    baseline = baseline_value(rows)
+    if baseline <= 0.0:
+        return (name, "absent - the baseline positions carry no final-price value")
     priced = sorted(priced, key=lambda r: r.units_now * r.final_price)
     apply_rcparams()
     figure, axis = plt.subplots(
         figsize=FIGURE_SIZE, dpi=FIGURE_DPI, facecolor=ink("bg")
     )
     places = list(range(len(priced)))
-    actual = [r.units_now * r.final_price for r in priced]
-    baseline = [r.units_hodl * r.final_price for r in priced]
+    held_now = [r.units_now * r.final_price / baseline for r in priced]
+    held_from_baseline = [r.units_hodl * r.final_price / baseline for r in priced]
     axis.barh(
         [p + 0.2 for p in places],
-        actual,
+        held_now,
         height=0.4,
         color=ink("win"),
         label="held now",
     )
     axis.barh(
         [p - 0.2 for p in places],
-        baseline,
+        held_from_baseline,
         height=0.4,
         color=ink("ink_mute"),
         label="same money held from 12 April",
     )
     axis.set_yticks(places)
     axis.set_yticklabels([r.label for r in priced])
-    axis.set_xlabel("dollars at the final recorded price")
+    axis.set_xlabel("share of the baseline, both valued at the final recorded price")
     _label_plain_axis(axis.xaxis)
     axis.tick_params(labelsize=size("cap") * 0.8, colors=ink("ink_mute"))
     axis.legend(fontsize=size("cap"), frameon=False)
     figure.suptitle(
-        "Accumulation against buy and hold, in dollars at one price",
+        "Accumulation against buy and hold, as shares of the baseline at one price",
         fontsize=size("h3"),
         color=ink("ink_strong"),
     )
@@ -2974,7 +2992,7 @@ def write_evidence_figures(
         asset_figure_name("weekly", "a<NN>"),
         asset_figure_name("trace", "a<NN>"),
         "evidence_hodl_units.png",
-        "evidence_hodl_dollars.png",
+        "evidence_hodl_shares.png",
         "evidence_market.png",
     ]
     if evidence is None:
@@ -2986,7 +3004,7 @@ def write_evidence_figures(
     out += _write_asset_traces(figures_dir, labels, candles)
     rows = hodl_rows(fills, labels, candles)
     out.append(_write_hodl_units(figures_dir, rows))
-    out.append(_write_hodl_dollars(figures_dir, rows))
+    out.append(_write_hodl_shares(figures_dir, rows))
     out.append(_write_market(figures_dir, labels, candles))
     return out
 
