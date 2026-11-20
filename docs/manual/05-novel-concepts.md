@@ -1366,6 +1366,30 @@ if units <= 0.0 or price <= 0.0:
 return gain_after_fees_usd(proceeds, units, price, buy_fee_pct)
 ```
 
+Now: a bot's wires together carry at most 100% of its surplus, and no share is below zero. The drag box and Quick Routing refuse a save that breaks either rule and say why on the screen, and the engine refuses it again before it stores the wire (`src/trading/smart_wire.py, in wire_set_refusal`). A set saved past 100% before this check still loads, and each sale scales every share by 100 divided by the total, so the wires carry the whole surplus and no more (`src/trading/smart_wire.py, in scaled_wire_pct`).
+
+`src/trading/smart_wire.py` — `wire_set_refusal`
+
+```python
+total = wire_total_pct(held)
+if total > WHOLE_PCT:
+    return SET_PAST_WHOLE_FORMAT.format(total=total, whole=WHOLE_PCT)
+return None
+```
+
+Now: the Settings window's Bot Swarm tab gives every wire a Carries money cell. It reads Yes and the dollars the wire takes from a sale the size of the scrumming interval, or No and the reason: the share is under the $0.01 floor, the target trades another wallet, or no bot with that id is in the fleet (`src/trading/scrumming/wire_routing.py, in WireRoutingMixin.wire_carry`).
+
+`src/trading/scrumming/wire_routing.py` — `WireRoutingMixin.wire_carry`
+
+```python
+if target is None:
+    reason = IDLE_NO_BOT
+elif not self._shares_wallet(target):
+    reason = IDLE_OTHER_WALLET
+elif share_usd < MIN_WIRE_USD:
+    reason = IDLE_UNDER_FLOOR
+```
+
 ## 8 - Hunger and Satiety Indices
 
 These elements were implemented as part of an effort to boost accumulation and scrumming performance in longer term bearish or bullish conditions that might not latch all logic gates to trigger a fold or scrum despite the Target Delta not being zero. This piece adds a factor to the bot that makes it more aggressively evaluate subsequent candles and will increase its likelihood of executing the re-zeroing action. This allows for trades to be executed in the hypothetical ‘dead zone’ between Minimum Opposing Trade Distance and the lower or upper Bollinger Band extent if the candle structure begins to float or cruise within it for too long.

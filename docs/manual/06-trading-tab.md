@@ -827,6 +827,20 @@ These sit on the Settings tab beside the wizard's rows.
 | Market Inspector | Read-only: this bot's card from the Inspector's last scan. `src/gui/main_tabs/market_inspector_tab_surface.py, in per_bot_view` |
 | Phantom Bots | Three controls that wait for Apply, and the phantoms' state. A running phantom keeps its timeframe until restart. `src/trading/scrumming_bot.py, in ScrummingBot.update_phantom_config` |
 
+Now: each wire row on the Bot Swarm tab ends in a Carries money cell. Yes shows the dollars the wire takes from a sale the size of the scrumming interval; No names why it carries nothing: its share is under the $0.01 floor, its target trades another wallet, or no bot with that id is in the fleet (`src/gui/main_tabs/bot_swarm_tab_surface.py, in carry_text`).
+
+`src/gui/main_tabs/bot_swarm_tab_surface.py` — `carry_text`
+
+```python
+if carry.idle_reason is None:
+    return CARRIES_FORMAT.format(share=carry.share_usd, surplus=carry.surplus_usd)
+if carry.idle_reason == IDLE_UNDER_FLOOR:
+    return UNDER_FLOOR_FORMAT.format(
+        share=carry.share_usd, surplus=carry.surplus_usd, floor=MIN_WIRE_USD
+    )
+return IDLE_FORMAT.format(reason=carry.idle_reason)
+```
+
 ### A running Extractor
 
 The Extractor's Settings tab draws the Scrumming rows except Opposing Trade Interval, BB Tolerance, Landing Strip Candles, TA Timeframe, Target Balance, Hunger and Hunger Pace, and Apply accepts them (`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._create_settings_tab`). The engine reads only the five Extractor rows and Trading Fee % (`src/trading/extractor_bot.py, in ExtractorBot.tick`).

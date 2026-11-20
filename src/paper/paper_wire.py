@@ -20,16 +20,17 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from ..trading.smart_wire import (
+    MIN_WIRE_USD,
     compute_safe_outflow_pct,
     mature_profit_usd,
     pct_kind_refusal,
     routable_pct,
+    scaled_wire_pct,
+    wire_change_refusal,
+    wire_total_pct,
 )
 
 logger = logging.getLogger("acervator.paper.wire")
-
-#: The share below which a transfer is skipped, ``SmartWireManager``'s default.
-MIN_WIRE_USD: float = 0.01
 
 #: ``WireTransaction.wire_type`` for a sale's route, the name Live books it under.
 SALE_WIRE_TYPE = "SCRUM_ROUTE"
@@ -271,6 +272,11 @@ class PaperWireManager:
                 "applied": False,
                 "reason": f"pct must be in (0, 100]; got {wanted_pct}",
             }
+        set_refusal = wire_change_refusal(
+            self._wires.get(str(source_id), {}), str(target_id), wanted_pct
+        )
+        if set_refusal:
+            return {"applied": False, "reason": set_refusal}
         prior = self._wires.get(str(source_id), {}).get(str(target_id))
         self._wires.setdefault(str(source_id), {})[str(target_id)] = wanted_pct
         if prior is None:
@@ -672,8 +678,8 @@ class PaperWireManager:
             return results
         safe_pct = self._safe_outflow_pct(source_id, surplus)
         per_wire_safe_pct = safe_pct / max(1, len(outgoing))
-        total_pct = sum(routable_pct(pct) or 0.0 for pct in outgoing.values())
-        scaling = 100.0 / total_pct if total_pct > 100.0 else 1.0
+        total_pct = wire_total_pct(outgoing.values())
+        routed = 0.0
         for target_id, raw_pct in outgoing.items():
             admitted_pct = routable_pct(raw_pct)
             if admitted_pct is None:
@@ -695,8 +701,8 @@ class PaperWireManager:
                     }
                 )
                 continue
-            pct = min(admitted_pct * scaling, per_wire_safe_pct)
-            share = surplus * pct / 100.0
+            pct = min(scaled_wire_pct(admitted_pct, total_pct), per_wire_safe_pct)
+            share = min(surplus * pct / 100.0, surplus - routed)
             if not self._same_wallet(source_id, target_id):
                 results.append(
                     {
@@ -737,6 +743,7 @@ class PaperWireManager:
                 )
                 continue
             self._book(source_id, target_id, share, pct, ref)
+            routed += share
             results.append(
                 {
                     "target_id": target_id,

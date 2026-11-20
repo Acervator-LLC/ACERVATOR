@@ -1580,6 +1580,14 @@ if _HAS_QT:
 
             if dlg.exec() == QDialog.Accepted:
                 pct = pct_spin.value()
+                refusal = viz_surface.routes_refusal(
+                    self._load_bot_state_dict(),
+                    [(source_id, target_id, float(pct))],
+                    [],
+                )
+                if refusal:
+                    QMessageBox.warning(self, viz_surface.WIRE_CONFIG_TITLE, refusal)
+                    return
                 self._wires.append(
                     {
                         "source_id": source_id,

@@ -2745,6 +2745,26 @@ def restored_sale_surplus_usd(
     )
 
 
+INTERVAL_SALE_PRICE = 1.0
+"""The price ``interval_sale_surplus_usd`` sells at; ``restored_sale_surplus_usd`` answers the same surplus at every price."""
+
+
+def interval_sale_surplus_usd(
+    target_balance: float, distance: DistanceSettings
+) -> float:
+    """``restored_sale_surplus_usd`` of a sale of ``scrumming_interval_usd`` at ``distance``, its proceeds after ``estimated_fee_usd`` at ``distance.fee_pct``.
+
+    The Bot Swarm settings tab reads each wire's share of it.
+    """
+    interval = scrumming_interval_usd(target_balance, distance.interval_pct)
+    proceeds = sale_proceeds_usd(
+        interval, estimated_fee_usd(interval, distance.fee_pct)
+    )
+    return restored_sale_surplus_usd(
+        proceeds, interval / INTERVAL_SALE_PRICE, INTERVAL_SALE_PRICE, distance
+    )
+
+
 WIRE_SHARE_KEY = "wire_share_pct"
 """The ``routed_share_pct`` of the sale behind a record, which ``fold_tranche_records`` writes."""
 
@@ -3926,6 +3946,7 @@ __all__ = [
     "fold_units",
     "grained_units",
     "growth_cycle_side",
+    "interval_sale_surplus_usd",
     "market_buy_names_cash",
     "market_permits_close",
     "market_replaces_market_order",
