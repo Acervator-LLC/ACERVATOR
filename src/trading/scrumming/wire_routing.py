@@ -613,12 +613,6 @@ class WireRoutingMixin(_Host):
         amount, the bucket clears, and the ledger entries become this
         tranche's `wire_credits` provenance.
 
-        The deposit is EXEMPT from `scrum_fold_pct`: this method adds USD
-        and NO units, and the fold-fraction block at the call site prices
-        each new tranche's units at the scrum's own net rate and scales
-        only that part, so wired-in money reaches the fold queue at full
-        value on a bot folding less than 100%.
-
         Returns the absorbed amount (for logging).
         """
         pending = float(self._pending_wire_credits or 0.0)

@@ -271,6 +271,8 @@ Each row below holds Live's range and start value, and its link goes to Live's r
 | Candles to lock. See [Phantom Bots rows](../06-trading-tab.md#phantom-bots-rows) | Stored and not read. `src/simulator/sim_bot_view.py, in PhantomLock` |
 | Chunk size (USD), Artillery size (USD), Watch list top-N, Watch list refresh, Exit %. See [Extractor rows](../06-trading-tab.md#extractor-rows) | Stored, and no run walks an Extractor. `src/gui/simulator/sim_trading_tab.py, in SimTradingTab._run_bots` |
 
+**The Scrum Fold Ratio named in the Max Entry Price row above is overtaken.** It is not edited and not removed. The Simulator's wizard and Settings tab no longer offer it, and a walk's sale still queues all its proceeds for buy-back (`src/simulator/back_test.py, in apply_scrum`).
+
 A Portfolio Battery walk reads the same rows of a held bot. A bot it generates walks on built-in values, and a non-crypto bot walks 1d, 1w and 1M whatever its TA Timeframe (`src/simulator/portfolio_battery.py, in generated_bot`, `src/simulator/portfolio_battery.py, in bot_timeframes`).
 
 ## How to use the Bot Settings window on this tab

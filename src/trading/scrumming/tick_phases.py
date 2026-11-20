@@ -121,7 +121,6 @@ class TickPhaseMixin:
     _anchor_target_balance: float
     _announce_fill: Callable[..., None]
     _apply_fold_target_growth: Callable[..., Any]
-    _apply_scrum_fold_pct: Callable[..., None]
     _below_min_fold_log_ts: float
     _below_min_scrum_log_ts: float
     _book_shadow_take: Callable[..., None]
@@ -1904,8 +1903,6 @@ class TickPhaseMixin:
         ):
             self._absorb_pending_wire_credits_into(_first_new_tranche)
 
-        self._apply_scrum_fold_pct(_tranche_count_before, scrum_usd, _sold_units)
-
         self._top_up_remnant_fold_tranches(_tranche_count_before, bb_lower, bb_upper)
         self._combine_fold_tranches_within_distance()
 
@@ -2836,10 +2833,6 @@ class TickPhaseMixin:
                     ),
                 )
             self._bound_new_fold_tranches(_dist_tranche_count_before)
-            # scrum_fold_pct governs DIST proceeds as it governs a SCRUM.
-            self._apply_scrum_fold_pct(
-                _dist_tranche_count_before, dist_usd, _sold_units
-            )
             self._top_up_remnant_fold_tranches(
                 _dist_tranche_count_before, bb_lower, bb_upper
             )
