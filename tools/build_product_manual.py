@@ -1747,6 +1747,7 @@ TRANSACTIONS_FOLDER = "transactions"
 TABLETS_DIR = REPO_ROOT / "stone_tablets"
 CANDLE_CACHE_FOLDER = "five_minute_candles"
 BASELINE_DAY = datetime(2026, 4, 12, tzinfo=timezone.utc)
+LIVE_EVIDENCE_EXPORT_DAY = datetime(2026, 9, 27, tzinfo=timezone.utc).date()
 QUOTE_ASSETS = frozenset({"USD", "USDC"})
 BUY_KINDS = frozenset({"Advanced Trade Buy", "Buy"})
 SELL_KINDS = frozenset({"Advanced Trade Sell", "Sell"})
@@ -1880,6 +1881,7 @@ class Evidence:
     candles: dict[str, list[list[float]]]
     filled_candles: dict[str, list[list[float]]]
     replays: tuple[tuple[str, CycleReplay], ...] = ()
+    live_evidence_fills: tuple[Fill, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -3437,6 +3439,12 @@ def read_evidence(evidence_dir: Path, fleet: Path | None = None) -> Evidence | N
     indexed = {path: load_fills(path)[0] for path in paths}
     labels = labels_across(indexed)
     newest = newest_export(indexed)
+    dated = {
+        path: export_fills
+        for path, export_fills in indexed.items()
+        if export_fills
+        and max(fill.when for fill in export_fills).date() <= LIVE_EVIDENCE_EXPORT_DAY
+    }
     candles = {asset: tablet_candles(asset) for asset in labels}
     cache_dir = evidence_dir / CANDLE_CACHE_FOLDER
     distances = fleet_distances(fleet) if fleet is not None else {}
@@ -3458,6 +3466,7 @@ def read_evidence(evidence_dir: Path, fleet: Path | None = None) -> Evidence | N
             for asset, held in sorted(by_asset.items(), key=lambda one: labels[one[0]])
             if asset in distances
         ),
+        live_evidence_fills=tuple(indexed[newest_export(dated)]) if dated else (),
     )
 
 
@@ -3488,11 +3497,40 @@ def write_evidence_figures(
         figures_dir, labels, replays, label_candles(labels, evidence.filled_candles)
     )
     out += _write_asset_traces(figures_dir, labels, candles)
-    rows = hodl_rows(fills, labels, candles)
-    out.append(_write_hodl_units(figures_dir, rows))
-    out.append(_write_hodl_shares(figures_dir, rows))
-    out.append(_write_market(figures_dir, labels, candles))
+    out += _write_live_evidence(
+        figures_dir, labels, candles, evidence.live_evidence_fills
+    )
     return out
+
+
+def _write_live_evidence(
+    figures_dir: Path,
+    labels: Mapping[str, str],
+    candles: Mapping[str, list[list[float]]],
+    fills: Sequence[Fill],
+) -> list[tuple[str, str]]:
+    """Write the live-evidence figures from ``fills``, limited to the bases it holds."""
+    names = (
+        "evidence_hodl_units.png",
+        "evidence_hodl_shares.png",
+        "evidence_market.png",
+    )
+    if not fills:
+        return [
+            (name, f"absent - no export ends on or before {LIVE_EVIDENCE_EXPORT_DAY}")
+            for name in names
+        ]
+    page_assets = {fill.asset for fill in fills}
+    page_labels = {
+        asset: label for asset, label in labels.items() if asset in page_assets
+    }
+    page_candles = {asset: candles.get(asset) or [] for asset in page_labels}
+    rows = hodl_rows(fills, page_labels, page_candles)
+    return [
+        _write_hodl_units(figures_dir, rows),
+        _write_hodl_shares(figures_dir, rows),
+        _write_market(figures_dir, page_labels, page_candles),
+    ]
 
 
 def day_label(when: datetime) -> str:
