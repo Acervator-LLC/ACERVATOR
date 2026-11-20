@@ -1900,7 +1900,7 @@ class ScrummingBot(
     ) -> None:
         """Book one settled piece of a manual tranche fire: a lot at ``ibp``, the
         tranche settled by the share of ``asked`` filled, and the growth
-        ``discharge_gain_usd`` gives that share of ``tranche_units`` sold at
+        ``_fold_gain_usd`` gives that share of ``tranche_units`` sold at
         ``rate_after_wire`` of ``ref`` and ``wire_share_pct`` less ``_fee_pct_read``.
 
         ``_planned_fold_sources`` finds the tranche again through ``sources`` or the
@@ -1917,12 +1917,7 @@ class ScrummingBot(
             if _mf_fee is not None
             else 0.0
         )
-        _mf_profit = discharge_gain_usd(
-            {"units": _mf_units, "usd": _mf_sale_usd},
-            _mf_units,
-            float(fill_price),
-            self._buy_fee_pct(fill_price, _mf_fee),
-        )
+        _mf_profit = self._fold_gain_usd(_mf_sale_usd, _mf_units, float(fill_price))
         try:
             _mf_growth = self._apply_fold_target_growth(
                 _mf_profit, source="MANUAL_TRANCHE_FOLD"

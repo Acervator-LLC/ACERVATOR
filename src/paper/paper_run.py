@@ -735,8 +735,8 @@ def apply_fold(
     balance.total_buys += 1
     balance.total_folded_usd += spend
     balance.trade_volume += spend
-    realized = fold_surplus_usd(units, slices, float(price))
-    grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms))
+    realized = fold_surplus_usd(units, slices, float(price), fee_pct)
+    grow_target(bot, balance, units, slices, float(price), int(candle_ts_ms), fee_pct)
     return PaperTrade(
         bot_id=bot.bot_id,
         symbol=bot.symbol,

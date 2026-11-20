@@ -783,6 +783,18 @@ class ExecutionEngineMixin:
         charged = self._charged_fee_pct(self._last_fill_venue_fee, fill_price)
         return fee_pct if charged is None else charged
 
+    def _fold_gain_usd(
+        self, bought_usd: float, units: float, fill_price: float
+    ) -> float:
+        """``discharge_gain_usd`` of ``units`` restored by ``bought_usd`` at
+        ``fill_price``, at ``_buy_fee_pct`` of ``_fee_pct_read``."""
+        return discharge_gain_usd(
+            {"units": units, "usd": bought_usd},
+            units,
+            fill_price,
+            self._buy_fee_pct(fill_price, self._fee_pct_read()),
+        )
+
     def _note_venue_fee_pct(
         self, record: Optional[SettledFillFee], fill_price: float
     ) -> None:
