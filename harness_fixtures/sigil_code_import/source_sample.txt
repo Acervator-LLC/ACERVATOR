@@ -1,4 +1,7 @@
 # Read with --root harness_fixtures/sigil_code_import/sample_tree
 
-# FINDINGS, FIX: the faulty PLC0415 sample sits in src, application source, and no rule on the list holds
+# FINDINGS, HOLD: the faulty TC003 sample sits in src, application source, and TC003 is a holding rule
+src/known_bad_tc003.py
+
+# FINDINGS, FIX: the faulty PLC0415 sample sits in src, application source, and PLC0415 is not a holding rule
 src/known_bad_plc0415.py

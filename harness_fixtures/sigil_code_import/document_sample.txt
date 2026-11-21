@@ -1,4 +1,7 @@
 # Read with --root harness_fixtures/sigil_code_import/sample_tree
 
+# FINDINGS, FIX: the same faulty TC003 sample sits in docs, outside application source
+docs/known_bad_tc003.py
+
 # FINDINGS, FIX: the same faulty PLC0415 sample sits in docs, outside application source
 docs/known_bad_plc0415.py
