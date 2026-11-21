@@ -976,7 +976,7 @@ file, and the other sigils pass. No sigil in the repository prints a FIX or
 HOLD row that names no line number. That case therefore read a copy of
 dev_harness in the module's folder, whose CODE.SECURE prints its rows without
 the line. Its own reading of the module gave FIX and named no line. The case of
-a sigil not read used a copy that holds no CODE.SECURE rule packs. The third
+a sigil not read used a copy that holds no CODE.SECURE rule packs. The last
 SECURE001 Write reads the same module with the sigils of the repository, which
 name line 22, and that write is refused.
 
