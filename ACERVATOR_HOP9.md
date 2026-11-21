@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-20 against `29aa24b2`. **Every claim here names one command that
+Written 2026-11-21 against `0517b373`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,13 +18,13 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running. The 9 pull requests since
-`a5e44099` are #1800 to #1808: three on #1633, four on #1789, one on #1622 and
+The session that wrote this was still running. The 12 pull requests since
+`a5e44099` are #1800 to #1811: six on #1633, four on #1789, one on #1622 and
 one on #53. #1789 and #53 are open.
 
 ```bash
-git log --oneline --first-parent a5e44099..29aa24b2   # the 9 pull requests
-gh pr view 1808 --json state --jq .state              # MERGED, and the same for the other 8
+git log --oneline --first-parent a5e44099..0517b373   # the 12 pull requests
+gh pr view 1811 --json state --jq .state              # MERGED, and the same for the other 11
 gh issue view 1633 --comments                         # each record and result, newest last
 gh issue view 1789 --comments                         # his chart rulings and the units that built them
 gh release list                                       # what is published
@@ -41,8 +41,17 @@ gh pr list --state open                               # what is still landing
   and #1808 gives them the OPTIMIZE flag in every folder (record 7057774204).
   Three rounds on Task_04_Event_Log, Task_05_Meter_Readings and Task_19_Env_Report
   kept the fault removals, and 4 of 9 runs still moved an import, each copying the
-  corrected form the line prints. Comment 7059063897 records that result and the
-  next design: a line under the OPTIMIZE flag prints no corrected form.
+  corrected form the line prints (comment 7059063897). #1810 makes a row under the
+  OPTIMIZE flag read "the merge proceeds" with no corrected form and no command:
+  0 of 9 runs moved an import, and the fault was removed in 9 of 9 (comment
+  7060342296).
+- **Calibration 2 states what a FIX or HOLD flag asks.** #1811 puts the flag's own
+  text from `FLAGS` on the first line. CODE.SECURE's credential fault was removed
+  in 6 of 6 runs, against 1 of 6 in step 2 (comment 7061923194).
+- **The alpha bar is met** (comment 7062093229): each stratum's line acted on on
+  two tasks under the current lines, CODE.OPTIMIZE's read as the flag table
+  defines OPTIMIZE; every valid feedback run works; every not-read line names its
+  reason. The referee judges the sigil-based Coding Archetype ready for alpha.
 - **The VWAP charts (#1789).** #1802 draws each Scrum-Fold cycle on five-minute
   candles and removes the weekly charts. #1804 makes the live-evidence market
   chart show the 33 bases its text names. #1805 puts each base's charts on one
@@ -66,6 +75,11 @@ gh pr list --state open                               # what is still landing
   in FLAGS`. HOLD prints only for application source (`src`, `desktop` and
   `main.py`), FIX for a fault anywhere else, OPTIMIZE for a named optimization
   rule. Read a flag's own text there before choosing it (comment 7056816207).
+  A row under OPTIMIZE reads "the merge proceeds" with no form (#1810), and a
+  first line under FIX or HOLD states its flag's text (#1811). The hook that runs
+  is the copy in the Claude Code user folder; after a merge that changes
+  `dev_harness/hooks/archetype_gate.py`, copy it there and compare
+  `git hash-object` with the merge's blob.
 - **No sigil page carries a figure measured on src/** (#1770): those figures live
   in the data sets under the gitignored artifacts/sigil_runs/.
 - **Every iteration has a record first:** W5H and OCIR, gated by the Truth
@@ -105,13 +119,13 @@ releases     gh release list      # two builds, 1408 and 1107
              0.2.0-20261120.1107.gd2ebd3849477, from d2ebd384
 main         efb4a844, a merge of current at 51a8a77f, #1803
              git describe --tags origin/main     # build-0.2.0-20261120.1408.gefb4a844c30d
-             the five merges after it change no application file, so no build follows them
+             the eight merges after it change no application file, so no build follows them
              git diff --stat efb4a844 origin/current -- src main.py desktop     # prints nothing
-both trees   both on current at 29aa24b2
+both trees   both on current at 0517b373
              dist/ in each holds two pairs, 1107 and 1408
 he runs      1107, the dist folder of each running Acervator process
              Get-CimInstance Win32_Process -Filter "Name LIKE 'Acervator%'"   # ExecutablePath
-             1107 holds #1801 and none of #1802 to #1808; 1408 holds #1802 and #1803
+             1107 holds #1801 and none of #1802 to #1811; 1408 holds #1802 and #1803
              git merge-base --is-ancestor afaa030c d2ebd384     # exit 0
              git merge-base --is-ancestor 51a8a77f d2ebd384     # exit 1
 ```
@@ -293,20 +307,15 @@ wrong far more often than right.
   The growth record, comment 6969215458, has four steps, and all four are built:
   step 1 in #1745, #1748, #1750, #1753 and #1754; step 2 in #1760; step 3 in
   #1762, #1766 and #1782; step 4 in #1767 and #1777. Experiment 4's step 2 has
-  run, and the alpha bar is not met (comment 7056017260). **Next:** the unit for
-  the design in comment 7059063897, then three rounds of it on the same tasks;
-  then calibration 2, whether a FIX flag on the CODE.SECURE and CODE.OPTIMIZE
-  lines changes how often they are acted on; then the alpha bar is judged again
-  before step 3. Each calibration posts its record first, by part 6 of Skill:
-  canonized-workflow. The README in experiment 4's gitignored runs folder, under
-  artifacts/sigil_runs, names the ledger, the scorer and its scripts. **His alpha
-  gate, 2026-11-19:** the comparison on a real Issue unit, with sigils against
-  without, waits until the referee judges the sigil-based Coding Archetype ready
-  for alpha. Until then the calibrations run on experiment 4's tasks, with organic
-  requests.
+  run, calibrations 1 and 2 are closed, and the referee judged the alpha bar met
+  (comment 7062093229). **Next:** the comparison his alpha gate names, on a real
+  Issue unit with sigils against without, with its own record first by part 6 of
+  Skill: canonized-workflow; then step 3 of the method in comment 7045926376, the
+  delivery control. The README in experiment 4's gitignored runs folder, under
+  artifacts/sigil_runs, names the ledger, the scorer and its scripts.
 
 ```bash
-gh issue view 1633 --comments      # step 2 7056017260; calibration 1 7057774204 and 7059063897
+gh issue view 1633 --comments      # step 2 7056017260; calibrations 7060342296, 7061923194; alpha 7062093229
 grep -n "ready for alpha" ~/.claude/projects/*/memory/project_sigil_alpha_gate.md
 ```
 
