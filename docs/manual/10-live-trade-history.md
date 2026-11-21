@@ -311,9 +311,7 @@ lowest more than eightfold, which covers A01 at 10.30 and A03 at 13.25 and no
 other asset. A chart of 30 fills or fewer marks each step with a dot: A31,
 A32, A33, A34, A35, A36, A37 and A38.
 
-Now: the upper panel also draws each five-minute candle as a grey line from its low to its high, and a thin line from each Scrum to the Fold paired with it. The sections under "The builder draws every VWAP chart" describe both (`tools/build_product_manual.py, in _draw_candles`).
-
-Now: each thin line joins a Scrum-Fold pair, solid, or a Fold-Scrum pair, dashed, set out under "Pairs by order time and MOTD" (`tools/build_product_manual.py, in motd_pairs`).
+Now: the upper panel also draws each five-minute candle as a grey line from its low to its high. No line joins a pair's two orders. Each pair, set out under "Pairs by order time and MOTD", marks its gain in the panel under the upper panel (`tools/build_product_manual.py, in _draw_candles` and `_draw_pairs`).
 
 The lower panel draws net units accumulated — every bought quantity minus every
 sold quantity, running — in `COLORS["accent"]`, filled down to zero. It answers
@@ -737,7 +735,7 @@ Now: the A39 chart draws 38 fills, 28 buys and 10 sells, from 4 October to 15 No
 
 A40 has 21 fills, 15 buys and 6 sells, between 27 October and 30 October. Its Stone Tablet rows end on 1 August, so its weekly chart and price trace stop before its first fill (`tools/build_product_manual.py, in tablet_candles`).
 
-Now: the A40 chart draws 63 fills, 40 buys and 23 sells, from 27 October to 20 November. Its band runs on five-minute candles from the candle cache across the whole window, it carries 20 Scrum-Fold and 21 Fold-Scrum pairs at a 5% MOTD, and at 63 fills it does not dot every step (`tools/build_product_manual.py, in _draw_vwap`).
+Now: the A40 chart draws 63 fills, 40 buys and 23 sells, from 27 October to 20 November. Its band runs on five-minute candles from the candle cache across the whole window, it carries 15 Scrum-Fold and 17 Fold-Scrum pairs at a 5% MOTD, and at 63 fills it does not dot every step (`tools/build_product_manual.py, in _draw_vwap`).
 
 Now: A40 has no weekly chart. Its page's cycle panels draw the candle cache's five-minute candles around its latest cycles (`tools/build_product_manual.py, in latest_cycles`).
 
@@ -1056,7 +1054,7 @@ pens = [ink("win") if shift < 0.0 else ink("loss") for shift in shifts]
 
 Across the 40 charts the builder draws 1,743 pairs. 1,712 Folds land below their Scrum, 29 above and 2 level, and the median change is minus 5.56 percent. Each of those 1,712 Folds bought back below the price its Scrum sold at.
 
-Now: the pairs come from order time and the MOTD, set out under "Pairs by order time and MOTD", and the panel marks each pair's gain after fees as a percent of the sale (`tools/build_product_manual.py, in _draw_pairs`).
+Now: the pairs come from order time and the MOTD, set out under "Pairs by order time and MOTD". No line joins a pair's two orders on the price panel, and the panel under it marks each pair's gain after fees as a percent of the sale (`tools/build_product_manual.py, in _draw_pairs`).
 
 ### Pairs from the tranche replay
 
@@ -1092,24 +1090,33 @@ The builder pairs each base's orders by their time and by the Minimum Opposing T
 
 Every pair is verified against a 5% MOTD, the fleet's current global setting. The build reads no saved bot setting, and `--motd` sets another figure for one build (`tools/build_product_manual.py, in read_evidence`).
 
-- The builder walks one base's orders in time order. An order stays open until a later order pairs with it.
-- A Fold pairs with the latest earlier open Scrum whose price sits at least the MOTD above its own. That pair is a Scrum-Fold pair.
-- A Scrum pairs with the latest earlier open Fold whose price sits at least the MOTD below its own. That pair is a Fold-Scrum pair.
+- The builder splits one base's orders, in time order, into runs of one side: a run of Scrums, then a run of Folds, then a run of Scrums, and so on.
+- A Scrum-Fold pair joins a Scrum of one run to a Fold of the run straight after it. The Fold's price sits at least the MOTD below the Scrum's.
+- A Fold-Scrum pair joins a Fold of one run to a Scrum of the run straight after it. The Scrum's price sits at least the MOTD above the Fold's.
+- Each order of the later run, in time order, takes the latest unpaired order of the earlier run that clears the MOTD with it. An order left over stays unpaired.
 - Each order closes at most one pair and opens at most one.
 - A pair's units are the smaller of its two orders' quantities. Its extra units are the Fold's units past the Scrum's.
+- No pair passes over an order of its own side, so each pair spans only the gap between two neighbouring runs.
 
 `tools/build_product_manual.py, in motd_pairs`
 
 ```python
-for order in sorted(orders, key=lambda one: one.when):
-    other = waiting["sell" if order.side == "buy" else "buy"]
-    for index in range(len(other) - 1, -1, -1):
-        opener = other[index]
-        if opener.when < order.when and clears_motd(opener, order, motd_pct):
-            pairs.append(cycle_pair(opener, order, motd_pct))
-            del other[index]
+runs = side_runs(orders)
+return tuple(
+    pair
+    for earlier, later in pairwise(runs)
+    for pair in run_pairs(earlier, later, motd_pct)
+)
+```
+
+`tools/build_product_manual.py, in run_pairs`
+
+```python
+for closer in later:
+    for index in range(len(waiting) - 1, -1, -1):
+        if can_pair(waiting[index], closer, motd_pct):
+            pairs.append(cycle_pair(waiting.pop(index), closer, motd_pct))
             break
-    waiting[order.side].append(order)
 ```
 
 ### What a pair captured and preserved
@@ -1182,7 +1189,7 @@ for pair in sorted(by_fold.values(), key=lambda one: one.fold.when, reverse=True
 
 The manual PDF has a budget of 30 MB, and the cycle views a budget of 12 MB within it.
 
-Now: the cycle panels sit on each base's page, under its net-units panel, and carry no budget of their own. They take the base's latest pairs by their later order, and each panel's title names the direction, Scrum-Fold or Fold-Scrum (`tools/build_product_manual.py, in latest_cycles`).
+Now: the cycle panels sit on each base's page, under its net-units panel, and carry no budget of their own. They take the base's latest pairs by their later order, and each panel's title names the direction, Scrum-Fold or Fold-Scrum. The Scrum and the Fold sit as triangles on their own candles, and no line joins them (`tools/build_product_manual.py, in latest_cycles` and `_draw_cycle_orders`).
 
 ### Every legend sits below its plot
 
@@ -1220,7 +1227,7 @@ if replay.sells <= replay.buys:
     )
 ```
 
-Now: a lower-side order is unpaired when no order of the other side clears the MOTD with it, or when each order that does paired a nearer one. Each row also counts its Scrum-Fold and Fold-Scrum pairs (`tools/build_product_manual.py, in bound_reading`).
+Now: each row counts the base's Scrum-Fold and Fold-Scrum pairs against the lower side. In each direction, the lower count less the pairs is the shortfall. Each unpaired lower-side order counts under one cause: no run of the other side next to its run, no order of the run next to it clears the MOTD, its run is longer than the run next to it, or each order of that run that clears the MOTD paired another (`tools/build_product_manual.py, in bound_reading`).
 
 ### Where a chart draws a hatch
 
@@ -1606,7 +1613,7 @@ converge near 0.088 and finish together. Net units end at 1,153.
 Both lines hold near 85 through May, step to about 83 at the start of June, and
 end within a dollar of each other. Net units end below one whole unit, at 0.75.
 
-Now: A23's page draws 3 cycle panels from its 30 Scrum-Fold and 37 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
+Now: A23's page draws 3 cycle panels from its 15 Scrum-Fold and 15 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
 
 ### A24
 
@@ -1742,7 +1749,7 @@ single horizontal line at 2,148.63 and its index exactly 1.000. The sell line
 rises across the four sells, 2,307 up to 2,577. Net units drop across the
 window, 0.0114 down to 0.0088.
 
-Now: A38's page draws 1 cycle panel from its 10 Scrum-Fold and 4 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
+Now: A38's page draws 1 cycle panel from its 5 Scrum-Fold and 4 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
 
 ## Trade grading
 

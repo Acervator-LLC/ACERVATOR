@@ -151,7 +151,7 @@ combined view carries none, because it plots an index rather than a price.
 and what a fill at its edge means, and measures why the bar is one day rather
 than five minutes.
 
-Now: each of the 40 per-base charts is one page. It carries the band on five-minute candles at period 20 and width 2, its Scrum-Fold and Fold-Scrum pairs, a gain panel, a net-units panel, up to three latest cycles, and a hatch over any slot with no candle. The combined view still carries no band (`tools/build_product_manual.py, in _draw_vwap`).
+Now: each of the 40 per-base charts is one page. It carries the band on five-minute candles at period 20 and width 2, a gain panel for its Scrum-Fold and Fold-Scrum pairs, a net-units panel, up to three latest cycles, and a hatch over any slot with no candle. No line joins a pair's two orders, and the combined view still carries no band (`tools/build_product_manual.py, in _draw_vwap`).
 
 Now: the set holds one figure per base, its page, and no separate cycle view or price trace. Every legend on a page sits below its plot (`tools/build_product_manual.py, in _write_asset_vwap`).
 
