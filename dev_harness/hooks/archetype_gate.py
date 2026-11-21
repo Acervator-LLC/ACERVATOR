@@ -1000,6 +1000,8 @@ CODING_SIGILS = (
     "CODE.REACH",
     "CODE.SECURE",
 )
+TREE_SIGILS = ("CODE.REACH",)
+SIGIL_REPLACES = "--replaces"
 
 # A sigil starts only while this many seconds of POST_BUDGET_S remain.
 SIGIL_MIN_S = 2.0
@@ -1200,7 +1202,7 @@ def _form_rows(form: str) -> list[str]:
 
 
 class SigilTarget(NamedTuple):
-    """The file `rel` under `root`, its `listing`, `cwd`, `deadline` and `follows`."""
+    """`rel` under `root`, its `listing`, `cwd`, `deadline`, `follows`, `replaces`."""
 
     rel: str
     root: Path
@@ -1208,6 +1210,7 @@ class SigilTarget(NamedTuple):
     listing: Path
     deadline: float
     follows: dict[str, str]
+    replaces: str = ""
 
 
 def _run_on(target: SigilTarget, argv: list[str]) -> tuple[dict | None, str]:
@@ -1216,10 +1219,14 @@ def _run_on(target: SigilTarget, argv: list[str]) -> tuple[dict | None, str]:
 
 
 def _own_argv(name: str, target: SigilTarget) -> list[str]:
-    """Return the command of sigil `name`'s own module on `target.listing`."""
+    """Return `name`'s command on `target.listing`; `TREE_SIGILS` get `replaces`."""
+    told = (
+        [SIGIL_REPLACES, target.replaces]
+        if target.replaces and name in TREE_SIGILS else []
+    )
     return [
         sys.executable, "-m", _sigil_module(name), str(target.listing),
-        "--root", str(target.root),
+        "--root", str(target.root), *told,
     ]
 
 
@@ -1394,7 +1401,9 @@ def _flag_follows(cwd: Path, deadline: float) -> dict[str, str] | str:
     return follows
 
 
-def _sigil_readings(path: Path, deadline: float) -> SigilPass | str:
+def _sigil_readings(
+    path: Path, deadline: float, replaced: Path | None = None,
+) -> SigilPass | str:
     """Return each sigil's reading of `path` and the flag texts, or `_all_unread`."""
     root = _git_root(path)
     cwd = _repo_for(path)
@@ -1404,6 +1413,7 @@ def _sigil_readings(path: Path, deadline: float) -> SigilPass | str:
         return _all_unread(f"{cwd} holds no {FOLLOW_ON_FILE.as_posix()}")
     try:
         rel = path.relative_to(root).as_posix()
+        replaces = replaced.relative_to(root).as_posix() if replaced else ""
     except ValueError:
         return _all_unread(f"{path.name} sits outside {root}")
     follow_on = _follow_on_sigils(cwd, deadline)
@@ -1417,7 +1427,7 @@ def _sigil_readings(path: Path, deadline: float) -> SigilPass | str:
             prefix="sigil_feedback_", ignore_cleanup_errors=True) as folder:
         listing = Path(folder) / "input.txt"
         listing.write_text(f"{rel}\n", encoding="utf-8")
-        target = SigilTarget(rel, root, cwd, listing, deadline, follows)
+        target = SigilTarget(rel, root, cwd, listing, deadline, follows, replaces)
         for name in CODING_SIGILS:
             read = _ruff_sigil if name in follow_on else _tool_sigil
             readings[name] = read(name, target)
@@ -1487,7 +1497,7 @@ def _pending_readings(path: Path, content: str, deadline: float) -> SigilPass | 
         return staging
     staged, created, record = staging
     try:
-        return _sigil_readings(staged, deadline)
+        return _sigil_readings(staged, deadline, replaced=path)
     except (OSError, ValueError) as exc:
         return f"{type(exc).__name__}: {exc}"
     finally:

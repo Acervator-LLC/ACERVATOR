@@ -1,16 +1,19 @@
 """`SIGIL` is CODE.REACH on the `core` card; `reach_check` judges one input line."""
 
+import argparse
 import json
 import subprocess
 import sys
 from collections.abc import Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 
 from .coding_input import (
     CONTENT_TIER,
     DATA_TYPE_TIER,
     INPUT_FORM,
+    NOT_THE_FORM,
     OWNER,
     READERS,
     SEPARATOR,
@@ -44,6 +47,7 @@ VULTURE_TIMEOUT_S = 120
 WHOLE_TREE = "."
 TREE_FILES = ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.py"]
 NO_RULE = "vulture did not run: the selection holds no rule"
+REPLACES = "--replaces"
 
 FUNCTION = (
     "reads each def, class, name and import for code that nothing in the tree "
@@ -76,7 +80,7 @@ SETTINGS: dict[str, str] = {
 
 
 class ToolFault(Exception):
-    """vulture failed, could not read a tree file, or printed an unreadable report."""
+    """vulture failed, could not read a tree file, printed an unreadable report, or `REPLACES` named the input."""
 
 
 @dataclass(frozen=True)
@@ -118,8 +122,28 @@ def _tree_files(root: Path, file: Path) -> list[str]:
     return files + [name for name in _beside(root, file) if name not in held]
 
 
-def _vulture_scan(root: Path, file: Path) -> tuple[str, list[tuple[Path, Finding]]]:
-    """Return the vulture version and each item's file and `Finding` over `_tree_files` of `root` and `file`."""
+def _scavenge_paths(root: Path, file: Path, replaced: str | None) -> list[str]:
+    """Return `_tree_files` of `root` and `file` without the file `replaced` names."""
+    if replaced is None:
+        return _tree_files(root, file)
+    gone = root / replaced
+    if gone == file:
+        message = f"{REPLACES} {replaced} names the input file"
+        raise ToolFault(message)
+    files = _tree_files(root, file)
+    if files == [WHOLE_TREE]:
+        files = [
+            path.relative_to(root).as_posix()
+            for path in root.rglob("*.py")
+            if path.is_file()
+        ]
+    return [name for name in files if root / name != gone]
+
+
+def _vulture_scan(
+    root: Path, file: Path, replaced: str | None = None,
+) -> tuple[str, list[tuple[Path, Finding]]]:
+    """Return the vulture version and each item's file and `Finding` over `_scavenge_paths`."""
     try:
         proc = subprocess.run(
             [
@@ -137,7 +161,7 @@ def _vulture_scan(root: Path, file: Path) -> tuple[str, list[tuple[Path, Finding
                     "for item in scan.get_unused_code()]}))"
                 ),
             ],
-            input=json.dumps(_tree_files(root, file)).encode("utf-8"),
+            input=json.dumps(_scavenge_paths(root, file, replaced)).encode("utf-8"),
             cwd=root,
             capture_output=True,
             timeout=VULTURE_TIMEOUT_S,
@@ -165,7 +189,9 @@ def _vulture_scan(root: Path, file: Path) -> tuple[str, list[tuple[Path, Finding
         raise ToolFault(message) from exc
 
 
-def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[Finding]]:
+def findings(
+    text: str, root: Path, to_run: Collection[str], replaced: str | None = None,
+) -> tuple[str, list[Finding]]:
     """Return the vulture version and each item of the `to_run` rules inside the input `text` names."""
     located = locate(text, root)
     if isinstance(located, str):
@@ -175,7 +201,7 @@ def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[
     is_narrowed = bool(text.partition(SETTINGS["separator"])[1])
     if not any(name in to_run for name in CAN_RUN):
         return NO_RULE, []
-    version, items = _vulture_scan(root, file)
+    version, items = _vulture_scan(root, file, replaced)
     target = file.resolve()
     found = [
         finding
@@ -185,9 +211,9 @@ def findings(text: str, root: Path, to_run: Collection[str]) -> tuple[str, list[
     return f"vulture {version}", found
 
 
-def _functions_verdict(text: str, root: Path) -> Reading:
+def _functions_verdict(text: str, root: Path, replaced: str | None = None) -> Reading:
     """Return `REACHED`, or `UNREACHED` holding if an item of the `selection` rules hits `confidence_floor`."""
-    version, found = findings(text, root, selection(text, root, CAN_RUN))
+    version, found = findings(text, root, selection(text, root, CAN_RUN), replaced)
     if not found:
         return Reading(REACHED, f"{version}: no item in the file", holds=False)
     floor = int(SETTINGS["confidence_floor"])
@@ -261,10 +287,30 @@ def reach_check(
     return judge(SIGIL, text, root, in_source=in_source)
 
 
+def _replaced_path(text: str) -> str:
+    """Return `text` if it is an input path with no symbol, else raise the fault."""
+    fault = NOT_THE_FORM if SEPARATOR in text else data_type_fault(text)
+    if fault:
+        raise argparse.ArgumentTypeError(fault)
+    return text
+
+
+def _parse_replaces(argv: list[str] | None) -> tuple[str | None, list[str]]:
+    """Return the `REPLACES` value or None, and the rest of `argv` in its order."""
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
+    parser.add_argument(REPLACES, type=_replaced_path)
+    known, rest = parser.parse_known_args(argv)
+    return known.replaces, rest
+
+
 def run(argv: list[str] | None = None) -> int:
-    """Return `main` for `SIGIL`, or 1 with the `ToolFault` on stderr."""
+    """Return `main` for `SIGIL` told any `REPLACES` file, or 1 after a `ToolFault`."""
+    replaced, rest = _parse_replaces(argv)
+    sigil = SIGIL
+    if replaced is not None:
+        sigil = replace(SIGIL, functions=partial(_functions_verdict, replaced=replaced))
     try:
-        return main(SIGIL, argv)
+        return main(sigil, rest)
     except ToolFault as exc:
         print(f"vulture did not run: {exc}", file=sys.stderr)
         return 1
