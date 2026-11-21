@@ -237,12 +237,10 @@ one chart of its own.
 docs/manual/figures/
     p<page>-i<index>.png        the manual's own 38 images
     vwap_combined.png           the eight-line combined chart
-    vwap_a<NN>.png              one per charted base, 38 of them
-    weekly_a<NN>.png            one weekly chart per charted base, 38 of them
-    trace_a<NN>.png             one price trace per charted base, 38 of them
+    vwap_a<NN>.png              one page per charted base, 40 of them
 ```
 
-Now: the folder holds one cycle view per base, `cycle_a<NN>.png`, and no weekly chart (`tools/build_product_manual.py, in write_evidence_figures`).
+Now: the folder holds one page per base, `vwap_a<NN>.png`, and no weekly chart, cycle view or price trace (`tools/build_product_manual.py, in write_evidence_figures`).
 
 ## The charts are tracked, and they name no asset
 
@@ -275,7 +273,7 @@ which this repository does not carry.
 
 Every chart carries two panels over one time axis.
 
-Now: every chart carries three panels over one time axis: the price panel, the Scrum-Fold pair panel under it, and the net-units panel at the bottom (`tools/build_product_manual.py, in _draw_vwap`).
+Now: every chart is one page. Its price panel, pair-gain panel and net-units panel share one time axis, and up to three cycle panels sit under them (`tools/build_product_manual.py, in _draw_vwap`).
 
 ```python
 PRICE_PANEL = (0.08, 0.42, 0.77, 0.46)
@@ -292,6 +290,18 @@ UNITS_PANEL = (0.08, 0.15, 0.77, 0.13)
 VWAP_LEGEND_AT = (0.465, 0.0)
 ```
 
+Now: the page stands upright and is sized so its heading, the chart and its caption fill one page of the manual. The three panels sit at the top, their legend under them, then the cycle panels and their legend (`tools/build_product_manual.py, in _draw_vwap`).
+
+```python
+ASSET_PAGE_SIZE = (8.5, 10.2)
+PRICE_PANEL = (0.1, 0.715, 0.85, 0.225)
+PAIRS_PANEL = (0.1, 0.617, 0.85, 0.068)
+UNITS_PANEL = (0.1, 0.519, 0.85, 0.068)
+VWAP_LEGEND_AT = (0.525, 0.452)
+CYCLE_PANEL_HEIGHT = 0.068
+CYCLE_PANEL_BOTTOMS = (0.334, 0.201, 0.068)
+```
+
 The upper panel draws every fill as a dot at its price, buys in
 `COLORS["series"][0]` and sells in `COLORS["series"][5]`. Two lines cross it:
 the running buy VWAP and the running sell VWAP, in those same two colours. Each
@@ -303,7 +313,7 @@ A32, A33, A34, A35, A36, A37 and A38.
 
 Now: the upper panel also draws each five-minute candle as a grey line from its low to its high, and a thin line from each Scrum to the Fold paired with it. The sections under "The builder draws every VWAP chart" describe both (`tools/build_product_manual.py, in _draw_candles`).
 
-Now: each thin line joins a pair from the tranche replay, set out under "Pairs from the tranche replay" (`tools/build_product_manual.py, in replay_cycles`).
+Now: each thin line joins a Scrum-Fold pair, solid, or a Fold-Scrum pair, dashed, set out under "Pairs by order time and MOTD" (`tools/build_product_manual.py, in motd_pairs`).
 
 The lower panel draws net units accumulated — every bought quantity minus every
 sold quantity, running — in `COLORS["accent"]`, filled down to zero. It answers
@@ -701,10 +711,6 @@ A39 has 10 fills, seven buys and three sells, between 4 October and 18 October.
 Net units rise from 12.128 to 14.895. The buy line runs from 2.0423 down to
 1.96971 and the sell line ends at 1.89008, which puts the ratio at 0.960.
 
-![A39, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a39.png)
-
-![A39 price trace, 18,525 five-minute closes across the recorded window.](figures/trace_a39.png)
-
 A39 has no VWAP chart. The 39 charts above arrived with the record, and no
 committed file draws a fortieth, so the weekly chart and the price trace carry
 this base. `tools/build_product_manual.py`, in `labels_across`, numbers a base
@@ -723,23 +729,17 @@ A39.
 
 ![A39, 10 fills with every step dotted, and no band: its 15 one-day bars are fewer than the 20 the band needs.](figures/vwap_a39.png)
 
-Now: the A39 chart draws 20 fills, dots every step, and carries a band over the last 8 of its 27 one-day bars (`tools/build_product_manual.py, in fill_band`).
-
-Now: the A39 chart draws 38 fills, 28 buys and 10 sells, from 4 October to 15 November. Its band runs on five-minute candles across the whole window, it carries 6 Scrum-Fold pairs, and at 38 fills it no longer dots every step (`tools/build_product_manual.py, in _draw_vwap`).
+Now: the A39 chart draws 38 fills, 28 buys and 10 sells, from 4 October to 15 November. Its band runs on five-minute candles across the whole window, it carries 9 Scrum-Fold and 9 Fold-Scrum pairs at a 5% MOTD, and at 38 fills it no longer dots every step (`tools/build_product_manual.py, in _draw_vwap`).
 
 ### A40
 
 ![A40, 21 fills with every step dotted, and no band: its 4 one-day bars are fewer than the 20 the band needs.](figures/vwap_a40.png)
 
-![A40, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a40.png)
-
-![A40 price trace, 28,776 five-minute closes across the recorded window.](figures/trace_a40.png)
-
 A40 has 21 fills, 15 buys and 6 sells, between 27 October and 30 October. Its Stone Tablet rows end on 1 August, so its weekly chart and price trace stop before its first fill (`tools/build_product_manual.py, in tablet_candles`).
 
-Now: the A40 chart draws 63 fills, 40 buys and 23 sells, from 27 October to 20 November. Its band runs on five-minute candles from the candle cache across the whole window, it carries 11 Scrum-Fold pairs, and at 63 fills it does not dot every step (`tools/build_product_manual.py, in _draw_vwap`).
+Now: the A40 chart draws 63 fills, 40 buys and 23 sells, from 27 October to 20 November. Its band runs on five-minute candles from the candle cache across the whole window, it carries 20 Scrum-Fold and 21 Fold-Scrum pairs at a 5% MOTD, and at 63 fills it does not dot every step (`tools/build_product_manual.py, in _draw_vwap`).
 
-Now: A40 has no weekly chart. Its cycle view draws the candle cache's five-minute candles around its latest cycles (`tools/build_product_manual.py, in latest_cycles`).
+Now: A40 has no weekly chart. Its page's cycle panels draw the candle cache's five-minute candles around its latest cycles (`tools/build_product_manual.py, in latest_cycles`).
 
 
 ## What this repository holds for these charts
@@ -830,6 +830,13 @@ the build lays out a page.
 ```python
 out = _write_asset_vwap(figures_dir, labels, fills)
 out += _write_asset_weekly(figures_dir, labels, candles)
+```
+
+Now: the builder draws the combined chart and one page per base from that base's pairs, and no weekly chart (`tools/build_product_manual.py, in write_evidence_figures`).
+
+```python
+pairs = {label: base.pairs for label, base in evidence.pairs}
+out = _write_asset_vwap(figures_dir, labels, fills, evidence.filled_candles, pairs)
 ```
 
 > The charts and the record behind them belong to the operator. This repository
@@ -1049,7 +1056,7 @@ pens = [ink("win") if shift < 0.0 else ink("loss") for shift in shifts]
 
 Across the 40 charts the builder draws 1,743 pairs. 1,712 Folds land below their Scrum, 29 above and 2 level, and the median change is minus 5.56 percent. Each of those 1,712 Folds bought back below the price its Scrum sold at.
 
-Now: the pairs come from the tranche replay below, and the panel marks each pair's gain after fees as a percent of the sale (`tools/build_product_manual.py, in _draw_pairs`).
+Now: the pairs come from order time and the MOTD, set out under "Pairs by order time and MOTD", and the panel marks each pair's gain after fees as a percent of the sale (`tools/build_product_manual.py, in _draw_pairs`).
 
 ### Pairs from the tranche replay
 
@@ -1074,6 +1081,36 @@ for tranche in sorted(
 ```
 
 The replay applies today's rule and each bot's saved settings to every fill since 12 April. It does not see a rule or a setting that changed since then, a tranche cleared by hand, or a tranche retired when a bot loads. So the replay can hold a tranche open after the engine has settled it.
+
+Now: no tranche is replayed. The pairs come from the orders' times and each base's MOTD, set out under "Pairs by order time and MOTD" (`tools/build_product_manual.py, in motd_pairs`).
+
+### Pairs by order time and MOTD
+
+The builder pairs each base's orders by their time and by the Minimum Opposing Trade Distance, the MOTD ([the novel concepts](05-novel-concepts.md)). The operator set the MOTD across the fleet:
+
+> MOTD has been set to 10% or, more recently, 5% across most of the fleet. Reading the bot state will only show you the current, global 5% that I am now using.
+
+Every pair is verified against a 5% MOTD, the fleet's current global setting. The build reads no saved bot setting, and `--motd` sets another figure for one build (`tools/build_product_manual.py, in read_evidence`).
+
+- The builder walks one base's orders in time order. An order stays open until a later order pairs with it.
+- A Fold pairs with the latest earlier open Scrum whose price sits at least the MOTD above its own. That pair is a Scrum-Fold pair.
+- A Scrum pairs with the latest earlier open Fold whose price sits at least the MOTD below its own. That pair is a Fold-Scrum pair.
+- Each order closes at most one pair and opens at most one.
+- A pair's units are the smaller of its two orders' quantities. Its extra units are the Fold's units past the Scrum's.
+
+`tools/build_product_manual.py, in motd_pairs`
+
+```python
+for order in sorted(orders, key=lambda one: one.when):
+    other = waiting["sell" if order.side == "buy" else "buy"]
+    for index in range(len(other) - 1, -1, -1):
+        opener = other[index]
+        if opener.when < order.when and clears_motd(opener, order, motd_pct):
+            pairs.append(cycle_pair(opener, order, motd_pct))
+            del other[index]
+            break
+    waiting[order.side].append(order)
+```
 
 ### What a pair captured and preserved
 
@@ -1100,6 +1137,8 @@ def preserved_usd(pair: CyclePair) -> float:
 
 The manual, the PDF and the tracked deck give each part as a percent of the sale, and the extra units as a count. A deck the builder writes outside the repository adds each cycle's dollars.
 
+Now: a pair's captured part counts only the Fold's extra units its own gain could pay for, and any other extra units count in no pair. Each title prints preserved as its gain less its captured part, so the three printed figures sum (`tools/build_product_manual.py, in captured_usd`).
+
 ### The buy-back level on each cycle
 
 Each bot's distance comes from its saved settings, read only. It is the interval plus the fee, with the fee raised to the highest fee the venue has charged the bot, as the bot saved it. A setting changed later is not seen. The level is the Scrum's sale price less that distance: the price a Fold must reach before the engine pays the tranche back.
@@ -1116,6 +1155,8 @@ except (DistanceSettingUnreadable, TypeError, ValueError):
 ```
 
 The replay pays a tranche only at or under its level, so every pair's Fold sits on or below the dashed line its view draws.
+
+Now: no saved setting is read, and every base's level uses a 5% MOTD. The level is the MOTD level of the pair's first order. A Scrum-Fold pair's level is its Scrum's price less the MOTD, and a Fold-Scrum pair's level is its Fold's price plus the MOTD, so every pair's later order sits on or past the dashed line (`tools/build_product_manual.py, in motd_level`).
 
 ### The cycle views
 
@@ -1140,6 +1181,8 @@ for pair in sorted(by_fold.values(), key=lambda one: one.fold.when, reverse=True
 ```
 
 The manual PDF has a budget of 30 MB, and the cycle views a budget of 12 MB within it.
+
+Now: the cycle panels sit on each base's page, under its net-units panel, and carry no budget of their own. They take the base's latest pairs by their later order, and each panel's title names the direction, Scrum-Fold or Fold-Scrum (`tools/build_product_manual.py, in latest_cycles`).
 
 ### Every legend sits below its plot
 
@@ -1177,6 +1220,8 @@ if replay.sells <= replay.buys:
     )
 ```
 
+Now: a lower-side order is unpaired when no order of the other side clears the MOTD with it, or when each order that does paired a nearer one. Each row also counts its Scrum-Fold and Fold-Scrum pairs (`tools/build_product_manual.py, in bound_reading`).
+
 ### Where a chart draws a hatch
 
 A chart hatches any stretch of its window where neither the Stone Tablets nor the candle cache holds a candle, and writes the dates in the hatch. The chart draws no band there. The function `lacking_spans` finds the stretch before the first candle or after the last one, and `_draw_uncovered` hatches it.
@@ -1209,7 +1254,7 @@ evidence = read_evidence(args.evidence_dir)
 deck = write_evidence_deck(args.deck, args.figures_dir, evidence)
 ```
 
-Now: each base's market slide carries its price trace alone, and a cycle slide follows each VWAP slide. With `--operator-deck` the builder writes a second deck that adds each cycle's dollars, and it refuses a path inside the repository (`tools/build_product_manual.py, in write_evidence_deck`).
+Now: each base has one slide, and it carries that base's page. With `--operator-deck` the builder writes a second deck that adds each cycle's dollars, and it refuses a path inside the repository (`tools/build_product_manual.py, in write_evidence_deck`).
 
 ## The 38 per-asset charts
 
@@ -1314,22 +1359,18 @@ The code has overtaken the paragraph above, and the paragraph stays word for wor
 
 Now: the builder draws every VWAP chart, and no VWAP chart labels its price axis in scientific notation. The A01, A03 and A10 blocks below show the code that draws the price axis today (`tools/build_product_manual.py, in _label_price_axis`).
 
-Now: no axis on a VWAP chart, a weekly chart or a price trace carries an offset or a multiplier (`tools/build_product_manual.py, in _label_plain_axis`). The A31 block below shows the code that marks every step today (`tools/build_product_manual.py, in _draw_vwap`).
+Now: no axis on a base's page carries an offset or a multiplier. Its price, gain and net-units panels and each cycle panel label their values in plain decimals (`tools/build_product_manual.py, in _label_plain_axis`). The A31 block below shows the code that marks every step today (`tools/build_product_manual.py, in _draw_vwap`).
 
 Each of the 38 headings below holds three charts for one base, under one label:
 its VWAP chart, its weekly chart and its price trace. The VWAP chart draws the
 fills. The weekly chart and the price trace draw the market those fills ran in,
 from the Stone Tablet rows the next two sections set out.
 
-Now: each heading holds the base's VWAP chart, its cycle view and its price trace, and no weekly chart (`tools/build_product_manual.py, in write_evidence_figures`).
+Now: each heading holds one page for its base: the VWAP chart with its pairs, its pair gains, its net units and its latest cycles. No weekly chart, cycle view or price trace is drawn (`tools/build_product_manual.py, in _draw_vwap`).
 
 ### A01
 
 ![A01, 900 fills, a logarithmic price axis, and a net-units panel that empties twice.](figures/vwap_a01.png)
-
-![A01, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a01.png)
-
-![A01 price trace, 50,380 five-minute closes across the recorded window.](figures/trace_a01.png)
 
 The most-traded base of the 38, and one of the two charts whose price axis runs
 logarithmic. Both lines step down together to about 1.00 by early May, then to
@@ -1357,20 +1398,12 @@ def _label_price_axis(axis: Axes, prices: Sequence[float]) -> None:
 
 ![A02, 495 fills, with the sell line above the buy line for the whole window.](figures/vwap_a02.png)
 
-![A02, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a02.png)
-
-![A02 price trace, 38,463 five-minute closes across the recorded window.](figures/trace_a02.png)
-
 The sell line runs above the buy line across the whole window and the two meet
 in September. Net units climb to 11,699 in mid-August and end at 4,765.
 
 ### A03
 
 ![A03, 459 fills, ending at the lowest index of the eight most-traded assets.](figures/vwap_a03.png)
-
-![A03, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a03.png)
-
-![A03 price trace, 39,186 five-minute closes across the recorded window.](figures/trace_a03.png)
 
 The second logarithmic axis, at a span of 13.25. Both lines hold near 0.09
 through June, then break down in mid-July. Net units end at the highest point
@@ -1399,10 +1432,6 @@ if axis.get_scale() == "log":
 
 ![A04, 322 fills, with more sells than buys and both lines rising.](figures/vwap_a04.png)
 
-![A04, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a04.png)
-
-![A04 price trace, 47,201 five-minute closes across the recorded window.](figures/trace_a04.png)
-
 One of eleven charts with more sells than buys. Both lines dip to about 0.22 in
 early June and climb after it. Net units step from about 120 to about 500
 through late July.
@@ -1410,10 +1439,6 @@ through late July.
 ### A05
 
 ![A05, 261 fills, the highest final index of the eight most-traded assets.](figures/vwap_a05.png)
-
-![A05, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a05.png)
-
-![A05 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a05.png)
 
 The buy line rises from 359.67 to 485.05, the largest climb among the eight in
 the combined chart. Net units fall to near zero in mid-July, then rebuild to
@@ -1423,20 +1448,12 @@ about 0.20.
 
 ![A06, 230 fills, with the two lines converging from mid-June.](figures/vwap_a06.png)
 
-![A06, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a06.png)
-
-![A06 price trace, 33,344 five-minute closes across the recorded window.](figures/trace_a06.png)
-
 The sell line runs above the buy line until mid-June, then the two converge and
 the sell line finishes just below. Net units grow to 47,574 and end at 44,795.
 
 ### A07
 
 ![A07, 226 fills, with a step down at the start of June.](figures/vwap_a07.png)
-
-![A07, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a07.png)
-
-![A07 price trace, 49,638 five-minute closes across the recorded window.](figures/trace_a07.png)
 
 One step down at the start of June takes the buy line from about 0.044 to about
 0.039, and a slow decline follows. The sell line crosses below the buy line at
@@ -1446,10 +1463,6 @@ that same step.
 
 ![A08, 220 fills, with the sell line crossing below the buy line in mid-June.](figures/vwap_a08.png)
 
-![A08, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a08.png)
-
-![A08 price trace, 52,751 five-minute closes across the recorded window.](figures/trace_a08.png)
-
 The crossing holds for the rest of the window. Net units peak at 15,301 in
 mid-August, then fall to 9,483.
 
@@ -1457,20 +1470,12 @@ mid-August, then fall to 9,483.
 
 ![A09, 196 fills, with both lines flat from July onward.](figures/vwap_a09.png)
 
-![A09, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a09.png)
-
-![A09 price trace, 53,988 five-minute closes across the recorded window.](figures/trace_a09.png)
-
 Both lines rise to a peak near 1 May, then fall to a flat run from July. Net
 units drop from 140 to about 20 at the end of June and hold near 40 after that.
 
 ### A10
 
 ![A10, 191 fills, priced near six millionths of a dollar.](figures/vwap_a10.png)
-
-![A10, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a10.png)
-
-![A10 price trace, 72,287 five-minute closes across the recorded window.](figures/trace_a10.png)
 
 The lowest-priced base in the record. The buy line holds near 6.3e-06 from late
 April while the fill dots fall from 8.0e-06 to 2.3e-06. Net units spike to
@@ -1508,10 +1513,6 @@ axis.axes.ticklabel_format(axis=axis.axis_name, style="plain", useOffset=False)
 
 ![A11, 178 fills, and the largest rise of the 38.](figures/vwap_a11.png)
 
-![A11, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a11.png)
-
-![A11 price trace, 26,750 five-minute closes across the recorded window.](figures/trace_a11.png)
-
 The buy line rises from 0.01722 to 0.02979, an index of 1.730 and the largest
 of the 38. Both lines climb through August. Net units drop across that same
 climb, 2,669 down to 1,107.
@@ -1519,10 +1520,6 @@ climb, 2,669 down to 1,107.
 ### A12
 
 ![A12, 159 fills, with the sell line dropping below the buy line at the start of June.](figures/vwap_a12.png)
-
-![A12, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a12.png)
-
-![A12 price trace, 78,332 five-minute closes across the recorded window.](figures/trace_a12.png)
 
 The buy line holds near 0.0098 through May and the sell line near 0.0105, then
 both step down at the start of June. Net units reach 17,089 in early August and
@@ -1532,20 +1529,12 @@ end at 11,612.
 
 ![A13, 147 fills, with the sell line above the buy line throughout.](figures/vwap_a13.png)
 
-![A13, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a13.png)
-
-![A13 price trace, 76,386 five-minute closes across the recorded window.](figures/trace_a13.png)
-
 The sell line stays above the buy line for the whole window, ending near 15.4
 against 14.7. Net units peak at 7.13 and end at 4.71.
 
 ### A14
 
 ![A14, 141 fills, ending 21 August.](figures/vwap_a14.png)
-
-![A14, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a14.png)
-
-![A14 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a14.png)
 
 The window closes on 21 August, the earliest close of the 38 apart from A37.
 The two lines run together until the start of June, then split, with the sell
@@ -1555,10 +1544,6 @@ line about 100 dollars above through June and July. They meet again in August.
 
 ![A15, 124 fills, with the two lines splitting at the start of June.](figures/vwap_a15.png)
 
-![A15, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a15.png)
-
-![A15 price trace, 79,005 five-minute closes across the recorded window.](figures/trace_a15.png)
-
 The highest-priced base in the record. Both lines hold near 78,000 through May.
 At the start of June the sell line drops to about 68,000 and the buy line to
 about 72,000, and the gap holds until late August. Net units end at 0.0031.
@@ -1567,20 +1552,12 @@ about 72,000, and the gap holds until late August. Net units end at 0.0031.
 
 ![A16, 124 fills, with the sell line above the buy line until mid-June.](figures/vwap_a16.png)
 
-![A16, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a16.png)
-
-![A16 price trace, 78,992 five-minute closes across the recorded window.](figures/trace_a16.png)
-
 The sell line peaks near 312 in mid-May, about 30 dollars above the buy line,
 and crosses below it in mid-June. Net units end at 0.34.
 
 ### A17
 
 ![A17, 119 fills, with both lines nearly flat after June.](figures/vwap_a17.png)
-
-![A17, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a17.png)
-
-![A17 price trace, 78,992 five-minute closes across the recorded window.](figures/trace_a17.png)
 
 The buy line sits near 0.362 and the sell line near 0.382 from mid-June to the
 close, a gap of about 0.02 held across eleven weeks.
@@ -1589,20 +1566,12 @@ close, a gap of about 0.02 held across eleven weeks.
 
 ![A18, 119 fills, with the two lines almost touching across the window.](figures/vwap_a18.png)
 
-![A18, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a18.png)
-
-![A18 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a18.png)
-
 The two lines run within about 0.01 of each other for the whole window. Net
 units spike to 175 at the start, then hold near 55.
 
 ### A19
 
 ![A19, 113 fills across 22 days in August.](figures/vwap_a19.png)
-
-![A19, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a19.png)
-
-![A19 price trace, 15,736 five-minute closes across the recorded window.](figures/trace_a19.png)
 
 The second-shortest window of the 38. The buy line falls from 0.00395 to about
 0.0030 in the first four days, then flattens. The two lines nearly overlap
@@ -1612,10 +1581,6 @@ after 17 August.
 
 ![A20, 87 fills, with the sell line crossing below the buy line in mid-August.](figures/vwap_a20.png)
 
-![A20, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a20.png)
-
-![A20 price trace, 21,070 five-minute closes across the recorded window.](figures/trace_a20.png)
-
 Buys number 32 against 55 sells. The buy line starts at 0.0698 and falls to
 0.0337 across 24 days, the steepest fall of the three assets that start in
 August.
@@ -1624,20 +1589,12 @@ August.
 
 ![A21, 83 fills, with both lines turning up in the last two weeks.](figures/vwap_a21.png)
 
-![A21, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a21.png)
-
-![A21 price trace, 79,003 five-minute closes across the recorded window.](figures/trace_a21.png)
-
 The sell line falls below the buy line at the start of June and stays there
 until late August, when both turn up and cross again.
 
 ### A22
 
 ![A22, 80 fills, with the two lines meeting in mid-August.](figures/vwap_a22.png)
-
-![A22, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a22.png)
-
-![A22 price trace, 79,000 five-minute closes across the recorded window.](figures/trace_a22.png)
 
 The sell line runs above the buy line from May to mid-August, then the two
 converge near 0.088 and finish together. Net units end at 1,153.
@@ -1646,20 +1603,14 @@ converge near 0.088 and finish together. Net units end at 1,153.
 
 ![A23, 77 fills, with the two lines within about a dollar of each other.](figures/vwap_a23.png)
 
-![A23 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a23.png)
-
 Both lines hold near 85 through May, step to about 83 at the start of June, and
 end within a dollar of each other. Net units end below one whole unit, at 0.75.
 
-Now: A23 has no cycle view. None of its pairs has its Scrum and Fold within 48 hours on covered candles (`tools/build_product_manual.py, in latest_cycles`).
+Now: A23's page draws 3 cycle panels from its 30 Scrum-Fold and 37 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
 
 ### A24
 
 ![A24, 75 fills, with both lines falling by more than half.](figures/vwap_a24.png)
-
-![A24, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a24.png)
-
-![A24 price trace, 8,734 five-minute closes across the recorded window.](figures/trace_a24.png)
 
 A July starter. The buy line falls from 0.02809 to 0.01168 in eight weeks, and
 the sell line converges onto it by the close. Net units end at 13,268.
@@ -1668,20 +1619,12 @@ the sell line converges onto it by the close. Net units end at 13,268.
 
 ![A25, 74 fills, with a step down at the start of June.](figures/vwap_a25.png)
 
-![A25, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a25.png)
-
-![A25 price trace, 78,996 five-minute closes across the recorded window.](figures/trace_a25.png)
-
 The sell line falls from 1.27 to 0.87 across late May and early June, crossing
 below the buy line, and the two hold about 0.04 apart afterwards.
 
 ### A26
 
 ![A26, 73 fills, with the sell line above the buy line from late July.](figures/vwap_a26.png)
-
-![A26, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a26.png)
-
-![A26 price trace, 25,946 five-minute closes across the recorded window.](figures/trace_a26.png)
 
 The sell line jumps from 0.42 to 0.52 in the last week of July, then settles
 near 0.50 against a buy line near 0.476.
@@ -1690,10 +1633,6 @@ near 0.50 against a buy line near 0.476.
 
 ![A27, 73 fills, with the sell line about 0.02 above the buy line throughout.](figures/vwap_a27.png)
 
-![A27, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a27.png)
-
-![A27 price trace, 79,003 five-minute closes across the recorded window.](figures/trace_a27.png)
-
 The gap between the two lines holds across the whole window, and both drift
 down. Net units grow to 311 and end at 285.
 
@@ -1701,20 +1640,12 @@ down. Net units grow to 311 and end at 285.
 
 ![A28, 66 fills, with more sells than buys.](figures/vwap_a28.png)
 
-![A28, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a28.png)
-
-![A28 price trace, 68,265 five-minute closes across the recorded window.](figures/trace_a28.png)
-
 29 buys against 37 sells. The sell line peaks near 72.6 in early June and ends
 near 67, and the buy line holds between 61 and 65 across the window.
 
 ### A29
 
 ![A29, 63 fills, with both lines rising through August.](figures/vwap_a29.png)
-
-![A29, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a29.png)
-
-![A29 price trace, 51,228 five-minute closes across the recorded window.](figures/trace_a29.png)
 
 23 buys against 40 sells. The buy line rises from 0.001603 to 0.002051, and the
 sell line rises faster, ending about 0.0007 above it. Net units drop across the
@@ -1724,20 +1655,12 @@ window, 29,987 down to 12,032.
 
 ![A30, 58 fills, with both lines falling steadily.](figures/vwap_a30.png)
 
-![A30, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a30.png)
-
-![A30 price trace, 78,491 five-minute closes across the recorded window.](figures/trace_a30.png)
-
 The sell line runs about 0.1 above the buy line from June to late August, then
 the two converge near 2.05. Net units end at 26.
 
 ### A31
 
 ![A31, 25 fills, thin enough for the two lines to carry a dot per step.](figures/vwap_a31.png)
-
-![A31, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a31.png)
-
-![A31 price trace, 78,993 five-minute closes across the recorded window.](figures/trace_a31.png)
 
 The first of the eight thin charts. The sell line starts at 0.1048, steps down
 through June and July, and crosses below the buy line in late July. Net units
@@ -1772,20 +1695,12 @@ for side, line in (("buy", buy_v), ("sell", sell_v)):
 
 ![A32, 24 fills, with eight buys and sixteen sells.](figures/vwap_a32.png)
 
-![A32, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a32.png)
-
-![A32 price trace, 52,521 five-minute closes across the recorded window.](figures/trace_a32.png)
-
 A thin chart. The buy line holds near 0.4225 until late August, then rises to
 0.4310. The sell line jumps from 0.444 to 0.481 in the same week.
 
 ### A33
 
 ![A33, 23 fills across 12 days, the shortest window of the 38.](figures/vwap_a33.png)
-
-![A33, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a33.png)
-
-![A33 price trace, 50,503 five-minute closes across the recorded window.](figures/trace_a33.png)
 
 A thin chart, and the shortest window here. Eight buys against fifteen sells.
 Both lines step up once, on 28 August.
@@ -1794,20 +1709,12 @@ Both lines step up once, on 28 August.
 
 ![A34, 23 fills, with the sell line stepping up sharply on 22 August.](figures/vwap_a34.png)
 
-![A34, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a34.png)
-
-![A34 price trace, 78,986 five-minute closes across the recorded window.](figures/trace_a34.png)
-
 A thin chart. The sell line climbs from 0.1645 to about 0.202, while the buy
 line moves from 0.1696 to 0.1748 across the same six weeks.
 
 ### A35
 
 ![A35, 16 fills, with the buy line flat from late July.](figures/vwap_a35.png)
-
-![A35, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a35.png)
-
-![A35 price trace, 10,940 five-minute closes across the recorded window.](figures/trace_a35.png)
 
 A thin chart. The buy line settles at 0.1605 in late July and holds. The sell
 line dips to 0.159 in early August, then steps back to 0.1648.
@@ -1816,20 +1723,12 @@ line dips to 0.159 in early August, then steps back to 0.1648.
 
 ![A36, 6 fills, three buys and three sells.](figures/vwap_a36.png)
 
-![A36, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a36.png)
-
-![A36 price trace, 79,004 five-minute closes across the recorded window.](figures/trace_a36.png)
-
 The buy line is nearly flat at 46.33, since all three buys land near one price.
 The sell line runs about 5 dollars above it. Net units end at 0.49.
 
 ### A37
 
 ![A37, 6 fills, closing 16 August.](figures/vwap_a37.png)
-
-![A37, its latest Scrum-Fold cycles on five-minute candles, with each Scrum's buy-back level.](figures/cycle_a37.png)
-
-![A37 price trace, 49,654 five-minute closes across the recorded window.](figures/trace_a37.png)
 
 The earliest close of the 38. Three buys and three sells, all inside four
 weeks. The buy line drifts from 0.0600 to 0.0590.
@@ -1838,14 +1737,12 @@ weeks. The buy line drifts from 0.0600 to 0.0590.
 
 ![A38, 5 fills, one buy and four sells.](figures/vwap_a38.png)
 
-![A38 price trace, 6,257 five-minute closes across the recorded window.](figures/trace_a38.png)
-
 The only base in the record with a single buy. One buy makes the buy line a
 single horizontal line at 2,148.63 and its index exactly 1.000. The sell line
 rises across the four sells, 2,307 up to 2,577. Net units drop across the
 window, 0.0114 down to 0.0088.
 
-Now: A38 has no cycle view. None of its pairs has its Scrum and Fold within 48 hours on covered candles (`tools/build_product_manual.py, in latest_cycles`).
+Now: A38's page draws 1 cycle panel from its 10 Scrum-Fold and 4 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
 
 ## Trade grading
 
@@ -2064,7 +1961,7 @@ multiplier.
 _label_price_axis(axis, [bar[3] for bar in bars] + [bar[2] for bar in bars])
 ```
 
-Now: the builder draws no weekly chart, and each base's cycle view sits where its weekly chart sat (`tools/build_product_manual.py, in write_evidence_figures`).
+Now: the builder draws no weekly chart. Each base's page holds its latest cycles under its net-units panel (`tools/build_product_manual.py, in _draw_latest_cycles`).
 
 ## The price at the finest resolution the record carries
 
@@ -2096,4 +1993,4 @@ axis.plot(stamps, closes, color=accessible_series()[0], linewidth=0.5)
 _label_price_axis(axis, closes)
 ```
 
-Now: no weekly bar is drawn. The cycle views draw the five-minute candles the price traces close on, around each base's latest cycles (`tools/build_product_manual.py, in _draw_cycle`).
+Now: no weekly bar and no price trace is drawn. Each base's page draws its five-minute candles across its whole window and around its latest cycles (`tools/build_product_manual.py, in _draw_cycle`).
