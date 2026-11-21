@@ -18,13 +18,13 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running. The 21 pull requests since
-`a5e44099` are #1800 to #1820: thirteen on #1633, four on #1789, and one each on
+The session that wrote this was still running. The 22 pull requests since
+`a5e44099` are #1800 to #1821: fourteen on #1633, four on #1789, and one each on
 #1622, #53, #1660 and #319. #1789, #53, #1660 and #319 are open.
 
 ```bash
-git log --oneline --first-parent a5e44099..0f5e4baf   # the 21 pull requests
-gh pr view 1820 --json state --jq .state              # MERGED, and the same for the other 20
+git log --oneline --first-parent a5e44099..e6dcd126   # the 22 pull requests
+gh pr view 1821 --json state --jq .state              # MERGED, and the same for the other 21
 gh issue view 1633 --comments                         # each record and result, newest last
 gh issue view 1789 --comments                         # his chart rulings and the units that built them
 gh release list                                       # what is published
@@ -311,35 +311,14 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
-- **#1633, the Coding Archetype, first, by his focus ruling.** His 2026-11-18
-  refocus, verbatim: "the Coding Archetype with and without sigils attempting the
-  same coding task. My goal is to measure this as scientifically as possible."
-  The growth record, comment 6969215458, has four steps, and all four are built:
-  step 1 in #1745, #1748, #1750, #1753 and #1754; step 2 in #1760; step 3 in
-  #1762, #1766 and #1782; step 4 in #1767 and #1777. Experiment 4's step 2 has
-  run, calibrations 1 and 2 are closed, and the referee judged the alpha bar met
-  (comment 7062093229), and the real-unit comparison his alpha gate names has run
-  two pairs. Step 3 of the method in comment 7045926376, the delivery control,
-  is paused: #1816 built the SIGIL_FEEDBACK_REFUSE marker in
-  `dev_harness/hooks/archetype_gate.py, in _sigil_refusal`, #1818 corrected
-  CODE.REACH's reading of a staged copy, and CODE.TYPE's staged-copy refusal is
-  open (comment 7066887960). His 2026-11-21 idea replaced its rounds, verbatim:
-  "I suppose another option would be to have both the non-sigil and sigl-based
-  archetype attempt coding exam questions of scaling difficulty." The exam holds
-  24 questions in four levels: 20 invite a mistake a sigil names, and 4 are
-  controls (design comment 7066741563). Its binding test statement, the block
-  that part 6 of Skill: canonized-workflow requires (#1819) and rule T009 reads
-  (#1820), is comment 7069467110, which amends comment 7068532484. **Next:**
-  finish round one in batches of 8 agents, both arms of a question together;
-  between batches, move finished runs' scratch files out of the session
-  scratchpad, which runs list; write round one's critique; then rounds two and
-  three, and the verdict from the block's exact sign tests alone. The exam's
-  gitignored runs folder, under artifacts/sigil_runs, holds a scripts folder
-  with the scorer, the round setup and the analysis.
+- **#1633 is abandoned.** His words, 2026-11-21: "Okay, time to abandon 1633.
+  It was not approached correctly and is entirely hallucinated at this stage.
+  We can try again later." No work on it runs, and none resumes without his
+  word. The abandonment record, comment 7070958497, names what stays live in
+  the repository and what a retry needs.
 
 ```bash
-gh issue view 1633 --comments      # exam design 7066741563; test statement 7069467110; step 3 7064685520, 7066887960
-grep -n "ready for alpha" ~/.claude/projects/*/memory/project_sigil_alpha_gate.md
+gh api repos/Acervator-LLC/ACERVATOR/issues/comments/7070958497 --jq .body   # the abandonment record
 ```
 
 - **#1622, the wire rows, on his rulings of 2026-11-19** (comments 7028680362 to
