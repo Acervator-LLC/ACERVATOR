@@ -31,10 +31,11 @@ from .core import (
     main,
 )
 from .fix_class import BY_FIX_CLASS, FOLLOW_ON
-from .ruff_rules import RUFF_BUILT, ToolFault, check, rule_page, ruff_version
+from .ruff_rules import RUFF_BUILT, ToolFault, check, ruff_version, rule_page
 
 CLEAN = "CLEAN"
 FINDINGS = "FINDINGS"
+OPTIMIZABLE = "OPTIMIZABLE"
 REJECTED = "REJECTED"
 
 FUNCTION = (
@@ -47,6 +48,7 @@ TAKEN = take("import", DISCIPLINES, CHARACTERISTICS)
 RULES = TAKEN.rules
 PREVIEW = TAKEN.preview
 HOLDING = TAKEN.holding
+OPTIMIZING = TAKEN.optimizing
 CAN_RUN = tuple(f"{TOOL} {code}" for code in RULES)
 IMPORT_NODES = (ast.Import, ast.ImportFrom)
 NO_IMPORT = "no import or from-import statement"
@@ -55,6 +57,7 @@ SETTINGS: dict[str, str] = {
     "separator": SEPARATOR,
     "ruff_version": RUFF_BUILT,
     **TAKEN.settings(FUNCTION),
+    "optimizing_rules": " ".join(OPTIMIZING),
     "selection": SELECTION,
     "can_run": str(len(CAN_RUN)),
     "fault_file": "the file the input line names: FINDINGS reads HOLD when it sits "
@@ -106,7 +109,7 @@ def _content_fault(text: str, root: Path) -> str | None:
 
 
 def _functions_verdict(text: str, root: Path) -> Reading:
-    """Return `CLEAN`, or `FINDINGS` holding when a `HOLDING` rule fires, from the `selection` rules."""
+    """Return `CLEAN`, `OPTIMIZABLE` when only `OPTIMIZING` rules fire, or `FINDINGS`, holding when a `HOLDING` rule fires."""
     version, found = findings(text, root, selection(text, root, CAN_RUN))
     if not found:
         return Reading(CLEAN, f"{version}: no rule on the list fires", holds=False)
@@ -119,8 +122,9 @@ def _functions_verdict(text: str, root: Path) -> Reading:
         f"\n{code} faulty:\n{page.faulty}{code} corrected:\n{page.corrected}"
         for code, page in pages.items()
     )
+    output = OPTIMIZABLE if set(pages) <= set(OPTIMIZING) else FINDINGS
     holds = any(code in HOLDING for code in pages)
-    return Reading(FINDINGS, f"{version}: {rows}{forms}", holds)
+    return Reading(output, f"{version}: {rows}{forms}", holds)
 
 
 SIGIL = Sigil(
@@ -165,6 +169,7 @@ SIGIL = Sigil(
                 "faulty form",
                 "corrected form",
             ],
+            "optimizable": "the findings fields, when only optimizing_rules fire",
             "fix_classes": list(FOLLOW_ON),
             "preview": (
                 "the preview_rules fire only with --preview"
@@ -182,10 +187,12 @@ SIGIL = Sigil(
     outputs={
         CLEAN: FlagRow(Flag.PASS),
         FINDINGS: FlagRow(Flag.FIX, holds_in_source=bool(HOLDING)),
+        OPTIMIZABLE: FlagRow(Flag.OPTIMIZE),
     },
     refusal=REJECTED,
     follows={
-        flag: FLAGS[flag]["follows"] + BY_FIX_CLASS for flag in (Flag.HOLD, Flag.FIX)
+        flag: FLAGS[flag]["follows"] + BY_FIX_CLASS
+        for flag in (Flag.HOLD, Flag.FIX, Flag.OPTIMIZE)
     },
     readers=READERS,
     data_type=data_type_fault,

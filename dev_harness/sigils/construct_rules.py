@@ -49,6 +49,7 @@ class Taken:
     rules: tuple[str, ...]
     preview: tuple[str, ...]
     holding: tuple[str, ...]
+    optimizing: tuple[str, ...]
     left: dict[str, str]
     left_because: ClassVar[str] = LEFT_BECAUSE
 
@@ -235,10 +236,9 @@ def take(construct: str, named: Sequence[str], characteristics: Sequence[str]) -
     holding = tuple(
         code
         for code in rules
-        if code.startswith(ERROR_CLASS)
-        or code in UNDEFINED_NAMES
-        or code in TYPING_ONLY_IMPORTS
+        if code.startswith(ERROR_CLASS) or code in UNDEFINED_NAMES
     )
+    optimizing = tuple(code for code in rules if code in TYPING_ONLY_IMPORTS)
     return Taken(
         construct,
         tuple(named),
@@ -246,6 +246,7 @@ def take(construct: str, named: Sequence[str], characteristics: Sequence[str]) -
         tuple(rules),
         tuple(preview),
         holding,
+        optimizing,
         left,
     )
 
