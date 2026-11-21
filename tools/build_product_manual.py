@@ -24,6 +24,7 @@ from collections import Counter
 from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from http import HTTPStatus
+from itertools import pairwise
 from statistics import median
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -31,7 +32,6 @@ from urllib.error import HTTPError
 
 import numpy as np
 import pptx
-from matplotlib.collections import LineCollection
 from matplotlib.dates import DateFormatter, date2num
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
@@ -2390,12 +2390,12 @@ class CyclePair:
 
 @dataclass(frozen=True)
 class BoundReading:
-    """``pairs`` against ``lower``, the smaller side, and its ``unpaired`` causes."""
+    """One ``direction``'s ``pairs`` against ``lower`` and its ``unpaired`` causes."""
 
+    direction: str
     lower_side: str
     lower: int
     pairs: int
-    extra: int
     unpaired: tuple[tuple[str, int], ...]
 
 
@@ -2420,8 +2420,12 @@ def venue_orders(fills: Sequence[Fill]) -> list[Order]:
 
 SCRUM_FOLD = "Scrum-Fold"
 FOLD_SCRUM = "Fold-Scrum"
-NONE_CLEARS = "no order of the other side clears the MOTD"
-NEARER_PAIRED = "each order that clears the MOTD paired a nearer one"
+OPENING_SIDE = {SCRUM_FOLD: "sell", FOLD_SCRUM: "buy"}
+NO_RUN_BESIDE = "no run of the other side next to its run"
+NONE_CLEARS = "no order of the run next to it clears the MOTD"
+LONGER_RUN = "its run is longer than the run next to it"
+OTHERS_PAIRED = "each order of the run next to it that clears the MOTD paired another"
+UNPAIRED_CAUSES = (NO_RUN_BESIDE, NONE_CLEARS, LONGER_RUN, OTHERS_PAIRED)
 
 
 def motd_level(opener: Order, motd_pct: float) -> float:
@@ -2439,6 +2443,11 @@ def clears_motd(opener: Order, closer: Order, motd_pct: float) -> bool:
     return closer.price >= level
 
 
+def can_pair(opener: Order, closer: Order, motd_pct: float) -> bool:
+    """Return True where ``opener`` comes first and ``closer`` ``clears_motd``."""
+    return opener.when < closer.when and clears_motd(opener, closer, motd_pct)
+
+
 def cycle_pair(opener: Order, closer: Order, motd_pct: float) -> CyclePair:
     """Return ``opener`` and ``closer`` as a ``CyclePair`` at their ``motd_level``."""
     scrum, fold = (opener, closer) if opener.side == "sell" else (closer, opener)
@@ -2446,20 +2455,41 @@ def cycle_pair(opener: Order, closer: Order, motd_pct: float) -> CyclePair:
     return CyclePair(scrum, fold, units, fold.qty - units, motd_level(opener, motd_pct))
 
 
-def motd_pairs(orders: Sequence[Order], motd_pct: float) -> tuple[CyclePair, ...]:
-    """Pair each order with its latest earlier open opposite that ``clears_motd``."""
-    waiting: dict[str, list[Order]] = {"buy": [], "sell": []}
-    pairs: list[CyclePair] = []
+def side_runs(orders: Sequence[Order]) -> list[list[Order]]:
+    """Return ``orders`` in time order, split into runs of one side."""
+    runs: list[list[Order]] = []
     for order in sorted(orders, key=lambda one: one.when):
-        other = waiting["sell" if order.side == "buy" else "buy"]
-        for index in range(len(other) - 1, -1, -1):
-            opener = other[index]
-            if opener.when < order.when and clears_motd(opener, order, motd_pct):
-                pairs.append(cycle_pair(opener, order, motd_pct))
-                del other[index]
+        if runs and runs[-1][-1].side == order.side:
+            runs[-1].append(order)
+        else:
+            runs.append([order])
+    return runs
+
+
+def run_pairs(
+    earlier: Sequence[Order],
+    later: Sequence[Order],
+    motd_pct: float,
+) -> list[CyclePair]:
+    """Pair each later order with the latest open earlier order that ``can_pair``."""
+    waiting = list(earlier)
+    pairs: list[CyclePair] = []
+    for closer in later:
+        for index in range(len(waiting) - 1, -1, -1):
+            if can_pair(waiting[index], closer, motd_pct):
+                pairs.append(cycle_pair(waiting.pop(index), closer, motd_pct))
                 break
-        waiting[order.side].append(order)
-    return tuple(pairs)
+    return pairs
+
+
+def motd_pairs(orders: Sequence[Order], motd_pct: float) -> tuple[CyclePair, ...]:
+    """Return ``run_pairs`` over each of ``side_runs`` and the run after it."""
+    runs = side_runs(orders)
+    return tuple(
+        pair
+        for earlier, later in pairwise(runs)
+        for pair in run_pairs(earlier, later, motd_pct)
+    )
 
 
 @dataclass(frozen=True)
@@ -2476,34 +2506,52 @@ def base_pairs(orders: Sequence[Order], motd_pct: float) -> BasePairs:
     return BasePairs(tuple(orders), motd_pct, motd_pairs(orders, motd_pct))
 
 
-def unpaired_cause(order: Order, orders: Sequence[Order], motd_pct: float) -> str:
-    """Return why ``order`` is unpaired: ``NEARER_PAIRED`` or ``NONE_CLEARS``."""
-    for other in orders:
-        if other.side == order.side or other.when == order.when:
-            continue
-        opener, closer = (other, order) if other.when < order.when else (order, other)
-        if clears_motd(opener, closer, motd_pct):
-            return NEARER_PAIRED
-    return NONE_CLEARS
+def unpaired_cause(
+    order: Order,
+    run: Sequence[Order],
+    beside: Sequence[Order],
+    motd_pct: float,
+    *,
+    opens: bool,
+) -> str:
+    """Return why ``order`` of ``run`` paired no order of ``beside``."""
+    if not beside:
+        return NO_RUN_BESIDE
+    if not any(
+        can_pair(order, other, motd_pct) if opens else can_pair(other, order, motd_pct)
+        for other in beside
+    ):
+        return NONE_CLEARS
+    if len(run) > len(beside):
+        return LONGER_RUN
+    return OTHERS_PAIRED
 
 
-def bound_reading(base: BasePairs) -> BoundReading:
-    """Return ``base``'s ``BoundReading`` against the smaller side of its orders."""
+def bound_reading(base: BasePairs, direction: str) -> BoundReading:
+    """Return ``base``'s ``direction`` pairs against the smaller side of its orders."""
     sells = sum(1 for order in base.orders if order.side == "sell")
     side = "sell" if sells <= len(base.orders) - sells else "buy"
-    lower = [order for order in base.orders if order.side == side]
-    paired = {pair.scrum if side == "sell" else pair.fold for pair in base.pairs}
-    causes = Counter(
-        unpaired_cause(order, base.orders, base.motd_pct)
-        for order in lower
-        if order not in paired
-    )
+    held = [pair for pair in base.pairs if pair.direction == direction]
+    paired = {pair.scrum if side == "sell" else pair.fold for pair in held}
+    opens = OPENING_SIDE[direction] == side
+    runs = side_runs(base.orders)
+    causes: Counter[str] = Counter()
+    for at, run in enumerate(runs):
+        if run[0].side != side:
+            continue
+        beside_at = at + 1 if opens else at - 1
+        beside = runs[beside_at] if 0 <= beside_at < len(runs) else []
+        causes.update(
+            unpaired_cause(order, run, beside, base.motd_pct, opens=opens)
+            for order in run
+            if order not in paired
+        )
     return BoundReading(
+        direction,
         f"{side}s",
-        len(lower),
-        len(base.pairs),
-        len(base.pairs) - len(paired),
-        tuple((cause, causes[cause]) for cause in (NONE_CLEARS, NEARER_PAIRED)),
+        sum(1 for order in base.orders if order.side == side),
+        len(held),
+        tuple((cause, causes[cause]) for cause in UNPAIRED_CAUSES),
     )
 
 
@@ -2620,16 +2668,8 @@ def _draw_dots(axis: Axes, fills: Sequence[Fill]) -> dict[str, str]:
     return pens
 
 
-def pair_segment(pair: CyclePair) -> list[tuple[float, float]]:
-    """Return the ``opener`` and ``closer`` points of ``pair`` at their ``bar_time``."""
-    return [
-        (float(date2num(bar_time(order.when))), order.price)
-        for order in (pair.opener, pair.closer)
-    ]
-
-
-def _draw_pairs(price: Axes, gains: Axes, pairs: Sequence[CyclePair]) -> None:
-    """Draw ``pairs`` on ``price`` by direction and each ``gain_usd`` on ``gains``."""
+def _draw_pairs(gains: Axes, pairs: Sequence[CyclePair]) -> None:
+    """Mark each ``gain_usd`` of ``pairs`` on ``gains`` at its later order."""
     gains.axhline(0.0, color=ink("ink_strong"), linewidth=0.8)
     gains.set_ylabel("gain, %")
     if not pairs:
@@ -2643,20 +2683,6 @@ def _draw_pairs(price: Axes, gains: Axes, pairs: Sequence[CyclePair]) -> None:
     shares = [sale_share_pct(pair, gain_usd(pair)) for pair in pairs]
     pens = [ink("win") if share > 0.0 else ink("loss") for share in shares]
     counts = Counter(pair.direction for pair in pairs)
-    for direction, style in ((SCRUM_FOLD, "-"), (FOLD_SCRUM, "--")):
-        own = [at for at, pair in enumerate(pairs) if pair.direction == direction]
-        if not own:
-            continue
-        price.add_collection(
-            LineCollection(
-                [pair_segment(pairs[at]) for at in own],
-                colors=[pens[at] for at in own],
-                linewidths=0.7,
-                linestyles=style,
-                zorder=2.5,
-                label=f"{direction} pairs ({len(own)})",
-            ),
-        )
     gains.scatter(
         np.asarray([bar_time(pair.closer.when) for pair in pairs]),
         shares,
@@ -2785,7 +2811,7 @@ def _draw_vwap(
             zorder=3,
             label=f"running {side} VWAP",
         )
-    _draw_pairs(price, changes, pairs)
+    _draw_pairs(changes, pairs)
     _draw_uncovered(price, uncovered_spans(rows, fills))
     _label_price_axis(price, [fill.price for fill in fills])
     price.set_ylabel(f"{label} price, USD")
@@ -3010,15 +3036,6 @@ def _draw_cycle_orders(axis: Axes, pair: CyclePair, end_ms: int) -> None:
         linewidth=1.3,
         zorder=3,
         label="MOTD level from the pair's first order",
-    )
-    axis.plot(
-        [scrum_x, fold_x],
-        [pair.scrum.price, pair.fold.price],
-        color=ink("ink_strong"),
-        lw=0.9,
-        ls=":",
-        zorder=4,
-        label="the pair's Scrum and Fold",
     )
     for place, price, marker, pen, name in (
         (scrum_x, pair.scrum.price, "v", series()[SELL_PEN], "Scrum, the sell order"),
@@ -3505,37 +3522,44 @@ def _reading_lines(reading: ExportReading) -> list[str]:
     ]
 
 
+def cause_text(unpaired: Sequence[tuple[str, int]]) -> str:
+    """Return each ``unpaired`` cause with a count above 0 and its count, or none."""
+    return "; ".join(f"{cause} {count}" for cause, count in unpaired if count) or "none"
+
+
 def bound_lines(evidence: Evidence) -> list[str]:
-    """Return each label's ``bound_reading`` as a table row, and a row summing every column."""
+    """Return one row per label of its two ``bound_reading`` results, and a total."""
+    directions = (SCRUM_FOLD, FOLD_SCRUM)
     out = [
         "",
-        f"| Asset | Buys | Sells | Lower | Pairs | {SCRUM_FOLD} | {FOLD_SCRUM}"
-        " | Pairs less lower | Extra pairs | Unpaired on the lower side |",
-        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |",
+        f"| Asset | Buys | Sells | Lower | {SCRUM_FOLD} | Short | {FOLD_SCRUM}"
+        f" | Short | Unpaired, {SCRUM_FOLD} | Unpaired, {FOLD_SCRUM} |",
+        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     total: Counter[str] = Counter()
+    unpaired: dict[str, Counter[str]] = {one: Counter() for one in directions}
     for label, base in evidence.pairs:
-        reading = bound_reading(base)
+        readings = [bound_reading(base, direction) for direction in directions]
         sells = sum(1 for order in base.orders if order.side == "sell")
         buys = len(base.orders) - sells
-        directions = Counter(pair.direction for pair in base.pairs)
-        causes = "; ".join(f"{cause} {count}" for cause, count in reading.unpaired)
+        lower = readings[0].lower
+        counts = " | ".join(f"{one.pairs} | {lower - one.pairs}" for one in readings)
+        causes = " | ".join(cause_text(one.unpaired) for one in readings)
         out.append(
-            f"| {label} | {buys} | {sells} | {reading.lower} {reading.lower_side}"
-            f" | {reading.pairs} | {directions[SCRUM_FOLD]} | {directions[FOLD_SCRUM]}"
-            f" | {reading.pairs - reading.lower:+d} | {reading.extra} | {causes} |"
+            f"| {label} | {buys} | {sells} | {lower} {readings[0].lower_side}"
+            f" | {counts} | {causes} |"
         )
-        total.update(buys=buys, sells=sells, lower=reading.lower, extra=reading.extra)
-        total.update(directions)
-        total.update(dict(reading.unpaired))
-    pairs = total[SCRUM_FOLD] + total[FOLD_SCRUM]
-    causes = "; ".join(
-        f"{cause} {total[cause]}" for cause in (NONE_CLEARS, NEARER_PAIRED)
+        total.update(buys=buys, sells=sells, lower=lower)
+        for direction, one in zip(directions, readings, strict=True):
+            total[direction] += one.pairs
+            unpaired[direction].update(dict(one.unpaired))
+    counts = " | ".join(
+        f"{total[one]} | {total['lower'] - total[one]}" for one in directions
     )
+    causes = " | ".join(cause_text(tuple(unpaired[one].items())) for one in directions)
     out.append(
-        f"| All | {total['buys']} | {total['sells']} | {total['lower']} | {pairs}"
-        f" | {total[SCRUM_FOLD]} | {total[FOLD_SCRUM]} | {pairs - total['lower']:+d}"
-        f" | {total['extra']} | {causes} |"
+        f"| All | {total['buys']} | {total['sells']} | {total['lower']}"
+        f" | {counts} | {causes} |"
     )
     return out
 
