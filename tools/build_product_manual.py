@@ -1301,6 +1301,7 @@ def _figure_flowables(
     image.drawHeight = image.imageHeight * scale
     out: list[object] = [image]
     if block.text:
+        image.keepWithNext = True
         out.append(Paragraph(inline(block.text), styles["caption"]))
     return out
 

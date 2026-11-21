@@ -729,7 +729,7 @@ A39.
 
 ![A39, 10 fills with every step dotted, and no band: its 15 one-day bars are fewer than the 20 the band needs.](figures/vwap_a39.png)
 
-Now: the A39 chart draws 38 fills, 28 buys and 10 sells, from 4 October to 15 November. Its band runs on five-minute candles across the whole window, it carries 6 Scrum-Fold pairs, and at 38 fills it no longer dots every step (`tools/build_product_manual.py, in _draw_vwap`).
+Now: the A39 chart draws 38 fills, 28 buys and 10 sells, from 4 October to 15 November. Its band runs on five-minute candles across the whole window, it carries 9 Scrum-Fold and 9 Fold-Scrum pairs at a 5% MOTD, and at 38 fills it no longer dots every step (`tools/build_product_manual.py, in _draw_vwap`).
 
 ### A40
 
@@ -737,7 +737,7 @@ Now: the A39 chart draws 38 fills, 28 buys and 10 sells, from 4 October to 15 No
 
 A40 has 21 fills, 15 buys and 6 sells, between 27 October and 30 October. Its Stone Tablet rows end on 1 August, so its weekly chart and price trace stop before its first fill (`tools/build_product_manual.py, in tablet_candles`).
 
-Now: the A40 chart draws 63 fills, 40 buys and 23 sells, from 27 October to 20 November. Its band runs on five-minute candles from the candle cache across the whole window, it carries 11 Scrum-Fold pairs, and at 63 fills it does not dot every step (`tools/build_product_manual.py, in _draw_vwap`).
+Now: the A40 chart draws 63 fills, 40 buys and 23 sells, from 27 October to 20 November. Its band runs on five-minute candles from the candle cache across the whole window, it carries 20 Scrum-Fold and 21 Fold-Scrum pairs at a 5% MOTD, and at 63 fills it does not dot every step (`tools/build_product_manual.py, in _draw_vwap`).
 
 Now: A40 has no weekly chart. Its page's cycle panels draw the candle cache's five-minute candles around its latest cycles (`tools/build_product_manual.py, in latest_cycles`).
 
@@ -1606,7 +1606,7 @@ converge near 0.088 and finish together. Net units end at 1,153.
 Both lines hold near 85 through May, step to about 83 at the start of June, and
 end within a dollar of each other. Net units end below one whole unit, at 0.75.
 
-Now: A23 has no cycle view. None of its pairs has its Scrum and Fold within 48 hours on covered candles (`tools/build_product_manual.py, in latest_cycles`).
+Now: A23's page draws 3 cycle panels from its 30 Scrum-Fold and 37 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
 
 ### A24
 
@@ -1742,7 +1742,7 @@ single horizontal line at 2,148.63 and its index exactly 1.000. The sell line
 rises across the four sells, 2,307 up to 2,577. Net units drop across the
 window, 0.0114 down to 0.0088.
 
-Now: A38 has no cycle view. None of its pairs has its Scrum and Fold within 48 hours on covered candles (`tools/build_product_manual.py, in latest_cycles`).
+Now: A38's page draws 1 cycle panel from its 10 Scrum-Fold and 4 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
 
 ## Trade grading
 
