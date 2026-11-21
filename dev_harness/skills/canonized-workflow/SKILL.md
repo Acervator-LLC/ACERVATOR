@@ -126,6 +126,51 @@ six W5H answers for each of two experiment blocks. Those two blocks ran before
 this rule, so that record follows them. Every later record comes before its
 action.
 
+#### The test statement, for an iteration that runs anything
+
+Operator, 2026-11-21:
+
+*"If we are not testing something real and defined with a given test from which we should have some idea of what to expect in terms of output (passing / failing criteria), then we are failing ourselves."*
+
+And, on a block of 48 runs: *"Why 48? W5H. OCIR. Adversial checks on everything..."*
+
+A record whose iteration runs agents, rounds or a sweep adds a test statement
+before the first run:
+
+```
+question   one sentence, answered yes or no
+measure    the one reading that answers it, and the check that takes it
+expected   the outcome earlier data points to, with that data cited
+pass       the reading that answers yes, set before the runs
+fail       the reading that answers no, and the reading that shows harm
+runs       the count, and the smallest difference it can show, computed
+inputs     the rule that chose every input; a hand-picked input has no rule
+```
+
+Then four adversarial questions, each answered with a measurement or a cited
+file:
+
+```
+1  what makes this result wrong
+2  what does the measure miss
+3  what is the cheapest way to pass without the behaviour
+4  does any input sit at a ceiling or a floor, where no difference can show
+```
+
+A count with no derivation is a defect. Three rounds, eight tasks and 48 runs
+each need the reading that sets them. A result is called a gain only beside its
+exact test and its p-value.
+
+After each round, the referee writes the round's critique before the next round
+starts. The critique reads the design, not the result. A design fault it finds is
+fixed before the next round. The difference between the arms is read only after
+the last round the statement names.
+
+Measured 2026-11-21 on #1633: step 2's 48 runs pooled 15 of 24 against 11 of 24,
+which Fisher's exact test reads at p 0.39. A planned block of 48 more runs met,
+in 7 of its 8 tasks, no line it could act on (comment 7065980062). Comment
+7066741563 is the first record with a test statement.
+
 ### The built bundle is the thing he runs, and it is not the source tree
 
 A change that touches what the program imports at startup is proved on the
