@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-21 against `0517b373`. **Every claim here names one command that
+Written 2026-11-21 against `d47762d8`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,13 +18,13 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running. The 12 pull requests since
-`a5e44099` are #1800 to #1811: six on #1633, four on #1789, one on #1622 and
-one on #53. #1789 and #53 are open.
+The session that wrote this was still running. The 15 pull requests since
+`a5e44099` are #1800 to #1814: seven on #1633, four on #1789, and one each on
+#1622, #53, #1660 and #319. #1789, #53, #1660 and #319 are open.
 
 ```bash
-git log --oneline --first-parent a5e44099..0517b373   # the 12 pull requests
-gh pr view 1811 --json state --jq .state              # MERGED, and the same for the other 11
+git log --oneline --first-parent a5e44099..d47762d8   # the 15 pull requests
+gh pr view 1814 --json state --jq .state              # MERGED, and the same for the other 14
 gh issue view 1633 --comments                         # each record and result, newest last
 gh issue view 1789 --comments                         # his chart rulings and the units that built them
 gh release list                                       # what is published
@@ -52,6 +52,13 @@ gh pr list --state open                               # what is still landing
   two tasks under the current lines, CODE.OPTIMIZE's read as the flag table
   defines OPTIMIZE; every valid feedback run works; every not-read line names its
   reason. The referee judges the sigil-based Coding Archetype ready for alpha.
+- **The real-unit comparison has run two pairs.** Each pair builds one real row
+  twice off one commit, one arm with sigil feedback and one with an empty
+  SIGIL_FEEDBACK_OFF file at its worktree's root, and the referee opens a pull
+  request from the feedback arm when it meets the row's terms. The pilot, #1660
+  row 5, merged as #1813 (comment 7062528211); pair two, one file under #319,
+  merged as #1814 (comment 7064363430). Both arms met the terms both times, and
+  the feedback arm took fewer minutes and gate runs.
 - **The VWAP charts (#1789).** #1802 draws each Scrum-Fold cycle on five-minute
   candles and removes the weekly charts. #1804 makes the live-evidence market
   chart show the 33 bases its text names. #1805 puts each base's charts on one
@@ -114,18 +121,19 @@ gh pr list --state open                               # what is still landing
 ### The releases and both trees
 
 ```
-releases     gh release list      # two builds, 1408 and 1107
-             0.2.0-20261120.1408.gefb4a844c30d, from efb4a844, Latest
+releases     gh release list      # three builds, 0529, 1408 and 1107
+             0.2.0-20261121.0529.g997d995fd035, from 997d995f, Latest
+             0.2.0-20261120.1408.gefb4a844c30d, from efb4a844
              0.2.0-20261120.1107.gd2ebd3849477, from d2ebd384
-main         efb4a844, a merge of current at 51a8a77f, #1803
-             git describe --tags origin/main     # build-0.2.0-20261120.1408.gefb4a844c30d
-             the eight merges after it change no application file, so no build follows them
-             git diff --stat efb4a844 origin/current -- src main.py desktop     # prints nothing
-both trees   both on current at 0517b373
-             dist/ in each holds two pairs, 1107 and 1408
+main         997d995f, a merge of current at 9d07671a, #1813
+             git describe --tags origin/main     # build-0.2.0-20261121.0529.g997d995fd035
+             #1814 after it changes comments only, so no build follows it
+             python -m tools.comment_audit prove <the file at 9d07671a> src/gui/main_tabs/status_log_surface.py   # IDENTICAL
+both trees   both on current at d47762d8
+             dist/ in each holds three pairs, 1107, 1408 and 0529, built from 997d995f
 he runs      1107, the dist folder of each running Acervator process
              Get-CimInstance Win32_Process -Filter "Name LIKE 'Acervator%'"   # ExecutablePath
-             1107 holds #1801 and none of #1802 to #1811; 1408 holds #1802 and #1803
+             1107 holds #1801 and none of #1802 to #1814; 0529 holds every pull request to #1813
              git merge-base --is-ancestor afaa030c d2ebd384     # exit 0
              git merge-base --is-ancestor 51a8a77f d2ebd384     # exit 1
 ```
@@ -308,9 +316,10 @@ wrong far more often than right.
   step 1 in #1745, #1748, #1750, #1753 and #1754; step 2 in #1760; step 3 in
   #1762, #1766 and #1782; step 4 in #1767 and #1777. Experiment 4's step 2 has
   run, calibrations 1 and 2 are closed, and the referee judged the alpha bar met
-  (comment 7062093229). **Next:** the comparison his alpha gate names, on a real
-  Issue unit with sigils against without, with its own record first by part 6 of
-  Skill: canonized-workflow; then step 3 of the method in comment 7045926376, the
+  (comment 7062093229), and the real-unit comparison his alpha gate names has run
+  two pairs. **Next:** further pairs on rows where the fix itself meets a code
+  line a sigil flags, each with its own record first by part 6 of Skill:
+  canonized-workflow; then step 3 of the method in comment 7045926376, the
   delivery control. The README in experiment 4's gitignored runs folder, under
   artifacts/sigil_runs, names the ledger, the scorer and its scripts.
 
