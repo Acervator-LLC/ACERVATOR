@@ -971,6 +971,12 @@ SIGIL_SUFFIX = ".py"
 SIGIL_PACKAGE = "dev_harness.sigils"
 FOLLOW_ON_MODULE = f"{SIGIL_PACKAGE}.fix_class"
 FOLLOW_ON_FILE = Path("dev_harness") / "sigils" / "fix_class.py"
+FLAG_MODULE = f"{SIGIL_PACKAGE}.core"
+FOLLOWS_IN_HEADER = ("FIX", "HOLD")
+FOLLOWS_PROGRAM = (
+    f"import json; from {FLAG_MODULE} import FLAGS; "
+    "print(json.dumps({flag.name: row['follows'] for flag, row in FLAGS.items()}))"
+)
 CODING_SIGILS = (
     "CODE.LOOP",
     "CODE.IMPORT",
@@ -1166,13 +1172,14 @@ def _form_rows(form: str) -> list[str]:
 
 
 class SigilTarget(NamedTuple):
-    """The file as `rel` under `root`, its `listing`, and runs' `cwd` and `deadline`."""
+    """The file `rel` under `root`, its `listing`, `cwd`, `deadline` and `follows`."""
 
     rel: str
     root: Path
     cwd: Path
     listing: Path
     deadline: float
+    follows: dict[str, str]
 
 
 def _run_on(target: SigilTarget, argv: list[str]) -> tuple[dict | None, str]:
@@ -1197,21 +1204,32 @@ def _no_rows(name: str, row: dict) -> SigilReading:
 def _header(name: str, target: SigilTarget, row: dict, counts: tuple[int, int]) -> str:
     """Return sigil `name`'s first line on `target`; `counts` is (findings, rules)."""
     findings, rules = counts
+    flag = row.get("flag")
+    follows = target.follows.get(str(flag))
+    flag_shown = f"{flag} ({follows})" if follows else f"{flag}"
     return (
         f"{_FEEDBACK} {name} on {target.rel}: {row.get('verdict')}, "
-        f"flag {row.get('flag')}, {findings} finding(s) under {rules} rule(s)"
+        f"flag {flag_shown}, {findings} finding(s) under {rules} rule(s)"
     )
+
+
+def _named_rules(
+    name: str, target: SigilTarget, first_row: dict,
+) -> tuple[list[str], dict[str, str], dict[str, list[int]]]:
+    """Return a list holding `_header`, and each `first_row` rule's name and lines."""
+    first = _ruff_rows(str(first_row.get("reason") or ""))
+    names = {code: f"{code} {rule}" for code, rule, _ in first}
+    grouped = _lines_by_rule([(code, line) for code, _, line in first])
+    header = _header(name, target, first_row, (len(first), len(grouped)))
+    return [header], names, grouped
 
 
 def _ruff_section(
     name: str, target: SigilTarget, first_row: dict, left: set[str], forms: dict,
 ) -> str:
     """Return each `first_row` rule with a safe fix, or a `forms` entry if in `left`."""
-    first = _ruff_rows(str(first_row.get("reason") or ""))
-    names = {code: f"{code} {rule}" for code, rule, _ in first}
-    grouped = _lines_by_rule([(code, line) for code, _, line in first])
+    lines, names, grouped = _named_rules(name, target, first_row)
     command = f"python -m {FOLLOW_ON_MODULE} {name} {target.rel}"
-    lines = [_header(name, target, first_row, (len(first), len(grouped)))]
     shown = 0
     for count, (code, at) in enumerate(grouped.items()):
         if count == SIGIL_RULES_SHOWN:
@@ -1229,6 +1247,27 @@ def _ruff_section(
     if set(grouped) - left:
         lines.append(f"  ruff's safe fixes: {command} --write")
     return "\n".join(lines)
+
+
+def _stated_section(
+    name: str, target: SigilTarget, first_row: dict, stated: str,
+) -> str:
+    """Return each `first_row` rule and lines with `stated`, and no form or command."""
+    lines, names, grouped = _named_rules(name, target, first_row)
+    lines.extend(_rule_row(names[code], at, stated) for code, at in grouped.items())
+    return "\n".join(lines)
+
+
+def _ruff_text(
+    name: str, target: SigilTarget, first_row: dict, left: set[str], row: dict,
+) -> str:
+    """Return `_stated_section` when `row` holds `stated` text, else `_ruff_section`."""
+    stated = row.get("stated")
+    if isinstance(stated, str) and stated:
+        return _stated_section(name, target, first_row, stated)
+    corrected = row.get("corrected")
+    forms = corrected if isinstance(corrected, dict) else {}
+    return _ruff_section(name, target, first_row, left, forms)
 
 
 def _ruff_sigil(name: str, target: SigilTarget) -> SigilReading:
@@ -1251,10 +1290,7 @@ def _ruff_sigil(name: str, target: SigilTarget) -> SigilReading:
         first_row = before
     if not _ruff_rows(str(first_row.get("reason") or "")):
         return _no_rows(name, first_row)
-    corrected = row.get("corrected")
-    forms = corrected if isinstance(corrected, dict) else {}
-    return SigilReading(
-        FINDINGS, _ruff_section(name, target, first_row, left, forms))
+    return SigilReading(FINDINGS, _ruff_text(name, target, first_row, left, row))
 
 
 def _tool_sigil(name: str, target: SigilTarget) -> SigilReading:
@@ -1309,6 +1345,23 @@ def _feedback_text(readings: list[SigilReading]) -> str:
     return "\n".join(parts)
 
 
+def _flag_follows(cwd: Path, deadline: float) -> dict[str, str] | str:
+    """Return each `FOLLOWS_IN_HEADER` flag's `FLAGS` text, or why it did not read."""
+    row, why = _row_of(_sigil_run(
+        [sys.executable, "-c", FOLLOWS_PROGRAM], cwd, deadline))
+    if row is None:
+        return why
+    follows = {
+        flag: text
+        for flag, text in row.items()
+        if flag in FOLLOWS_IN_HEADER and isinstance(text, str) and text
+    }
+    absent = [flag for flag in FOLLOWS_IN_HEADER if flag not in follows]
+    if absent:
+        return f"it holds no text for {', '.join(absent)}"
+    return follows
+
+
 def _sigil_feedback(path: Path, deadline: float) -> str:
     """Return each `CODING_SIGILS` reading of `path`, naming every sigil not read."""
     root = _git_root(path)
@@ -1324,12 +1377,15 @@ def _sigil_feedback(path: Path, deadline: float) -> str:
     follow_on = _follow_on_sigils(cwd, deadline)
     if isinstance(follow_on, str):
         return _all_unread(f"the card of {FOLLOW_ON_MODULE} did not read: {follow_on}")
+    follows = _flag_follows(cwd, deadline)
+    if isinstance(follows, str):
+        return _all_unread(f"the FLAGS of {FLAG_MODULE} did not read: {follows}")
     readings = []
     with tempfile.TemporaryDirectory(
             prefix="sigil_feedback_", ignore_cleanup_errors=True) as folder:
         listing = Path(folder) / "input.txt"
         listing.write_text(f"{rel}\n", encoding="utf-8")
-        target = SigilTarget(rel, root, cwd, listing, deadline)
+        target = SigilTarget(rel, root, cwd, listing, deadline, follows)
         for name in CODING_SIGILS:
             read = _ruff_sigil if name in follow_on else _tool_sigil
             readings.append(read(name, target))

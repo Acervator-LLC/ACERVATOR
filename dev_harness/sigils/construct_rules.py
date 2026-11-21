@@ -19,6 +19,8 @@ UNPLACED_FILE = "unplaced.json"
 TOOL = "ruff"
 ERROR_CLASS = "PLE"
 UNDEFINED_NAMES = ("F821", "F822", "F823")
+# Their import moved under TYPE_CHECKING makes typing.get_type_hints raise NameError.
+TYPING_ONLY_IMPORTS = ("TC001", "TC002", "TC003")
 NOT_NAMED = "housed by {housing}, which the card does not name"
 UNHOUSED = (
     "no discipline houses it and unplaced.json does not list it: the house holds only "
@@ -47,6 +49,7 @@ class Taken:
     rules: tuple[str, ...]
     preview: tuple[str, ...]
     holding: tuple[str, ...]
+    optimizing: tuple[str, ...]
     left: dict[str, str]
     left_because: ClassVar[str] = LEFT_BECAUSE
 
@@ -231,8 +234,11 @@ def take(construct: str, named: Sequence[str], characteristics: Sequence[str]) -
         else:
             left[code] = why
     holding = tuple(
-        code for code in rules if code.startswith(ERROR_CLASS) or code in UNDEFINED_NAMES
+        code
+        for code in rules
+        if code.startswith(ERROR_CLASS) or code in UNDEFINED_NAMES
     )
+    optimizing = tuple(code for code in rules if code in TYPING_ONLY_IMPORTS)
     return Taken(
         construct,
         tuple(named),
@@ -240,6 +246,7 @@ def take(construct: str, named: Sequence[str], characteristics: Sequence[str]) -
         tuple(rules),
         tuple(preview),
         holding,
+        optimizing,
         left,
     )
 

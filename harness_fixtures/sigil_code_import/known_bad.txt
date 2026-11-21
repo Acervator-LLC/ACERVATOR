@@ -21,11 +21,13 @@ known_bad_n817.py
 known_bad_plc0415.py
 known_bad_plc2403.py
 known_bad_plr0402.py
-known_bad_tc003.py
 known_bad_tc004.py
 known_bad_up035.py
-pkg/known_bad_tc001.py
 pkg/sub/known_bad_tid252.py
+
+# OPTIMIZABLE, OPTIMIZE: each file reads its own rule id, an optimizing rule
+known_bad_tc003.py
+pkg/known_bad_tc001.py
 
 # FINDINGS, FIX: each file reads its own rule id and another: E401's reads I001, F404's reads I001,
 # I001's reads ICN001, PYI057's reads UP035

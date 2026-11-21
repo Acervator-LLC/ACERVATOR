@@ -827,6 +827,14 @@ buy's price times quantity less every sell's, taken from the Price at
 Transaction and Quantity Transacted columns that the charts of
 [Part 9](../manual/10-live-trade-history.md) read, so both metrics run on the same rows.
 
+This section and the next read the export whose last fill is on 2026-09-27. A
+newer export holds more bases, so the build draws this page's three figures from
+that export and its bases alone (`tools/build_product_manual.py, in _write_live_evidence`).
+
+```python
+LIVE_EVIDENCE_EXPORT_DAY = datetime(2026, 9, 27, tzinfo=timezone.utc).date()
+```
+
 Four of the 38 bases took no net cash at all. On each of them the sales returned
 more dollars than the purchases spent, and units are still held. A05 is the
 furthest ahead of its own cost, then A11, A29 and A30. A buy-and-hold

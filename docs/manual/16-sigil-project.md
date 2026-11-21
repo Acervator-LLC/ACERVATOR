@@ -583,12 +583,15 @@ def _sigil_feedback(path: Path, deadline: float) -> str:
     follow_on = _follow_on_sigils(cwd, deadline)
     if isinstance(follow_on, str):
         return _all_unread(f"the card of {FOLLOW_ON_MODULE} did not read: {follow_on}")
+    follows = _flag_follows(cwd, deadline)
+    if isinstance(follows, str):
+        return _all_unread(f"the FLAGS of {FLAG_MODULE} did not read: {follows}")
     readings = []
     with tempfile.TemporaryDirectory(
             prefix="sigil_feedback_", ignore_cleanup_errors=True) as folder:
         listing = Path(folder) / "input.txt"
         listing.write_text(f"{rel}\n", encoding="utf-8")
-        target = SigilTarget(rel, root, cwd, listing, deadline)
+        target = SigilTarget(rel, root, cwd, listing, deadline, follows)
         for name in CODING_SIGILS:
             read = _ruff_sigil if name in follow_on else _tool_sigil
             readings.append(read(name, target))
@@ -609,7 +612,7 @@ The first two blocks of the feedback on the published faulty form of ASYNC110,
 with the switch on:
 
 ```
-[sigil-feedback] CODE.LOOP on known_bad_async110.py: FINDINGS, flag FIX, 1 finding(s) under 1 rule(s)
+[sigil-feedback] CODE.LOOP on known_bad_async110.py: FINDINGS, flag FIX (the merge proceeds, and the fault is fixed at once), 1 finding(s) under 1 rule(s)
   - ASYNC110 async-busy-wait line 8: the published corrected form:
         import asyncio
 
@@ -618,8 +621,116 @@ with the switch on:
 
         async def func():
             await DONE.wait()
-[sigil-feedback] CODE.REACH on known_bad_async110.py: UNREACHED, flag FIX, 1 finding(s) under 1 rule(s)
+[sigil-feedback] CODE.REACH on known_bad_async110.py: UNREACHED, flag FIX (the merge proceeds, and the fault is fixed at once), 1 finding(s) under 1 rule(s)
   - function func confidence 60 line 7: CODE.REACH holds no corrected form for this rule
+```
+
+A line under the OPTIMIZE flag carries neither note. Each row names a rule and
+its lines, then the flag's own text in FLAGS: the merge proceeds. The line
+prints no corrected form and no command, so it names every rule. Its flag is the
+one its first line names, from the reading before any fix. The block of
+CODE.IMPORT on the published faulty form of TC003, read with its sample tree as
+the root:
+
+```
+[sigil-feedback] CODE.IMPORT on known_bad_tc003.py: OPTIMIZABLE, flag OPTIMIZE, 1 finding(s) under 1 rule(s)
+  - TC003 typing-only-standard-library-import line 4: the merge proceeds
+```
+
+One mapping in the follow-on runner holds the choice. When the runner's first
+reading carries a flag that STATED holds, its output gives that flag's text
+under the key stated. Its output still holds the corrected forms that each
+card's follow-on rule names.
+
+`dev_harness/sigils/fix_class.py, in STATED`:
+
+```python
+STATED = {Flag.OPTIMIZE: FLAGS[Flag.OPTIMIZE]["follows"]}
+```
+
+The hook prints the stated text on each row in place of a note, a form or a
+command. The runner's output under FIX or HOLD gives no stated text, and the
+hook builds that line as before.
+
+`dev_harness/hooks/archetype_gate.py, in _ruff_text`:
+
+```python
+def _ruff_text(
+    name: str, target: SigilTarget, first_row: dict, left: set[str], row: dict,
+) -> str:
+    """Return `_stated_section` when `row` holds `stated` text, else `_ruff_section`."""
+    stated = row.get("stated")
+    if isinstance(stated, str) and stated:
+        return _stated_section(name, target, first_row, stated)
+    corrected = row.get("corrected")
+    forms = corrected if isinstance(corrected, dict) else {}
+    return _ruff_section(name, target, first_row, left, forms)
+```
+
+The first line of a block under the FIX or HOLD flag states the flag's own text
+in FLAGS, in brackets after the flag's word. Its rows read as before. A first
+line under OPTIMIZE names the flag's word alone, and its rows state the text.
+The block of CODE.SECURE on the faulty SECURE001 sample, read with its sample
+tree as the root:
+
+```
+[sigil-feedback] CODE.SECURE on known_bad_secure001.py: WEAK, flag FIX (the merge proceeds, and the fault is fixed at once), 1 finding(s) under 1 rule(s)
+  - code_secure SECURE001 CWE-532 medium missing sign, auth, credential line 9: CODE.SECURE holds no corrected form for this rule
+```
+
+Under HOLD, the first line reads `flag HOLD (the merge waits until it is fixed)`,
+as for CODE.COLLECTION on the faulty F822 sample in src, whose row still prints
+its corrected form.
+
+`dev_harness/hooks/archetype_gate.py, in _header`:
+
+```python
+def _header(name: str, target: SigilTarget, row: dict, counts: tuple[int, int]) -> str:
+    """Return sigil `name`'s first line on `target`; `counts` is (findings, rules)."""
+    findings, rules = counts
+    flag = row.get("flag")
+    follows = target.follows.get(str(flag))
+    flag_shown = f"{flag} ({follows})" if follows else f"{flag}"
+    return (
+        f"{_FEEDBACK} {name} on {target.rel}: {row.get('verdict')}, "
+        f"flag {flag_shown}, {findings} finding(s) under {rules} rule(s)"
+    )
+```
+
+The hook reads the two texts once for each saved file, before any sigil runs. A
+child Python process prints them from FLAGS in the tree the sigils read, and the
+hook holds neither text. When the texts do not read, the feedback names every
+sigil as not read, with the reason, as it does when the runner's card does not
+read.
+
+`dev_harness/hooks/archetype_gate.py, in FOLLOWS_IN_HEADER` and `in FOLLOWS_PROGRAM`:
+
+```python
+FOLLOWS_IN_HEADER = ("FIX", "HOLD")
+FOLLOWS_PROGRAM = (
+    f"import json; from {FLAG_MODULE} import FLAGS; "
+    "print(json.dumps({flag.name: row['follows'] for flag, row in FLAGS.items()}))"
+)
+```
+
+`dev_harness/hooks/archetype_gate.py, in _flag_follows`:
+
+```python
+def _flag_follows(cwd: Path, deadline: float) -> dict[str, str] | str:
+    """Return each `FOLLOWS_IN_HEADER` flag's `FLAGS` text, or why it did not read."""
+    row, why = _row_of(_sigil_run(
+        [sys.executable, "-c", FOLLOWS_PROGRAM], cwd, deadline))
+    if row is None:
+        return why
+    follows = {
+        flag: text
+        for flag, text in row.items()
+        if flag in FOLLOWS_IN_HEADER and isinstance(text, str) and text
+    }
+    absent = [flag for flag in FOLLOWS_IN_HEADER if flag not in follows]
+    if absent:
+        return f"it holds no text for {', '.join(absent)}"
+    return follows
 ```
 
 ### The time budget of the feedback
@@ -639,6 +750,9 @@ Four settings bound the length of the feedback:
 | SIGIL_RULES_SHOWN | 15 | the rules named for one sigil; the rest point to the sigil's command |
 | SIGIL_FORMS_SHOWN | 8 | the corrected forms printed for one sigil |
 | SIGIL_FORM_LINES | 30 | the lines printed of one corrected form |
+
+A line under the OPTIMIZE flag prints no form and points to no command, so only
+SIGIL_LINES_SHOWN bounds it, and it names every rule.
 
 ### Readings of the feedback
 
@@ -664,6 +778,31 @@ The table was read before LOOP004 joined CODE.LOOP. Its four files were
 written through the same half later. The feedback named LOOP004 with its
 corrected form on known_bad_loop004.py, and named no CODE.LOOP rule on
 known_good_loop004.py, outside_loop004.py or fresh_loop004.py.
+
+The table was also read before a line under the OPTIMIZE flag stopped printing
+forms and notes. A second reading ran _ruff_sigil on the lists of the six ruff
+sigils, once for each whole file a list names, with its sample tree as the
+root. Of the 275 readings, the 11 lines under OPTIMIZE name each rule with the
+merge proceeds and hold no form, note or command. The 140 lines under FIX or
+HOLD read the same as before, byte for byte.
+
+The table was also read before the first line under FIX or HOLD stated its
+flag's text. A third reading built the feedback of all nine sigils for each of
+the 317 files the nine sigils' lists name, with the file's sample tree as the
+root, once with the hook before that change and once with it after. Each side
+printed 2,714 lines. The 416 first lines under FIX and the 13 under HOLD state
+their flag's text. The other 2,285 lines, the 62 first lines under OPTIMIZE
+among them, read the same as before, byte for byte. The sigils ran the same
+commands on both sides, and the read of FLAGS is the one command the change
+adds.
+
+The hook was also run whole, with a tool record on standard input. On the
+faulty SECURE001 sample saved under a gitignored folder, the first line of
+CODE.SECURE states FIX's text, and saved in src, HOLD's text. On the faulty
+F822 sample, the first line of CODE.COLLECTION states FIX's text, and its row
+still prints the corrected form. On the faulty form of TC003, whose only
+finding is CODE.IMPORT's TC003, the hook's whole output is the same before and
+after, byte for byte.
 
 The failure-mode list of CODE.LOOP, `harness_fixtures/sigil_code_loop/failure_modes.txt`,
 holds 64 faulty forms and 140 twins as functions and classes, and two faulty

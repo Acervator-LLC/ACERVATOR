@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-20 against `a055b393`. **Every claim here names one command that
+Written 2026-11-21 against `0517b373`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -19,43 +19,49 @@ none of them binds.
 ## HOW THE LAST SESSION ENDED
 
 The session that wrote this was still running. The 12 pull requests since
-`a4392bb9` are #1784, #1787, #1788 and #1790 to #1798: one on
-#1633, one on #1786, three on #1622 and seven on #1789. #1786 and #1789 are
-closed.
+`a5e44099` are #1800 to #1811: six on #1633, four on #1789, one on #1622 and
+one on #53. #1789 and #53 are open.
 
 ```bash
-git log --oneline --first-parent a4392bb9..a055b393   # the 12 pull requests
-gh pr view 1798 --json state --jq .state              # MERGED, and the same for the other 11
-gh issue view 1633 --comments                         # each record, result and close, newest last
-gh issue view 1622 --comments                         # the wire rulings and the units that built them
+git log --oneline --first-parent a5e44099..0517b373   # the 12 pull requests
+gh pr view 1811 --json state --jq .state              # MERGED, and the same for the other 11
+gh issue view 1633 --comments                         # each record and result, newest last
+gh issue view 1789 --comments                         # his chart rulings and the units that built them
 gh release list                                       # what is published
 gh pr list --state open                               # what is still landing
 ```
 
-- **Experiment 4 on #1633 runs as a one-task calibration loop.** Comment
-  7029421149 sealed it. Task_14_Config_Dump left both arms before any result was
-  read (comment 7030292555). The batch stopped after 14 counted pairs: the
-  feedback alone removed the fault in 6, and the fault survived both arms in 8.
-  Comment 7030709520 records those scores and turns the batch into the loop: one
-  task, both arms, scored as soon as both end, then one change.
-- **Task_07_Control_Tips has run three request forms** (comments 7030835431 and
-  7031025142). Under the request a user would type, both arms removed the fault.
-  Comment 7031761559 holds the code each version wrote, pair by pair: the version
-  with feedback ended with fewer archetype findings in 10 of 17 pairs, the same in
-  5 and more in 2. Each task's W5H file and each pair's code report sit in the
-  gitignored folder artifacts/referee/.
-- **CODE.REACH reads a file git ignores** (#1784, comment 7025635026). Before, it
-  read such a file as REACHED without reading it, so it reported nothing on any
-  run of experiment 3. OCIR row C160 records the shape.
-- **The wire work on the money path.** #1787 grows the Target Balance on a
-  buy-back only by its gain after both fees, and comment 7030618732 closes #1786.
-  On #1622, #1788 sends each wire a share of the surplus, #1791 retires the Scrum
-  Fold Ratio, and #1798 makes Settings refuse a wire set past 100% (comments
-  7032645599, 7035168776 and 7044828212). HIS RULINGS THAT BIND THE CODE carries
-  each rule with its symbol.
-- **The VWAP charts draw five-minute candles and bands, with each Scrum-Fold
-  pair** (#1790, #1792 to #1795), and no tracked text or image carries a dollar
-  figure read from the account (#1796, #1797). Comment 7041401558 closes #1789.
+- **Experiment 4's step 2 has run** (comment 7056017260): 8 tasks, three runs a
+  version, each request ending "Just work in that file, no need to look at
+  anything else." Only CODE.LOOP beats the plain archetype, 5 of 6 runs against 1
+  of 6, so the alpha bar is not met. The feedback runs moved an import under a
+  type-checking block in 6 of 24 runs, the runs without it in 0 of 24.
+- **Calibration 1 changes that import line.** #1806 gave CODE.IMPORT's TC001 to
+  TC003 findings the HOLD flag; comment 7056816207 records why HOLD does not fit,
+  and #1808 gives them the OPTIMIZE flag in every folder (record 7057774204).
+  Three rounds on Task_04_Event_Log, Task_05_Meter_Readings and Task_19_Env_Report
+  kept the fault removals, and 4 of 9 runs still moved an import, each copying the
+  corrected form the line prints (comment 7059063897). #1810 makes a row under the
+  OPTIMIZE flag read "the merge proceeds" with no corrected form and no command:
+  0 of 9 runs moved an import, and the fault was removed in 9 of 9 (comment
+  7060342296).
+- **Calibration 2 states what a FIX or HOLD flag asks.** #1811 puts the flag's own
+  text from `FLAGS` on the first line. CODE.SECURE's credential fault was removed
+  in 6 of 6 runs, against 1 of 6 in step 2 (comment 7061923194).
+- **The alpha bar is met** (comment 7062093229): each stratum's line acted on on
+  two tasks under the current lines, CODE.OPTIMIZE's read as the flag table
+  defines OPTIMIZE; every valid feedback run works; every not-read line names its
+  reason. The referee judges the sigil-based Coding Archetype ready for alpha.
+- **The VWAP charts (#1789).** #1802 draws each Scrum-Fold cycle on five-minute
+  candles and removes the weekly charts. #1804 makes the live-evidence market
+  chart show the 33 bases its text names. #1805 puts each base's charts on one
+  page and takes its pairs from order times and a 5% MOTD. #1807 pairs
+  neighbouring runs only and draws no line between a pair. The PDF and both
+  presentations carry each change, and the issue body states the charts as built.
+- **#1801** saves a dragged or connected wire on the React Bot Swarm page
+  (#1622). **#1803** fits an indicator cell's mouse-over text and the no-keys text
+  to twenty words (#53). **#1800** lists the newest OCIR row under both prompt
+  router sections that carry it.
 
 ### Standing state
 
@@ -65,6 +71,15 @@ gh pr list --state open                               # what is still landing
   in the file's folder or a folder above it.
 - **The sigils hold rules of their own.** CODE.SECURE holds SECURE001 (#1779) and
   CODE.LOOP holds LOOP001 to LOOP004 (#1782), each in its module's OWN_RULES.
+- **Each feedback line carries one flag**, defined in `dev_harness/sigils/core.py,
+  in FLAGS`. HOLD prints only for application source (`src`, `desktop` and
+  `main.py`), FIX for a fault anywhere else, OPTIMIZE for a named optimization
+  rule. Read a flag's own text there before choosing it (comment 7056816207).
+  A row under OPTIMIZE reads "the merge proceeds" with no form (#1810), and a
+  first line under FIX or HOLD states its flag's text (#1811). The hook that runs
+  is the copy in the Claude Code user folder; after a merge that changes
+  `dev_harness/hooks/archetype_gate.py`, copy it there and compare
+  `git hash-object` with the merge's blob.
 - **No sigil page carries a figure measured on src/** (#1770): those figures live
   in the data sets under the gitignored artifacts/sigil_runs/.
 - **Every iteration has a record first:** W5H and OCIR, gated by the Truth
@@ -99,27 +114,29 @@ gh pr list --state open                               # what is still landing
 ### The releases and both trees
 
 ```
-releases     gh release list      # three builds, 0831, 0106 and 2042
-             0.2.0-20261120.0831.g041bde6396a5, from 041bde63, 6 assets, Latest
-             0.2.0-20261120.0106.g5ae2c16acea1, from 5ae2c16a, 6 assets
-             0.2.0-20261119.2042.g9db41524c4b6, from 9db41524, 6 assets
-main         041bde63, a merge of current at a055b393
-             git describe --tags origin/main     # build-0.2.0-20261120.0831.g041bde6396a5
-             git log --oneline origin/main..origin/current     # prints nothing
-both trees   the same content: one on current at a055b393, one detached at 041bde63
-             git diff --stat a055b393 041bde63     # prints nothing
-             dist/ in each holds four pairs: 2042, 2251, 0106 and 0831; 0831 is the newest
-             and holds every pull request named above
-he runs      2042, the dist folder of each running Acervator process
+releases     gh release list      # two builds, 1408 and 1107
+             0.2.0-20261120.1408.gefb4a844c30d, from efb4a844, Latest
+             0.2.0-20261120.1107.gd2ebd3849477, from d2ebd384
+main         efb4a844, a merge of current at 51a8a77f, #1803
+             git describe --tags origin/main     # build-0.2.0-20261120.1408.gefb4a844c30d
+             the eight merges after it change no application file, so no build follows them
+             git diff --stat efb4a844 origin/current -- src main.py desktop     # prints nothing
+both trees   both on current at 0517b373
+             dist/ in each holds two pairs, 1107 and 1408
+he runs      1107, the dist folder of each running Acervator process
              Get-CimInstance Win32_Process -Filter "Name LIKE 'Acervator%'"   # ExecutablePath
-             2042 holds #1784 and #1787 and none of #1788 to #1798
-             git merge-base --is-ancestor 00ab281b 9db41524     # exit 0
-             git merge-base --is-ancestor a1294458 9db41524     # exit 1
+             1107 holds #1801 and none of #1802 to #1811; 1408 holds #1802 and #1803
+             git merge-base --is-ancestor afaa030c d2ebd384     # exit 0
+             git merge-base --is-ancestor 51a8a77f d2ebd384     # exit 1
 ```
 
 - **Held for him:** the Dependabot pull requests #1738, #1739 and #1747 pass
   ci-gate (`gh pr checks <n>`), and #1739 or #1747 closes alert 82, minimatch,
-  which reads open. The unruled rows of the Decisions tables on #1643 and #1622.
+  which reads open. The unruled rows of the Decisions tables on #1643, #1622 and
+  #1789. A reading script the #1801 unit started at 10:35 still runs; the unit
+  was refused permission to stop it, so it waits on his word and no one else
+  stops it. Find it by its command line, which names the scratch file
+  `react_swarm_saves_wires_readings.py`.
   Moving the Coding Archetype's own ruff call onto the step 1c selection, a
   change in dev_harness/harness/ (comment 6870001755). #1764: committing the
   watcher as a new file under tools/ needs his word, because
@@ -269,12 +286,12 @@ there; compare each with `git hash-object` against the merge commit.
 ## THE QUEUE
 
 ```bash
-gh issue list --state open --limit 200          # 37 open when written
+gh issue list --state open --limit 200          # 39 open when written
 ```
 
 | To clear | Excluded, and why |
 |---|---|
-| #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695, #1785 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540, #1764 |
+| #53, #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695, #1785, #1789 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540, #1764 |
 
 Read the body before dispatching, and grep the symbols a row names in the same
 call: a row's status can be stale, and a scan that calls a row built has been
@@ -289,17 +306,16 @@ wrong far more often than right.
   same coding task. My goal is to measure this as scientifically as possible."
   The growth record, comment 6969215458, has four steps, and all four are built:
   step 1 in #1745, #1748, #1750, #1753 and #1754; step 2 in #1760; step 3 in
-  #1762, #1766 and #1782; step 4 in #1767 and #1777. Experiment 3 has ended, and
-  experiment 4 runs as the loop above. **Next:** the loop's next task, with its
-  own iteration record first, by part 6 of Skill: canonized-workflow. Left, by
-  comment 7030709520: the 8 tasks whose fault survived both arms, of which
-  Task_07_Control_Tips has run, and the 7 counted tasks not yet run. **His alpha gate, 2026-11-19:** the comparison on a real
-  Issue unit, with sigils against without, waits until the referee judges the
-  sigil-based Coding Archetype ready for alpha. Until then the one-task loop runs,
-  with organic requests.
+  #1762, #1766 and #1782; step 4 in #1767 and #1777. Experiment 4's step 2 has
+  run, calibrations 1 and 2 are closed, and the referee judged the alpha bar met
+  (comment 7062093229). **Next:** the comparison his alpha gate names, on a real
+  Issue unit with sigils against without, with its own record first by part 6 of
+  Skill: canonized-workflow; then step 3 of the method in comment 7045926376, the
+  delivery control. The README in experiment 4's gitignored runs folder, under
+  artifacts/sigil_runs, names the ledger, the scorer and its scripts.
 
 ```bash
-gh issue view 1633 --comments      # loop 7030709520; Task_07 7030835431, 7031025142; code reports 7031761559
+gh issue view 1633 --comments      # step 2 7056017260; calibrations 7060342296, 7061923194; alpha 7062093229
 grep -n "ready for alpha" ~/.claude/projects/*/memory/project_sigil_alpha_gate.md
 ```
 
@@ -322,8 +338,6 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
                             src/paper/paper_wire.py, in PaperWireManager.distribute_sale_surplus
                             src/simulator/sim_wire.py, in SimWireManager.distribute_sale_surplus
                             src/trading/scrumming/wire_routing.py, in WireRoutingMixin._route_scrum_proceeds_via_wires
-the React swarm page        a dragged wire is drawn and never saved, and Connect stops at its
-                            own confirm question, comment 7044828212
 ```
 
   The body's other unbuilt rows, in row order: 14, 18, 21, 22, 24 to 27, 30, 31,
@@ -331,8 +345,8 @@ the React swarm page        a dragged wire is drawn and never saved, and Connect
   Decisions table, and row 20 is partial (`gh issue view 1622`, the Status
   column).
 
-- **#1656 and #1695: every row is built** and is in the build he runs, so read
-  his logs, read only, for each row's lines:
+- **#1656 and #1695: every row is built** and is in the build he runs. His logs
+  show each row's lines; read them, read only, once he says so in this session:
 
 ```
 #1695 rows 1 and 3   no Max Cartridge fold, fold rebuy or hedge top-up line names CCXTQueueFullError
@@ -351,6 +365,12 @@ the React swarm page        a dragged wire is drawn and never saved, and Connect
                      git merge-base --is-ancestor a1429717 9db41524      # exit 0, #1695 in 2042
 ```
 
+- **#1789, the VWAP charts, waits on his review** of the pages and both
+  presentations. The body's Decisions row holds the one reading only he can
+  settle: his bound on the pair count against the MOTD pairing.
+- **#53, the mouse-over texts.** #1803 is in 1408, and he runs 1107. Once he runs
+  1408 and says so, count the console log's twenty-word refusals, read only, over
+  a window as long as the one in comment 7050551568.
 - **#1785, a slow venue link, waits.** His words in comment 7028058664 put it for
   later: "If we have an optimization opportunity here, we should make it an Issue
   and address it later." Its Decisions table holds two figures only he sets.
@@ -424,6 +444,12 @@ an outside program          new code may run one on a path a caller passes in; r
                             dev_harness/harness/coding_archetype.py, in RUFF_SEVERITY_OVERRIDES
 the manual                  his sentences verbatim; one cited "Now:" line; no dated reading
 issue comments              every claim about the code cites "path, in symbol"
+VWAP pairs                  from order times and the MOTD only, never tranche data; a pair joins
+                            a run of one side to the run straight after it, at 5% for every base
+                            tools/build_product_manual.py, in motd_pairs,
+                            #1789 comments 7053861463, 7055925541 and 7056674850
+VWAP pages                  one page per base holds all its charts, and no line joins a pair,
+                            #1789 comments 7054040450 and 7056959204
 a coding rule               runs only where the input's file type, constructs and imports
                             select it; the house says "can run" for its count, #1633 step 1c
                             dev_harness/sigils/coding_partition.py, in selection
@@ -453,9 +479,7 @@ Open on `current`:
 - A Gemini lost order that filled is still not booked; #1622 row 20 is partial
   (`gh issue view 1622`, row 20's Status).
 - The React Bot Swarm page's layer buttons do nothing when pressed
-  (`src/gui/web/bot_visualizer.js`, in `LayerHeader`); recorded on #23. Read at
-  1400 by 900, the same page draws a dragged wire and never saves it, and its
-  locust grid starts below the window (#1622, comment 7044828212).
+  (`src/gui/web/bot_visualizer.js`, in `LayerHeader`); recorded on #23.
 - Paper and the Simulator judge the vote at the plain floor
   (`src/simulator/back_test.py`, in `ta_direction`); recorded on #433.
 - The Extractor does not read the three-indicator line, and takes it in its
@@ -466,14 +490,6 @@ Open on `current`:
 
 ```bash
 git log -1 --format=%h -- docs/new-user-procedure/figures/step-15-what-a-cycle-keeps.png   # 542a615f
-```
-
-- The prompt router's own row lists sit 2 of 11 entries short of the catalogue
-  index of Skill: ocir. #1784 added C160 to the skill and left the router's
-  `_CATALOGUE_RULES` as it was. An empty line means the two match:
-
-```bash
-python -c "from dev_harness.hooks.prompt_router import _build_catalogue_gaps; print(_build_catalogue_gaps())"
 ```
 
 ---
@@ -500,6 +516,9 @@ python -c "from dev_harness.hooks.prompt_router import _build_catalogue_gaps; pr
   command lines, at every sample.
 - An absolute scratchpad path in a brief is refused as grounding outside the
   repository; name the scratch folder only.
+- A read of his state file or his logs needs his own words in this session. A
+  read on inferred permission is refused, and a refused read is never handed to a
+  unit.
 
 ---
 

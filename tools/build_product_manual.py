@@ -24,15 +24,14 @@ from collections import Counter
 from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from http import HTTPStatus
+from itertools import pairwise
 from statistics import median
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from urllib.error import HTTPError
 
 import numpy as np
 import pptx
-from matplotlib.collections import LineCollection
 from matplotlib.dates import DateFormatter, date2num
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
@@ -59,7 +58,6 @@ from reportlab.platypus import (
 )
 
 from src.core.io_utils import atomic_write_json
-from src.core.log_paths import resolve_fleet_path
 from src.core.retry import exponential_delay, retry_sync
 from src.core.safe_url import SafeRequest, safe_urlopen
 from src.design_system import (
@@ -74,12 +72,11 @@ from src.trading import trade_grader
 from src.trading.indicators.bollinger import BollingerBands
 from src.trading.indicators.helpers import _window_has_no_range
 from src.trading.indicators.types import candles_from_raw
-from src.trading.otd_math import DistanceSettingUnreadable, distance_settings
-from src.trading.scrumming.sizing import (
-    EVENT_ID_KEY,
-    fold_tranche_records,
-    merge_fold_tranches_within_distance,
-    tranche_rebuy_price,
+from src.trading.otd_math import (
+    OTD_MAX_PCT,
+    OTD_MIN_PCT,
+    fold_rebuy_price,
+    opposing_sale_price,
 )
 from src.trading.stone_tablets.ra_fetcher import (
     RA_CHUNK_DAYS,
@@ -107,13 +104,22 @@ if TYPE_CHECKING:
     from pptx.slide import Slide
 
     from src.trading.indicators.types import Candle
-    from src.trading.otd_math import DistanceSettings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"
 DEFAULT_FIGURES_DIR = REPO_ROOT / "docs" / "manual" / "figures"
 DEFAULT_OUTPUT = REPO_ROOT / "artifacts" / "manual" / "Acervator-Product-Manual.pdf"
-DEFAULT_FLEET = resolve_fleet_path()
+DEFAULT_MOTD_PCT = 5.0
+
+
+def motd_percent(text: str) -> float:
+    """Return ``text`` as a ``--motd`` above ``OTD_MIN_PCT`` and at most ``OTD_MAX_PCT``."""
+    value = float(text)
+    if not OTD_MIN_PCT < value <= OTD_MAX_PCT:
+        refusal = f"{text} is not above {OTD_MIN_PCT:g} and at most {OTD_MAX_PCT:g}"
+        raise argparse.ArgumentTypeError(refusal)
+    return value
+
 
 MANIFEST_FILE = "README.md"
 PART_LIST_FILE = "04-manual-parts.md"
@@ -1295,6 +1301,7 @@ def _figure_flowables(
     image.drawHeight = image.imageHeight * scale
     out: list[object] = [image]
     if block.text:
+        image.keepWithNext = True
         out.append(Paragraph(inline(block.text), styles["caption"]))
     return out
 
@@ -1747,6 +1754,7 @@ TRANSACTIONS_FOLDER = "transactions"
 TABLETS_DIR = REPO_ROOT / "stone_tablets"
 CANDLE_CACHE_FOLDER = "five_minute_candles"
 BASELINE_DAY = datetime(2026, 4, 12, tzinfo=timezone.utc)
+LIVE_EVIDENCE_EXPORT_DAY = datetime(2026, 9, 27, tzinfo=timezone.utc).date()
 QUOTE_ASSETS = frozenset({"USD", "USDC"})
 BUY_KINDS = frozenset({"Advanced Trade Buy", "Buy"})
 SELL_KINDS = frozenset({"Advanced Trade Sell", "Sell"})
@@ -1762,7 +1770,6 @@ EXPORT_COLUMNS = frozenset(
 )
 FEE_CELL = "Fees and/or Spread"
 FIGURE_SIZE = (11.0, 8.0)
-ASSET_FIGURE_SIZE = (9.0, 4.5)
 FIGURE_DPI = 150
 DAY_MS = 86_400_000
 LOG_AXIS_SPAN = 8.0
@@ -1775,10 +1782,11 @@ BAND_FILL_ALPHA = 0.55
 STEP_DOT_MAX_FILLS = 30
 COMBINED_BASES = 8
 RANKED_BASES = 38
-PRICE_PANEL = (0.08, 0.48, 0.77, 0.42)
-PAIRS_PANEL = (0.08, 0.32, 0.77, 0.11)
-UNITS_PANEL = (0.08, 0.15, 0.77, 0.13)
-VWAP_LEGEND_AT = (0.465, 0.0)
+ASSET_PAGE_SIZE = (8.5, 10.2)
+PRICE_PANEL = (0.1, 0.715, 0.85, 0.225)
+PAIRS_PANEL = (0.1, 0.617, 0.85, 0.068)
+UNITS_PANEL = (0.1, 0.519, 0.85, 0.068)
+VWAP_LEGEND_AT = (0.525, 0.452)
 COMBINED_PANEL = (0.08, 0.22, 0.74, 0.62)
 COMBINED_LEGEND_AT = (0.45, 0.07)
 COMBINED_NOTE_AT = (0.08, 0.02)
@@ -1791,15 +1799,14 @@ CYCLE_PAD_MIN_MS = HOUR_MS
 CYCLE_PAD_SHARE = 0.25
 CYCLE_COVER_MIN = 0.9
 CYCLE_PRICE_PAD = 0.06
-CYCLE_PANEL_LEFT = 0.08
-CYCLE_PANEL_WIDTH = 0.84
-CYCLE_PANEL_HEIGHT = 0.19
-CYCLE_PANEL_BOTTOMS = (0.715, 0.425, 0.135)
-CYCLE_LEGEND_AT = (0.5, 0.0)
+CYCLE_PANEL_LEFT = 0.1
+CYCLE_PANEL_WIDTH = 0.85
+CYCLE_PANEL_HEIGHT = 0.068
+CYCLE_PANEL_BOTTOMS = (0.334, 0.201, 0.068)
+CYCLE_LEGEND_AT = (0.525, 0.0)
 CYCLE_LEGEND_COLUMNS = 3
 CYCLE_BODY_SHARE = 0.7
 CYCLE_MARKER_SIZE = 12
-CYCLE_DPI = 110
 BUY_PEN = 0
 SELL_PEN = 5
 DECK_TITLE = "Ekthelius's Prototyping Trading Evidence"
@@ -1879,7 +1886,8 @@ class Evidence:
     reading: ExportReading
     candles: dict[str, list[list[float]]]
     filled_candles: dict[str, list[list[float]]]
-    replays: tuple[tuple[str, CycleReplay], ...] = ()
+    pairs: tuple[tuple[str, BasePairs], ...] = ()
+    live_evidence_fills: tuple[Fill, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2237,17 +2245,6 @@ def regime_turn(
     )
 
 
-def _draw_trace(axis: Any, label: str, rows: Sequence[Sequence[float]]) -> None:
-    """Draw one base's five-minute closes on axis against the candle stamp, with
-    ``_label_price_axis`` on the closes."""
-    stamps = [datetime.fromtimestamp(row[0] / 1000.0, tz=timezone.utc) for row in rows]
-    closes = [row[4] for row in rows]
-    axis.plot(stamps, closes, color=accessible_series()[0], linewidth=0.5)
-    _label_price_axis(axis, closes)
-    axis.set_title(label, fontsize=size("cap"), color=ink("ink_strong"))
-    axis.tick_params(labelsize=size("cap") * 0.7, colors=ink("ink_mute"))
-
-
 def _save(figure: Figure, target: Path) -> str:
     """Write figure to target at its own dpi on the page ground and close it."""
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -2259,36 +2256,6 @@ def _save(figure: Figure, target: Path) -> str:
 def asset_figure_name(kind: str, label: str) -> str:
     """Return the file name a per-asset figure of ``kind`` carries for ``label``."""
     return f"{kind}_{label.lower()}.png"
-
-
-def _new_panel() -> tuple[Figure, Any]:
-    """Return a figure holding one axes, sized for a single per-asset chart."""
-    apply_rcparams()
-    figure, axis = plt.subplots(
-        figsize=ASSET_FIGURE_SIZE, dpi=FIGURE_DPI, facecolor=ink("bg")
-    )
-    return figure, axis
-
-
-def _write_asset_traces(
-    figures_dir: Path,
-    labels: Mapping[str, str],
-    candles: Mapping[str, list[list[float]]],
-) -> list[tuple[str, str]]:
-    """Write one five-minute price trace per charted base, named for that base's
-    label."""
-    out: list[tuple[str, str]] = []
-    for asset, label in sorted(labels.items(), key=lambda pair: pair[1]):
-        name = asset_figure_name("trace", label)
-        rows = candles.get(asset) or []
-        if not rows:
-            out.append((name, f"absent - no tablet row for {label}"))
-            continue
-        figure, axis = _new_panel()
-        _draw_trace(axis, f"{label} five-minute closes", rows)
-        figure.autofmt_xdate()
-        out.append((name, _save(figure, figures_dir / name)))
-    return out
 
 
 def utc_ms(stamp_ms: float) -> datetime:
@@ -2383,14 +2350,6 @@ def uncovered_text(spans: Sequence[tuple[int, int]]) -> str:
     return f"no {BAND_BAR_NAME} candles {dates}"
 
 
-UNITS_DUST = 1e-12
-SYMBOL_PARTS = re.compile(r"[/-]")
-NOTHING_QUEUED = "nothing queued"
-ABOVE_LEVEL = "every level under its price"
-OPEN_AT_END = "open at the end"
-NO_LOT = "no lot covered"
-
-
 @dataclass(frozen=True)
 class Order:
     """The fills of one base and side stamped in one second, at their quantity-weighted ``price``."""
@@ -2405,7 +2364,7 @@ class Order:
 
 @dataclass(frozen=True)
 class CyclePair:
-    """The ``units`` of one ``scrum`` order a later ``fold`` order bought back under ``level``."""
+    """A ``scrum`` and a ``fold`` order, the ``units`` both trade, and the ``level``."""
 
     scrum: Order
     fold: Order
@@ -2413,29 +2372,30 @@ class CyclePair:
     extra_units: float
     level: float
 
+    @property
+    def direction(self) -> str:
+        """``SCRUM_FOLD`` where ``scrum`` came first, else ``FOLD_SCRUM``."""
+        return SCRUM_FOLD if self.scrum.when < self.fold.when else FOLD_SCRUM
 
-@dataclass(frozen=True)
-class CycleReplay:
-    """One base's ``replay_cycles`` pairs, and every order no pair took, counted by cause."""
+    @property
+    def opener(self) -> Order:
+        """The earlier of ``scrum`` and ``fold``."""
+        return self.scrum if self.direction == SCRUM_FOLD else self.fold
 
-    pairs: tuple[CyclePair, ...]
-    buys: int
-    sells: int
-    open_sells: int
-    uncovered_sells: int
-    unqueued_buys: int
-    above_buys: int
-    open_tranches: int
+    @property
+    def closer(self) -> Order:
+        """The later of ``scrum`` and ``fold``."""
+        return self.fold if self.direction == SCRUM_FOLD else self.scrum
 
 
 @dataclass(frozen=True)
 class BoundReading:
-    """``CycleReplay.pairs`` against ``lower``, the smaller of its buys and sells, with that side's causes."""
+    """One ``direction``'s ``pairs`` against ``lower`` and its ``unpaired`` causes."""
 
+    direction: str
     lower_side: str
     lower: int
     pairs: int
-    extra: int
     unpaired: tuple[tuple[str, int], ...]
 
 
@@ -2458,176 +2418,140 @@ def venue_orders(fills: Sequence[Fill]) -> list[Order]:
     ]
 
 
-def saved_distance(entry: Any) -> DistanceSettings | None:
-    """Return the ``distance_settings`` one saved bot ``entry`` holds, or None for an unreadable setting."""
-    config = entry.get("config") or {}
-    venue_fee = (entry.get("scrumming_state") or {}).get("highest_venue_fee_pct") or 0.0
-    try:
-        return distance_settings(SimpleNamespace(**config), float(venue_fee))
-    except (DistanceSettingUnreadable, TypeError, ValueError):
-        return None
+SCRUM_FOLD = "Scrum-Fold"
+FOLD_SCRUM = "Fold-Scrum"
+OPENING_SIDE = {SCRUM_FOLD: "sell", FOLD_SCRUM: "buy"}
+NO_RUN_BESIDE = "no run of the other side next to its run"
+NONE_CLEARS = "no order of the run next to it clears the MOTD"
+LONGER_RUN = "its run is longer than the run next to it"
+OTHERS_PAIRED = "each order of the run next to it that clears the MOTD paired another"
+UNPAIRED_CAUSES = (NO_RUN_BESIDE, NONE_CLEARS, LONGER_RUN, OTHERS_PAIRED)
 
 
-def fleet_distances(path: Path) -> dict[str, DistanceSettings]:
-    """Return each ``saved_distance`` the fleet file at ``path`` holds, keyed by its symbol's base."""
-    if not path.is_file():
-        return {}
-    body: Any = json.loads(path.read_text(encoding="utf-8"))
-    bots: Any = body.get("bots") or {}
-    out: dict[str, DistanceSettings] = {}
-    for entry in bots.values() if isinstance(bots, dict) else bots:
-        distance = saved_distance(entry)
-        symbol = str((entry.get("config") or {}).get("symbol", ""))
-        if distance is not None:
-            out[SYMBOL_PARTS.split(symbol)[0].upper()] = distance
-    return out
+def motd_level(opener: Order, motd_pct: float) -> float:
+    """Return a sell ``opener``'s ``fold_rebuy_price``, else ``opposing_sale_price``."""
+    if opener.side == "sell":
+        return fold_rebuy_price(opener.price, motd_pct)
+    return opposing_sale_price(opener.price, motd_pct)
 
 
-class TrancheBook:
-    """The lots and fold tranches one base's ``Order`` list builds, booked as the engine books them."""
-
-    def __init__(self, distance: DistanceSettings) -> None:
-        """Start a book that measures every buy-back level at ``distance``."""
-        self.distance = distance
-        self.lots: list[dict[str, float]] = []
-        self.tranches: list[dict[str, Any]] = []
-        self.left: dict[str, float] = {}
-        self.scrums: dict[str, Order] = {}
-        self.pairs: list[CyclePair] = []
-        self.uncovered = 0
-        self.causes: Counter[str] = Counter()
-
-    def sell(self, name: str, order: Order) -> None:
-        """Open ``order``'s tranche from the highest-cost lots, as ``TickPhaseMixin._book_scrum_fill`` does."""
-        self.lots.sort(key=lambda lot: lot["initial_buy_price"], reverse=True)
-        records, _short = fold_tranche_records(
-            self.lots,
-            order.price,
-            order.qty,
-            order.qty * order.price - order.fee,
-            name,
-            order.when.timestamp(),
-        )
-        self.scrums[name] = order
-        if not records:
-            self.uncovered += 1
-            return
-        units = math.fsum(float(record["units"]) for record in records)
-        bound = dict(records[0])
-        bound["units"] = units
-        bound["usd"] = math.fsum(float(record["usd"]) for record in records)
-        bound["initial_buy_price"] = (
-            math.fsum(
-                float(record["units"]) * float(record["initial_buy_price"])
-                for record in records
-            )
-            / units
-        )
-        self.left[name] = units
-        self.tranches, _merged, _moved = merge_fold_tranches_within_distance(
-            [*self.tranches, bound]
-        )
-
-    def buy(self, order: Order) -> None:
-        """Pay tranches back with ``order``'s units, highest ``ref`` first, as ``ExecutionEngineMixin._pay_queue_by_units`` does."""
-        if not self.tranches:
-            self.causes[NOTHING_QUEUED] += 1
-            self.lots.append({"units": order.qty, "initial_buy_price": order.price})
-            return
-        remaining = order.qty
-        taken: list[tuple[str, float, float]] = []
-        for tranche in sorted(
-            self.tranches, key=lambda one: float(one["ref"]), reverse=True
-        ):
-            level = tranche_rebuy_price(tranche, self.distance)
-            take = min(float(tranche["units"]), remaining)
-            if order.price > level or take <= UNITS_DUST:
-                continue
-            taken.extend(self._split(tranche, take, level))
-            self.lots.append(
-                {
-                    "units": take,
-                    "initial_buy_price": float(tranche["initial_buy_price"]),
-                }
-            )
-            held = float(tranche["units"])
-            tranche["units"] = held - take
-            tranche["usd"] = float(tranche["usd"]) * tranche["units"] / held
-            remaining -= take
-        self.tranches = [one for one in self.tranches if one["units"] > UNITS_DUST]
-        if remaining > UNITS_DUST:
-            self.lots.append({"units": remaining, "initial_buy_price": order.price})
-        if not taken:
-            self.causes[ABOVE_LEVEL] += 1
-            return
-        restored = math.fsum(units for _name, units, _level in taken)
-        extra = max(0.0, remaining)
-        self.pairs.extend(
-            CyclePair(self.scrums[name], order, units, extra * units / restored, level)
-            for name, units, level in taken
-        )
-
-    def _split(
-        self, tranche: dict[str, Any], take: float, level: float
-    ) -> list[tuple[str, float, float]]:
-        """Share ``take`` across the Scrums ``tranche`` names by the units each still holds in it."""
-        names = [
-            name
-            for name in str(tranche.get(EVENT_ID_KEY, "")).split("+")
-            if self.left.get(name, 0.0) > UNITS_DUST
-        ]
-        held = math.fsum(self.left[name] for name in names)
-        if held <= UNITS_DUST:
-            return []
-        out: list[tuple[str, float, float]] = []
-        for name in names:
-            units = take * self.left[name] / held
-            self.left[name] -= units
-            out.append((name, units, level))
-        return out
+def clears_motd(opener: Order, closer: Order, motd_pct: float) -> bool:
+    """Return True where ``closer`` reaches ``motd_level`` of ``opener``."""
+    level = motd_level(opener, motd_pct)
+    if opener.side == "sell":
+        return closer.price <= level
+    return closer.price >= level
 
 
-def replay_cycles(orders: Sequence[Order], distance: DistanceSettings) -> CycleReplay:
-    """Return the ``CycleReplay`` a ``TrancheBook`` at ``distance`` builds from ``orders``, oldest first."""
-    book = TrancheBook(distance)
-    for index, order in enumerate(orders):
-        if order.side == "sell":
-            book.sell(f"S{index}", order)
+def can_pair(opener: Order, closer: Order, motd_pct: float) -> bool:
+    """Return True where ``opener`` comes first and ``closer`` ``clears_motd``."""
+    return opener.when < closer.when and clears_motd(opener, closer, motd_pct)
+
+
+def cycle_pair(opener: Order, closer: Order, motd_pct: float) -> CyclePair:
+    """Return ``opener`` and ``closer`` as a ``CyclePair`` at their ``motd_level``."""
+    scrum, fold = (opener, closer) if opener.side == "sell" else (closer, opener)
+    units = min(scrum.qty, fold.qty)
+    return CyclePair(scrum, fold, units, fold.qty - units, motd_level(opener, motd_pct))
+
+
+def side_runs(orders: Sequence[Order]) -> list[list[Order]]:
+    """Return ``orders`` in time order, split into runs of one side."""
+    runs: list[list[Order]] = []
+    for order in sorted(orders, key=lambda one: one.when):
+        if runs and runs[-1][-1].side == order.side:
+            runs[-1].append(order)
         else:
-            book.buy(order)
-    paid = {pair.scrum for pair in book.pairs}
-    sells = sum(1 for order in orders if order.side == "sell")
-    return CycleReplay(
-        pairs=tuple(book.pairs),
-        buys=len(orders) - sells,
-        sells=sells,
-        open_sells=sells - len(paid) - book.uncovered,
-        uncovered_sells=book.uncovered,
-        unqueued_buys=book.causes[NOTHING_QUEUED],
-        above_buys=book.causes[ABOVE_LEVEL],
-        open_tranches=len(book.tranches),
+            runs.append([order])
+    return runs
+
+
+def run_pairs(
+    earlier: Sequence[Order],
+    later: Sequence[Order],
+    motd_pct: float,
+) -> list[CyclePair]:
+    """Pair each later order with the latest open earlier order that ``can_pair``."""
+    waiting = list(earlier)
+    pairs: list[CyclePair] = []
+    for closer in later:
+        for index in range(len(waiting) - 1, -1, -1):
+            if can_pair(waiting[index], closer, motd_pct):
+                pairs.append(cycle_pair(waiting.pop(index), closer, motd_pct))
+                break
+    return pairs
+
+
+def motd_pairs(orders: Sequence[Order], motd_pct: float) -> tuple[CyclePair, ...]:
+    """Return ``run_pairs`` over each of ``side_runs`` and the run after it."""
+    runs = side_runs(orders)
+    return tuple(
+        pair
+        for earlier, later in pairwise(runs)
+        for pair in run_pairs(earlier, later, motd_pct)
     )
 
 
-def bound_reading(replay: CycleReplay) -> BoundReading:
-    """Return ``replay``'s ``BoundReading``, whose ``extra`` less its ``unpaired`` total is pairs less ``lower``."""
-    pairs = len(replay.pairs)
-    if replay.sells <= replay.buys:
-        paid = len({pair.scrum for pair in replay.pairs})
-        return BoundReading(
-            "sells",
-            replay.sells,
-            pairs,
-            pairs - paid,
-            ((OPEN_AT_END, replay.open_sells), (NO_LOT, replay.uncovered_sells)),
+@dataclass(frozen=True)
+class BasePairs:
+    """One base's ``venue_orders``, ``motd_pct`` and the ``motd_pairs`` they form."""
+
+    orders: tuple[Order, ...]
+    motd_pct: float
+    pairs: tuple[CyclePair, ...]
+
+
+def base_pairs(orders: Sequence[Order], motd_pct: float) -> BasePairs:
+    """Return ``orders``, ``motd_pct`` and their ``motd_pairs`` as one ``BasePairs``."""
+    return BasePairs(tuple(orders), motd_pct, motd_pairs(orders, motd_pct))
+
+
+def unpaired_cause(
+    order: Order,
+    run: Sequence[Order],
+    beside: Sequence[Order],
+    motd_pct: float,
+    *,
+    opens: bool,
+) -> str:
+    """Return why ``order`` of ``run`` paired no order of ``beside``."""
+    if not beside:
+        return NO_RUN_BESIDE
+    if not any(
+        can_pair(order, other, motd_pct) if opens else can_pair(other, order, motd_pct)
+        for other in beside
+    ):
+        return NONE_CLEARS
+    if len(run) > len(beside):
+        return LONGER_RUN
+    return OTHERS_PAIRED
+
+
+def bound_reading(base: BasePairs, direction: str) -> BoundReading:
+    """Return ``base``'s ``direction`` pairs against the smaller side of its orders."""
+    sells = sum(1 for order in base.orders if order.side == "sell")
+    side = "sell" if sells <= len(base.orders) - sells else "buy"
+    held = [pair for pair in base.pairs if pair.direction == direction]
+    paired = {pair.scrum if side == "sell" else pair.fold for pair in held}
+    opens = OPENING_SIDE[direction] == side
+    runs = side_runs(base.orders)
+    causes: Counter[str] = Counter()
+    for at, run in enumerate(runs):
+        if run[0].side != side:
+            continue
+        beside_at = at + 1 if opens else at - 1
+        beside = runs[beside_at] if 0 <= beside_at < len(runs) else []
+        causes.update(
+            unpaired_cause(order, run, beside, base.motd_pct, opens=opens)
+            for order in run
+            if order not in paired
         )
-    paying = len({pair.fold for pair in replay.pairs})
     return BoundReading(
-        "buys",
-        replay.buys,
-        pairs,
-        pairs - paying,
-        ((NOTHING_QUEUED, replay.unqueued_buys), (ABOVE_LEVEL, replay.above_buys)),
+        direction,
+        f"{side}s",
+        sum(1 for order in base.orders if order.side == side),
+        len(held),
+        tuple((cause, causes[cause]) for cause in UNPAIRED_CAUSES),
     )
 
 
@@ -2647,18 +2571,34 @@ def gain_usd(pair: CyclePair) -> float:
 
 
 def captured_usd(pair: CyclePair) -> float:
-    """Return what ``pair.fold`` paid for ``pair.extra_units``, the units past those it restored."""
-    return pair.extra_units * unit_cost_usd(pair.fold)
+    """Return the cost of ``pair.extra_units`` the pair's own ``gain_usd`` could pay."""
+    return min(pair.extra_units * unit_cost_usd(pair.fold), max(0.0, gain_usd(pair)))
 
 
-def preserved_usd(pair: CyclePair) -> float:
-    """Return ``sale_usd`` less what ``pair.fold`` paid for ``pair.units`` and ``pair.extra_units``."""
-    return sale_usd(pair) - (pair.units + pair.extra_units) * unit_cost_usd(pair.fold)
+def captured_units(pair: CyclePair) -> float:
+    """Return the units ``captured_usd`` bought at ``pair.fold``'s ``unit_cost_usd``."""
+    return captured_usd(pair) / unit_cost_usd(pair.fold)
 
 
 def sale_share_pct(pair: CyclePair, usd: float) -> float:
     """Return ``usd`` as a percent of ``pair.units`` at the ``pair.scrum`` price."""
     return usd / (pair.units * pair.scrum.price) * 100.0
+
+
+def split_hundredths(gain: float, captured: float) -> tuple[int, int, int]:
+    """Return ``gain``, ``captured`` and ``gain`` less ``captured``, in hundredths."""
+    gain_hundredths = round(gain * 100)
+    captured_hundredths = round(captured * 100)
+    return gain_hundredths, captured_hundredths, gain_hundredths - captured_hundredths
+
+
+def split_dollars(pairs: Sequence[CyclePair]) -> list[str]:
+    """Return the summed gain, captured and preserved of ``pairs`` as dollar cells."""
+    cents = split_hundredths(
+        math.fsum(gain_usd(pair) for pair in pairs),
+        math.fsum(captured_usd(pair) for pair in pairs),
+    )
+    return [f"${value / 100:,.2f}" for value in cents]
 
 
 def label_candles(
@@ -2728,13 +2668,13 @@ def _draw_dots(axis: Axes, fills: Sequence[Fill]) -> dict[str, str]:
     return pens
 
 
-def _draw_pairs(price: Axes, gains: Axes, pairs: Sequence[CyclePair]) -> None:
-    """Join each of ``pairs`` on ``price`` and mark its ``gain_usd`` share of the sale on ``gains``."""
+def _draw_pairs(gains: Axes, pairs: Sequence[CyclePair]) -> None:
+    """Mark each ``gain_usd`` of ``pairs`` on ``gains`` at its later order."""
     gains.axhline(0.0, color=ink("ink_strong"), linewidth=0.8)
-    gains.set_ylabel("pair gain, % of the sale")
+    gains.set_ylabel("gain, %")
     if not pairs:
         gains.set_title(
-            "no Scrum-Fold pair",
+            f"no {SCRUM_FOLD} or {FOLD_SCRUM} pair",
             loc="left",
             fontsize=size("cap"),
             color=ink("ink_mute"),
@@ -2742,24 +2682,9 @@ def _draw_pairs(price: Axes, gains: Axes, pairs: Sequence[CyclePair]) -> None:
         return
     shares = [sale_share_pct(pair, gain_usd(pair)) for pair in pairs]
     pens = [ink("win") if share > 0.0 else ink("loss") for share in shares]
-    segments = [
-        [
-            (float(date2num(bar_time(pair.scrum.when))), pair.scrum.price),
-            (float(date2num(bar_time(pair.fold.when))), pair.fold.price),
-        ]
-        for pair in pairs
-    ]
-    price.add_collection(
-        LineCollection(
-            segments,
-            colors=pens,
-            linewidths=0.7,
-            zorder=2.5,
-            label=f"Scrum-Fold pairs ({len(pairs)})",
-        ),
-    )
+    counts = Counter(pair.direction for pair in pairs)
     gains.scatter(
-        np.asarray([bar_time(pair.fold.when) for pair in pairs]),
+        np.asarray([bar_time(pair.closer.when) for pair in pairs]),
         shares,
         c=pens,
         s=6,
@@ -2767,8 +2692,9 @@ def _draw_pairs(price: Axes, gains: Axes, pairs: Sequence[CyclePair]) -> None:
     )
     gained = sum(1 for share in shares if share > 0.0)
     gains.set_title(
-        f"{len(pairs)} Scrum-Fold pairs by the tranche replay, {gained} gained after"
-        f" fees, median gain {median(shares):+.2f}% of the sale",
+        f"{counts[SCRUM_FOLD]} {SCRUM_FOLD} and {counts[FOLD_SCRUM]} {FOLD_SCRUM}"
+        f" pairs; {gained} gained after fees; median gain"
+        f" {median(shares):+.2f}% of the sale",
         loc="left",
         fontsize=size("cap"),
         color=ink("ink_strong"),
@@ -2811,6 +2737,17 @@ def _page_figure(dpi: float = FIGURE_DPI) -> Figure:
     )
 
 
+def _asset_page() -> Figure:
+    """Return a figure ``ASSET_PAGE_SIZE`` at ``FIGURE_DPI``, on the page ground."""
+    apply_rcparams()
+    return plt.figure(figsize=ASSET_PAGE_SIZE, dpi=FIGURE_DPI, facecolor=ink("bg"))
+
+
+def sale_ratio_text(ratio: float | None) -> str:
+    """Return ``ratio`` to three places, or "not read" where it is None."""
+    return "not read" if ratio is None else f"{ratio:.3f}"
+
+
 def price_label(value: float, _position: float | None = None) -> str:
     """Return ``value`` as a decimal of ``PRICE_LABEL_DIGITS`` significant digits."""
     return np.format_float_positional(
@@ -2847,14 +2784,15 @@ def _draw_vwap(
     fills: Sequence[Fill],
     rows: Sequence[Sequence[float]],
     pairs: Sequence[CyclePair] = (),
+    ratio: float | None = None,
 ) -> Figure:
-    """Return the chart of ``label``: candles, band, fills, ``pairs``, VWAPs and units."""
+    """Return ``label``'s one page: its whole window over its ``latest_cycles``."""
     times, buy_v, sell_v, held = trajectory(fills)
     stamps = np.asarray([bar_time(when) for when in times])
     candles = window_candles(rows, fills)
     start_ms, _ = chart_window(fills)
     drawn = [candle for candle in candles if candle.timestamp >= start_ms]
-    figure = _page_figure()
+    figure = _asset_page()
     price = figure.add_axes(PRICE_PANEL)
     changes = figure.add_axes(PAIRS_PANEL, sharex=price)
     units = figure.add_axes(UNITS_PANEL, sharex=price)
@@ -2873,7 +2811,7 @@ def _draw_vwap(
             zorder=3,
             label=f"running {side} VWAP",
         )
-    _draw_pairs(price, changes, pairs)
+    _draw_pairs(changes, pairs)
     _draw_uncovered(price, uncovered_spans(rows, fills))
     _label_price_axis(price, [fill.price for fill in fills])
     price.set_ylabel(f"{label} price, USD")
@@ -2896,9 +2834,16 @@ def _draw_vwap(
     )
     units.plot(stamps, held, color=ink("accent"), lw=1.0)
     units.set_ylabel("net units")
+    units.set_title(
+        f"net units, buys less sells; sell VWAP over buy VWAP {sale_ratio_text(ratio)}",
+        loc="left",
+        fontsize=size("cap"),
+        color=ink("ink_strong"),
+    )
     _label_plain_axis(changes.yaxis)
     _label_plain_axis(units.yaxis)
     units.xaxis.set_major_formatter(DateFormatter("%d %b"))
+    _draw_latest_cycles(figure, label, pairs, rows)
     return figure
 
 
@@ -2957,28 +2902,35 @@ def _draw_combined(groups: Mapping[str, Sequence[Fill]]) -> Figure:
     return figure
 
 
+RETIRED_FIGURES = ("cycle", "trace")
+
+
 def _write_asset_vwap(
     figures_dir: Path,
     labels: Mapping[str, str],
     fills: Sequence[Fill],
     candles: Mapping[str, list[list[float]]],
-    replays: Mapping[str, CycleReplay] | None = None,
+    pairs: Mapping[str, Sequence[CyclePair]] | None = None,
 ) -> list[tuple[str, str]]:
-    """Write ``vwap_combined.png`` and one VWAP chart per label, with its ``replays`` pairs."""
+    """Write ``vwap_combined.png`` and one page per label; drop ``RETIRED_FIGURES``."""
     groups = label_groups(labels, fills)
     rows = label_candles(labels, candles)
-    held_replays = replays or {}
+    ratios = {row.label: sell_over_buy(row) for row in base_rows(fills, labels)}
+    held_pairs = pairs or {}
     combined = "vwap_combined.png"
     out = [(combined, _save(_draw_combined(groups), figures_dir / combined))]
     for label in sorted(labels.values()):
+        for kind in RETIRED_FIGURES:
+            (figures_dir / asset_figure_name(kind, label)).unlink(missing_ok=True)
         name = asset_figure_name("vwap", label)
         held = groups.get(label)
         if not held:
             out.append((name, f"absent - no fill for {label} in the newest export"))
             continue
-        replay = held_replays.get(label)
-        pairs = replay.pairs if replay is not None else ()
-        outcome = _save(_draw_vwap(label, held, rows[label], pairs), figures_dir / name)
+        page = _draw_vwap(
+            label, held, rows[label], held_pairs.get(label, ()), ratios.get(label)
+        )
+        outcome = _save(page, figures_dir / name)
         gaps = uncovered_text(uncovered_spans(rows[label], held))
         out.append((name, f"{outcome} - {gaps}" if gaps else outcome))
     return out
@@ -2986,17 +2938,17 @@ def _write_asset_vwap(
 
 def cycle_window(pair: CyclePair) -> tuple[int, int]:
     """Return the first and last ``bar_start_ms`` a view of ``pair`` draws, padded by ``CYCLE_PAD_SHARE``."""
-    scrum_ms = bar_start_ms(pair.scrum.when)
-    fold_ms = bar_start_ms(pair.fold.when)
-    pad_ms = max(CYCLE_PAD_MIN_MS, int((fold_ms - scrum_ms) * CYCLE_PAD_SHARE))
+    first_ms = bar_start_ms(pair.opener.when)
+    last_ms = bar_start_ms(pair.closer.when)
+    pad_ms = max(CYCLE_PAD_MIN_MS, int((last_ms - first_ms) * CYCLE_PAD_SHARE))
     pad_ms -= pad_ms % BAND_BAR_MS
-    return scrum_ms - pad_ms, fold_ms + pad_ms
+    return first_ms - pad_ms, last_ms + pad_ms
 
 
 def cycle_covered(pair: CyclePair, stamps: Sequence[float]) -> bool:
-    """True where ``stamps`` hold ``CYCLE_COVER_MIN`` of the slots from ``pair``'s Scrum to its Fold."""
-    first_ms = bar_start_ms(pair.scrum.when)
-    last_ms = bar_start_ms(pair.fold.when)
+    """Return True where ``stamps`` hold ``CYCLE_COVER_MIN`` of ``pair``'s slots."""
+    first_ms = bar_start_ms(pair.opener.when)
+    last_ms = bar_start_ms(pair.closer.when)
     held = bisect_right(stamps, last_ms) - bisect_left(stamps, first_ms)
     return held >= CYCLE_COVER_MIN * ((last_ms - first_ms) // BAND_BAR_MS + 1)
 
@@ -3004,17 +2956,13 @@ def cycle_covered(pair: CyclePair, stamps: Sequence[float]) -> bool:
 def latest_cycles(
     pairs: Sequence[CyclePair], rows: Sequence[Sequence[float]]
 ) -> list[CyclePair]:
-    """Return up to ``CYCLE_VIEWS`` of the latest ``cycle_covered`` pairs within ``CYCLE_SPAN_LIMIT_MS``, one per Fold."""
-    by_fold: dict[Order, CyclePair] = {}
-    for pair in pairs:
-        if pair.fold not in by_fold or pair.units > by_fold[pair.fold].units:
-            by_fold[pair.fold] = pair
+    """Return the latest ``CYCLE_VIEWS`` ``cycle_covered`` pairs, oldest first."""
     stamps = [row[0] for row in rows]
     chosen: list[CyclePair] = []
-    for pair in sorted(by_fold.values(), key=lambda one: one.fold.when, reverse=True):
+    for pair in sorted(pairs, key=lambda one: one.closer.when, reverse=True):
         if len(chosen) >= CYCLE_VIEWS:
             break
-        span_ms = bar_start_ms(pair.fold.when) - bar_start_ms(pair.scrum.when)
+        span_ms = bar_start_ms(pair.closer.when) - bar_start_ms(pair.opener.when)
         if span_ms <= CYCLE_SPAN_LIMIT_MS and cycle_covered(pair, stamps):
             chosen.append(pair)
     return chosen[::-1]
@@ -3076,27 +3024,18 @@ def _draw_cycle_band(axis: Axes, band: Sequence[BandBar]) -> None:
 
 
 def _draw_cycle_orders(axis: Axes, pair: CyclePair, end_ms: int) -> None:
-    """Draw ``pair.level`` from the Scrum to ``end_ms``, both orders on their candles, and the line joining them."""
+    """Draw ``pair.level`` from ``pair.opener`` to ``end_ms``, and both orders."""
     scrum_x = cycle_x(bar_start_ms(pair.scrum.when))
     fold_x = cycle_x(bar_start_ms(pair.fold.when))
     axis.hlines(
         pair.level,
-        scrum_x,
+        cycle_x(bar_start_ms(pair.opener.when)),
         cycle_x(end_ms),
         colors=ink("warn"),
         linestyles=(0, (6, 3)),
         linewidth=1.3,
         zorder=3,
-        label="buy-back level: the Scrum price less the saved distance",
-    )
-    axis.plot(
-        [scrum_x, fold_x],
-        [pair.scrum.price, pair.fold.price],
-        color=ink("ink_strong"),
-        lw=0.9,
-        ls=":",
-        zorder=4,
-        label="Scrum to its Fold",
+        label="MOTD level from the pair's first order",
     )
     for place, price, marker, pen, name in (
         (scrum_x, pair.scrum.price, "v", series()[SELL_PEN], "Scrum, the sell order"),
@@ -3117,16 +3056,19 @@ def _draw_cycle_orders(axis: Axes, pair: CyclePair, end_ms: int) -> None:
 
 
 def cycle_title(number: int, total: int, pair: CyclePair) -> str:
-    """Return cycle ``number`` of ``total``'s two title lines: its times, then ``gain_usd`` split by share."""
-    hours = (bar_start_ms(pair.fold.when) - bar_start_ms(pair.scrum.when)) / HOUR_MS
-    gain = sale_share_pct(pair, gain_usd(pair))
-    captured = sale_share_pct(pair, captured_usd(pair))
-    preserved = sale_share_pct(pair, preserved_usd(pair))
+    """Return cycle ``number``'s title: direction and times, then the gain split."""
+    first, second = pair.direction.split("-")
+    hours = (bar_start_ms(pair.closer.when) - bar_start_ms(pair.opener.when)) / HOUR_MS
+    gain, captured, preserved = split_hundredths(
+        sale_share_pct(pair, gain_usd(pair)),
+        sale_share_pct(pair, captured_usd(pair)),
+    )
     return (
-        f"Cycle {number} of {total}: Scrum {pair.scrum.when:%d %b %H:%M}, Fold"
-        f" {pair.fold.when:%d %b %H:%M} UTC, {hours:.1f} hours apart\n"
-        f"gain {gain:+.2f}% of the sale = captured {captured:+.2f}%"
-        f" ({pair.extra_units:+.6g} units) + preserved {preserved:+.2f}%"
+        f"Cycle {number} of {total}, {pair.direction}: {first}"
+        f" {pair.opener.when:%d %b %H:%M}, {second} {pair.closer.when:%d %b %H:%M} UTC,"
+        f" {hours:.1f} hours apart\n"
+        f"gain {gain / 100:+.2f}% of the sale = captured {captured / 100:+.2f}%"
+        f" ({captured_units(pair):+.6g} units) + preserved {preserved / 100:+.2f}%"
     )
 
 
@@ -3154,61 +3096,46 @@ def _draw_cycle(
     axis.xaxis.set_major_formatter(DateFormatter("%d %b %H:%M"))
 
 
-def _draw_cycles(
-    label: str, pairs: Sequence[CyclePair], rows: Sequence[Sequence[float]]
-) -> Figure:
-    """Return ``label``'s cycle view: one ``_draw_cycle`` panel per pair, its legend below the panels."""
-    figure = _page_figure(CYCLE_DPI)
+def _draw_latest_cycles(
+    figure: Figure,
+    label: str,
+    pairs: Sequence[CyclePair],
+    rows: Sequence[Sequence[float]],
+) -> None:
+    """Draw a ``_draw_cycle`` panel per ``latest_cycles`` pair, legend below."""
+    chosen = latest_cycles(pairs, rows)
+    if not chosen:
+        figure.text(
+            CYCLE_LEGEND_AT[0],
+            CYCLE_PANEL_BOTTOMS[0],
+            f"no {SCRUM_FOLD} or {FOLD_SCRUM} pair within"
+            f" {CYCLE_SPAN_LIMIT_MS // HOUR_MS} hours on covered"
+            f" {BAND_BAR_NAME} candles",
+            ha="center",
+            fontsize=size("cap"),
+            color=ink("ink_mute"),
+        )
+        return
     axes = [
         figure.add_axes(
             (CYCLE_PANEL_LEFT, bottom, CYCLE_PANEL_WIDTH, CYCLE_PANEL_HEIGHT)
         )
-        for bottom in CYCLE_PANEL_BOTTOMS[: len(pairs)]
+        for bottom in CYCLE_PANEL_BOTTOMS[: len(chosen)]
     ]
-    for number, (axis, pair) in enumerate(zip(axes, pairs, strict=True), 1):
+    for number, (axis, pair) in enumerate(zip(axes, chosen, strict=True), 1):
         _draw_cycle(axis, label, pair, rows)
         axis.set_title(
-            cycle_title(number, len(pairs), pair),
+            cycle_title(number, len(chosen), pair),
             loc="left",
             fontsize=size("cap"),
             color=ink("ink_strong"),
         )
-    figure.suptitle(
-        f"{label}: its latest {len(pairs)} Scrum-Fold cycles on {BAND_BAR_NAME} candles",
-        y=0.995,
-        va="top",
-        fontsize=size("h3"),
-        color=ink("ink_strong"),
-    )
     figure.legend(
         *axes[0].get_legend_handles_labels(),
         loc="lower center",
         bbox_to_anchor=CYCLE_LEGEND_AT,
         ncols=CYCLE_LEGEND_COLUMNS,
     )
-    return figure
-
-
-def _write_cycle_views(
-    figures_dir: Path,
-    labels: Mapping[str, str],
-    replays: Mapping[str, CycleReplay],
-    rows: Mapping[str, list[list[float]]],
-) -> list[tuple[str, str]]:
-    """Write ``cycle_a<NN>.png`` per label from its ``latest_cycles``, or name why none is drawn."""
-    out: list[tuple[str, str]] = []
-    for label in sorted(labels.values()):
-        name = asset_figure_name("cycle", label)
-        replay = replays.get(label)
-        chosen = latest_cycles(replay.pairs, rows[label]) if replay is not None else []
-        if not chosen:
-            (figures_dir / name).unlink(missing_ok=True)
-            out.append((name, f"absent - no covered Scrum-Fold pair for {label}"))
-            continue
-        out.append(
-            (name, _save(_draw_cycles(label, chosen, rows[label]), figures_dir / name))
-        )
-    return out
 
 
 def priced_rows(rows: Sequence[HodlRow]) -> list[HodlRow]:
@@ -3429,17 +3356,24 @@ def _write_market(
     return (name, _save(figure, figures_dir / name))
 
 
-def read_evidence(evidence_dir: Path, fleet: Path | None = None) -> Evidence | None:
-    """Return the ``Evidence`` of the newest export under ``evidence_dir``, replayed at ``fleet``'s distances, or None."""
+def read_evidence(
+    evidence_dir: Path, motd_pct: float = DEFAULT_MOTD_PCT
+) -> Evidence | None:
+    """Return ``evidence_dir``'s newest ``Evidence``, its pairs at ``motd_pct``, or None."""
     paths = export_files(evidence_dir)
     if not paths:
         return None
     indexed = {path: load_fills(path)[0] for path in paths}
     labels = labels_across(indexed)
     newest = newest_export(indexed)
+    dated = {
+        path: export_fills
+        for path, export_fills in indexed.items()
+        if export_fills
+        and max(fill.when for fill in export_fills).date() <= LIVE_EVIDENCE_EXPORT_DAY
+    }
     candles = {asset: tablet_candles(asset) for asset in labels}
     cache_dir = evidence_dir / CANDLE_CACHE_FOLDER
-    distances = fleet_distances(fleet) if fleet is not None else {}
     by_asset: dict[str, list[Fill]] = {}
     for fill in indexed[newest]:
         by_asset.setdefault(fill.asset, []).append(fill)
@@ -3453,11 +3387,11 @@ def read_evidence(evidence_dir: Path, fleet: Path | None = None) -> Evidence | N
             asset: fill_slots(rows, cache_candles(asset, cache_dir))
             for asset, rows in candles.items()
         },
-        replays=tuple(
-            (labels[asset], replay_cycles(venue_orders(held), distances[asset]))
+        pairs=tuple(
+            (labels[asset], base_pairs(venue_orders(held), motd_pct))
             for asset, held in sorted(by_asset.items(), key=lambda one: labels[one[0]])
-            if asset in distances
         ),
+        live_evidence_fills=tuple(indexed[newest_export(dated)]) if dated else (),
     )
 
 
@@ -3470,8 +3404,6 @@ def write_evidence_figures(
     names = [
         "vwap_combined.png",
         asset_figure_name("vwap", "a<NN>"),
-        asset_figure_name("cycle", "a<NN>"),
-        asset_figure_name("trace", "a<NN>"),
         "evidence_hodl_units.png",
         "evidence_hodl_shares.png",
         "evidence_market.png",
@@ -3480,19 +3412,42 @@ def write_evidence_figures(
         missing = evidence_dir / TRANSACTIONS_FOLDER
         return [(name, f"absent - no venue export under {missing}") for name in names]
     labels, fills, candles = evidence.labels, evidence.fills, evidence.candles
-    replays = dict(evidence.replays)
-    out = _write_asset_vwap(
-        figures_dir, labels, fills, evidence.filled_candles, replays
+    pairs = {label: base.pairs for label, base in evidence.pairs}
+    out = _write_asset_vwap(figures_dir, labels, fills, evidence.filled_candles, pairs)
+    out += _write_live_evidence(
+        figures_dir, labels, candles, evidence.live_evidence_fills
     )
-    out += _write_cycle_views(
-        figures_dir, labels, replays, label_candles(labels, evidence.filled_candles)
-    )
-    out += _write_asset_traces(figures_dir, labels, candles)
-    rows = hodl_rows(fills, labels, candles)
-    out.append(_write_hodl_units(figures_dir, rows))
-    out.append(_write_hodl_shares(figures_dir, rows))
-    out.append(_write_market(figures_dir, labels, candles))
     return out
+
+
+def _write_live_evidence(
+    figures_dir: Path,
+    labels: Mapping[str, str],
+    candles: Mapping[str, list[list[float]]],
+    fills: Sequence[Fill],
+) -> list[tuple[str, str]]:
+    """Write the live-evidence figures from ``fills``, limited to the bases it holds."""
+    names = (
+        "evidence_hodl_units.png",
+        "evidence_hodl_shares.png",
+        "evidence_market.png",
+    )
+    if not fills:
+        return [
+            (name, f"absent - no export ends on or before {LIVE_EVIDENCE_EXPORT_DAY}")
+            for name in names
+        ]
+    page_assets = {fill.asset for fill in fills}
+    page_labels = {
+        asset: label for asset, label in labels.items() if asset in page_assets
+    }
+    page_candles = {asset: candles.get(asset) or [] for asset in page_labels}
+    rows = hodl_rows(fills, page_labels, page_candles)
+    return [
+        _write_hodl_units(figures_dir, rows),
+        _write_hodl_shares(figures_dir, rows),
+        _write_market(figures_dir, page_labels, page_candles),
+    ]
 
 
 def day_label(when: datetime) -> str:
@@ -3567,46 +3522,51 @@ def _reading_lines(reading: ExportReading) -> list[str]:
     ]
 
 
+def cause_text(unpaired: Sequence[tuple[str, int]]) -> str:
+    """Return each ``unpaired`` cause with a count above 0 and its count, or none."""
+    return "; ".join(f"{cause} {count}" for cause, count in unpaired if count) or "none"
+
+
 def bound_lines(evidence: Evidence) -> list[str]:
-    """Return each label's ``bound_reading`` as a table row, and a row summing every column."""
+    """Return one row per label of its two ``bound_reading`` results, and a total."""
+    directions = (SCRUM_FOLD, FOLD_SCRUM)
     out = [
         "",
-        "| Asset | Buys | Sells | Lower | Pairs | Pairs less lower | Extra pairs"
-        " | Unpaired on the lower side | Tranches open at the end |",
-        "| --- | ---: | ---: | --- | ---: | ---: | ---: | --- | ---: |",
+        f"| Asset | Buys | Sells | Lower | {SCRUM_FOLD} | Short | {FOLD_SCRUM}"
+        f" | Short | Unpaired, {SCRUM_FOLD} | Unpaired, {FOLD_SCRUM} |",
+        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     total: Counter[str] = Counter()
-    for label, replay in evidence.replays:
-        reading = bound_reading(replay)
-        causes = "; ".join(f"{cause} {count}" for cause, count in reading.unpaired)
+    unpaired: dict[str, Counter[str]] = {one: Counter() for one in directions}
+    for label, base in evidence.pairs:
+        readings = [bound_reading(base, direction) for direction in directions]
+        sells = sum(1 for order in base.orders if order.side == "sell")
+        buys = len(base.orders) - sells
+        lower = readings[0].lower
+        counts = " | ".join(f"{one.pairs} | {lower - one.pairs}" for one in readings)
+        causes = " | ".join(cause_text(one.unpaired) for one in readings)
         out.append(
-            f"| {label} | {replay.buys} | {replay.sells}"
-            f" | {reading.lower} {reading.lower_side} | {reading.pairs}"
-            f" | {reading.pairs - reading.lower:+d} | {reading.extra} | {causes}"
-            f" | {replay.open_tranches} |"
+            f"| {label} | {buys} | {sells} | {lower} {readings[0].lower_side}"
+            f" | {counts} | {causes} |"
         )
-        total.update(
-            buys=replay.buys,
-            sells=replay.sells,
-            lower=reading.lower,
-            pairs=reading.pairs,
-            extra=reading.extra,
-            open=replay.open_tranches,
-        )
-        total.update(dict(reading.unpaired))
-    causes = "; ".join(
-        f"{cause} {total[cause]}"
-        for cause in (OPEN_AT_END, NO_LOT, NOTHING_QUEUED, ABOVE_LEVEL)
+        total.update(buys=buys, sells=sells, lower=lower)
+        for direction, one in zip(directions, readings, strict=True):
+            total[direction] += one.pairs
+            unpaired[direction].update(dict(one.unpaired))
+    counts = " | ".join(
+        f"{total[one]} | {total['lower'] - total[one]}" for one in directions
     )
+    causes = " | ".join(cause_text(tuple(unpaired[one].items())) for one in directions)
     out.append(
         f"| All | {total['buys']} | {total['sells']} | {total['lower']}"
-        f" | {total['pairs']} | {total['pairs'] - total['lower']:+d}"
-        f" | {total['extra']} | {causes} | {total['open']} |"
+        f" | {counts} | {causes} |"
     )
     return out
 
 
-def measurement_lines(evidence_dir: Path, fleet: Path = DEFAULT_FLEET) -> list[str]:
+def measurement_lines(
+    evidence_dir: Path, motd_pct: float = DEFAULT_MOTD_PCT
+) -> list[str]:
     """Return the reading and the two tables the manual's VWAP part publishes.
 
     ``labels_across`` names every base, so no line carries a ticker, an account or an
@@ -3644,7 +3604,7 @@ def measurement_lines(evidence_dir: Path, fleet: Path = DEFAULT_FLEET) -> list[s
             f"| {row.label} | {row.buys} | {row.sells} | {row.final_buy_vwap:g} "
             f"| {row.sell_vwap:g} | {ratio:.3f} |"
         )
-    evidence = read_evidence(evidence_dir, fleet)
+    evidence = read_evidence(evidence_dir, motd_pct)
     if evidence is not None:
         out += bound_lines(evidence)
     return out
@@ -3919,10 +3879,9 @@ def _deck_asset_figure(
 def _deck_base(
     prs: Presentation, source: DeckSource, label: str, ledger: Ledger
 ) -> None:
-    """Add one slide carrying ``label``'s VWAP chart and its two lines' ends."""
+    """Add one slide carrying ``label``'s one-page chart and its two lines' ends."""
     row = source.rows[label]
-    sale_ratio = sell_over_buy(row)
-    ratio_text = "not read" if sale_ratio is None else f"{sale_ratio:.3f}"
+    ratio_text = sale_ratio_text(sell_over_buy(row))
     slide = blank(prs)
     heading(
         slide,
@@ -4031,83 +3990,43 @@ def _deck_band_edges(prs: Presentation, source: DeckSource) -> None:
     source_note(slide, "tools/build_product_manual.py, in band_tally")
 
 
-def _deck_market(
-    prs: Presentation, source: DeckSource, label: str, ledger: Ledger
-) -> None:
-    """Add the slide carrying ``label``'s price trace."""
-    rows = next(
-        (
-            source.evidence.candles.get(asset) or []
-            for asset, own in source.evidence.labels.items()
-            if own == label
-        ),
-        [],
-    )
-    slide = blank(prs)
-    heading(
-        slide,
-        f"The market {label}'s fills ran in",
-        f"The trace plots {len(rows):,} five-minute closes across the recorded"
-        " window.",
-    )
-    _deck_asset_figure(slide, source, asset_figure_name("trace", label), ledger)
-
-
-def _deck_cycles(
-    prs: Presentation, source: DeckSource, label: str, ledger: Ledger
-) -> None:
-    """Add the slide carrying ``label``'s ``_write_cycle_views`` figure."""
-    replay = dict(source.evidence.replays).get(label)
-    pairs = len(replay.pairs) if replay is not None else 0
-    slide = blank(prs)
-    heading(
-        slide,
-        f"{label} — its latest Scrum-Fold cycles",
-        f"{pairs} pairs by the tranche replay. Each panel draws the five-minute"
-        " candles, the band, the Scrum's buy-back level and both orders.",
-    )
-    _deck_asset_figure(slide, source, asset_figure_name("cycle", label), ledger)
-
-
 def _deck_cycle_dollars(prs: Presentation, source: DeckSource, label: str) -> None:
     """Add the slide giving ``label``'s ``latest_cycles`` and all its pairs in account dollars."""
-    replay = dict(source.evidence.replays).get(label)
-    if replay is None:
+    base = dict(source.evidence.pairs).get(label)
+    if base is None:
         return
     rows = label_candles(source.evidence.labels, source.evidence.filled_candles)
     lines = [
         [
+            pair.direction,
             f"{pair.scrum.when:%d %b %H:%M}",
             f"{pair.fold.when:%d %b %H:%M}",
             f"{pair.units:.6g}",
             f"${sale_usd(pair):,.2f}",
-            f"${gain_usd(pair):,.2f}",
-            f"${captured_usd(pair):,.2f}",
-            f"${preserved_usd(pair):,.2f}",
+            *split_dollars([pair]),
         ]
-        for pair in latest_cycles(replay.pairs, rows[label])
+        for pair in latest_cycles(base.pairs, rows[label])
     ]
     lines.append(
         [
-            f"all {len(replay.pairs)} pairs",
+            f"all {len(base.pairs)} pairs",
             "",
-            f"{math.fsum(pair.units for pair in replay.pairs):.6g}",
-            f"${math.fsum(sale_usd(pair) for pair in replay.pairs):,.2f}",
-            f"${math.fsum(gain_usd(pair) for pair in replay.pairs):,.2f}",
-            f"${math.fsum(captured_usd(pair) for pair in replay.pairs):,.2f}",
-            f"${math.fsum(preserved_usd(pair) for pair in replay.pairs):,.2f}",
+            "",
+            f"{math.fsum(pair.units for pair in base.pairs):.6g}",
+            f"${math.fsum(sale_usd(pair) for pair in base.pairs):,.2f}",
+            *split_dollars(base.pairs),
         ]
     )
     slide = blank(prs)
     heading(
         slide,
         f"{label} — each cycle's gain in dollars",
-        "Captured is the part of a pair's gain the Fold took as extra units."
-        " Preserved is the part it kept as dollars. The two sum to the gain.",
+        "Captured is the part of a pair's gain held as the Fold's extra units."
+        " Preserved is the part kept as dollars. The two sum to the gain.",
     )
     table(
         slide,
-        ["Scrum", "Fold", "Units bought back", "Sale", "Gain", "Captured", "Preserved"],
+        ["Pair", "Scrum", "Fold", "Units", "Sale", "Gain", "Captured", "Preserved"],
         lines,
         Box(SLIDE_MARGIN, Inches(2.0), BODY_W, Inches(2.6)),
     )
@@ -4267,13 +4186,10 @@ def write_evidence_deck(
     _deck_ratio(prs, source)
     for label in sorted(groups):
         _deck_base(prs, source, label, ledger)
-        _deck_cycles(prs, source, label, ledger)
         if account_dollars:
             _deck_cycle_dollars(prs, source, label)
     _deck_band_bars(prs, source)
     _deck_band_edges(prs, source)
-    for label in sorted(evidence.labels.values()):
-        _deck_market(prs, source, label, ledger)
     _deck_grader(prs)
     _deck_limits(prs, source)
     _deck_provenance(prs, source, ledger)
@@ -4541,7 +4457,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--evidence-dir", type=Path, default=EVIDENCE_DIR)
     parser.add_argument("--deck", type=Path, default=DEFAULT_DECK)
-    parser.add_argument("--fleet", type=Path, default=DEFAULT_FLEET)
+    parser.add_argument(
+        "--motd",
+        type=motd_percent,
+        default=DEFAULT_MOTD_PCT,
+        help="the MOTD in percent that every base's pairs clear",
+    )
     parser.add_argument(
         "--operator-deck",
         type=Path,
@@ -4561,7 +4482,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.measure:
-        for line in measurement_lines(args.evidence_dir, args.fleet):
+        for line in measurement_lines(args.evidence_dir, args.motd):
             print(console_safe(line))
         return 0
 
@@ -4570,7 +4491,7 @@ def main(argv: list[str] | None = None) -> int:
             print(console_safe(line), flush=True)
         return 0
 
-    evidence = read_evidence(args.evidence_dir, args.fleet)
+    evidence = read_evidence(args.evidence_dir, args.motd)
     for figure, outcome in write_evidence_figures(
         args.figures_dir, args.evidence_dir, evidence
     ):

@@ -376,4 +376,6 @@ if _HAS_QT:
             return held
 
 
-__all__ = ["SystemStatusQtTab"] if _HAS_QT else []
+__all__: list[str] = []
+if _HAS_QT:
+    __all__ += ["SystemStatusQtTab"]

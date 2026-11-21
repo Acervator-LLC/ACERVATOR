@@ -137,4 +137,6 @@ if _HAS_QT:
             self.log_pane.clear()
 
 
-__all__ = ["ConsoleQtTab"] if _HAS_QT else []
+__all__: list[str] = []
+if _HAS_QT:
+    __all__ += ["ConsoleQtTab"]

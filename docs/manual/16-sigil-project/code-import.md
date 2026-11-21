@@ -92,20 +92,53 @@ states the run rule and the proof.
 | ------ | -------------- | -------------------------- |
 | CLEAN | PASS | PASS |
 | FINDINGS | FIX | FIX |
+| OPTIMIZABLE | OPTIMIZE | OPTIMIZE |
 | REJECTED | BLOCK | BLOCK |
 
 CLEAN means no rule on the list fires. FINDINGS carries, for each finding, the
-rule id, the rule name, the line, the fix class, and both published forms. A
-finding holds a merge only when it is a pylint error-class rule or the pyflakes
-undefined-name rules F821, F822 and F823. No rule on the list is any of these, so
-the holding list on the card is empty and every finding reads FIX.
+rule id, the rule name, the line, the fix class, and both published forms.
+OPTIMIZABLE reads OPTIMIZE in every folder, with the same fields, when only TC001,
+TC002 or TC003 fires. These are the ruff rules for an import that only type
+hints use. Moved under a type-checking block, such an import makes
+`typing.get_type_hints` raise NameError on each function it annotates. Every
+other finding reads FIX, and the merge proceeds.
+A file where TC001, TC002 or TC003 fires beside another rule reads FINDINGS and FIX.
+No rule on the list is a pylint error-class rule or one of F821, F822 and F823,
+the rules that hold a merge, so no finding reads HOLD.
+
+`dev_harness/sigils/construct_rules.py, in TYPING_ONLY_IMPORTS`:
+
+```python
+# Their import moved under TYPE_CHECKING makes typing.get_type_hints raise NameError.
+TYPING_ONLY_IMPORTS = ("TC001", "TC002", "TC003")
+```
 
 `dev_harness/sigils/construct_rules.py, in take`:
 
 ```python
     holding = tuple(
-        code for code in rules if code.startswith(ERROR_CLASS) or code in UNDEFINED_NAMES
+        code
+        for code in rules
+        if code.startswith(ERROR_CLASS) or code in UNDEFINED_NAMES
     )
+    optimizing = tuple(code for code in rules if code in TYPING_ONLY_IMPORTS)
+```
+
+`dev_harness/sigils/code_import.py, in _functions_verdict`, the output for the findings:
+
+```python
+    output = OPTIMIZABLE if set(pages) <= set(OPTIMIZING) else FINDINGS
+    holds = any(code in HOLDING for code in pages)
+```
+
+`dev_harness/sigils/code_import.py, in SIGIL`, the flag of each output:
+
+```python
+    outputs={
+        CLEAN: FlagRow(Flag.PASS),
+        FINDINGS: FlagRow(Flag.FIX, holds_in_source=bool(HOLDING)),
+        OPTIMIZABLE: FlagRow(Flag.OPTIMIZE),
+    },
 ```
 
 ## The command
