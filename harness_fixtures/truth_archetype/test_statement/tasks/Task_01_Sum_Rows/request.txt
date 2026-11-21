@@ -1,0 +1,1 @@
+Write sum_rows(rows) that returns the total of the numeric cells and skips blank ones.

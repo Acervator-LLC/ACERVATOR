@@ -1,0 +1,12 @@
+{
+  "dev_harness/harness/coding_archetype.py": {
+    "known_good": {
+      "input": "harness_fixtures/coding_archetype/known_good.py",
+      "result": "pass"
+    },
+    "known_bad": {
+      "input": "harness_fixtures/coding_archetype/known_bad.py",
+      "result": "pass"
+    }
+  }
+}

@@ -5,6 +5,9 @@ for a citation, a count, a runtime claim, a proxy claim or a subject outside
 the item, where the tree contradicts what the text says.
 `T000` records a claim this archetype identified and could not decide, so an
 undecided claim is never silent.
+`T008` reports a machine path or an asset name in public text, and `T009`
+reports each hollow part of a `test-statement` block and a `record_*.md` that
+plans runs without one.
 """
 
 from __future__ import annotations
@@ -14,14 +17,16 @@ import bisect
 import builtins
 import csv
 import json
+import math
 import os
 import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from dev_harness.harness.report import (
     REPO_ROOT,
@@ -643,10 +648,952 @@ def phrase_present(phrase: str, text: str) -> bool:
     )
 
 
+_STATEMENT_TAG = "test-statement"
+_STATEMENT_FENCE = re.compile(r"^\s*(?P<mark>`{3,}|~{3,})(?P<info>.*)$")
+_STATEMENT_PARTS = (
+    "question",
+    "arms",
+    "unit",
+    "measure",
+    "inputs",
+    "runs",
+    "expected",
+    "pass",
+    "harm",
+    "interim",
+    "adversarial",
+)
+_STATEMENT_TESTS = ("exact sign", "fisher exact")
+_INPUT_RULES = ("all", "seeded draw")
+_INTERIM_READS = ("voids", "single arm rate")
+_ADVERSARIAL_QUESTIONS = (
+    "what makes this result wrong",
+    "what does the measure miss",
+    "what is the cheapest way to pass without the behaviour",
+    "does any input sit at a ceiling or a floor",
+)
+_CALIBRATION_SIDES = {"known_good": "pass", "known_bad": "fail"}
+_MIN_ARMS = 2
+_ALPHA_CEILING = 0.1
+_POWER_TOLERANCE = 0.01
+_PREVIEW_NAMES = 8
+
+# Measured on this host: 1.96 s at 1000 sign pairs, 2.71 s at 500 Fisher per arm.
+_MAX_SIGN_PAIRS = 1000
+_MAX_FISHER_PER_ARM = 500
+
+_RECORD_PREFIX = "record_"
+_PLANNED_COUNT = re.compile(
+    r"\b(?P<count>\d[\d,]*|one|two|three|four|five|six|seven|eight|nine|ten"
+    r"|eleven|twelve|twenty|thirty|forty|fifty|sixty|hundred)"
+    r"\s+(?:(?:more|further|additional|extra|new|paired|agent|planned)\s+)?"
+    r"(?P<noun>runs?|rounds?)\b",
+    re.IGNORECASE,
+)
+_COUNT_LABEL = re.compile(
+    r"\b(?:step|round|task|level|version|experiment|block|comment|item|part"
+    r"|row|phase|stage|question|issue|unit)\s+$",
+    re.IGNORECASE,
+)
+_SINGLE_COUNT = frozenset({"one", "1"})
+_DRIVE_PREFIX = re.compile(r"^[A-Za-z]:")
+_DIGIT = re.compile(r"\d")
+
+# The MT19937 constants CPython's _randommodule.c uses for random.Random.
+_MT_SIZE = 624
+_MT_SHIFT = 397
+_MT_WORD_BITS = 32
+_MT_WORD = 0xFFFFFFFF
+_MT_UPPER = 0x80000000
+_MT_LOWER = 0x7FFFFFFF
+_MT_TWIST = 0x9908B0DF
+_MT_TEMPER_B = 0x9D2C5680
+_MT_TEMPER_C = 0xEFC60000
+_MT_ROOT_SEED = 19650218
+_MT_INIT_MULT = 1812433253
+_MT_KEY_MULT = 1664525
+_MT_MIX_MULT = 1566083941
+
+# The set-size terms of Random.sample in CPython's random.py.
+_SAMPLE_SET_BASE = 21
+_SAMPLE_SMALL_SIZE = 5
+
+_Field = tuple[Callable[[Any], bool], str]
+_Check = Callable[[Any, dict[str, Any], Path], list[str]]
+
+
+class _SeededDraw:
+    """The `random.Random(seed)` generator, rebuilt from CPython's MT19937 code.
+
+    `sample` returns what `random.Random(seed).sample` returns on CPython 3.14.
+    """
+
+    def __init__(self, seed: int) -> None:
+        """Seed `_state` from the 32-bit words of `abs(seed)`, as `init_by_array`."""
+        rest = abs(seed)
+        key = [rest & _MT_WORD]
+        while rest >> _MT_WORD_BITS:
+            rest >>= _MT_WORD_BITS
+            key.append(rest & _MT_WORD)
+        state = [0] * _MT_SIZE
+        state[0] = _MT_ROOT_SEED
+        for at in range(1, _MT_SIZE):
+            prior = state[at - 1]
+            state[at] = (_MT_INIT_MULT * (prior ^ (prior >> 30)) + at) & _MT_WORD
+        at, slot = 1, 0
+        for _ in range(max(_MT_SIZE, len(key))):
+            prior = state[at - 1]
+            mixed = (state[at] ^ ((prior ^ (prior >> 30)) * _MT_KEY_MULT)) + key[slot]
+            state[at] = (mixed + slot) & _MT_WORD
+            at, slot = at + 1, slot + 1
+            if at >= _MT_SIZE:
+                state[0], at = state[-1], 1
+            if slot >= len(key):
+                slot = 0
+        for _ in range(_MT_SIZE - 1):
+            prior = state[at - 1]
+            mixed = state[at] ^ ((prior ^ (prior >> 30)) * _MT_MIX_MULT)
+            state[at] = (mixed - at) & _MT_WORD
+            at += 1
+            if at >= _MT_SIZE:
+                state[0], at = state[-1], 1
+        state[0] = _MT_UPPER
+        self._state = state
+        self._index = _MT_SIZE
+
+    def _word(self) -> int:
+        """Return the next tempered word, regenerating `_state` every `_MT_SIZE`."""
+        state = self._state
+        if self._index >= _MT_SIZE:
+            for at in range(_MT_SIZE):
+                upper = state[at] & _MT_UPPER
+                mixed = upper | (state[(at + 1) % _MT_SIZE] & _MT_LOWER)
+                twist = _MT_TWIST if mixed & 1 else 0
+                state[at] = state[(at + _MT_SHIFT) % _MT_SIZE] ^ (mixed >> 1) ^ twist
+            self._index = 0
+        value = state[self._index]
+        self._index += 1
+        value ^= value >> 11
+        value ^= (value << 7) & _MT_TEMPER_B
+        value ^= (value << 15) & _MT_TEMPER_C
+        return value ^ (value >> 18)
+
+    def _bits(self, width: int) -> int:
+        """Return `width` bits from `_word`, low word first, as `getrandbits`."""
+        if width <= _MT_WORD_BITS:
+            return self._word() >> (_MT_WORD_BITS - width) if width else 0
+        value, shift = 0, 0
+        while width > 0:
+            part = self._word()
+            if width < _MT_WORD_BITS:
+                part >>= _MT_WORD_BITS - width
+            value |= part << shift
+            shift, width = shift + _MT_WORD_BITS, width - _MT_WORD_BITS
+        return value
+
+    def _below(self, limit: int) -> int:
+        """Return a value below `limit` by rejection, as `Random._randbelow`."""
+        width = limit.bit_length()
+        value = self._bits(width)
+        while value >= limit:
+            value = self._bits(width)
+        return value
+
+    def sample(self, names: list[str], size: int) -> list[str]:
+        """Return `size` entries of `names` in the order `Random.sample` picks them."""
+        total = len(names)
+        setsize = _SAMPLE_SET_BASE
+        if size > _SAMPLE_SMALL_SIZE:
+            setsize += 4 ** math.ceil(math.log(size * 3, 4))
+        drawn: list[str] = []
+        if total <= setsize:
+            pool = list(names)
+            for at in range(size):
+                pick = self._below(total - at)
+                drawn.append(pool[pick])
+                pool[pick] = pool[total - at - 1]
+            return drawn
+        taken: set[int] = set()
+        for _ in range(size):
+            pick = self._below(total)
+            while pick in taken:
+                pick = self._below(total)
+            taken.add(pick)
+            drawn.append(names[pick])
+        return drawn
+
+
+def seeded_sample(seed: int, names: list[str], size: int) -> list[str]:
+    """Return the list `random.Random(seed).sample(names, size)` returns."""
+    return _SeededDraw(seed).sample(names, size)
+
+
+def _binomial_pmf(trials: int, rate: float) -> list[float]:
+    """Return the chance of each pass count from 0 to `trials` at pass `rate`."""
+    if rate <= 0:
+        return [1.0] + [0.0] * trials
+    if rate >= 1:
+        return [0.0] * trials + [1.0]
+    log_rate, log_rest = math.log(rate), math.log1p(-rate)
+    whole = math.lgamma(trials + 1)
+    return [
+        math.exp(
+            whole
+            - math.lgamma(count + 1)
+            - math.lgamma(trials - count + 1)
+            + count * log_rate
+            + (trials - count) * log_rest
+        )
+        for count in range(trials + 1)
+    ]
+
+
+def _sign_threshold(discordant: int, alpha: float) -> int | None:
+    """Return the fewest second-arm wins in `discordant` pairs reading p below `alpha`.
+
+    The p is the exact two-sided sign test's, and None means no split reaches it.
+    """
+    tail = 0
+    need: int | None = None
+    for low in range(discordant):
+        if 2 * low >= discordant:
+            break
+        tail += math.comb(discordant, low)
+        if 2 * tail / 2**discordant >= alpha:
+            break
+        need = discordant - low
+    return need
+
+
+def _sign_power(
+    pairs: int, first_rate: float, second_rate: float, alpha: float
+) -> float:
+    """Return the chance the exact sign test over `pairs` reads p below `alpha`.
+
+    Only pairs whose arms differ count, and the second arm must lead.
+    """
+    only_second = second_rate * (1 - first_rate)
+    only_first = first_rate * (1 - second_rate)
+    split = only_second + only_first
+    if split <= 0:
+        return 0.0
+    discordant_chance = _binomial_pmf(pairs, split)
+    second_share = only_second / split
+    chance = 0.0
+    for discordant in range(1, pairs + 1):
+        need = _sign_threshold(discordant, alpha)
+        if need is not None and discordant_chance[discordant] > 0:
+            wins = _binomial_pmf(discordant, second_share)
+            chance += discordant_chance[discordant] * math.fsum(wins[need:])
+    return chance
+
+
+def _fisher_power(
+    per_arm: int, first_rate: float, second_rate: float, alpha: float
+) -> float:
+    """Return the chance Fisher's exact two-sided test reads p below `alpha`.
+
+    Two groups of `per_arm` are compared, and the second arm must lead.
+    """
+    first = _binomial_pmf(per_arm, first_rate)
+    second = _binomial_pmf(per_arm, second_rate)
+    chance = 0.0
+    for column in range(2 * per_arm + 1):
+        low, high = max(0, column - per_arm), min(per_arm, column)
+        weights = {
+            count: math.comb(per_arm, count) * math.comb(per_arm, column - count)
+            for count in range(low, high + 1)
+        }
+        total = math.comb(2 * per_arm, column)
+        at_most: dict[int, int] = {}
+        running = 0
+        for weight in sorted(weights.values()):
+            running += weight
+            at_most[weight] = running
+        for first_pass, weight in weights.items():
+            second_pass = column - first_pass
+            if second_pass > first_pass and at_most[weight] / total < alpha:
+                chance += first[first_pass] * second[second_pass]
+    return chance
+
+
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Return `pairs` as a dict, raising `ValueError` when a key repeats."""
+    seen: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in seen:
+            message = f"the key {key!r} appears twice in one object"
+            raise ValueError(message)
+        seen[key] = value
+    return seen
+
+
+def _finite_float(raw: str) -> float:
+    """Return `raw` as a float, raising `ValueError` when it is not finite."""
+    value = float(raw)
+    if not math.isfinite(value):
+        message = f"{raw} is not a finite number"
+        raise ValueError(message)
+    return value
+
+
+def _refused_constant(raw: str) -> float:
+    """Raise `ValueError` for the `NaN` and `Infinity` names `json.loads` accepts."""
+    message = f"{raw} is not a number"
+    raise ValueError(message)
+
+
+def _strict_json(text: str) -> object:
+    """Return `text` parsed by `json.loads`.
+
+    `_unique_object`, `_finite_float` and `_refused_constant` raise on repeats.
+    """
+    parsed: object = json.loads(
+        text,
+        object_pairs_hook=_unique_object,
+        parse_float=_finite_float,
+        parse_constant=_refused_constant,
+    )
+    return parsed
+
+
+def _is_text(value: object) -> bool:
+    """Return True when `value` is a JSON string."""
+    return type(value) is str
+
+
+def _is_count(value: object) -> bool:
+    """Return True when `value` is a JSON whole number and not a boolean."""
+    return type(value) is int
+
+
+def _is_number(value: object) -> bool:
+    """Return True when `value` is a JSON number and not a boolean."""
+    return type(value) in {int, float}
+
+
+def _is_list(value: object) -> bool:
+    """Return True when `value` is a JSON list."""
+    return type(value) is list
+
+
+def _is_text_list(value: object) -> bool:
+    """Return True when `value` is a JSON list of strings."""
+    return isinstance(value, list) and all(type(item) is str for item in value)
+
+
+_TEXT: _Field = (_is_text, "a string")
+_COUNT: _Field = (_is_count, "a whole number")
+_NUMBER: _Field = (_is_number, "a number")
+_LIST: _Field = (_is_list, "a list")
+_TEXT_LIST: _Field = (_is_text_list, "a list of strings")
+_VERDICT_FIELDS: dict[str, _Field] = {
+    "test": _TEXT,
+    "group": _TEXT,
+    "alpha": _NUMBER,
+    "leading_arm": _TEXT,
+}
+_PART_FIELDS: dict[str, tuple[dict[str, _Field], dict[str, _Field]]] = {
+    "measure": ({"reading": _TEXT, "checks": _TEXT_LIST, "calibration": _TEXT}, {}),
+    "expected": ({"source": _TEXT, "statement": _TEXT}, {}),
+    "pass": (_VERDICT_FIELDS, {}),
+    "harm": (_VERDICT_FIELDS, {}),
+    "interim": ({"reads": _TEXT_LIST}, {"stop_if_single_arm_rate_above": _NUMBER}),
+}
+_RUNS_FIELDS: dict[str, _Field] = {
+    "rounds": _COUNT,
+    "per_round": _COUNT,
+    "total": _COUNT,
+    "alpha": _NUMBER,
+    "power": _LIST,
+}
+_EVIDENCE_FIELDS: dict[str, _Field] = {
+    "question": _TEXT,
+    "answer": _TEXT,
+    "evidence": _TEXT,
+}
+
+
+def _object_faults(
+    where: str,
+    value: object,
+    fields: dict[str, _Field],
+    optional: dict[str, _Field] | None = None,
+) -> list[str]:
+    """Return the missing, unknown and mistyped keys of `value` against `fields`."""
+    if not isinstance(value, dict):
+        return [f"{where} is not an object"]
+    allowed = {**(optional or {}), **fields}
+    faults = [f"{where} has no key {key!r}" for key in fields if key not in value]
+    for key, item in value.items():
+        if key not in allowed:
+            faults.append(f"{where} holds the unknown key {key!r}")
+        elif not allowed[key][0](item):
+            faults.append(f"{where}.{key} is not {allowed[key][1]}")
+    return faults
+
+
+def _inputs_fields(value: object) -> tuple[dict[str, _Field], dict[str, _Field]]:
+    """Return the required and the optional `inputs` keys for the rule it names."""
+    fields: dict[str, _Field] = {
+        "rule": _TEXT,
+        "population": _TEXT,
+        "items": _TEXT_LIST,
+    }
+    drawn: dict[str, _Field] = {"seed": _COUNT, "size": _COUNT}
+    rule = value.get("rule") if isinstance(value, dict) else None
+    if rule == "seeded draw":
+        return {**fields, **drawn}, {}
+    if rule == "all":
+        return fields, {}
+    return fields, drawn
+
+
+def _power_fields(entry: object) -> tuple[dict[str, _Field], dict[str, _Field]]:
+    """Return the required and the optional keys of a power `entry` for its test."""
+    fields: dict[str, _Field] = {
+        "test": _TEXT,
+        "first_rate": _NUMBER,
+        "second_rate": _NUMBER,
+        "power": _NUMBER,
+    }
+    test = entry.get("test") if isinstance(entry, dict) else None
+    if test == "exact sign":
+        return {**fields, "pairs": _COUNT}, {}
+    if test == "fisher exact":
+        return {**fields, "per_arm": _COUNT}, {}
+    return fields, {"pairs": _COUNT, "per_arm": _COUNT}
+
+
+def _runs_shape(value: object) -> list[str]:
+    """Return what is wrong with the JSON form of `runs` and of its power entries."""
+    faults = _object_faults("runs", value, _RUNS_FIELDS)
+    if faults or not isinstance(value, dict):
+        return faults
+    for number, entry in enumerate(value["power"], start=1):
+        where = f"runs power entry {number}"
+        faults += _object_faults(where, entry, *_power_fields(entry))
+    return faults
+
+
+def _adversarial_shape(value: object) -> list[str]:
+    """Return what is wrong with the JSON form of `adversarial` and of each entry."""
+    if not isinstance(value, list):
+        return ["adversarial is not a list"]
+    faults: list[str] = []
+    for number, entry in enumerate(value, start=1):
+        where = f"adversarial entry {number}"
+        faults += _object_faults(where, entry, _EVIDENCE_FIELDS)
+    return faults
+
+
+def _part_shape(part: str, value: object) -> list[str]:
+    """Return what is wrong with the JSON form of `value` as the statement `part`."""
+    if part in {"question", "unit"}:
+        return [] if _is_text(value) else [f"{part} is not a string"]
+    if part == "arms":
+        if not isinstance(value, dict):
+            return ["arms is not an object"]
+        return [
+            f"the condition of arm {name!r} is not a string"
+            for name, condition in value.items()
+            if not _is_text(condition)
+        ]
+    if part == "inputs":
+        return _object_faults(part, value, *_inputs_fields(value))
+    if part == "runs":
+        return _runs_shape(value)
+    if part == "adversarial":
+        return _adversarial_shape(value)
+    return _object_faults(part, value, *_PART_FIELDS[part])
+
+
+def _inside(root: Path, raw: str) -> Path | None:
+    """Return `raw` resolved under `root`, or None for an empty or absolute path.
+
+    None also answers `root` itself and a path that resolves outside `root`.
+    """
+    text = raw.strip().replace("\\", "/")
+    if not text or text.startswith(("/", "~")) or _DRIVE_PREFIX.match(text):
+        return None
+    found = (root / text).resolve()
+    if found == root or not found.is_relative_to(root):
+        return None
+    return found
+
+
+def _present(root: Path, raw: str) -> bool:
+    """Return True when `raw` names a file or a folder `_inside` finds under `root`."""
+    found = _inside(root, raw)
+    return found is not None and found.exists()
+
+
+def _preview(names: list[str]) -> str:
+    """Return `names` as a list, cut after `_PREVIEW_NAMES` entries."""
+    shown = ", ".join(repr(name) for name in names[:_PREVIEW_NAMES])
+    rest = len(names) - _PREVIEW_NAMES
+    return f"[{shown}, and {rest} more]" if rest > 0 else f"[{shown}]"
+
+
+def _question_faults(question: str, sound: dict[str, Any], _root: Path) -> list[str]:
+    """Return the faults of `question`: no closing question mark, or an arm unnamed."""
+    faults: list[str] = []
+    if not question.rstrip().endswith("?"):
+        faults.append("it does not end in a question mark")
+    faults += [
+        f"it does not name the arm {name!r}"
+        for name in sound.get("arms", {})
+        if name.strip() and not phrase_present(name, question)
+    ]
+    return faults
+
+
+def _arms_faults(
+    arms: dict[str, str], _sound: dict[str, Any], _root: Path
+) -> list[str]:
+    """Return the faults of `arms`: under `_MIN_ARMS`, an empty name or condition."""
+    faults: list[str] = []
+    if len(arms) < _MIN_ARMS:
+        faults.append(f"it lists {len(arms)} arm(s); a test compares two or more")
+    faults += ["an arm name is empty" for name in arms if not name.strip()]
+    faults += [
+        f"the arm {name!r} has an empty condition"
+        for name, condition in arms.items()
+        if not condition.strip()
+    ]
+    return faults
+
+
+def _unit_faults(unit: str, _sound: dict[str, Any], _root: Path) -> list[str]:
+    """Return a fault when `unit` is empty."""
+    return [] if unit.strip() else ["it is empty"]
+
+
+def _calibration_entry_faults(entry: object, root: Path) -> list[str]:
+    """Return the faults of one calibration `entry` against `_CALIBRATION_SIDES`."""
+    if not isinstance(entry, dict) or set(entry) != set(_CALIBRATION_SIDES):
+        return ["it is not an object of exactly known_good and known_bad"]
+    faults: list[str] = []
+    for side, result in _CALIBRATION_SIDES.items():
+        reading = entry[side]
+        if not isinstance(reading, dict) or set(reading) != {"input", "result"}:
+            faults.append(f"{side} is not an object of exactly input and result")
+            continue
+        if reading["result"] != result:
+            faults.append(f"{side} records {reading['result']!r}, not {result!r}")
+        if not _is_text(reading["input"]) or not _present(root, reading["input"]):
+            faults.append(f"the {side} input {reading['input']!r} does not exist")
+    return faults
+
+
+def _calibration_faults(raw: str, checks: dict[str, Path], root: Path) -> list[str]:
+    """Return the faults of the calibration file `raw` for each of `checks`."""
+    found = _inside(root, raw)
+    if found is None or not found.is_file():
+        return [f"the calibration file {raw!r} does not exist under {root.name}"]
+    try:
+        table = _strict_json(found.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError, RecursionError) as exc:
+        return [f"the calibration file {raw!r} does not parse: {exc}"]
+    if not isinstance(table, dict):
+        return [f"the calibration file {raw!r} is not one JSON object"]
+    entries = {_inside(root, key): entry for key, entry in table.items()}
+    faults: list[str] = []
+    for check, place in checks.items():
+        if place not in entries:
+            faults.append(f"the calibration file holds no entry for {check!r}")
+            continue
+        faults += [
+            f"the calibration of {check!r}: {fault}"
+            for fault in _calibration_entry_faults(entries[place], root)
+        ]
+    return faults
+
+
+def _measure_faults(
+    measure: dict[str, Any], _sound: dict[str, Any], root: Path
+) -> list[str]:
+    """Return the faults of `measure`: its reading, its checks and its calibration."""
+    faults: list[str] = []
+    if not measure["reading"].strip():
+        faults.append("the reading is empty")
+    if not measure["checks"]:
+        faults.append("it names no check")
+    resolved: dict[str, Path] = {}
+    for check in measure["checks"]:
+        place = _inside(root, check)
+        if place is None or not place.exists():
+            faults.append(f"the check {check!r} does not exist under {root.name}")
+        else:
+            resolved[check] = place
+    return faults + _calibration_faults(measure["calibration"], resolved, root)
+
+
+def _draw_faults(inputs: dict[str, Any], names: list[str]) -> list[str]:
+    """Return a fault when the `inputs` items differ from `seeded_sample` of `names`."""
+    seed, size = inputs["seed"], inputs["size"]
+    if not 1 <= size <= len(names):
+        return [f"the size {size} is outside 1 to {len(names)}, the subfolder count"]
+    drawn = seeded_sample(seed, names, size)
+    if inputs["items"] == drawn:
+        return []
+    fault = (
+        f"the items differ from random.Random({seed}).sample of the {len(names)} "
+        f"sorted subfolder names, size {size}, which draws {_preview(drawn)}"
+    )
+    return [fault]
+
+
+def _inputs_faults(
+    inputs: dict[str, Any], _sound: dict[str, Any], root: Path
+) -> list[str]:
+    """Return the faults of `inputs`: its rule, its items and its population."""
+    faults: list[str] = []
+    rule, items, population = inputs["rule"], inputs["items"], inputs["population"]
+    if rule not in _INPUT_RULES:
+        faults.append(f"the rule {rule!r} is neither 'all' nor 'seeded draw'")
+    if not items:
+        faults.append("it lists no item")
+    folder = _inside(root, population)
+    if folder is None or not folder.is_dir():
+        faults.append(
+            f"the population {population!r} is not a folder under {root.name}"
+        )
+        return faults
+    names = sorted(entry.name for entry in folder.iterdir() if entry.is_dir())
+    if rule == "all" and items != names:
+        faults.append(
+            f"the items differ from the {len(names)} sorted subfolder names of "
+            f"{population!r}, {_preview(names)}"
+        )
+    if rule == "seeded draw":
+        faults += _draw_faults(inputs, names)
+    faults += [
+        f"the item {item!r} does not exist in {population!r}"
+        for item in items
+        if not _present(folder, item)
+    ]
+    return faults
+
+
+def _power_faults(entry: dict[str, Any], alpha: float) -> list[str]:
+    """Return the faults of one power `entry`, recomputed at `alpha`."""
+    test = entry["test"]
+    if test not in _STATEMENT_TESTS:
+        return [f"the test {test!r} is neither 'exact sign' nor 'fisher exact'"]
+    key, ceiling, power = (
+        ("pairs", _MAX_SIGN_PAIRS, _sign_power)
+        if test == "exact sign"
+        else ("per_arm", _MAX_FISHER_PER_ARM, _fisher_power)
+    )
+    faults: list[str] = []
+    if not 1 <= entry[key] <= ceiling:
+        faults.append(
+            f"{key} {entry[key]} is outside 1 to {ceiling}, which T009 recomputes"
+        )
+    faults += [
+        f"{rate} {entry[rate]} is not a rate from 0 to 1"
+        for rate in ("first_rate", "second_rate")
+        if not 0 <= entry[rate] <= 1
+    ]
+    if faults or not 0 < alpha <= _ALPHA_CEILING:
+        return faults
+    recomputed = power(entry[key], entry["first_rate"], entry["second_rate"], alpha)
+    if abs(entry["power"] - recomputed) > _POWER_TOLERANCE:
+        faults.append(
+            f"it states power {entry['power']} for {test} at {key} {entry[key]}, "
+            f"rates {entry['first_rate']} and {entry['second_rate']}, alpha {alpha}, "
+            f"and recomputed it is {recomputed:.4f}"
+        )
+    return faults
+
+
+def _runs_against_pass(
+    runs: dict[str, Any], verdict: dict[str, Any] | None
+) -> list[str]:
+    """Return a fault when the power in `runs` and the `verdict` differ.
+
+    They differ on `alpha`, or when no power entry uses the `verdict` test.
+    """
+    if verdict is None or not 0 < verdict["alpha"] <= _ALPHA_CEILING:
+        return []
+    faults: list[str] = []
+    if runs["alpha"] != verdict["alpha"]:
+        faults.append(
+            f"alpha {runs['alpha']} differs from the pass alpha {verdict['alpha']}"
+        )
+    tests = {entry["test"] for entry in runs["power"]}
+    if verdict["test"] in _STATEMENT_TESTS and tests and verdict["test"] not in tests:
+        faults.append(f"no power entry uses the pass test {verdict['test']!r}")
+    return faults
+
+
+def _runs_faults(runs: dict[str, Any], sound: dict[str, Any], _root: Path) -> list[str]:
+    """Return the faults of `runs`: its counts, its alpha, and each power recomputed."""
+    faults = [
+        f"{key} is {runs[key]}, and it is 1 or more"
+        for key in ("rounds", "per_round", "total")
+        if runs[key] < 1
+    ]
+    product = runs["rounds"] * runs["per_round"]
+    if runs["total"] != product:
+        faults.append(
+            f"total {runs['total']} differs from rounds {runs['rounds']} times "
+            f"per_round {runs['per_round']}, which is {product}"
+        )
+    alpha = runs["alpha"]
+    if not 0 < alpha <= _ALPHA_CEILING:
+        faults.append(f"alpha {alpha} is not above 0 and at most {_ALPHA_CEILING}")
+    faults += _runs_against_pass(runs, sound.get("pass"))
+    if not runs["power"]:
+        faults.append("it holds no power entry, so nothing derives the count")
+    for number, entry in enumerate(runs["power"], start=1):
+        faults += [f"power entry {number}: {f}" for f in _power_faults(entry, alpha)]
+    return faults
+
+
+def _expected_faults(
+    expected: dict[str, Any], _sound: dict[str, Any], root: Path
+) -> list[str]:
+    """Return the faults of `expected`: its source and its statement."""
+    faults: list[str] = []
+    if not _present(root, expected["source"]):
+        faults.append(
+            f"the source {expected['source']!r} does not exist under {root.name}"
+        )
+    if not _DIGIT.search(expected["statement"]):
+        faults.append("the statement holds no number")
+    return faults
+
+
+def _verdict_faults(
+    verdict: dict[str, Any], sound: dict[str, Any], _root: Path
+) -> list[str]:
+    """Return the faults of a `pass` or `harm` reading: test, group, alpha and arm."""
+    faults: list[str] = []
+    if verdict["test"] not in _STATEMENT_TESTS:
+        faults.append(
+            f"the test {verdict['test']!r} is neither 'exact sign' nor 'fisher exact'"
+        )
+    if not verdict["group"].strip():
+        faults.append("the group is empty")
+    if not 0 < verdict["alpha"] <= _ALPHA_CEILING:
+        faults.append(
+            f"alpha {verdict['alpha']} is not above 0 and at most {_ALPHA_CEILING}"
+        )
+    arms = sound.get("arms")
+    if arms is not None and verdict["leading_arm"] not in arms:
+        faults.append(
+            f"the leading arm {verdict['leading_arm']!r} is not one of the arms "
+            f"{sorted(arms)}"
+        )
+    return faults
+
+
+def _interim_faults(
+    interim: dict[str, Any], _sound: dict[str, Any], _root: Path
+) -> list[str]:
+    """Return the faults of `interim`: its reads and its stop rate."""
+    faults = [
+        f"it reads {read!r}, and before the last round it reads only 'voids' and "
+        f"'single arm rate'"
+        for read in interim["reads"]
+        if read not in _INTERIM_READS
+    ]
+    stop = interim.get("stop_if_single_arm_rate_above")
+    if stop is not None and not 0 <= stop <= 1:
+        faults.append(f"stop_if_single_arm_rate_above {stop} is not a rate from 0 to 1")
+    return faults
+
+
+def _adversarial_faults(
+    answers: list[dict[str, Any]], _sound: dict[str, Any], root: Path
+) -> list[str]:
+    """Return the faults of `answers` against `_ADVERSARIAL_QUESTIONS`, in order."""
+    if len(answers) != len(_ADVERSARIAL_QUESTIONS):
+        fault = (
+            f"it holds {len(answers)} question(s), and it holds exactly these four, "
+            f"in order: {list(_ADVERSARIAL_QUESTIONS)}"
+        )
+        return [fault]
+    faults: list[str] = []
+    pairs = zip(answers, _ADVERSARIAL_QUESTIONS, strict=True)
+    for number, (entry, asked) in enumerate(pairs, start=1):
+        if entry["question"].strip() != asked:
+            faults.append(
+                f"question {number} reads {entry['question']!r}, not {asked!r}"
+            )
+        if not entry["answer"].strip():
+            faults.append(f"the answer to question {number} is empty")
+        if not _present(root, entry["evidence"]):
+            faults.append(
+                f"the evidence {entry['evidence']!r} of question {number} does not "
+                f"exist under {root.name}"
+            )
+    return faults
+
+
+_PART_CHECKS: dict[str, _Check] = {
+    "question": _question_faults,
+    "arms": _arms_faults,
+    "unit": _unit_faults,
+    "measure": _measure_faults,
+    "inputs": _inputs_faults,
+    "runs": _runs_faults,
+    "expected": _expected_faults,
+    "pass": _verdict_faults,
+    "harm": _verdict_faults,
+    "interim": _interim_faults,
+    "adversarial": _adversarial_faults,
+}
+
+
+def _verdict_pair_faults(sound: dict[str, Any]) -> list[str]:
+    """Return a fault when `pass` and `harm` in `sound` share a leading arm."""
+    gain, harm = sound.get("pass"), sound.get("harm")
+    if gain is None or harm is None or gain["leading_arm"] != harm["leading_arm"]:
+        return []
+    return [f"pass and harm both name {gain['leading_arm']!r} as the leading arm"]
+
+
+def _block_faults(body: str, root: Path) -> list[tuple[str, str]]:
+    """Return (part, fault) for each check that `body`, one statement block, fails."""
+    try:
+        statement = _strict_json(body)
+    except (ValueError, RecursionError) as exc:
+        return [("JSON", f"the block does not parse: {exc}")]
+    if not isinstance(statement, dict):
+        return [("JSON", "the block is not one JSON object")]
+    faults = [
+        ("JSON", f"the required key {key!r} is missing")
+        for key in _STATEMENT_PARTS
+        if key not in statement
+    ]
+    faults += [
+        ("JSON", f"the key {key!r} is not a part of a test statement")
+        for key in statement
+        if key not in _STATEMENT_PARTS
+    ]
+    sound: dict[str, Any] = {}
+    for part in _STATEMENT_PARTS:
+        if part not in statement:
+            continue
+        shape = _part_shape(part, statement[part])
+        faults += [("JSON", fault) for fault in shape]
+        if not shape:
+            sound[part] = statement[part]
+    for part, value in sound.items():
+        faults += [(part, fault) for fault in _PART_CHECKS[part](value, sound, root)]
+    faults += [("pass, harm", fault) for fault in _verdict_pair_faults(sound)]
+    return faults
+
+
+def statement_blocks(text: str) -> list[tuple[int, str]]:
+    """Return the opening line and the body of each `_STATEMENT_TAG` block in `text`.
+
+    A block opens on a fence whose info string starts with `_STATEMENT_TAG`.
+    """
+    lines = text.split("\n")
+    blocks: list[tuple[int, str]] = []
+    at = 0
+    while at < len(lines):
+        opening = _STATEMENT_FENCE.match(lines[at])
+        if opening is None or (
+            opening.group("mark").startswith("`") and "`" in opening.group("info")
+        ):
+            at += 1
+            continue
+        mark = opening.group("mark")
+        closing = re.compile(rf"^\s*{re.escape(mark[0])}{{{len(mark)},}}\s*$")
+        end = at + 1
+        while end < len(lines) and not closing.match(lines[end]):
+            end += 1
+        if opening.group("info").split()[:1] == [_STATEMENT_TAG]:
+            blocks.append((at + 1, "\n".join(lines[at + 1 : end])))
+        at = end + 1
+    return blocks
+
+
+def _part_line(opening: int, body: str, part: str) -> int:
+    """Return the file line of the first key `part` names in `body`, else `opening`."""
+    key = "harm" if part == "pass, harm" else part
+    pattern = re.compile(rf'"{re.escape(key)}"\s*:')
+    for offset, raw in enumerate(body.split("\n"), start=1):
+        if pattern.search(raw):
+            return opening + offset
+    return opening
+
+
+def _counts_runs(found: re.Match[str], line: str) -> bool:
+    """Return True when a `_PLANNED_COUNT` match counts runs or rounds in `line`.
+
+    A number after a `_COUNT_LABEL` word, or one disagreeing with its noun, is a label.
+    """
+    single = found.group("count").lower() in _SINGLE_COUNT
+    plural = found.group("noun").lower().endswith("s")
+    return single != plural and not _COUNT_LABEL.search(line[: found.start()])
+
+
+def _planned_count(text: str) -> tuple[int, str] | None:
+    """Return the line and words of the first planned count in plain prose of `text`.
+
+    Lines `_fenced_lines` names, block quotes and `_QUOTED_SPAN` text are skipped.
+    """
+    fenced = _fenced_lines(text)
+    for lineno, raw in enumerate(text.split("\n"), start=1):
+        if lineno in fenced or raw.lstrip().startswith(">"):
+            continue
+        plain = _QUOTED_SPAN.sub(" ", raw)
+        for found in _PLANNED_COUNT.finditer(plain):
+            if _counts_runs(found, plain):
+                return lineno, found.group(0)
+    return None
+
+
+def _statement_finding(path: Path, line: int, message: str) -> Finding:
+    """Return one high `T009` finding on `path` at `line`."""
+    return Finding(
+        tool="truth",
+        severity="high",
+        file=str(path),
+        line=line,
+        rule_id="T009",
+        message=f"test-statement {message}",
+    )
+
+
+def statement_findings(path: Path, text: str, root: Path) -> list[Finding]:
+    """Return a `T009` finding for each failing part of each block in `text`.
+
+    A `record_*.md` path naming a `_PLANNED_COUNT` with no block draws one more.
+    """
+    blocks = statement_blocks(text)
+    findings = [
+        _statement_finding(
+            path, _part_line(line, body, part), f"part {part!r}: {fault}"
+        )
+        for line, body in blocks
+        for part, fault in _block_faults(body, root)
+    ]
+    is_record = path.name.startswith(_RECORD_PREFIX) and path.suffix.lower() == ".md"
+    planned = _planned_count(text) if is_record and not blocks else None
+    if planned is not None:
+        line, words = planned
+        findings.append(
+            _statement_finding(
+                path,
+                line,
+                f"block missing: {path.name} names {words!r} and holds no fenced "
+                f"block marked {_STATEMENT_TAG}",
+            )
+        )
+    return findings
+
+
 class TruthArchetype:
     """Resolves a text's claims against the tree, and names the undecidable.
 
-    `review` runs the eight analyzers named in `tools` over one Markdown or text
+    `review` runs the nine analyzers named in `tools` over one Markdown or text
     target.
     """
 
@@ -661,6 +1608,7 @@ class TruthArchetype:
         "proxy_claims",
         "scope",
         "public_text",
+        "test_statements",
     )
 
     def __init__(self, root: Path | None = None, item: int | None = None) -> None:
@@ -722,6 +1670,7 @@ class TruthArchetype:
             ("proxy_claims", self._run_proxy_claims),
             ("scope", self._run_scope),
             ("public_text", self._run_public_text),
+            ("test_statements", self._run_test_statements),
         ):
             try:
                 findings, status = runner(files)
@@ -776,6 +1725,13 @@ class TruthArchetype:
                                 message=f"public text carries {found.group(0)!r}; reword it before posting.",
                             )
                         )
+        return findings, "ok"
+
+    def _run_test_statements(self, files: list[Path]) -> tuple[list[Finding], str]:
+        """Report `T009` from `statement_findings` for each file in `files`."""
+        findings: list[Finding] = []
+        for path in files:
+            findings.extend(statement_findings(path, self._read(path), self.root))
         return findings, "ok"
 
     def _enumerate(self, target: Path) -> list[Path]:
@@ -1307,6 +2263,20 @@ class TruthArchetype:
             "anchors the subject."
         )
 
+    @staticmethod
+    def _falsification_of_statements() -> str:
+        return (
+            f"(j) T009 read a block whose fence opens with {_STATEMENT_TAG} and "
+            "decided its parts by form and arithmetic alone. It recomputes each "
+            "count, power and seeded draw and finds each path under the root, and "
+            "it never reads whether a check, a calibration input or an evidence "
+            "file holds what the block says of it, nor whether the block describes "
+            "the record that holds it. A block marked any other way is not read, "
+            "and a record plans runs, for it, only where digits or a number word "
+            "stand before runs or rounds as a count, not after a label such as "
+            "step or round, outside fences, block quotes and quoted spans."
+        )
+
     def _gh_issue_view(self, number: int) -> tuple[dict[str, str], str]:
         """Return the `gh issue view` row for `number`, or why there is none."""
         if number in self._views:
@@ -1515,6 +2485,7 @@ class TruthArchetype:
             f"(h) any of the {undecided} T000 record(s) is in fact decidable by "
             "an instrument this archetype could carry;",
             self._falsification_of_scope(),
+            self._falsification_of_statements(),
         ]
         if index is not None:
             parts.append(
