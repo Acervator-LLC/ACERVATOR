@@ -1086,7 +1086,11 @@ Now: no tranche is replayed. The pairs come from the orders' times and each base
 
 ### Pairs by order time and MOTD
 
-The builder pairs each base's orders by their time and by the Minimum Opposing Trade Distance, the MOTD, of that base's bot ([the novel concepts](05-novel-concepts.md)).
+The builder pairs each base's orders by their time and by the Minimum Opposing Trade Distance, the MOTD ([the novel concepts](05-novel-concepts.md)). The operator set the MOTD across the fleet:
+
+> MOTD has been set to 10% or, more recently, 5% across most of the fleet. Reading the bot state will only show you the current, global 5% that I am now using.
+
+Every pair is verified against a 5% MOTD, the fleet's current global setting. The build reads no saved bot setting, and `--motd` sets another figure for one build (`tools/build_product_manual.py, in read_evidence`).
 
 - The builder walks one base's orders in time order. An order stays open until a later order pairs with it.
 - A Fold pairs with the latest earlier open Scrum whose price sits at least the MOTD above its own. That pair is a Scrum-Fold pair.
@@ -1152,7 +1156,7 @@ except (DistanceSettingUnreadable, TypeError, ValueError):
 
 The replay pays a tranche only at or under its level, so every pair's Fold sits on or below the dashed line its view draws.
 
-Now: the level is the MOTD level of the pair's first order. A Scrum-Fold pair's level is its Scrum's price less the MOTD, and a Fold-Scrum pair's level is its Fold's price plus the MOTD, so every pair's later order sits on or past the dashed line (`tools/build_product_manual.py, in motd_level`).
+Now: no saved setting is read, and every base's level uses a 5% MOTD. The level is the MOTD level of the pair's first order. A Scrum-Fold pair's level is its Scrum's price less the MOTD, and a Fold-Scrum pair's level is its Fold's price plus the MOTD, so every pair's later order sits on or past the dashed line (`tools/build_product_manual.py, in motd_level`).
 
 ### The cycle views
 

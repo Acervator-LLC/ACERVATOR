@@ -26,7 +26,6 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from statistics import median
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 from urllib.error import HTTPError
 
@@ -59,7 +58,6 @@ from reportlab.platypus import (
 )
 
 from src.core.io_utils import atomic_write_json
-from src.core.log_paths import resolve_fleet_path
 from src.core.retry import exponential_delay, retry_sync
 from src.core.safe_url import SafeRequest, safe_urlopen
 from src.design_system import (
@@ -75,8 +73,8 @@ from src.trading.indicators.bollinger import BollingerBands
 from src.trading.indicators.helpers import _window_has_no_range
 from src.trading.indicators.types import candles_from_raw
 from src.trading.otd_math import (
-    DistanceSettingUnreadable,
-    distance_settings,
+    OTD_MAX_PCT,
+    OTD_MIN_PCT,
     fold_rebuy_price,
     opposing_sale_price,
 )
@@ -106,13 +104,22 @@ if TYPE_CHECKING:
     from pptx.slide import Slide
 
     from src.trading.indicators.types import Candle
-    from src.trading.otd_math import DistanceSettings
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"
 DEFAULT_FIGURES_DIR = REPO_ROOT / "docs" / "manual" / "figures"
 DEFAULT_OUTPUT = REPO_ROOT / "artifacts" / "manual" / "Acervator-Product-Manual.pdf"
-DEFAULT_FLEET = resolve_fleet_path()
+DEFAULT_MOTD_PCT = 5.0
+
+
+def motd_percent(text: str) -> float:
+    """Return ``text`` as a ``--motd`` above ``OTD_MIN_PCT`` and at most ``OTD_MAX_PCT``."""
+    value = float(text)
+    if not OTD_MIN_PCT < value <= OTD_MAX_PCT:
+        refusal = f"{text} is not above {OTD_MIN_PCT:g} and at most {OTD_MAX_PCT:g}"
+        raise argparse.ArgumentTypeError(refusal)
+    return value
+
 
 MANIFEST_FILE = "README.md"
 PART_LIST_FILE = "04-manual-parts.md"
@@ -2342,9 +2349,6 @@ def uncovered_text(spans: Sequence[tuple[int, int]]) -> str:
     return f"no {BAND_BAR_NAME} candles {dates}"
 
 
-SYMBOL_PARTS = re.compile(r"[/-]")
-
-
 @dataclass(frozen=True)
 class Order:
     """The fills of one base and side stamped in one second, at their quantity-weighted ``price``."""
@@ -2411,31 +2415,6 @@ def venue_orders(fills: Sequence[Fill]) -> list[Order]:
         )
         for (asset, side, when), held in merged.items()
     ]
-
-
-def saved_distance(entry: Any) -> DistanceSettings | None:
-    """Return the ``distance_settings`` one saved bot ``entry`` holds, or None for an unreadable setting."""
-    config = entry.get("config") or {}
-    venue_fee = (entry.get("scrumming_state") or {}).get("highest_venue_fee_pct") or 0.0
-    try:
-        return distance_settings(SimpleNamespace(**config), float(venue_fee))
-    except (DistanceSettingUnreadable, TypeError, ValueError):
-        return None
-
-
-def fleet_distances(path: Path) -> dict[str, DistanceSettings]:
-    """Return each ``saved_distance`` the fleet file at ``path`` holds, keyed by its symbol's base."""
-    if not path.is_file():
-        return {}
-    body: Any = json.loads(path.read_text(encoding="utf-8"))
-    bots: Any = body.get("bots") or {}
-    out: dict[str, DistanceSettings] = {}
-    for entry in bots.values() if isinstance(bots, dict) else bots:
-        distance = saved_distance(entry)
-        symbol = str((entry.get("config") or {}).get("symbol", ""))
-        if distance is not None:
-            out[SYMBOL_PARTS.split(symbol)[0].upper()] = distance
-    return out
 
 
 SCRUM_FOLD = "Scrum-Fold"
@@ -3359,8 +3338,10 @@ def _write_market(
     return (name, _save(figure, figures_dir / name))
 
 
-def read_evidence(evidence_dir: Path, fleet: Path | None = None) -> Evidence | None:
-    """Return ``evidence_dir``'s newest ``Evidence`` at ``fleet``'s MOTD, or None."""
+def read_evidence(
+    evidence_dir: Path, motd_pct: float = DEFAULT_MOTD_PCT
+) -> Evidence | None:
+    """Return ``evidence_dir``'s newest ``Evidence``, its pairs at ``motd_pct``, or None."""
     paths = export_files(evidence_dir)
     if not paths:
         return None
@@ -3375,7 +3356,6 @@ def read_evidence(evidence_dir: Path, fleet: Path | None = None) -> Evidence | N
     }
     candles = {asset: tablet_candles(asset) for asset in labels}
     cache_dir = evidence_dir / CANDLE_CACHE_FOLDER
-    distances = fleet_distances(fleet) if fleet is not None else {}
     by_asset: dict[str, list[Fill]] = {}
     for fill in indexed[newest]:
         by_asset.setdefault(fill.asset, []).append(fill)
@@ -3390,12 +3370,8 @@ def read_evidence(evidence_dir: Path, fleet: Path | None = None) -> Evidence | N
             for asset, rows in candles.items()
         },
         pairs=tuple(
-            (
-                labels[asset],
-                base_pairs(venue_orders(held), distances[asset].distance_pct()),
-            )
+            (labels[asset], base_pairs(venue_orders(held), motd_pct))
             for asset, held in sorted(by_asset.items(), key=lambda one: labels[one[0]])
-            if asset in distances
         ),
         live_evidence_fills=tuple(indexed[newest_export(dated)]) if dated else (),
     )
@@ -3563,7 +3539,9 @@ def bound_lines(evidence: Evidence) -> list[str]:
     return out
 
 
-def measurement_lines(evidence_dir: Path, fleet: Path = DEFAULT_FLEET) -> list[str]:
+def measurement_lines(
+    evidence_dir: Path, motd_pct: float = DEFAULT_MOTD_PCT
+) -> list[str]:
     """Return the reading and the two tables the manual's VWAP part publishes.
 
     ``labels_across`` names every base, so no line carries a ticker, an account or an
@@ -3601,7 +3579,7 @@ def measurement_lines(evidence_dir: Path, fleet: Path = DEFAULT_FLEET) -> list[s
             f"| {row.label} | {row.buys} | {row.sells} | {row.final_buy_vwap:g} "
             f"| {row.sell_vwap:g} | {ratio:.3f} |"
         )
-    evidence = read_evidence(evidence_dir, fleet)
+    evidence = read_evidence(evidence_dir, motd_pct)
     if evidence is not None:
         out += bound_lines(evidence)
     return out
@@ -4454,7 +4432,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--evidence-dir", type=Path, default=EVIDENCE_DIR)
     parser.add_argument("--deck", type=Path, default=DEFAULT_DECK)
-    parser.add_argument("--fleet", type=Path, default=DEFAULT_FLEET)
+    parser.add_argument(
+        "--motd",
+        type=motd_percent,
+        default=DEFAULT_MOTD_PCT,
+        help="the MOTD in percent that every base's pairs clear",
+    )
     parser.add_argument(
         "--operator-deck",
         type=Path,
@@ -4474,7 +4457,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.measure:
-        for line in measurement_lines(args.evidence_dir, args.fleet):
+        for line in measurement_lines(args.evidence_dir, args.motd):
             print(console_safe(line))
         return 0
 
@@ -4483,7 +4466,7 @@ def main(argv: list[str] | None = None) -> int:
             print(console_safe(line), flush=True)
         return 0
 
-    evidence = read_evidence(args.evidence_dir, args.fleet)
+    evidence = read_evidence(args.evidence_dir, args.motd)
     for figure, outcome in write_evidence_figures(
         args.figures_dir, args.evidence_dir, evidence
     ):
