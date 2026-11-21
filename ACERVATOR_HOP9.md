@@ -18,13 +18,13 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running. The 17 pull requests since
-`a5e44099` are #1800 to #1816: nine on #1633, four on #1789, and one each on
+The session that wrote this was still running. The 21 pull requests since
+`a5e44099` are #1800 to #1820: thirteen on #1633, four on #1789, and one each on
 #1622, #53, #1660 and #319. #1789, #53, #1660 and #319 are open.
 
 ```bash
-git log --oneline --first-parent a5e44099..1d137dee   # the 17 pull requests
-gh pr view 1816 --json state --jq .state              # MERGED, and the same for the other 16
+git log --oneline --first-parent a5e44099..0f5e4baf   # the 21 pull requests
+gh pr view 1820 --json state --jq .state              # MERGED, and the same for the other 20
 gh issue view 1633 --comments                         # each record and result, newest last
 gh issue view 1789 --comments                         # his chart rulings and the units that built them
 gh release list                                       # what is published
@@ -319,21 +319,26 @@ wrong far more often than right.
   #1762, #1766 and #1782; step 4 in #1767 and #1777. Experiment 4's step 2 has
   run, calibrations 1 and 2 are closed, and the referee judged the alpha bar met
   (comment 7062093229), and the real-unit comparison his alpha gate names has run
-  two pairs. Step 3 of the method in comment 7045926376, the delivery control, is
-  under way: its record is comment 7064685520, and #1816 built the
-  SIGIL_FEEDBACK_REFUSE marker in `dev_harness/hooks/archetype_gate.py, in
-  _sigil_refusal`. A unit is correcting CODE.REACH's reading of a staged copy
-  (record 7065821444). **Next:** after that merge, copy the hook into the Claude
-  Code user folder and compare its blob with the merge; then the three delivery
-  rounds of record 7064685520, each running the eight tasks with the refusal
-  marker, in folders named run_c, and with advice only, in folders named run_b;
-  then further real-unit pairs,
-  each with its own record first by part 6 of Skill: canonized-workflow. The
-  README in experiment 4's gitignored runs folder, under artifacts/sigil_runs,
-  names the ledger, the scorer and its scripts.
+  two pairs. Step 3 of the method in comment 7045926376, the delivery control,
+  is paused: #1816 built the SIGIL_FEEDBACK_REFUSE marker in
+  `dev_harness/hooks/archetype_gate.py, in _sigil_refusal`, #1818 corrected
+  CODE.REACH's reading of a staged copy, and CODE.TYPE's staged-copy refusal is
+  open (comment 7066887960). His 2026-11-21 idea replaced its rounds, verbatim:
+  "I suppose another option would be to have both the non-sigil and sigl-based
+  archetype attempt coding exam questions of scaling difficulty." The exam holds
+  24 questions in four levels: 20 invite a mistake a sigil names, and 4 are
+  controls (design comment 7066741563). Its binding test statement, the block
+  that part 6 of Skill: canonized-workflow requires (#1819) and rule T009 reads
+  (#1820), is comment 7069467110, which amends comment 7068532484. **Next:**
+  finish round one in batches of 8 agents, both arms of a question together;
+  between batches, move finished runs' scratch files out of the session
+  scratchpad, which runs list; write round one's critique; then rounds two and
+  three, and the verdict from the block's exact sign tests alone. The exam's
+  gitignored runs folder, under artifacts/sigil_runs, holds a scripts folder
+  with the scorer, the round setup and the analysis.
 
 ```bash
-gh issue view 1633 --comments      # step 2 7056017260; calibrations 7060342296, 7061923194; alpha 7062093229; step 3 7064685520, 7065821444
+gh issue view 1633 --comments      # exam design 7066741563; test statement 7069467110; step 3 7064685520, 7066887960
 grep -n "ready for alpha" ~/.claude/projects/*/memory/project_sigil_alpha_gate.md
 ```
 
