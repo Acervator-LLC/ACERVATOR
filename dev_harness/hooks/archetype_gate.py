@@ -196,6 +196,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import difflib
 import json
 import os
 import re
@@ -492,9 +493,9 @@ _SHADOW_RE = re.compile(
 
 LEDGER_PATH = REPO / "_logs" / "archetype_gate_staging.json"
 
-# A leftover younger than this may belong to a run that is still going,
-# so the reaper leaves it alone.
-STAGING_GRACE_S = 90
+# A leftover younger than the 300 s --pre timeout in settings_hooks.json may
+# belong to a run still holding it, so the reaper leaves it alone.
+STAGING_GRACE_S = 300
 
 # Ledger records older than this are dropped even when their files are
 # already gone, so the file cannot grow without bound.
@@ -757,6 +758,31 @@ def _missing_ancestors(directory: Path) -> list:
     return missing
 
 
+def _stage(real: Path, content: str) -> tuple[Path, list, dict] | str:
+    """Write `content` beside `real` at a `_staged_path`, or return why it could not."""
+    staged = _staged_path(real)
+    created = _missing_ancestors(staged.parent)
+    record = {
+        "id": staged.name,
+        "created": _now_iso(),
+        "files": [str(staged)],
+        "dirs": [str(d) for d in created],
+    }
+    _ledger_add(record)
+    try:
+        for node in created:
+            node.mkdir()
+        _sweep_directory(staged.parent, staged)
+        # newline="" keeps the content's own endings; the default adds \r and
+        # shellcheck then reports SC1017 on every line.
+        staged.write_text(
+            content, encoding="utf-8", errors="replace", newline="")
+    except OSError as exc:
+        _cleanup_staging(staged, created, record)
+        return f"cannot stage pending content: {exc}"
+    return staged, created, record
+
+
 def _evaluate_content(
     real: Path,
     content: str,
@@ -770,27 +796,11 @@ def _evaluate_content(
     recorded in the ledger so a killed run is cleaned up on the next
     invocation.
     """
-    staged = _staged_path(real)
-    created = _missing_ancestors(staged.parent)
-    record = {
-        "id": staged.name,
-        "created": _now_iso(),
-        "files": [str(staged)],
-        "dirs": [str(d) for d in created],
-    }
-    _ledger_add(record)
+    staging = _stage(real, content)
+    if isinstance(staging, str):
+        return {"_staging": {"_error": staging}}
+    staged, created, record = staging
     reports: dict = {}
-    try:
-        for node in created:
-            node.mkdir()
-        _sweep_directory(staged.parent, staged)
-        # newline="" keeps the content's own endings; the default adds \r and
-        # shellcheck then reports SC1017 on every line.
-        staged.write_text(
-            content, encoding="utf-8", errors="replace", newline="")
-    except OSError as exc:
-        _cleanup_staging(staged, created, record)
-        return {"_staging": {"_error": f"cannot stage pending content: {exc}"}}
     try:
         for module in modules:
             reports[module] = _run_archetype(
@@ -967,6 +977,7 @@ def _deny_reason(
 SIGIL_SWITCH = "ACERVATOR_SIGIL_FEEDBACK"
 SIGIL_OFF = "off"
 SIGIL_OFF_MARKER = "SIGIL_FEEDBACK_OFF"
+SIGIL_REFUSE_MARKER = "SIGIL_FEEDBACK_REFUSE"
 SIGIL_SUFFIX = ".py"
 SIGIL_PACKAGE = "dev_harness.sigils"
 FOLLOW_ON_MODULE = f"{SIGIL_PACKAGE}.fix_class"
@@ -977,6 +988,7 @@ FOLLOWS_PROGRAM = (
     f"import json; from {FLAG_MODULE} import FLAGS; "
     "print(json.dumps({flag.name: row['follows'] for flag, row in FLAGS.items()}))"
 )
+REFUSING_FLAGS = FOLLOWS_IN_HEADER
 CODING_SIGILS = (
     "CODE.LOOP",
     "CODE.IMPORT",
@@ -1006,29 +1018,37 @@ UNCOVERED = "does not cover this file"
 UNREAD = "not read"
 
 _FEEDBACK = "[sigil-feedback]"
+_REFUSAL = "[sigil-refusal]"
 _TIER_REFUSALS = ("tier 1 ", "tier 2 ")
 _TIER_3 = "tier 3 required processing functions: "
 _RUFF_ROW_RE = re.compile(
     r"\b([A-Z]+[0-9]+) ([a-z0-9-]+) line ([0-9]+) fix (?:always|sometimes|none)\b")
 _TOOL_ROW_RE = re.compile(r"(.+) line ([0-9]+)")
+_LINE_BREAK_RE = re.compile(r"\r\n|\r|\n")
 
 Ran = tuple[int, str, str] | str
+RuleLines = tuple[tuple[str, tuple[int, ...]], ...]
 
 
 class SigilReading(NamedTuple):
-    """One sigil's `status` on the written file and the feedback `text` it adds."""
+    """A sigil's `status` and `text`; under `FINDINGS`, its `flag` and rule `lines`."""
 
     status: str
     text: str
+    flag: str = ""
+    lines: RuleLines = ()
 
 
-def _sigil_marked(path: Path) -> bool:
-    """Report if a `SIGIL_OFF_MARKER` file sits in `path.parents` up to `_git_root`."""
+SigilPass = tuple[dict[str, SigilReading], dict[str, str]]
+
+
+def _sigil_marked(path: Path, marker: str = SIGIL_OFF_MARKER) -> bool:
+    """Report if a `marker` file sits in `path.parents` up to `_git_root`."""
     root = _git_root(path)
     if root is None:
         return False
     for folder in path.parents:
-        if (folder / SIGIL_OFF_MARKER).is_file():
+        if (folder / marker).is_file():
             return True
         if folder == root:
             break
@@ -1151,6 +1171,14 @@ def _lines_by_rule(rows: list[tuple[str, int]]) -> dict[str, list[int]]:
     for rule, line in rows:
         grouped.setdefault(rule, []).append(line)
     return {rule: sorted(set(lines)) for rule, lines in grouped.items()}
+
+
+def _rule_lines(
+    grouped: dict[str, list[int]], names: dict[str, str],
+) -> RuleLines:
+    """Return each `grouped` rule, named by `names` if listed, with all its lines."""
+    return tuple(
+        (names.get(rule, rule), tuple(lines)) for rule, lines in grouped.items())
 
 
 def _rule_row(rule: str, lines: list[int], note: str) -> str:
@@ -1290,7 +1318,10 @@ def _ruff_sigil(name: str, target: SigilTarget) -> SigilReading:
         first_row = before
     if not _ruff_rows(str(first_row.get("reason") or "")):
         return _no_rows(name, first_row)
-    return SigilReading(FINDINGS, _ruff_text(name, target, first_row, left, row))
+    _, names, grouped = _named_rules(name, target, first_row)
+    text = _ruff_text(name, target, first_row, left, row)
+    return SigilReading(
+        FINDINGS, text, str(first_row.get("flag")), _rule_lines(grouped, names))
 
 
 def _tool_sigil(name: str, target: SigilTarget) -> SigilReading:
@@ -1315,7 +1346,8 @@ def _tool_sigil(name: str, target: SigilTarget) -> SigilReading:
                 f"--root {target.root}")
             break
         lines.append(_rule_row(rule, at, note))
-    return SigilReading(FINDINGS, "\n".join(lines))
+    return SigilReading(
+        FINDINGS, "\n".join(lines), str(row.get("flag")), _rule_lines(grouped, {}))
 
 
 def _follow_on_sigils(cwd: Path, deadline: float) -> frozenset[str] | str:
@@ -1362,8 +1394,8 @@ def _flag_follows(cwd: Path, deadline: float) -> dict[str, str] | str:
     return follows
 
 
-def _sigil_feedback(path: Path, deadline: float) -> str:
-    """Return each `CODING_SIGILS` reading of `path`, naming every sigil not read."""
+def _sigil_readings(path: Path, deadline: float) -> SigilPass | str:
+    """Return each sigil's reading of `path` and the flag texts, or `_all_unread`."""
     root = _git_root(path)
     cwd = _repo_for(path)
     if root is None:
@@ -1380,7 +1412,7 @@ def _sigil_feedback(path: Path, deadline: float) -> str:
     follows = _flag_follows(cwd, deadline)
     if isinstance(follows, str):
         return _all_unread(f"the FLAGS of {FLAG_MODULE} did not read: {follows}")
-    readings = []
+    readings: dict[str, SigilReading] = {}
     with tempfile.TemporaryDirectory(
             prefix="sigil_feedback_", ignore_cleanup_errors=True) as folder:
         listing = Path(folder) / "input.txt"
@@ -1388,8 +1420,16 @@ def _sigil_feedback(path: Path, deadline: float) -> str:
         target = SigilTarget(rel, root, cwd, listing, deadline, follows)
         for name in CODING_SIGILS:
             read = _ruff_sigil if name in follow_on else _tool_sigil
-            readings.append(read(name, target))
-    return _feedback_text(readings)
+            readings[name] = read(name, target)
+    return readings, follows
+
+
+def _sigil_feedback(path: Path, deadline: float) -> str:
+    """Return the `_feedback_text` of `_sigil_readings`, or its `_all_unread` line."""
+    read = _sigil_readings(path, deadline)
+    if isinstance(read, str):
+        return read
+    return _feedback_text(list(read[0].values()))
 
 
 def _sigil_part(path: Path, deadline: float) -> str:
@@ -1398,6 +1438,86 @@ def _sigil_part(path: Path, deadline: float) -> str:
         return _sigil_feedback(path, deadline)
     except (OSError, ValueError) as exc:
         return _all_unread(f"{type(exc).__name__}: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# Sigil refusal - a marked folder refuses a write a sigil flags
+# ---------------------------------------------------------------------------
+
+
+def _numbered_lines(text: str) -> list[str]:
+    """Return the lines of `text`, split at `_LINE_BREAK_RE` as tools count lines."""
+    lines = _LINE_BREAK_RE.split(text)
+    if lines[-1] == "":
+        lines.pop()
+    return lines
+
+
+def _changed_lines(path: Path, pending: str) -> frozenset[int]:
+    """Return the number of each `pending` line a line diff does not match to `path`."""
+    before = _numbered_lines(_read_text(path)) if path.exists() else []
+    matcher = difflib.SequenceMatcher(
+        None, before, _numbered_lines(pending), autojunk=False)
+    return frozenset(
+        number
+        for tag, _, _, first, last in matcher.get_opcodes()
+        if tag in {"replace", "insert"}
+        for number in range(first + 1, last + 1)
+    )
+
+
+def _refusal_rows(
+    readings: dict[str, SigilReading], follows: dict[str, str], changed: frozenset[int],
+) -> list[str]:
+    """Return a row per `changed` line that a `REFUSING_FLAGS` reading names."""
+    return [
+        f"  - {name} {rule} line {line}: flag {reading.flag} ({follows[reading.flag]})"
+        for name, reading in readings.items()
+        if reading.flag in REFUSING_FLAGS
+        for rule, lines in reading.lines
+        for line in lines
+        if line in changed
+    ]
+
+
+def _pending_readings(path: Path, content: str, deadline: float) -> SigilPass | str:
+    """Return `_sigil_readings` of `content` staged beside `path`, or why none ran."""
+    staging = _stage(path, content)
+    if isinstance(staging, str):
+        return staging
+    staged, created, record = staging
+    try:
+        return _sigil_readings(staged, deadline)
+    except (OSError, ValueError) as exc:
+        return f"{type(exc).__name__}: {exc}"
+    finally:
+        _cleanup_staging(staged, created, record)
+
+
+def _sigil_refusal(path: Path, content: str, deadline: float) -> str:
+    """Return `_REFUSAL` text when a sigil flags a `_changed_lines` line, else empty."""
+    if path.suffix != SIGIL_SUFFIX or not _sigil_marked(path, SIGIL_REFUSE_MARKER):
+        return ""
+    if _sigil_feedback_off(path):
+        return ""
+    _debug_log(f"pre: running the coding sigils on {path.name}")
+    read = _pending_readings(path, content, deadline)
+    if isinstance(read, str):
+        _debug_log(f"pre: no sigil read {path.name}")
+        return ""
+    readings, follows = read
+    unread = [name for name, reading in readings.items() if reading.status == UNREAD]
+    if unread:
+        _debug_log(f"pre: sigils not read on {path.name}: {', '.join(unread)}")
+    rows = _refusal_rows(readings, follows, _changed_lines(path, content))
+    if not rows:
+        _debug_log(
+            f"pre: allow {path.name} (no FIX or HOLD sigil line names a changed line)")
+        return ""
+    opening = (
+        f"{_REFUSAL} This write adds or changes lines of {_rel(path)} that a sigil "
+        "flags FIX or HOLD. Correct each line below, then write again.")
+    return "\n".join([opening, *rows])
 
 
 # ---------------------------------------------------------------------------
@@ -1519,8 +1639,51 @@ def _baseline_reports(
     return _evaluate_content(path, current, modules, deadline=deadline)
 
 
+def _archetype_reason(path: Path, content: str, deadline: float) -> str:
+    """Return the deny text if `content` adds a high or critical finding to `path`."""
+    modules = _module_union(path, content)
+    if not modules:
+        _debug_log(f"pre: allow {path.name} - no archetype for this suffix")
+        return ""
+
+    after = _evaluate_content(path, content, modules, deadline=deadline)
+    err = _first_error(after)
+    if err:
+        return (
+            f"Archetype-gate DENY: cannot grade the pending write to "
+            f"{_rel(path)}. {err}\n"
+            "Work the harness did not evaluate is INVALID, so the write is "
+            "held. Fix the harness, then write again:\n"
+            f"  python -m {modules[0]} {_rel(path)}")
+
+    after_fps = _high_fingerprints(after)
+    if not after_fps:
+        _debug_log(f"pre: allow {path.name} (0 high in pending content)")
+        return ""
+
+    before = _baseline_reports(path, modules, deadline)
+    if before is None or _first_error(before):
+        return (
+            f"Archetype-gate DENY: the pending write to {_rel(path)} carries "
+            f"{len(after_fps)} high/critical finding(s) and the on-disk "
+            "baseline could not be measured, so a rise cannot be ruled out.\n"
+            f"  {_first_error(before or {}) or 'baseline unreadable'}\n"
+            f"Run: python -m {modules[0]} {_rel(path)}")
+
+    before_fps = _high_fingerprints(before)
+    new = _introduced(after_fps, before_fps)
+    if not new:
+        _debug_log(
+            f"pre: allow {path.name} "
+            f"(high {len(before_fps)} -> {len(after_fps)}, none new)")
+        return ""
+    return _deny_reason(
+        path, new, (len(before_fps), len(after_fps)),
+        modules[0], _missing_tools(after))
+
+
 def _run_pre(data: dict) -> int:
-    """Deny the pending write when it introduces a high or critical."""
+    """Deny a write on a new high finding, else on a `_sigil_refusal` reason."""
     path = _payload_path(data)
     if path is None:
         return _emit_deny(
@@ -1539,46 +1702,11 @@ def _run_pre(data: dict) -> int:
             f"{_rel(path)} would hold after this call, so it cannot grade it. "
             "For an Edit this usually means old_string is not in the file, "
             "which would fail the edit anyway. Re-read the file and retry.")
-    modules = _module_union(path, content)
-    if not modules:
-        _debug_log(f"pre: allow {path.name} - no archetype for this suffix")
-        return 0
-
     deadline = time.monotonic() + PRE_BUDGET_S
-    after = _evaluate_content(path, content, modules, deadline=deadline)
-    err = _first_error(after)
-    if err:
-        return _emit_deny(
-            f"Archetype-gate DENY: cannot grade the pending write to "
-            f"{_rel(path)}. {err}\n"
-            "Work the harness did not evaluate is INVALID, so the write is "
-            "held. Fix the harness, then write again:\n"
-            f"  python -m {modules[0]} {_rel(path)}")
-
-    after_fps = _high_fingerprints(after)
-    if not after_fps:
-        _debug_log(f"pre: allow {path.name} (0 high in pending content)")
-        return 0
-
-    before = _baseline_reports(path, modules, deadline)
-    if before is None or _first_error(before):
-        return _emit_deny(
-            f"Archetype-gate DENY: the pending write to {_rel(path)} carries "
-            f"{len(after_fps)} high/critical finding(s) and the on-disk "
-            "baseline could not be measured, so a rise cannot be ruled out.\n"
-            f"  {_first_error(before or {}) or 'baseline unreadable'}\n"
-            f"Run: python -m {modules[0]} {_rel(path)}")
-
-    before_fps = _high_fingerprints(before)
-    new = _introduced(after_fps, before_fps)
-    if not new:
-        _debug_log(
-            f"pre: allow {path.name} "
-            f"(high {len(before_fps)} -> {len(after_fps)}, none new)")
-        return 0
-    return _emit_deny(_deny_reason(
-        path, new, (len(before_fps), len(after_fps)),
-        modules[0], _missing_tools(after)))
+    reason = _archetype_reason(path, content, deadline)
+    if not reason:
+        reason = _sigil_refusal(path, content, deadline)
+    return _emit_deny(reason) if reason else 0
 
 
 def _run_post(data: dict) -> int:
