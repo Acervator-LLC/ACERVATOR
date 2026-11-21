@@ -137,14 +137,127 @@ And, on a block of 48 runs: *"Why 48? W5H. OCIR. Adversial checks on everything.
 A record whose iteration runs agents, rounds or a sweep adds a test statement
 before the first run:
 
+The statement is one JSON object in a fenced block marked `test-statement`. It
+holds the parts below, with the keys each part names, and no other key.
+
+| part | keys | T009 refuses the part when |
+|---|---|---|
+| question | one string, answered yes or no | it does not end in a question mark, or it leaves out an arm name |
+| arms | each arm name and its condition | it lists fewer than two arms, or an arm name or a condition is empty |
+| unit | one string: what one observation is | it is empty |
+| measure | reading, checks, calibration | the reading is empty, it names no check, a path does not exist, or the calibration file does not record each check passing its known-good input and failing its known-bad input |
+| inputs | rule, population, items, and seed and size for a seeded draw | the rule is not all or seeded draw, it lists no item, the items differ from the sorted subfolder names of the population folder or from their seeded draw, or an item does not exist |
+| runs | rounds, per_round, total, alpha, power | a count is below 1, the total is not rounds times per_round, it holds no power entry, a power differs by more than 0.01 from its recomputation, or its alpha or test differs from the pass reading |
+| expected | source, statement | the source does not exist, or the statement holds no number |
+| pass, harm | test, group, alpha, leading_arm | the test is not exact sign or fisher exact, the group is empty, alpha is not above 0 and at most 0.1, the leading arm is not an arm, or pass and harm name one leading arm |
+| interim | reads, and stop_if_single_arm_rate_above when the block holds it | it reads anything except voids and single arm rate, or the stop rate is outside 0 to 1 |
+| adversarial | four entries of question, answer and evidence | the four questions are not there in order, an answer is empty, or an evidence path does not exist |
+
+In the block, the four adversarial questions read exactly: what makes this
+result wrong; what does the measure miss; what is the cheapest way to pass
+without the behaviour; does any input sit at a ceiling or a floor.
+
+T009 names the part JSON when a block does not parse, leaves out a key, holds
+an unknown or repeated key, holds a value of the wrong type, or holds NaN or an
+infinite number. Each path resolves against the repository root.
+
+Each power entry names its test. An exact sign entry carries pairs. Its power is
+the chance that the exact two-sided sign test, over the pairs whose arms differ,
+reads p below alpha with the second arm ahead. A fisher exact entry carries
+per_arm. Its power is the same chance for Fisher's exact two-sided test on two
+groups of per_arm runs. T009 recomputes up to 1000 pairs and up to 500 per arm.
+
+Rule T009 reads every block marked `test-statement` and reports each part that
+fails, at high, by its name. It also refuses a file named `record_*.md` that
+names a count of runs or rounds and holds no block. The record command runs it:
+
 ```
-question   one sentence, answered yes or no
-measure    the one reading that answers it, and the check that takes it
-expected   the outcome earlier data points to, with that data cited
-pass       the reading that answers yes, set before the runs
-fail       the reading that answers no, and the reading that shows harm
-runs       the count, and the smallest difference it can show, computed
-inputs     the rule that chose every input; a hand-picked input has no rule
+python -m dev_harness.harness.truth_archetype <record.md> --item <issue number>
+```
+
+The symbols behind each check:
+
+```
+dev_harness/harness/truth_archetype.py
+  statement_findings   reports T009 for each block, and for a record with none
+  statement_blocks     finds each fence whose info string opens with test-statement
+  _block_faults        parses one block and runs the check of each part
+  _sign_power          recomputes an exact sign power
+  _fisher_power        recomputes a fisher exact power
+  seeded_sample        draws the items as random.Random(seed).sample draws them
+```
+
+One complete example follows, the block of
+`harness_fixtures/truth_archetype/test_statement/record_known_good.md`:
+
+```test-statement
+{
+  "question": "On the drawn tasks, does the sigil arm finish with correct, clean code more often than the plain arm?",
+  "arms": {
+    "plain": "the archetype runs with sigil feedback switched off",
+    "sigil": "the archetype reads the sigil lines as advice"
+  },
+  "unit": "one run of one task in one arm",
+  "measure": {
+    "reading": "passed in the Coding Archetype report on the file the run leaves",
+    "checks": ["dev_harness/harness/coding_archetype.py"],
+    "calibration": "harness_fixtures/truth_archetype/test_statement/calibration.json"
+  },
+  "inputs": {
+    "rule": "seeded draw",
+    "population": "harness_fixtures/truth_archetype/test_statement/tasks",
+    "seed": 1633,
+    "size": 6,
+    "items": [
+      "Task_07_Count_Words",
+      "Task_06_Clip_Prices",
+      "Task_04_Read_Config",
+      "Task_05_Merge_Totals",
+      "Task_03_Dedupe_Names",
+      "Task_02_Parse_Dates"
+    ]
+  },
+  "runs": {
+    "rounds": 3,
+    "per_round": 12,
+    "total": 36,
+    "alpha": 0.05,
+    "power": [
+      {"test": "exact sign", "pairs": 18, "first_rate": 0.3, "second_rate": 0.9, "power": 0.95},
+      {"test": "exact sign", "pairs": 18, "first_rate": 0.45, "second_rate": 0.65, "power": 0.13},
+      {"test": "fisher exact", "per_arm": 18, "first_rate": 0.3, "second_rate": 0.9, "power": 0.96}
+    ]
+  },
+  "expected": {
+    "source": "dev_harness/skills/canonized-workflow/SKILL.md",
+    "statement": "Step 2 pooled 15 of 24 against 11 of 24, which Fisher's exact test reads at p 0.39."
+  },
+  "pass": {"test": "exact sign", "group": "the 18 task pairs", "alpha": 0.05, "leading_arm": "sigil"},
+  "harm": {"test": "exact sign", "group": "the 18 task pairs", "alpha": 0.05, "leading_arm": "plain"},
+  "interim": {"reads": ["voids", "single arm rate"], "stop_if_single_arm_rate_above": 0.85},
+  "adversarial": [
+    {
+      "question": "what makes this result wrong",
+      "answer": "A run that reads the other arm's folder, which the scorer voids.",
+      "evidence": "dev_harness/skills/ocir/SKILL.md"
+    },
+    {
+      "question": "what does the measure miss",
+      "answer": "Quality no check reads; minutes and tokens are reported beside the result.",
+      "evidence": "dev_harness/skills/truth-check/SKILL.md"
+    },
+    {
+      "question": "what is the cheapest way to pass without the behaviour",
+      "answer": "Hard-coding the stated examples, which the hidden checks read.",
+      "evidence": "dev_harness/skills/two-sided-control/SKILL.md"
+    },
+    {
+      "question": "does any input sit at a ceiling or a floor",
+      "answer": "The plain arm may pass near the top; the interim stop reads its rate after round one.",
+      "evidence": "dev_harness/skills/canonized-workflow/SKILL.md"
+    }
+  ]
+}
 ```
 
 Then four adversarial questions, each answered with a measurement or a cited

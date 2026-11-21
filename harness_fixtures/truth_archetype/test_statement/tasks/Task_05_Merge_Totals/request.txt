@@ -1,0 +1,1 @@
+Write merge_totals(first, second) that adds two dicts of totals key by key.

@@ -1,0 +1,1 @@
+Write read_config(path) that returns the key and value pairs of a settings file.

@@ -1,0 +1,1 @@
+Write clip_prices(prices, low, high) that bounds each price to the range from low to high.
