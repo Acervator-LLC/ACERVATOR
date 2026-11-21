@@ -1,22 +1,5 @@
-"""status_log_surface.py -- the Activity Log view model served to a frontend.
-
-Builds the line the Activity Log paints for one message: the timestamp
-stamp, the colour the message text takes, the size and weight a trade or
-wire message is raised to, and the glyph a trade or wire line carries. Colours
-come from ``design_system`` tokens, so a line on a page carries the value
-the Qt pane paints rather than a second palette.
-
-It also holds the state the pane owns rather than describes: the pause
-buffer that decides whether a line paints now or waits, the document cap
-that drops the oldest line, and the render counters the Activity-Log
-watchdog polls through ``health_stats``.
-
-``src.core.desktop_bridge`` registers ``view_model`` as the handler for
-the ``status_log.lines`` method, which is how the Electron renderer
-reaches it. Nothing here imports Qt, and it sits beside the other
-surfaces rather than beside ``widgets/status_log.py`` because that
-package imports Qt in its ``__init__``.
-"""
+"""Activity Log line styles and ``StatusLogModel`` state, served to the bridge as
+``METHOD`` by ``view_model``."""
 
 from __future__ import annotations
 
@@ -62,18 +45,14 @@ WIRE_FLOW_PREFIXES = ("WIRE FLOW", "WIRE INCOME")
 WIRE_STACK_PREFIX = "WIRE STACK"
 WIRE_BULLET = "⚡ "
 
-#: ``MainWindow._on_bot_log`` opens a bot's line with ``[TICKER/last4] ``.
 BOT_TAG_PATTERN = re.compile(r"^\[[^\[\]]*\]\s+")
 
-#: The glyph a trade role draws, by the side ``SIDE_ROLES`` gives that role.
 ROLE_GLYPHS = {
     SIDE_ROLES[SELL_SIDE]: READOUT_SELL_GLYPH,
     SIDE_ROLES[BUY_SIDE]: READOUT_BUY_GLYPH,
 }
 GLYPH_FORMAT = "{glyph} "
 
-#: ``_emit_trade_notification`` writes ``<ROLE>: <SYMBOL>: <STAGE>`` after
-#: ``TRADE_PREFIX``, then the stage's own numbers.
 TRADE_FIELD_SPLIT = ": "
 TRADE_FIELD_COUNT = 3
 TRADE_STAGE_SPLIT = " "
@@ -82,7 +61,6 @@ TRADE_TEXT_FORMAT = "{stage} [{role}] {symbol}"
 TRADE_FONT_SIZE_PX = 14
 WIRE_FONT_SIZE_PX = 12
 
-#: A gate light draws its own colour behind two spaces, so no glyph is needed.
 LIGHT_DOT_TEXT = "&nbsp;&nbsp;"
 LIGHT_SEPARATOR = " "
 
@@ -110,15 +88,12 @@ DEFAULT_LEVEL_COLOR = ds.TEXT_HIGH
 RENDER_ERROR_FORMAT = "StatusLog._render exception (#%d): %s | message=%r level=%r"
 RENDER_ERROR_MESSAGE_CHARS = 200
 
-#: A writer names one of the first three on its own ``bot.log`` emit.
 KIND_TRADE = LINE_KIND_TRADE
 KIND_WIRE_FLOW = LINE_KIND_WIRE_FLOW
 KIND_WIRE_STACK = LINE_KIND_WIRE_STACK
 KIND_PLAIN = "plain"
 KIND_RESUME = "resume"
 
-#: The words a message opens with that ``asked_kind`` reads its kind from, in the
-#: order it reads them.
 KIND_MARKERS = (
     (KIND_TRADE, (TRADE_PREFIX,)),
     (KIND_WIRE_FLOW, WIRE_FLOW_PREFIXES),
@@ -126,7 +101,6 @@ KIND_MARKERS = (
 )
 NO_KIND = ""
 
-#: How much of a line's own opening ``writer_mark`` keeps to name its writer.
 WRITER_MARK_SPLIT = ":"
 WRITER_MARK_CHARS = 40
 
@@ -140,7 +114,7 @@ WIDGET = {
 
 
 def rgb(hex_color: str) -> tuple[int, int, int]:
-    """Split a ``#rgb`` or ``#rrggbb`` token into its three 0-255 channels."""
+    """Split ``hex_color``, ``#rgb`` or ``#rrggbb``, into three 0-255 channels."""
     digits = hex_color.lstrip("#")
     if len(digits) == 3:
         digits = "".join(digit * 2 for digit in digits)
@@ -152,22 +126,18 @@ def rgb(hex_color: str) -> tuple[int, int, int]:
 
 
 def now_seconds() -> float:
-    """The wall clock the render counters and ``health_stats`` read."""
+    """Return ``time.time``, the default ``StatusLogModel`` clock."""
     return time.time()
 
 
 def timestamp(now: Optional[datetime] = None) -> str:
-    """The stamp one line carries, taken when the message arrives."""
+    """Format ``now``, or the current time, with ``TIMESTAMP_FORMAT``."""
     return (datetime.now() if now is None else now).strftime(TIMESTAMP_FORMAT)
 
 
 def stage_color(message: str) -> str:
-    """The colour a trade notification takes, read from its stage word.
-
-    The first stage named anywhere in the message wins, in the order
-    `STAGE_COLORS` lists. A message naming none paints
-    `STAGE_DEFAULT_COLOR`.
-    """
+    """Return the first ``STAGE_COLORS`` colour whose stage ``message`` names, else
+    ``STAGE_DEFAULT_COLOR``."""
     for stage, token in STAGE_COLORS:
         if stage in message:
             return token
@@ -175,24 +145,19 @@ def stage_color(message: str) -> str:
 
 
 def level_color(level: Any) -> str:
-    """The colour a plain line takes. A level the map does not name is
-    painted in the neutral body colour rather than any level colour."""
+    """Return ``level``'s ``LEVEL_COLORS`` colour, else ``DEFAULT_LEVEL_COLOR``."""
     return LEVEL_COLORS.get(level, DEFAULT_LEVEL_COLOR)
 
 
 def bot_tag(message: str) -> str:
-    """The ``[TICKER/last4] `` tag ``MainWindow._on_bot_log`` opens a bot's line
-    with. ``BOT_TAG_PATTERN`` matching nothing gives an empty string."""
+    """Return the ``[TICKER/last4] `` tag ``BOT_TAG_PATTERN`` matches opening
+    ``message``, or an empty string."""
     found = BOT_TAG_PATTERN.match(message)
     return found.group(0) if found else ""
 
 
-# The first sentence of the docstring below is overtaken. Quoted whole:
-#   "The part of one message the prefix rules read."
-# It is the part of one message ``line_style`` draws as the line's text.
 def shape_source(message: str) -> str:
-    """The part of one message the prefix rules read. ``bot_tag`` comes off
-    before ``TRADE_PREFIX`` or a wire prefix is matched."""
+    """Return ``message`` without its leading ``bot_tag``."""
     return message[len(bot_tag(message)) :]
 
 
@@ -212,11 +177,9 @@ def writer_mark(message: str) -> str:
     return head[:WRITER_MARK_CHARS]
 
 
-# A message not opening with ``TRADE_PREFIX`` carries no ``<ROLE>: <SYMBOL>:
-# <STAGE>`` to read, and draws unchanged.
 def trade_text(shaped: str) -> tuple[str, str]:
-    """The stage-first text a trade message draws, and the role it named.
-    A message short of ``TRADE_FIELD_COUNT`` fields draws unchanged, no role."""
+    """Return the ``TRADE_TEXT_FORMAT`` text and role of a ``TRADE_PREFIX`` line with
+    ``TRADE_FIELD_COUNT`` fields, else ``shaped`` and an empty role."""
     if not shaped.startswith(TRADE_PREFIX):
         return shaped, ""
     body = shaped[len(TRADE_PREFIX) :].strip()
@@ -229,10 +192,6 @@ def trade_text(shaped: str) -> tuple[str, str]:
     return (drawn + TRADE_STAGE_SPLIT + rest if rest else drawn), role
 
 
-# One sentence of the docstring below is overtaken. Quoted whole:
-#   "One line's drawn shape: ``kind``, ``tag``, ``bullet``, ``text`` and its
-#   weights."
-# The shape also carries ``lights``, the gate lights a per-tick line draws.
 def style_of(
     kind: str,
     tag: str,
@@ -244,8 +203,7 @@ def style_of(
     bullet: str = "",
     lights: Optional[list] = None,
 ) -> dict:
-    """One line's drawn shape: ``kind``, ``tag``, ``bullet``, ``text`` and its
-    weights. ``line_style``, ``resume_line`` and ``notice_line`` all return it."""
+    """Return the arguments as one line's style dict, copying each of ``lights``."""
     return {
         "kind": kind,
         "tag": tag,
@@ -259,18 +217,14 @@ def style_of(
     }
 
 
-# The second sentence of the docstring below is overtaken. Quoted whole:
-#   "``TRADE_PREFIX`` then the wire prefixes decide before ``level_color`` does."
-# The ``kind`` the writer named decides, and ``level_color`` paints a line naming
-# none.
 def line_style(
     message: str,
     level: Any = DEFAULT_LOG_LEVEL,
     kind: Optional[str] = None,
     lights: Optional[list] = None,
 ) -> dict:
-    """The three parts one message draws, and the weights it draws them in.
-    ``TRADE_PREFIX`` then the wire prefixes decide before ``level_color`` does."""
+    """Return the trade or wire style ``kind`` names for ``message``, else the
+    ``level_color`` style with ``lights``."""
     tag = bot_tag(message)
     shaped = shape_source(message)
     if kind == KIND_TRADE:
@@ -309,18 +263,18 @@ def line_style(
 
 
 def stamp_text(stamp: str) -> str:
-    """The leading ``[hh:mm:ss]`` a line paints, empty for an unstamped one."""
+    """Return ``stamp`` in ``STAMP_FORMAT``, or ``NOTICE_STAMP`` when empty."""
     return STAMP_FORMAT.format(stamp=stamp) if stamp else NOTICE_STAMP
 
 
 def stamp_html(stamp: str) -> str:
-    """The leading ``[hh:mm:ss]`` span every line carries."""
+    """Return ``stamp_text`` of ``stamp`` in a ``TIMESTAMP_COLOR`` span."""
     return f'<span style="color:{TIMESTAMP_COLOR}">{stamp_text(stamp)}</span> '
 
 
 def body_html(style: dict) -> str:
-    """The body span: the bot's tag, then the glyph, then the drawn text.
-    ``html.escape`` keeps a message carrying ``<`` from vanishing as a tag."""
+    """Return one ``style`` span of the escaped tag, the bullet, the escaped text and
+    ``lights_html``."""
     declarations = f"color:{style['color']}"
     if style["font_size_px"] is not None:
         declarations += f";font-size:{style['font_size_px']}px;font-weight:bold;"
@@ -333,7 +287,7 @@ def body_html(style: dict) -> str:
 
 
 def light_html(light: dict) -> str:
-    """One gate light: its label, then its own resolved colour as a block."""
+    """Return ``light``'s escaped label, then ``LIGHT_DOT_TEXT`` on its colour."""
     label = html.escape(str(light.get("label", "")), quote=False)
     tone = str(light.get("color", "") or "")
     return (
@@ -343,17 +297,14 @@ def light_html(light: dict) -> str:
 
 
 def bank_marker_html(bank: str) -> str:
-    """The marker closing one bank of gate lights."""
+    """Return the escaped ``bank`` name in ``BANK_MARKER_COLOR``."""
     marked = html.escape(str(bank), quote=False)
     return f'<span style="color:{BANK_MARKER_COLOR}">{marked}</span>'
 
 
 def lights_html(lights: Optional[list]) -> str:
-    """Every gate light one line carries, each bank closed by its own marker.
-
-    ``gate_light_row`` gives the draw order and each light's colour, so no
-    order and no colour is decided here.
-    """
+    """Return ``light_html`` of each of ``lights`` in order, each bank closed by
+    ``bank_marker_html``, joined by ``LIGHT_SEPARATOR``."""
     parts: list[str] = []
     bank = ""
     for light in lights or []:
@@ -369,11 +320,8 @@ def lights_html(lights: Optional[list]) -> str:
     return LIGHT_SEPARATOR + LIGHT_SEPARATOR.join(parts)
 
 
-# One sentence of the docstring below is overtaken. Quoted whole:
-#   "The whole HTML string the Activity Log appends for one line."
-# A per-tick line closes with ``lights_html``, inside the body span.
 def line_html(stamp: str, style: dict) -> str:
-    """The whole HTML string the Activity Log appends for one line."""
+    """Return ``stamp_html`` of ``stamp`` followed by ``body_html`` of ``style``."""
     return stamp_html(stamp) + body_html(style)
 
 
@@ -404,28 +352,22 @@ def build_line(
 
 
 def resume_line(buffered_count: int) -> dict:
-    """The notice closing a resume, naming how many lines were held."""
+    """Return the italic ``KIND_RESUME`` line naming ``buffered_count`` held lines,
+    stamped ``RESUME_STAMP``."""
     text = f"(resumed — {buffered_count} buffered message(s) above)"
     style = style_of(KIND_RESUME, "", text, RESUME_MARKER_COLOR, italic=True)
     return painted_line(RESUME_STAMP, None, style)
 
 
 def notice_line(text: str) -> dict:
-    """One unstamped line, which is what ``StatusLog.notice`` appends."""
+    """Return ``text`` as an unstamped ``KIND_PLAIN`` line in the default colour."""
     style = style_of(KIND_PLAIN, "", str(text), DEFAULT_LEVEL_COLOR)
     return painted_line(NOTICE_STAMP, None, style)
 
 
 class StatusLogModel:
-    """The Activity Log's own state: its document, pause buffer and counters.
-
-    A line reaches ``sink`` when it paints. While paused a line is held
-    instead, and a line arriving with ``pause_buffer_cap`` already held is
-    discarded so that what triggered the pause survives. ``render`` is the
-    guarded path: a sink that raises is counted and logged rather than
-    losing the message silently, which is what the Activity-Log watchdog
-    reads through ``health_stats``.
-    """
+    """The Activity Log's ``lines`` up to ``max_blocks``, its ``pause_buffer`` and its
+    render counters."""
 
     def __init__(
         self,
@@ -456,11 +398,8 @@ class StatusLogModel:
         self.paused = True
 
     def resume(self) -> None:
-        """Paint the held lines in arrival order, then the resume notice.
-
-        Each held line keeps the stamp it arrived with. The notice is
-        painted outside the guarded path, exactly as the pane paints it.
-        """
+        """Set ``paused`` false, ``render`` each held line with its own stamp, then
+        ``append`` a ``resume_line`` if any."""
         self.paused = False
         buffered = list(self.pause_buffer)
         self.pause_buffer.clear()
@@ -486,7 +425,8 @@ class StatusLogModel:
         kind: Optional[str] = None,
         lights: Optional[list] = None,
     ) -> None:
-        """Take the stamp, then paint the line or hold it under a pause."""
+        """Stamp ``message``, then ``render`` it, or while ``paused`` hold it in
+        ``pause_buffer`` up to ``pause_buffer_cap``."""
         stamp = timestamp(now)
         if self.paused:
             if len(self.pause_buffer) < self.pause_buffer_cap:
@@ -502,11 +442,7 @@ class StatusLogModel:
         kind: Optional[str] = None,
         lights: Optional[list] = None,
     ) -> None:
-        """Paint a line whether or not the pane is paused.
-
-        The Activity-Log watchdog reports through this, so a pause cannot
-        hide the report that the log stopped painting.
-        """
+        """Stamp and ``render`` ``message`` even while ``paused``."""
         self.render(timestamp(now), message, level, kind, lights)
 
     def append_text(self, text: str) -> None:
@@ -518,7 +454,8 @@ class StatusLogModel:
         self.total_renders += 1
 
     def health_stats(self) -> dict:
-        """The counters the Activity-Log watchdog polls every 60 s."""
+        """Return ``paused``, the ``pause_buffer`` size, the render counters and
+        ``document_blocks`` as one dict."""
         return {
             "paused": self.paused,
             "pause_buffer_size": len(self.pause_buffer),
@@ -530,7 +467,7 @@ class StatusLogModel:
         }
 
     def document_blocks(self) -> int:
-        """The pane's block count: one per painted line, never below one."""
+        """Return the number of ``lines``, never below one."""
         return max(1, len(self.lines))
 
     def render(
@@ -541,11 +478,8 @@ class StatusLogModel:
         kind: Optional[str] = None,
         lights: Optional[list] = None,
     ) -> None:
-        """Paint one line and count the outcome.
-
-        A sink that raises is counted and reported to the file logger, so
-        a message lost at the pane leaves a trace the watchdog can read.
-        """
+        """Call ``render_line``, then count it in ``total_renders``, or an exception in
+        ``render_errors`` and ``logger``."""
         try:
             self.render_line(stamp, message, level, kind, lights)
             self.last_render_time = self.clock()
@@ -571,7 +505,7 @@ class StatusLogModel:
         kind: Optional[str] = None,
         lights: Optional[list] = None,
     ) -> None:
-        """Build one line, send it to the sink and follow the newest line."""
+        """Pass ``build_line``'s line to ``append``, then ``scroll_to_end``."""
         self.append(build_line(stamp, message, level, kind, lights))
         self.scroll_to_end()
 
@@ -599,22 +533,14 @@ PANE_MODEL: Optional[StatusLogModel] = None
 
 
 def pane_model() -> StatusLogModel:
-    """The one log the bridge keeps between calls.
-
-    Built on the first request, never at import: the constructor
-    stamps ``last_render_time`` from the clock.
-    """
+    """Return ``PANE_MODEL``, the one ``StatusLogModel`` kept between calls, built on
+    the first call."""
     global PANE_MODEL
     if PANE_MODEL is None:
         PANE_MODEL = StatusLogModel()
     return PANE_MODEL
 
 
-# One sentence of the docstring below is overtaken. Quoted whole:
-#   "A message is a mapping with ``message``, ``level`` and an optional ``force``
-#   that paints it through a pause."
-# A message also carries ``kind``, the kind its writer named.
-# A message also carries ``lights``, the gate lights its writer resolved.
 def build_view_model(
     model: StatusLogModel,
     messages: Optional[list] = None,
@@ -623,16 +549,8 @@ def build_view_model(
     notices: Optional[list] = None,
     whole: bool = False,
 ) -> dict:
-    """Return the whole surface state as one serialisable dict.
-
-    ``toggle`` flips the pause state, ``paused`` sets it, and a resume
-    drains the held lines ahead of this batch. A message is a mapping with
-    ``message``, ``level`` and an optional ``force`` that paints it
-    through a pause. A message that cannot be read is skipped rather than
-    raised, which is the guarantee the pane gives its callers. ``whole``
-    returns every line the document holds rather than this call's batch,
-    which is what a pane opening for the first time draws.
-    """
+    """Apply ``toggle``, ``paused``, ``messages`` and ``notices`` to ``model``, then
+    return its state as one dict."""
     model.take_painted()
     if toggle:
         model.toggle_pause()
@@ -682,12 +600,8 @@ def build_view_model(
 
 
 def view_model(params: dict) -> dict:
-    """Bridge handler for ``status_log.lines``.
-
-    Reads ``messages``, ``notices``, ``paused``, ``toggle`` and ``whole``
-    from the request parameters. The pause state persists between calls
-    because the pane's own does.
-    """
+    """Handle ``METHOD`` by passing ``params`` to ``build_view_model`` on
+    ``pane_model``."""
     paused = params.get("paused")
     return build_view_model(
         pane_model(),
