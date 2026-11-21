@@ -622,6 +622,48 @@ with the switch on:
   - function func confidence 60 line 7: CODE.REACH holds no corrected form for this rule
 ```
 
+A line under the OPTIMIZE flag carries neither note. Each row names a rule and
+its lines, then the flag's own text in FLAGS: the merge proceeds. The line
+prints no corrected form and no command, so it names every rule. Its flag is the
+one its first line names, from the reading before any fix. The block of
+CODE.IMPORT on the published faulty form of TC003, read with its sample tree as
+the root:
+
+```
+[sigil-feedback] CODE.IMPORT on known_bad_tc003.py: OPTIMIZABLE, flag OPTIMIZE, 1 finding(s) under 1 rule(s)
+  - TC003 typing-only-standard-library-import line 4: the merge proceeds
+```
+
+One mapping in the follow-on runner holds the choice. When the runner's first
+reading carries a flag that STATED holds, its output gives that flag's text
+under the key stated. Its output still holds the corrected forms that each
+card's follow-on rule names.
+
+`dev_harness/sigils/fix_class.py, in STATED`:
+
+```python
+STATED = {Flag.OPTIMIZE: FLAGS[Flag.OPTIMIZE]["follows"]}
+```
+
+The hook prints the stated text on each row in place of a note, a form or a
+command. The runner's output under FIX or HOLD gives no stated text, and the
+hook builds that line as before.
+
+`dev_harness/hooks/archetype_gate.py, in _ruff_text`:
+
+```python
+def _ruff_text(
+    name: str, target: SigilTarget, first_row: dict, left: set[str], row: dict,
+) -> str:
+    """Return `_stated_section` when `row` holds `stated` text, else `_ruff_section`."""
+    stated = row.get("stated")
+    if isinstance(stated, str) and stated:
+        return _stated_section(name, target, first_row, stated)
+    corrected = row.get("corrected")
+    forms = corrected if isinstance(corrected, dict) else {}
+    return _ruff_section(name, target, first_row, left, forms)
+```
+
 ### The time budget of the feedback
 
 The archetypes and the sigils share `POST_BUDGET_S`, 200 seconds per write. The
@@ -639,6 +681,9 @@ Four settings bound the length of the feedback:
 | SIGIL_RULES_SHOWN | 15 | the rules named for one sigil; the rest point to the sigil's command |
 | SIGIL_FORMS_SHOWN | 8 | the corrected forms printed for one sigil |
 | SIGIL_FORM_LINES | 30 | the lines printed of one corrected form |
+
+A line under the OPTIMIZE flag prints no form and points to no command, so only
+SIGIL_LINES_SHOWN bounds it, and it names every rule.
 
 ### Readings of the feedback
 
@@ -664,6 +709,13 @@ The table was read before LOOP004 joined CODE.LOOP. Its four files were
 written through the same half later. The feedback named LOOP004 with its
 corrected form on known_bad_loop004.py, and named no CODE.LOOP rule on
 known_good_loop004.py, outside_loop004.py or fresh_loop004.py.
+
+The table was also read before a line under the OPTIMIZE flag stopped printing
+forms and notes. A second reading ran _ruff_sigil on the lists of the six ruff
+sigils, once for each whole file a list names, with its sample tree as the
+root. Of the 275 readings, the 11 lines under OPTIMIZE name each rule with the
+merge proceeds and hold no form, note or command. The 140 lines under FIX or
+HOLD read the same as before, byte for byte.
 
 The failure-mode list of CODE.LOOP, `harness_fixtures/sigil_code_loop/failure_modes.txt`,
 holds 64 faulty forms and 140 twins as functions and classes, and two faulty
