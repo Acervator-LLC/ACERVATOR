@@ -536,17 +536,125 @@ feedback and one without it.
 `dev_harness/hooks/archetype_gate.py, in _sigil_marked`:
 
 ```python
-def _sigil_marked(path: Path) -> bool:
-    """Report if a `SIGIL_OFF_MARKER` file sits in `path.parents` up to `_git_root`."""
+def _sigil_marked(path: Path, marker: str = SIGIL_OFF_MARKER) -> bool:
+    """Report if a `marker` file sits in `path.parents` up to `_git_root`."""
     root = _git_root(path)
     if root is None:
         return False
     for folder in path.parents:
-        if (folder / SIGIL_OFF_MARKER).is_file():
+        if (folder / marker).is_file():
             return True
         if folder == root:
             break
     return False
+```
+
+### A marker that refuses a write
+
+A file named SIGIL_FEEDBACK_REFUSE makes the sigils refuse a write before it
+lands. _sigil_marked looks for it with the walk it uses for SIGIL_FEEDBACK_OFF:
+in the folder of the written file, and in each folder above it up to the
+nearest folder that holds .git. The hook checks only that the file is there. It
+never reads what the file holds.
+
+The pre-write half of the hook is _run_pre. It first runs the archetypes, as it
+does with no marker. When they allow the write, _sigil_refusal runs the nine
+sigils in CODING_SIGILS on the pending content. The hook puts that content in a
+file beside the target, as it does for the archetypes, so each line number that
+a sigil names is a line of the pending content. A line diff then compares the
+pending content with the file on disk. A line that the diff does not match is a
+line that the write adds or changes. In a new file, every line is one of them.
+
+_sigil_refusal refuses the write when a sigil reading under FIX or HOLD names
+one of those lines. The table gives the decision for each case:
+
+| SIGIL_FEEDBACK_REFUSE | SIGIL_FEEDBACK_OFF | The sigil reading | Decision |
+| --------------------- | ------------------ | ----------------- | -------- |
+| absent | present or absent | any | the archetype check alone decides |
+| present | present | any | the archetype check alone decides, and no sigil runs |
+| present | absent | FIX or HOLD, and it names a line that the write adds or changes | refused |
+| present | absent | FIX or HOLD, and it names only lines that the write leaves untouched | allowed |
+| present | absent | FIX or HOLD, and it names no line number | allowed |
+| present | absent | OPTIMIZE, PASS or BLOCK | allowed |
+| present | absent | not read, because of an error or the time budget | allowed |
+
+The archetype check applies in every case. When the archetypes deny the write,
+the reason is theirs, and no sigil runs. When _sigil_feedback_off reports the
+feedback off, by SIGIL_FEEDBACK_OFF or by ACERVATOR_SIGIL_FEEDBACK, no sigil
+runs. The archetypes and the sigils share the 240 seconds of PRE_BUDGET_S. A
+sigil that the budget does not reach reads as not read.
+
+The refusal reason starts with `[sigil-refusal]`, once. Then it gives one row
+for each line that refuses the write. The row names the sigil, the rule, the
+line and the flag's own text in FLAGS. The reason never names the marker. The
+row for a LOOP004 line that an Edit added at line 61:
+
+```
+  - CODE.LOOP LOOP004 open-method-readlines-in-for line 61: flag FIX (the merge proceeds, and the fault is fixed at once)
+```
+
+The file beside the target stays while the sigils read it. The hook removes a
+file that a run left behind only when it is older than STAGING_GRACE_S. That is
+300 seconds, the timeout of the pre-write half in
+dev_harness/hooks/settings_hooks.json.
+
+`dev_harness/hooks/archetype_gate.py, in _sigil_refusal`:
+
+```python
+def _sigil_refusal(path: Path, content: str, deadline: float) -> str:
+    """Return `_REFUSAL` text when a sigil flags a `_changed_lines` line, else empty."""
+    if path.suffix != SIGIL_SUFFIX or not _sigil_marked(path, SIGIL_REFUSE_MARKER):
+        return ""
+    if _sigil_feedback_off(path):
+        return ""
+    _debug_log(f"pre: running the coding sigils on {path.name}")
+    read = _pending_readings(path, content, deadline)
+    if isinstance(read, str):
+        _debug_log(f"pre: no sigil read {path.name}")
+        return ""
+    readings, follows = read
+    unread = [name for name, reading in readings.items() if reading.status == UNREAD]
+    if unread:
+        _debug_log(f"pre: sigils not read on {path.name}: {', '.join(unread)}")
+    rows = _refusal_rows(readings, follows, _changed_lines(path, content))
+    if not rows:
+        _debug_log(
+            f"pre: allow {path.name} (no FIX or HOLD sigil line names a changed line)")
+        return ""
+    opening = (
+        f"{_REFUSAL} This write adds or changes lines of {_rel(path)} that a sigil "
+        "flags FIX or HOLD. Correct each line below, then write again.")
+    return "\n".join([opening, *rows])
+```
+
+`dev_harness/hooks/archetype_gate.py, in _changed_lines` and `in _refusal_rows`:
+
+```python
+def _changed_lines(path: Path, pending: str) -> frozenset[int]:
+    """Return the number of each `pending` line a line diff does not match to `path`."""
+    before = _numbered_lines(_read_text(path)) if path.exists() else []
+    matcher = difflib.SequenceMatcher(
+        None, before, _numbered_lines(pending), autojunk=False)
+    return frozenset(
+        number
+        for tag, _, _, first, last in matcher.get_opcodes()
+        if tag in {"replace", "insert"}
+        for number in range(first + 1, last + 1)
+    )
+
+
+def _refusal_rows(
+    readings: dict[str, SigilReading], follows: dict[str, str], changed: frozenset[int],
+) -> list[str]:
+    """Return a row per `changed` line that a `REFUSING_FLAGS` reading names."""
+    return [
+        f"  - {name} {rule} line {line}: flag {reading.flag} ({follows[reading.flag]})"
+        for name, reading in readings.items()
+        if reading.flag in REFUSING_FLAGS
+        for rule, lines in reading.lines
+        for line in lines
+        if line in changed
+    ]
 ```
 
 ### What the feedback names
@@ -565,11 +673,11 @@ CODE.REACH and CODE.SECURE run through their own commands. Each sigil reads the
 tree of the nearest folder above the file that holds .git, which is the tree
 its own command reads by default.
 
-`dev_harness/hooks/archetype_gate.py, in _sigil_feedback`:
+`dev_harness/hooks/archetype_gate.py, in _sigil_readings` and `in _sigil_feedback`:
 
 ```python
-def _sigil_feedback(path: Path, deadline: float) -> str:
-    """Return each `CODING_SIGILS` reading of `path`, naming every sigil not read."""
+def _sigil_readings(path: Path, deadline: float) -> SigilPass | str:
+    """Return each sigil's reading of `path` and the flag texts, or `_all_unread`."""
     root = _git_root(path)
     cwd = _repo_for(path)
     if root is None:
@@ -586,7 +694,7 @@ def _sigil_feedback(path: Path, deadline: float) -> str:
     follows = _flag_follows(cwd, deadline)
     if isinstance(follows, str):
         return _all_unread(f"the FLAGS of {FLAG_MODULE} did not read: {follows}")
-    readings = []
+    readings: dict[str, SigilReading] = {}
     with tempfile.TemporaryDirectory(
             prefix="sigil_feedback_", ignore_cleanup_errors=True) as folder:
         listing = Path(folder) / "input.txt"
@@ -594,8 +702,16 @@ def _sigil_feedback(path: Path, deadline: float) -> str:
         target = SigilTarget(rel, root, cwd, listing, deadline, follows)
         for name in CODING_SIGILS:
             read = _ruff_sigil if name in follow_on else _tool_sigil
-            readings.append(read(name, target))
-    return _feedback_text(readings)
+            readings[name] = read(name, target)
+    return readings, follows
+
+
+def _sigil_feedback(path: Path, deadline: float) -> str:
+    """Return the `_feedback_text` of `_sigil_readings`, or its `_all_unread` line."""
+    read = _sigil_readings(path, deadline)
+    if isinstance(read, str):
+        return read
+    return _feedback_text(list(read[0].values()))
 ```
 
 Each sigil ends in one of four states, and the feedback names every sigil in
@@ -833,6 +949,43 @@ input and counting the `[sigil-feedback]` lines it printed:
 
 On all seven rows, the archetype part of the _run_post output is the same, byte
 for byte. Where the feedback is on, _sigil_part adds its two lines after it.
+
+The refusal marker was read by driving _run_pre the way the write hook runs it,
+with one tool record on standard input for each case of its table. Each module
+sat in a gitignored folder of the repository, except the one in src. Five
+records edit the starting module of Task_04_Event_Log, which holds a LOOP004
+line at line 20. Each of the five adds a function last_error, with its loop at
+line 61:
+
+| SIGIL_FEEDBACK_REFUSE | SIGIL_FEEDBACK_OFF | Tool record | Decision | Reason |
+| --------------------- | ------------------ | ----------- | -------- | ------ |
+| absent | absent | an Edit whose loop reads readlines() | allowed | none |
+| absent | present | the same Edit | allowed | none |
+| present | present | the same Edit | allowed, and no sigil ran | none |
+| present | absent | the same Edit | refused | CODE.LOOP, LOOP004, line 61, the text of FIX |
+| present | absent | an Edit whose loop reads the file object | allowed | none, and LOOP004 at line 20 is untouched |
+| present, in src | absent | a Write of a new file with SECURE001 at line 22 | refused | CODE.SECURE, SECURE001, line 22, the text of HOLD |
+| present | absent | a Write of a new file whose one finding is UP031 at line 8, under OPTIMIZE | allowed | none |
+| present | absent | the SECURE001 Write, read by a copy of the sigils whose CODE.SECURE rows name no line | allowed | none |
+| present | absent | the SECURE001 Write, read by a copy of the sigils with no rule packs | allowed | none |
+| present | absent | the SECURE001 Write, read by the sigils of the repository | refused | CODE.SECURE, SECURE001, line 22, the text of FIX |
+| present | absent | a Write that adds an unused import | refused by the archetype check | the archetype's reason for the unused import |
+
+In the file of the UP031 Write, CODE.LOOP and CODE.IMPORT do not cover the
+file, and the other sigils pass. No sigil in the repository prints a FIX or
+HOLD row that names no line number. That case therefore read a copy of
+dev_harness in the module's folder, whose CODE.SECURE prints its rows without
+the line. Its own reading of the module gave FIX and named no line. The case of
+a sigil not read used a copy that holds no CODE.SECURE rule packs. The last
+SECURE001 Write reads the same module with the sigils of the repository, which
+name line 22, and that write is refused.
+
+With the SIGIL_FEEDBACK_REFUSE file taken away, the hook before this change and
+the hook after it read the same eleven records. Each gave the same decision and
+the same output as the other, byte for byte. On each file that a record wrote,
+the after-write output of the two hooks was also the same, byte for byte. The
+refused Edit of the Task_04_Event_Log module took 21.3 seconds, against the
+300 second timeout of the pre-write half.
 
 ## The shared modules
 
