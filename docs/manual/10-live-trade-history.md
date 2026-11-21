@@ -729,8 +729,6 @@ A39.
 
 ![A39, 10 fills with every step dotted, and no band: its 15 one-day bars are fewer than the 20 the band needs.](figures/vwap_a39.png)
 
-Now: the A39 chart draws 20 fills, dots every step, and carries a band over the last 8 of its 27 one-day bars (`tools/build_product_manual.py, in fill_band`).
-
 Now: the A39 chart draws 38 fills, 28 buys and 10 sells, from 4 October to 15 November. Its band runs on five-minute candles across the whole window, it carries 6 Scrum-Fold pairs, and at 38 fills it no longer dots every step (`tools/build_product_manual.py, in _draw_vwap`).
 
 ### A40
