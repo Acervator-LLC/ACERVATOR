@@ -1203,15 +1203,23 @@ def _header(name: str, target: SigilTarget, row: dict, counts: tuple[int, int]) 
     )
 
 
+def _named_rules(
+    name: str, target: SigilTarget, first_row: dict,
+) -> tuple[list[str], dict[str, str], dict[str, list[int]]]:
+    """Return a list holding `_header`, and each `first_row` rule's name and lines."""
+    first = _ruff_rows(str(first_row.get("reason") or ""))
+    names = {code: f"{code} {rule}" for code, rule, _ in first}
+    grouped = _lines_by_rule([(code, line) for code, _, line in first])
+    header = _header(name, target, first_row, (len(first), len(grouped)))
+    return [header], names, grouped
+
+
 def _ruff_section(
     name: str, target: SigilTarget, first_row: dict, left: set[str], forms: dict,
 ) -> str:
     """Return each `first_row` rule with a safe fix, or a `forms` entry if in `left`."""
-    first = _ruff_rows(str(first_row.get("reason") or ""))
-    names = {code: f"{code} {rule}" for code, rule, _ in first}
-    grouped = _lines_by_rule([(code, line) for code, _, line in first])
+    lines, names, grouped = _named_rules(name, target, first_row)
     command = f"python -m {FOLLOW_ON_MODULE} {name} {target.rel}"
-    lines = [_header(name, target, first_row, (len(first), len(grouped)))]
     shown = 0
     for count, (code, at) in enumerate(grouped.items()):
         if count == SIGIL_RULES_SHOWN:
@@ -1229,6 +1237,27 @@ def _ruff_section(
     if set(grouped) - left:
         lines.append(f"  ruff's safe fixes: {command} --write")
     return "\n".join(lines)
+
+
+def _stated_section(
+    name: str, target: SigilTarget, first_row: dict, stated: str,
+) -> str:
+    """Return each `first_row` rule and lines with `stated`, and no form or command."""
+    lines, names, grouped = _named_rules(name, target, first_row)
+    lines.extend(_rule_row(names[code], at, stated) for code, at in grouped.items())
+    return "\n".join(lines)
+
+
+def _ruff_text(
+    name: str, target: SigilTarget, first_row: dict, left: set[str], row: dict,
+) -> str:
+    """Return `_stated_section` when `row` holds `stated` text, else `_ruff_section`."""
+    stated = row.get("stated")
+    if isinstance(stated, str) and stated:
+        return _stated_section(name, target, first_row, stated)
+    corrected = row.get("corrected")
+    forms = corrected if isinstance(corrected, dict) else {}
+    return _ruff_section(name, target, first_row, left, forms)
 
 
 def _ruff_sigil(name: str, target: SigilTarget) -> SigilReading:
@@ -1251,10 +1280,7 @@ def _ruff_sigil(name: str, target: SigilTarget) -> SigilReading:
         first_row = before
     if not _ruff_rows(str(first_row.get("reason") or "")):
         return _no_rows(name, first_row)
-    corrected = row.get("corrected")
-    forms = corrected if isinstance(corrected, dict) else {}
-    return SigilReading(
-        FINDINGS, _ruff_section(name, target, first_row, left, forms))
+    return SigilReading(FINDINGS, _ruff_text(name, target, first_row, left, row))
 
 
 def _tool_sigil(name: str, target: SigilTarget) -> SigilReading:

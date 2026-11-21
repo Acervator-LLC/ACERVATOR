@@ -15,6 +15,7 @@ from types import ModuleType
 from .coding_input import SEPARATOR, locate
 from .core import (
     APPLICATION_SOURCE,
+    FLAGS,
     Flag,
     Verdict,
     in_application_source,
@@ -51,6 +52,7 @@ UNCHANGED = "a round changes no byte"
 OUTSIDE = "ruff's fix changes a line outside the symbol"
 LIMIT = "the round limit is reached"
 ENDS = frozenset({Flag.PASS, Flag.BLOCK})
+STATED = {Flag.OPTIMIZE: FLAGS[Flag.OPTIMIZE]["follows"]}
 CARD: dict[str, object] = {
     "house": "coding",
     "edition": 1,
@@ -72,7 +74,7 @@ _CODE_RE = re.compile(r"\(([A-Z]+[0-9]+)\)")
 
 @dataclass(frozen=True)
 class FollowOn:
-    """One `follow_on` run: codes fixed per round, `stop`, last `verdict`, `corrected` forms, `forced` codes, `change`, `written`."""
+    """One `follow_on` run: codes fixed per round, `stop`, last `verdict`, `corrected` forms, `forced` codes, `change`, `written`, `stated` text."""
 
     rounds: tuple[tuple[str, ...], ...]
     stop: str
@@ -81,6 +83,7 @@ class FollowOn:
     forced: tuple[str, ...]
     change: str
     written: bool
+    stated: str = ""
 
 
 def reading_codes(verdict: Verdict) -> tuple[str, ...]:
@@ -225,6 +228,7 @@ def follow_on(
     if verdict.flag in ENDS:
         stop = PASSED if verdict.flag is Flag.PASS else REFUSED
         return FollowOn((), stop, verdict, {}, (), "", written=False)
+    stated = STATED.get(verdict.flag, "")
     located = locate(text, root)
     if isinstance(located, str):
         message = f"{text}: {located}, after tier 2 accepted it"
@@ -263,7 +267,14 @@ def follow_on(
     if written:
         file.write_bytes(final)
     return FollowOn(
-        tuple(rounds), stop, verdict, corrected, tuple(sorted(forced)), change, written
+        tuple(rounds),
+        stop,
+        verdict,
+        corrected,
+        tuple(sorted(forced)),
+        change,
+        written,
+        stated,
     )
 
 
@@ -325,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
         "flag": result.verdict.flag.name,
         "reason": result.verdict.reason,
         "corrected": result.corrected,
+        "stated": result.stated,
         "forced_safe": list(result.forced),
         "change": result.change,
         "written": result.written,
