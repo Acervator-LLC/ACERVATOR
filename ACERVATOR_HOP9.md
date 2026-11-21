@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-21 against `d47762d8`. **Every claim here names one command that
+Written 2026-11-21 against `1d137dee`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,13 +18,13 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running. The 15 pull requests since
-`a5e44099` are #1800 to #1814: seven on #1633, four on #1789, and one each on
+The session that wrote this was still running. The 17 pull requests since
+`a5e44099` are #1800 to #1816: nine on #1633, four on #1789, and one each on
 #1622, #53, #1660 and #319. #1789, #53, #1660 and #319 are open.
 
 ```bash
-git log --oneline --first-parent a5e44099..d47762d8   # the 15 pull requests
-gh pr view 1814 --json state --jq .state              # MERGED, and the same for the other 14
+git log --oneline --first-parent a5e44099..1d137dee   # the 17 pull requests
+gh pr view 1816 --json state --jq .state              # MERGED, and the same for the other 16
 gh issue view 1633 --comments                         # each record and result, newest last
 gh issue view 1789 --comments                         # his chart rulings and the units that built them
 gh release list                                       # what is published
@@ -127,9 +127,11 @@ releases     gh release list      # three builds, 0529, 1408 and 1107
              0.2.0-20261120.1107.gd2ebd3849477, from d2ebd384
 main         997d995f, a merge of current at 9d07671a, #1813
              git describe --tags origin/main     # build-0.2.0-20261121.0529.g997d995fd035
-             #1814 after it changes comments only, so no build follows it
+             #1814 after it changes comments only, and #1816 changes only the write hook
+             and the manual, which no spec collects, so no build follows either
              python -m tools.comment_audit prove <the file at 9d07671a> src/gui/main_tabs/status_log_surface.py   # IDENTICAL
-both trees   both on current at d47762d8
+             git diff --stat 997d995f 1d137dee -- src desktop main.py tools Acervator_win.spec   # status_log_surface.py only
+both trees   both on current at 1d137dee
              dist/ in each holds three pairs, 1107, 1408 and 0529, built from 997d995f
 he runs      1107, the dist folder of each running Acervator process
              Get-CimInstance Win32_Process -Filter "Name LIKE 'Acervator%'"   # ExecutablePath
@@ -317,14 +319,21 @@ wrong far more often than right.
   #1762, #1766 and #1782; step 4 in #1767 and #1777. Experiment 4's step 2 has
   run, calibrations 1 and 2 are closed, and the referee judged the alpha bar met
   (comment 7062093229), and the real-unit comparison his alpha gate names has run
-  two pairs. **Next:** further pairs on rows where the fix itself meets a code
-  line a sigil flags, each with its own record first by part 6 of Skill:
-  canonized-workflow; then step 3 of the method in comment 7045926376, the
-  delivery control. The README in experiment 4's gitignored runs folder, under
-  artifacts/sigil_runs, names the ledger, the scorer and its scripts.
+  two pairs. Step 3 of the method in comment 7045926376, the delivery control, is
+  under way: its record is comment 7064685520, and #1816 built the
+  SIGIL_FEEDBACK_REFUSE marker in `dev_harness/hooks/archetype_gate.py, in
+  _sigil_refusal`. A unit is correcting CODE.REACH's reading of a staged copy
+  (record 7065821444). **Next:** after that merge, copy the hook into the Claude
+  Code user folder and compare its blob with the merge; then the three delivery
+  rounds of record 7064685520, each running the eight tasks with the refusal
+  marker, in folders named run_c, and with advice only, in folders named run_b;
+  then further real-unit pairs,
+  each with its own record first by part 6 of Skill: canonized-workflow. The
+  README in experiment 4's gitignored runs folder, under artifacts/sigil_runs,
+  names the ledger, the scorer and its scripts.
 
 ```bash
-gh issue view 1633 --comments      # step 2 7056017260; calibrations 7060342296, 7061923194; alpha 7062093229
+gh issue view 1633 --comments      # step 2 7056017260; calibrations 7060342296, 7061923194; alpha 7062093229; step 3 7064685520, 7065821444
 grep -n "ready for alpha" ~/.claude/projects/*/memory/project_sigil_alpha_gate.md
 ```
 
