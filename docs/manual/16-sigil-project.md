@@ -565,6 +565,29 @@ a sigil names is a line of the pending content. A line diff then compares the
 pending content with the file on disk. A line that the diff does not match is a
 line that the write adds or changes. In a new file, every line is one of them.
 
+CODE.REACH also reads the files beside its input. For the copy, the hook gives
+CODE.REACH the option `--replaces`, with the path of the target. CODE.REACH
+then leaves the target out of the list that vulture reads, so a name that only
+the old content uses reads as unused.
+[CODE.REACH](16-sigil-project/code-reach.md#what-it-reads) states the list.
+
+`dev_harness/hooks/archetype_gate.py, in _pending_readings`:
+
+```python
+def _pending_readings(path: Path, content: str, deadline: float) -> SigilPass | str:
+    """Return `_sigil_readings` of `content` staged beside `path`, or why none ran."""
+    staging = _stage(path, content)
+    if isinstance(staging, str):
+        return staging
+    staged, created, record = staging
+    try:
+        return _sigil_readings(staged, deadline, replaced=path)
+    except (OSError, ValueError) as exc:
+        return f"{type(exc).__name__}: {exc}"
+    finally:
+        _cleanup_staging(staged, created, record)
+```
+
 _sigil_refusal refuses the write when a sigil reading under FIX or HOLD names
 one of those lines. The table gives the decision for each case:
 
@@ -676,7 +699,9 @@ its own command reads by default.
 `dev_harness/hooks/archetype_gate.py, in _sigil_readings` and `in _sigil_feedback`:
 
 ```python
-def _sigil_readings(path: Path, deadline: float) -> SigilPass | str:
+def _sigil_readings(
+    path: Path, deadline: float, replaced: Path | None = None,
+) -> SigilPass | str:
     """Return each sigil's reading of `path` and the flag texts, or `_all_unread`."""
     root = _git_root(path)
     cwd = _repo_for(path)
@@ -686,6 +711,7 @@ def _sigil_readings(path: Path, deadline: float) -> SigilPass | str:
         return _all_unread(f"{cwd} holds no {FOLLOW_ON_FILE.as_posix()}")
     try:
         rel = path.relative_to(root).as_posix()
+        replaces = replaced.relative_to(root).as_posix() if replaced else ""
     except ValueError:
         return _all_unread(f"{path.name} sits outside {root}")
     follow_on = _follow_on_sigils(cwd, deadline)
@@ -699,7 +725,7 @@ def _sigil_readings(path: Path, deadline: float) -> SigilPass | str:
             prefix="sigil_feedback_", ignore_cleanup_errors=True) as folder:
         listing = Path(folder) / "input.txt"
         listing.write_text(f"{rel}\n", encoding="utf-8")
-        target = SigilTarget(rel, root, cwd, listing, deadline, follows)
+        target = SigilTarget(rel, root, cwd, listing, deadline, follows, replaces)
         for name in CODING_SIGILS:
             read = _ruff_sigil if name in follow_on else _tool_sigil
             readings[name] = read(name, target)
