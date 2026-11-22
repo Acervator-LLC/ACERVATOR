@@ -20,6 +20,20 @@ dispatched.
    an adjacent subsystem, a technology — is the agent's framing, not the item's.
 4. **Would he recognise this as the work he assigned?** If not, it is drift.
 
+## Text between tool calls is a report
+
+He reads every line written between tool calls, and he answers it. The four
+questions run on that text before it is written, as on a final report.
+
+Measured 2026-11-21 and 2026-11-22: he corrected three lines in one day, each
+a line about one item that named another item. The third line called the two
+items separate, and he read it as conflation: "Why are you even mentioning
+1633 at this point?"
+
+While one item is worked, no line names another item, not even to set it
+apart. A report that covers two items gives each its own block, and no
+sentence links them.
+
 ## Drop, do not caveat
 
 Cutting a paragraph is correct. Prefacing it with "one thing worth noting" is
