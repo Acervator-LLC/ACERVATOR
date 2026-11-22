@@ -1789,8 +1789,11 @@ UNITS_PANEL = (0.1, 0.1, 0.85, 0.095)
 PAIRS_LEGEND_AT = (0.525, 0.233)
 PAIRS_LEGEND_COLUMNS = 2
 VWAP_LEGEND_AT = (0.525, 0.0)
+VWAP_LEGEND_COLUMNS = 3
 SANS_X_HEIGHT_EM = 1120 / 2048
-ORDER_MARKER_PT = size("cap") * SANS_X_HEIGHT_EM
+DOT_PT = size("cap") * SANS_X_HEIGHT_EM
+ORDER_MARKER_PT = size("h2")
+ORDER_EDGE_PT = 0.8
 DATA_LINE_PT = 1.4
 PRESERVED_PEN = 3
 COMBINED_PANEL = (0.08, 0.22, 0.74, 0.62)
@@ -2106,12 +2109,12 @@ def cache_candles(asset: str, cache_dir: Path) -> list[list[float]]:
 
 
 def fill_slots(
-    rows: Sequence[Sequence[float]],
+    rows: Sequence[list[float]],
     extra: Sequence[Sequence[float]],
 ) -> list[list[float]]:
     """Return ``rows`` with each ``extra`` row in a slot it lacks, oldest first."""
     held = {row[0] for row in rows}
-    out = [list(row) for row in rows]
+    out = list(rows)
     for row in extra:
         if row[0] not in held:
             held.add(row[0])
@@ -2682,22 +2685,29 @@ def _draw_band(axis: Axes, band: Sequence[BandBar]) -> str:
     return f"{setting} on {BAND_BAR_NAME} candles"
 
 
-def _draw_dots(axis: Axes, fills: Sequence[Fill]) -> dict[str, str]:
-    """Dot each buy and sell on its ``bar_time`` and return each side's pen."""
-    pens = {"buy": series()[BUY_PEN], "sell": series()[SELL_PEN]}
-    for side, pen in pens.items():
-        own = [fill for fill in fills if fill.side == side]
+ORDER_MARKS = {
+    "buy": ("^", BUY_PEN, "Fold, the buy order"),
+    "sell": ("v", SELL_PEN, "Scrum, the sell order"),
+}
+
+
+def _draw_orders(axis: Axes, orders: Sequence[Order]) -> dict[str, str]:
+    """Mark each Fold as an up triangle, each Scrum as a down triangle, and return each side's pen."""
+    pens: dict[str, str] = {}
+    for side, (marker, pen_at, name) in ORDER_MARKS.items():
+        own = [order for order in orders if order.side == side]
+        pens[side] = series()[pen_at]
         axis.plot(
-            np.asarray([bar_time(fill.when) for fill in own]),
-            [fill.price for fill in own],
+            np.asarray([bar_time(order.when) for order in own]),
+            [order.price for order in own],
             linestyle="none",
-            marker="o",
+            marker=marker,
             markersize=ORDER_MARKER_PT,
-            markeredgewidth=0.0,
-            color=pen,
-            alpha=0.7,
+            markeredgewidth=ORDER_EDGE_PT,
+            markeredgecolor=ink("bg"),
+            color=pens[side],
             zorder=2,
-            label=f"{side} fills ({len(own)})",
+            label=f"{name} ({len(own):,})",
         )
     return pens
 
@@ -2744,7 +2754,7 @@ def _draw_pairs(gains: Axes, pairs: Sequence[CyclePair], cycles: int) -> None:
             places[held],
             [shares[at] for at in held],
             color=ink(pen),
-            s=ORDER_MARKER_PT**2,
+            s=DOT_PT**2,
             linewidths=0.0,
             zorder=2,
             label=f"a pair that {name} after fees",
@@ -2859,7 +2869,7 @@ def _draw_vwap(
     units = figure.add_axes(UNITS_PANEL, sharex=price)
     note = _draw_band(price, candle_band(candles))
     _draw_candles(price, drawn)
-    pens = _draw_dots(price, fills)
+    pens = _draw_orders(price, venue_orders(fills))
     marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
     for side, line in (("buy", buy_v), ("sell", sell_v)):
         price.plot(
@@ -2868,7 +2878,7 @@ def _draw_vwap(
             color=pens[side],
             lw=DATA_LINE_PT,
             marker=marker,
-            markersize=ORDER_MARKER_PT,
+            markersize=DOT_PT,
             markeredgewidth=0.0,
             zorder=3,
             label=f"running {side} VWAP",
@@ -2882,7 +2892,7 @@ def _draw_vwap(
         *price.get_legend_handles_labels(),
         loc="lower center",
         bbox_to_anchor=VWAP_LEGEND_AT,
-        ncols=LEGEND_COLUMNS,
+        ncols=VWAP_LEGEND_COLUMNS,
     )
     pair_handles, pair_names = changes.get_legend_handles_labels()
     if pair_handles:
@@ -4345,6 +4355,22 @@ def fill_candle_cache(evidence_dir: Path) -> Iterator[str]:
     yield from venue.refusals
 
 
+def write_evidence(args: argparse.Namespace) -> None:
+    """Write and print each evidence figure and deck from one ``read_evidence`` pass over ``args.evidence_dir``."""
+    evidence = read_evidence(args.evidence_dir, args.motd)
+    for figure, outcome in write_evidence_figures(
+        args.figures_dir, args.evidence_dir, evidence
+    ):
+        print(console_safe(f"figure {figure}: {outcome}"))
+    deck = write_evidence_deck(args.deck, args.figures_dir, evidence)
+    print(console_safe(f"deck {args.deck.name}: {deck}"))
+    if args.operator_deck is not None:
+        dollars = write_evidence_deck(
+            args.operator_deck, args.figures_dir, evidence, account_dollars=True
+        )
+        print(console_safe(f"deck {args.operator_deck.name}: {dollars}"))
+
+
 def main(argv: list[str] | None = None) -> int:
     """Build the manual, print its contents and every check, and return the exit code."""
     parser = argparse.ArgumentParser(description="Render docs/manual to a PDF.")
@@ -4387,19 +4413,7 @@ def main(argv: list[str] | None = None) -> int:
             print(console_safe(line), flush=True)
         return 0
 
-    evidence = read_evidence(args.evidence_dir, args.motd)
-    for figure, outcome in write_evidence_figures(
-        args.figures_dir, args.evidence_dir, evidence
-    ):
-        print(console_safe(f"figure {figure}: {outcome}"))
-    deck = write_evidence_deck(args.deck, args.figures_dir, evidence)
-    print(console_safe(f"deck {args.deck.name}: {deck}"))
-    if args.operator_deck is not None:
-        dollars = write_evidence_deck(
-            args.operator_deck, args.figures_dir, evidence, account_dollars=True
-        )
-        print(console_safe(f"deck {args.operator_deck.name}: {dollars}"))
-
+    write_evidence(args)
     result = build(args.docs_dir, args.figures_dir, args.output)
     for entry in result.entries:
         print(console_safe(f"{'    ' * entry.level}{entry.label}  {entry.page}"))

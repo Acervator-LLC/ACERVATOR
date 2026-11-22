@@ -310,6 +310,7 @@ UNITS_PANEL = (0.1, 0.1, 0.85, 0.095)
 PAIRS_LEGEND_AT = (0.525, 0.233)
 PAIRS_LEGEND_COLUMNS = 2
 VWAP_LEGEND_AT = (0.525, 0.0)
+VWAP_LEGEND_COLUMNS = 3
 ```
 
 The upper panel draws every fill as a dot at its price, buys in
@@ -323,23 +324,24 @@ A32, A33, A34, A35, A36, A37 and A38.
 
 Now: the upper panel also draws each five-minute candle as a grey line from its low to its high. No line joins a pair's two orders. Each pair, set out under "Pairs by order time and MOTD", marks its gain in the panel under the upper panel (`tools/build_product_manual.py, in _draw_candles` and `_draw_pairs`).
 
-Now: every fill dot, every step dot and every pair's gain dot is one size, `ORDER_MARKER_PT` across. That is the height of a lowercase letter in the page's caption type, 9 point DejaVu Sans (`tools/build_product_manual.py, in _draw_dots`).
+Now: the upper panel marks each Fold, a buy order, as an up triangle and each Scrum, a sell order, as a down triangle, each on its own candle at its price. A triangle is 18 points across, the page's second heading size, with a thin edge in the page colour. Step dots and pair gain dots are as tall as a lowercase letter of the 9 point caption type (`tools/build_product_manual.py, in _draw_orders`).
 
 ```python
-SANS_X_HEIGHT_EM = 1120 / 2048
-ORDER_MARKER_PT = size("cap") * SANS_X_HEIGHT_EM
+DOT_PT = size("cap") * SANS_X_HEIGHT_EM
+ORDER_MARKER_PT = size("h2")
+ORDER_EDGE_PT = 0.8
 
 axis.plot(
-    np.asarray([bar_time(fill.when) for fill in own]),
-    [fill.price for fill in own],
+    np.asarray([bar_time(order.when) for order in own]),
+    [order.price for order in own],
     linestyle="none",
-    marker="o",
+    marker=marker,
     markersize=ORDER_MARKER_PT,
-    markeredgewidth=0.0,
-    color=pen,
-    alpha=0.7,
+    markeredgewidth=ORDER_EDGE_PT,
+    markeredgecolor=ink("bg"),
+    color=pens[side],
     zorder=2,
-    label=f"{side} fills ({len(own)})",
+    label=f"{name} ({len(own):,})",
 )
 ```
 
@@ -1248,6 +1250,26 @@ figure.legend(
 )
 ```
 
+Now: the page legend sits in three columns: the band and the candles, the Fold and Scrum triangles, and the two VWAP lines. The pair legend sits under the pair panel in two columns (`tools/build_product_manual.py, in _draw_vwap`).
+
+```python
+figure.legend(
+    *price.get_legend_handles_labels(),
+    loc="lower center",
+    bbox_to_anchor=VWAP_LEGEND_AT,
+    ncols=VWAP_LEGEND_COLUMNS,
+)
+pair_handles, pair_names = changes.get_legend_handles_labels()
+if pair_handles:
+    figure.legend(
+        pair_handles,
+        pair_names,
+        loc="lower center",
+        bbox_to_anchor=PAIRS_LEGEND_AT,
+        ncols=PAIRS_LEGEND_COLUMNS,
+    )
+```
+
 ### Pairs against the lower of buys and sells
 
 `python -m tools.build_product_manual --measure` prints one row per base: its buy and sell orders, the lower of the two, its pairs, and the counted causes on the lower side. On every row, pairs less the lower count equals the extra pairs less the unpaired orders on that side.
@@ -1803,7 +1825,7 @@ for side, line in (("buy", buy_v), ("sell", sell_v)):
     )
 ```
 
-Now: every step dot is `ORDER_MARKER_PT` across, the size of every fill dot and pair dot on the page (`tools/build_product_manual.py, in _draw_vwap`).
+Now: every step dot is `DOT_PT` across, the size of every pair gain dot on the page (`tools/build_product_manual.py, in _draw_vwap`).
 
 ```python
 marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
@@ -1814,7 +1836,7 @@ for side, line in (("buy", buy_v), ("sell", sell_v)):
         color=pens[side],
         lw=DATA_LINE_PT,
         marker=marker,
-        markersize=ORDER_MARKER_PT,
+        markersize=DOT_PT,
         markeredgewidth=0.0,
         zorder=3,
         label=f"running {side} VWAP",
