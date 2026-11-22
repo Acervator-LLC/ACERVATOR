@@ -68,9 +68,7 @@ SEPARATOR_TEXT = "|"
 #: The name a screen reader announces for the Qt strip.
 ACCESSIBLE_NAME = "Spendable Profits"
 
-SPENDABLE_TOOLTIP = (
-    "Cash balance pulled from the exchange, across the bots sharing one wallet."
-)
+SPENDABLE_TOOLTIP = header.SPENDABLE_TOOLTIP
 SPENDABLE_UNKNOWN_TOOLTIP = (
     "This amount is not in the data the strip was given for this refresh."
 )

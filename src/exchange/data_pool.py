@@ -172,6 +172,8 @@ class BalanceEntry:
     ``is_stale`` turns True 10 seconds after ``fetch_time``. ``has_data`` is
     False until the first fetch lands. ``end_count`` is the pool's
     ``_balance_end_count`` when ``invalidate_balance`` last ended this slot.
+    ``answered`` turns True when a venue answer first writes the figures, and
+    ``invalidate_balance`` leaves it.
     """
 
     exchange_id: str
@@ -183,6 +185,7 @@ class BalanceEntry:
     fetch_time: float = 0.0
     subscribers: int = 0
     end_count: int = 0
+    answered: bool = False
 
     @property
     def is_stale(self) -> bool:
@@ -791,6 +794,20 @@ class MarketDataPool:
         entry.absent = bool(getattr(balance, "absent", False))
         entry.currency = str(getattr(balance, "currency", currency) or currency)
         entry.fetch_time = time.time() if at is None else at
+        entry.answered = True
+
+    def answered_totals(
+        self, currencies: tuple
+    ) -> dict[str, dict[str, Optional[float]]]:
+        """``total`` per exchange and currency in ``currencies``, read from ``_balances``
+        with no venue call; a slot no answer has written reads None."""
+        held: dict[str, dict[str, Optional[float]]] = {}
+        for slot in list(self._balances.values()):
+            if slot.currency in currencies:
+                held.setdefault(slot.exchange_id, {})[slot.currency] = (
+                    slot.total if slot.answered else None
+                )
+        return held
 
     async def refresh_all_balances(self, connector, exchange_id: str) -> int:
         """Refill every ``_balances`` slot for ``exchange_id`` from one account read.

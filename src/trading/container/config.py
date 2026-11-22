@@ -31,6 +31,9 @@ DOLLAR_PEGGED_CURRENCIES = frozenset(
     }
 )
 
+#: The exchange balance currencies counted as cash, each one of DOLLAR_PEGGED_CURRENCIES.
+CASH_CURRENCIES = ("USD", "USDC")
+
 
 class BotState(str, Enum):
     IDLE = "idle"

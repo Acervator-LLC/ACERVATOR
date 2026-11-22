@@ -15,6 +15,7 @@ from ..smart_wire import is_mature, mature_profit_usd
 from ..target_bands import ammo_units, fleet_ammo
 from ..wallet_reservations import wallet_currency
 from .config import (
+    CASH_CURRENCIES,
     DOLLAR_PEGGED_CURRENCIES,
     UNREADABLE_TOTALS_KEY,
     BotState,
@@ -42,7 +43,7 @@ FOLDED_TOTALS = (
     "total_folded_usd_lifetime",
 )
 
-#: The totals one bot's cash balance feeds.
+#: The totals one exchange's cash answer feeds.
 CASH_TOTALS = ("wallet_cash_usd", "total_account_value_usd")
 
 #: The totals one bot's maturity reading feeds.
@@ -81,7 +82,6 @@ STATS_TOTALS = tuple(
     dict.fromkeys(
         SCRUMMED_TOTALS
         + FOLDED_TOTALS
-        + CASH_TOTALS
         + POSITION_TOTALS
         + FRESHNESS_TOTALS
         + (
@@ -94,6 +94,26 @@ STATS_TOTALS = tuple(
         )
     )
 )
+
+
+def exchange_cash(pool: Any, totals: FleetTotals) -> dict[str, Optional[float]]:
+    """Each exchange's ``CASH_CURRENCIES`` totals from ``MarketDataPool.answered_totals``
+    added, each admitted by ``totals``; None where one holds no answer or no number."""
+    if pool is None:
+        return {}
+    found = pool.answered_totals(CASH_CURRENCIES)
+    cash: dict[str, Optional[float]] = {}
+    for exchange_id in sorted(found):
+        figures = list(found[exchange_id].values())
+        if None in figures:
+            cash[exchange_id] = None
+            continue
+        admitted = [totals.money(total, *CASH_TOTALS) for total in figures]
+        known = [usd for usd in admitted if usd is not None]
+        cash[exchange_id] = (
+            round(sum(known), 4) if len(known) == len(admitted) else None
+        )
+    return cash
 
 
 def held_amount(figure: Any) -> Optional[float]:
@@ -237,6 +257,7 @@ class FleetAggregationMixin:
     # created and the runtime base stays `object`.
     _boot_state_records: dict
     _bots: dict
+    _data_pool: Any
 
     #: The marked totals the last pass logged. The dashboard asks every two
     #: seconds, and an unchanged list is not logged again.
@@ -259,7 +280,7 @@ class FleetAggregationMixin:
             return
         logger.warning(
             "Fleet totals: %d of the dashboard's totals could not be summed "
-            "whole: %s. A bot's stored figure for each of them was not a "
+            "whole: %s. A stored figure for each of them was not a "
             "number. The header strip draws a dash for each and every other "
             "cell still carries its figure.",
             len(unreadable_totals),
@@ -739,8 +760,8 @@ class FleetAggregationMixin:
     ) -> None:
         """Add one bot's ``stats`` figures into ``carry``, each admitted first.
 
-        The money sums, the two counts, the cash maximum, the position value,
-        the maturity reading and the Ammo reading all come from here.
+        The money sums, the two counts, the position value, the maturity
+        reading and the Ammo reading all come from here.
         """
         for field, name, keys in (
             ("realised_pnl", "pnl", ("total_realised_pnl",)),
@@ -767,10 +788,6 @@ class FleetAggregationMixin:
         )
         if errors is not None:
             carry["errors_lifetime"] += errors
-        # Freshest non-zero cash balance wins.
-        cash = totals.money(getattr(stats, "cash_balance_usd", 0.0), *CASH_TOTALS)
-        if cash is not None and cash > carry["wallet_cash"]:
-            carry["wallet_cash"] = cash
         position_usd = self._bot_position_usd(bot, stats, totals)
         carry["position_value"] += position_usd
         self._add_ammo_reading(
@@ -827,7 +844,7 @@ class FleetAggregationMixin:
         """Compute totals across all bots for the main dashboard.
 
         Every stored figure is admitted through ``FleetTotals`` before it is
-        summed, and each total one bot's refused figure left out is named under
+        summed, and each total a refused figure left out is named under
         ``UNREADABLE_TOTALS_KEY``.
         """
         totals = FleetTotals()
@@ -848,8 +865,6 @@ class FleetAggregationMixin:
             "fees_exchange": 0.0,
             "fresh_bots": 0,
             "complete_history_bots": 0,
-            # Max across bots: one shared wallet.
-            "wallet_cash": 0.0,
             "position_value": 0.0,
             "mature_usd": 0.0,
             "mature_positions": 0,
@@ -873,10 +888,12 @@ class FleetAggregationMixin:
         total_fees_exchange = carry["fees_exchange"]
         bots_with_fresh_exchange_data = carry["fresh_bots"]
         bots_with_complete_fill_history = carry["complete_history_bots"]
-        wallet_cash_usd = carry["wallet_cash"]
         crypto_position_value_usd = carry["position_value"]
         total_mature_exchange = carry["mature_usd"]
         mature_positions = carry["mature_positions"]
+        cash_by_exchange = exchange_cash(self._data_pool, totals)
+        answered_cash = [usd for usd in cash_by_exchange.values() if usd is not None]
+        wallet_cash_usd = round(sum(answered_cash), 4) if answered_cash else None
 
         ammo = fleet_ammo(carry["ammo_readings"])
         total_accrued_usd = fleet_accrued_usd(self._bots.values(), totals.unreadable)
@@ -902,11 +919,14 @@ class FleetAggregationMixin:
                 and bots_with_complete_fill_history == bots_with_fresh_exchange_data
             ),
             # `SpendableProfitsWidget` renders these two as spendable and locked.
-            "wallet_cash_usd": round(wallet_cash_usd, 4),
+            "wallet_cash_usd": wallet_cash_usd,
             "crypto_position_value_usd": round(crypto_position_value_usd, 4),
-            "total_account_value_usd": round(
-                wallet_cash_usd + crypto_position_value_usd, 4
+            "total_account_value_usd": (
+                None
+                if wallet_cash_usd is None
+                else round(wallet_cash_usd + crypto_position_value_usd, 4)
             ),
+            "wallet_cash_by_exchange": cash_by_exchange,
             "total_realised_pnl": round(total_pnl, 4),
             # The header strip's AMMO column draws this: each bot's Ammo
             # WITHOUT its sign, as the bot list's Ammo column draws it, so a
@@ -929,7 +949,7 @@ class FleetAggregationMixin:
             "total_folded_usd_ytd": round(total_folded_ytd, 4),
             "total_scrummed_usd_lifetime": round(total_scrummed, 4),
             "total_folded_usd_lifetime": round(total_folded, 4),
-            # Every total above that a bot's unreadable figure left out. The
+            # Every total above that an unreadable figure left out. The
             # header strip draws a dash for each one it names.
             UNREADABLE_TOTALS_KEY: unreadable_totals,
         }

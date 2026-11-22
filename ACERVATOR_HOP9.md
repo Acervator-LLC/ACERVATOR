@@ -379,6 +379,11 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
 - **#665, the settings audit.** The open rows sit under "Units raised by the work
   itself", and none waits on him. Verify each against the current tree before any
   fix.
+- **#1823, SPENDABLE reads the exchange's cash.** SPENDABLE now adds the cash each
+  exchange's own balance answer reports, available plus held, in USD and USDC,
+  from the shared balance cache, and its mouse-over names each exchange's figure
+  (`src/trading/container/aggregation.py, in exchange_cash`). He reads it against
+  each exchange's own Cash screen after the next build.
 - The rest of the queue: read each body.
 
 ---
