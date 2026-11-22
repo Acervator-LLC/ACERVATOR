@@ -296,11 +296,10 @@ wrong far more often than right.
   first comment, 7071205806, is the restart record and quotes his defining words
   from 2026-10-30 on. `docs/manual/16-sigil-project.md` still describes the
   earlier design; its rewrite to the body's concept is the next manual unit. Row
-  1 starts when he says the reachable form is worth building, and Decision 1 in
-  the body waits on him.
+  1 starts when he says the reachable form is worth building.
 
 ```bash
-gh issue view 1633                                                           # the concept, the build order, Decision 1
+gh issue view 1633                                                           # the concept and the build order
 gh api repos/Acervator-LLC/ACERVATOR/issues/comments/7071205806 --jq .body   # the restart record and his words
 ```
 
