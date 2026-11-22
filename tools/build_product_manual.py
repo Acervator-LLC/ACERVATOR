@@ -34,7 +34,6 @@ import numpy as np
 import pptx
 from matplotlib.dates import DateFormatter, date2num
 from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches
 from pypdf import PdfReader
@@ -69,6 +68,7 @@ from src.design_system import (
     validate_contrast,
 )
 from src.trading import trade_grader
+from src.trading.ata_gate_scan import band_touch
 from src.trading.indicators.bollinger import BollingerBands
 from src.trading.indicators.helpers import _window_has_no_range
 from src.trading.indicators.types import candles_from_raw
@@ -1783,30 +1783,21 @@ STEP_DOT_MAX_FILLS = 30
 COMBINED_BASES = 8
 RANKED_BASES = 38
 ASSET_PAGE_SIZE = (8.5, 10.2)
-PRICE_PANEL = (0.1, 0.715, 0.85, 0.225)
-PAIRS_PANEL = (0.1, 0.617, 0.85, 0.068)
-UNITS_PANEL = (0.1, 0.519, 0.85, 0.068)
-VWAP_LEGEND_AT = (0.525, 0.452)
+PRICE_PANEL = (0.1, 0.485, 0.85, 0.455)
+PAIRS_PANEL = (0.1, 0.29, 0.85, 0.135)
+UNITS_PANEL = (0.1, 0.1, 0.85, 0.095)
+PAIRS_LEGEND_AT = (0.525, 0.233)
+PAIRS_LEGEND_COLUMNS = 2
+VWAP_LEGEND_AT = (0.525, 0.0)
+SANS_X_HEIGHT_EM = 1120 / 2048
+ORDER_MARKER_PT = size("cap") * SANS_X_HEIGHT_EM
+DATA_LINE_PT = 1.4
+PRESERVED_PEN = 3
 COMBINED_PANEL = (0.08, 0.22, 0.74, 0.62)
 COMBINED_LEGEND_AT = (0.45, 0.07)
 COMBINED_NOTE_AT = (0.08, 0.02)
 LEGEND_COLUMNS = 4
 AXIS_LEGEND_AT = (0.5, -0.16)
-HOUR_MS = 3_600_000
-CYCLE_VIEWS = 3
-CYCLE_SPAN_LIMIT_MS = 48 * HOUR_MS
-CYCLE_PAD_MIN_MS = HOUR_MS
-CYCLE_PAD_SHARE = 0.25
-CYCLE_COVER_MIN = 0.9
-CYCLE_PRICE_PAD = 0.06
-CYCLE_PANEL_LEFT = 0.1
-CYCLE_PANEL_WIDTH = 0.85
-CYCLE_PANEL_HEIGHT = 0.068
-CYCLE_PANEL_BOTTOMS = (0.334, 0.201, 0.068)
-CYCLE_LEGEND_AT = (0.525, 0.0)
-CYCLE_LEGEND_COLUMNS = 3
-CYCLE_BODY_SHARE = 0.7
-CYCLE_MARKER_SIZE = 12
 BUY_PEN = 0
 SELL_PEN = 5
 DECK_TITLE = "Ekthelius's Prototyping Trading Evidence"
@@ -1887,6 +1878,7 @@ class Evidence:
     candles: dict[str, list[list[float]]]
     filled_candles: dict[str, list[list[float]]]
     pairs: tuple[tuple[str, BasePairs], ...] = ()
+    market_cycles: tuple[tuple[str, int], ...] = ()
     live_evidence_fills: tuple[Fill, ...] = ()
 
 
@@ -2312,6 +2304,52 @@ def candle_band(candles: Sequence[Candle]) -> list[BandBar]:
     ]
 
 
+TOUCH_UPPER = "upper"
+TOUCH_LOWER = "lower"
+
+
+def touch_sides(candle: Candle, bar: BandBar) -> tuple[str, ...]:
+    """Return the sides of ``bar`` that ``band_touch`` reads on ``candle``, in the order the candle reached them."""
+    at_upper, at_lower = band_touch(candle.close, bar, (candle,))
+    if at_upper != at_lower:
+        return (TOUCH_UPPER,) if at_upper else (TOUCH_LOWER,)
+    if not at_upper:
+        return ()
+    close_upper, close_lower = band_touch(candle.close, bar, ())
+    if close_upper == close_lower:
+        return ()
+    return (TOUCH_LOWER, TOUCH_UPPER) if close_upper else (TOUCH_UPPER, TOUCH_LOWER)
+
+
+def touch_chain(candles: Sequence[Candle], band: Sequence[BandBar]) -> list[str]:
+    """Return the ``touch_sides`` of ``candles`` on ``band`` in time order, each run on one side kept once."""
+    at_open = {bar.start_ms: bar for bar in band}
+    chain: list[str] = []
+    for candle in candles:
+        bar = at_open.get(int(candle.timestamp))
+        if bar is None:
+            continue
+        for side in touch_sides(candle, bar):
+            if not chain or chain[-1] != side:
+                chain.append(side)
+    return chain
+
+
+def chain_cycles(chain: Sequence[str]) -> int:
+    """Return the cycles of three alternating touches in ``chain``, each third touch opening the next."""
+    return max(len(chain) - 1, 0) // 2
+
+
+def market_cycle_count(rows: Sequence[Sequence[float]], fills: Sequence[Fill]) -> int:
+    """Return the ``chain_cycles`` of the ``touch_chain`` across ``fills``' chart window."""
+    if not fills:
+        return 0
+    candles = window_candles(rows, fills)
+    start_ms, _ = chart_window(fills)
+    drawn = [candle for candle in candles if candle.timestamp >= start_ms]
+    return chain_cycles(touch_chain(drawn, candle_band(candles)))
+
+
 def lacking_spans(
     rows: Sequence[Sequence[float]],
     start_ms: int,
@@ -2575,11 +2613,6 @@ def captured_usd(pair: CyclePair) -> float:
     return min(pair.extra_units * unit_cost_usd(pair.fold), max(0.0, gain_usd(pair)))
 
 
-def captured_units(pair: CyclePair) -> float:
-    """Return the units ``captured_usd`` bought at ``pair.fold``'s ``unit_cost_usd``."""
-    return captured_usd(pair) / unit_cost_usd(pair.fold)
-
-
 def sale_share_pct(pair: CyclePair, usd: float) -> float:
     """Return ``usd`` as a percent of ``pair.units`` at the ``pair.scrum`` price."""
     return usd / (pair.units * pair.scrum.price) * 100.0
@@ -2658,8 +2691,9 @@ def _draw_dots(axis: Axes, fills: Sequence[Fill]) -> dict[str, str]:
             np.asarray([bar_time(fill.when) for fill in own]),
             [fill.price for fill in own],
             linestyle="none",
-            marker=".",
-            markersize=3,
+            marker="o",
+            markersize=ORDER_MARKER_PT,
+            markeredgewidth=0.0,
             color=pen,
             alpha=0.7,
             zorder=2,
@@ -2668,33 +2702,59 @@ def _draw_dots(axis: Axes, fills: Sequence[Fill]) -> dict[str, str]:
     return pens
 
 
-def _draw_pairs(gains: Axes, pairs: Sequence[CyclePair]) -> None:
-    """Mark each ``gain_usd`` of ``pairs`` on ``gains`` at its later order."""
+def _draw_pairs(gains: Axes, pairs: Sequence[CyclePair], cycles: int) -> None:
+    """Mark each ``gain_usd`` of ``pairs`` on ``gains`` at its later order, its stem split at ``captured_usd``."""
     gains.axhline(0.0, color=ink("ink_strong"), linewidth=0.8)
     gains.set_ylabel("gain, %")
+    beside = f"beside {cycles:,} market {'cycle' if cycles == 1 else 'cycles'}"
     if not pairs:
         gains.set_title(
-            f"no {SCRUM_FOLD} or {FOLD_SCRUM} pair",
+            f"no {SCRUM_FOLD} or {FOLD_SCRUM} pair, {beside}",
             loc="left",
             fontsize=size("cap"),
             color=ink("ink_mute"),
         )
         return
+    places = np.asarray([bar_time(pair.closer.when) for pair in pairs])
     shares = [sale_share_pct(pair, gain_usd(pair)) for pair in pairs]
-    pens = [ink("win") if share > 0.0 else ink("loss") for share in shares]
-    counts = Counter(pair.direction for pair in pairs)
-    gains.scatter(
-        np.asarray([bar_time(pair.closer.when) for pair in pairs]),
-        shares,
-        c=pens,
-        s=6,
-        zorder=2,
+    captured = [sale_share_pct(pair, captured_usd(pair)) for pair in pairs]
+    gains.vlines(
+        places,
+        0.0,
+        captured,
+        colors=ink("accent"),
+        linewidth=DATA_LINE_PT,
+        zorder=1.5,
+        label="captured, held as the Fold's extra units",
     )
+    gains.vlines(
+        places,
+        captured,
+        shares,
+        colors=series()[PRESERVED_PEN],
+        linewidth=DATA_LINE_PT,
+        zorder=1.5,
+        label="preserved, kept as dollars",
+    )
+    for won, pen, name in ((True, "win", "gained"), (False, "loss", "lost")):
+        held = [at for at, share in enumerate(shares) if (share > 0.0) == won]
+        if not held:
+            continue
+        gains.scatter(
+            places[held],
+            [shares[at] for at in held],
+            color=ink(pen),
+            s=ORDER_MARKER_PT**2,
+            linewidths=0.0,
+            zorder=2,
+            label=f"a pair that {name} after fees",
+        )
+    counts = Counter(pair.direction for pair in pairs)
     gained = sum(1 for share in shares if share > 0.0)
     gains.set_title(
         f"{counts[SCRUM_FOLD]} {SCRUM_FOLD} and {counts[FOLD_SCRUM]} {FOLD_SCRUM}"
-        f" pairs; {gained} gained after fees; median gain"
-        f" {median(shares):+.2f}% of the sale",
+        f" pairs, {beside}\n{gained} gained after fees; median gain"
+        f" {median(shares):+.2f}% of the sale, each split into captured and preserved",
         loc="left",
         fontsize=size("cap"),
         color=ink("ink_strong"),
@@ -2785,8 +2845,9 @@ def _draw_vwap(
     rows: Sequence[Sequence[float]],
     pairs: Sequence[CyclePair] = (),
     ratio: float | None = None,
+    cycles: int = 0,
 ) -> Figure:
-    """Return ``label``'s one page: its whole window over its ``latest_cycles``."""
+    """Return ``label``'s one page: its whole window, its pairs beside its ``cycles`` and its net units."""
     times, buy_v, sell_v, held = trajectory(fills)
     stamps = np.asarray([bar_time(when) for when in times])
     candles = window_candles(rows, fills)
@@ -2805,13 +2866,14 @@ def _draw_vwap(
             stamps,
             line,
             color=pens[side],
-            lw=1.4,
+            lw=DATA_LINE_PT,
             marker=marker,
-            markersize=4,
+            markersize=ORDER_MARKER_PT,
+            markeredgewidth=0.0,
             zorder=3,
             label=f"running {side} VWAP",
         )
-    _draw_pairs(changes, pairs)
+    _draw_pairs(changes, pairs, cycles)
     _draw_uncovered(price, uncovered_spans(rows, fills))
     _label_price_axis(price, [fill.price for fill in fills])
     price.set_ylabel(f"{label} price, USD")
@@ -2822,6 +2884,15 @@ def _draw_vwap(
         bbox_to_anchor=VWAP_LEGEND_AT,
         ncols=LEGEND_COLUMNS,
     )
+    pair_handles, pair_names = changes.get_legend_handles_labels()
+    if pair_handles:
+        figure.legend(
+            pair_handles,
+            pair_names,
+            loc="lower center",
+            bbox_to_anchor=PAIRS_LEGEND_AT,
+            ncols=PAIRS_LEGEND_COLUMNS,
+        )
     price.tick_params(labelbottom=False)
     changes.tick_params(labelbottom=False)
     units.fill_between(
@@ -2843,7 +2914,6 @@ def _draw_vwap(
     _label_plain_axis(changes.yaxis)
     _label_plain_axis(units.yaxis)
     units.xaxis.set_major_formatter(DateFormatter("%d %b"))
-    _draw_latest_cycles(figure, label, pairs, rows)
     return figure
 
 
@@ -2911,12 +2981,14 @@ def _write_asset_vwap(
     fills: Sequence[Fill],
     candles: Mapping[str, list[list[float]]],
     pairs: Mapping[str, Sequence[CyclePair]] | None = None,
+    cycles: Mapping[str, int] | None = None,
 ) -> list[tuple[str, str]]:
     """Write ``vwap_combined.png`` and one page per label; drop ``RETIRED_FIGURES``."""
     groups = label_groups(labels, fills)
     rows = label_candles(labels, candles)
     ratios = {row.label: sell_over_buy(row) for row in base_rows(fills, labels)}
     held_pairs = pairs or {}
+    held_cycles = cycles or {}
     combined = "vwap_combined.png"
     out = [(combined, _save(_draw_combined(groups), figures_dir / combined))]
     for label in sorted(labels.values()):
@@ -2928,214 +3000,17 @@ def _write_asset_vwap(
             out.append((name, f"absent - no fill for {label} in the newest export"))
             continue
         page = _draw_vwap(
-            label, held, rows[label], held_pairs.get(label, ()), ratios.get(label)
+            label,
+            held,
+            rows[label],
+            held_pairs.get(label, ()),
+            ratios.get(label),
+            held_cycles.get(label, 0),
         )
         outcome = _save(page, figures_dir / name)
         gaps = uncovered_text(uncovered_spans(rows[label], held))
         out.append((name, f"{outcome} - {gaps}" if gaps else outcome))
     return out
-
-
-def cycle_window(pair: CyclePair) -> tuple[int, int]:
-    """Return the first and last ``bar_start_ms`` a view of ``pair`` draws, padded by ``CYCLE_PAD_SHARE``."""
-    first_ms = bar_start_ms(pair.opener.when)
-    last_ms = bar_start_ms(pair.closer.when)
-    pad_ms = max(CYCLE_PAD_MIN_MS, int((last_ms - first_ms) * CYCLE_PAD_SHARE))
-    pad_ms -= pad_ms % BAND_BAR_MS
-    return first_ms - pad_ms, last_ms + pad_ms
-
-
-def cycle_covered(pair: CyclePair, stamps: Sequence[float]) -> bool:
-    """Return True where ``stamps`` hold ``CYCLE_COVER_MIN`` of ``pair``'s slots."""
-    first_ms = bar_start_ms(pair.opener.when)
-    last_ms = bar_start_ms(pair.closer.when)
-    held = bisect_right(stamps, last_ms) - bisect_left(stamps, first_ms)
-    return held >= CYCLE_COVER_MIN * ((last_ms - first_ms) // BAND_BAR_MS + 1)
-
-
-def latest_cycles(
-    pairs: Sequence[CyclePair], rows: Sequence[Sequence[float]]
-) -> list[CyclePair]:
-    """Return the latest ``CYCLE_VIEWS`` ``cycle_covered`` pairs, oldest first."""
-    stamps = [row[0] for row in rows]
-    chosen: list[CyclePair] = []
-    for pair in sorted(pairs, key=lambda one: one.closer.when, reverse=True):
-        if len(chosen) >= CYCLE_VIEWS:
-            break
-        span_ms = bar_start_ms(pair.closer.when) - bar_start_ms(pair.opener.when)
-        if span_ms <= CYCLE_SPAN_LIMIT_MS and cycle_covered(pair, stamps):
-            chosen.append(pair)
-    return chosen[::-1]
-
-
-def cycle_x(stamp_ms: int) -> float:
-    """Return the ``date2num`` middle of the ``BAND_BAR_MS`` bar opening at ``stamp_ms``."""
-    return float(date2num(utc_ms(stamp_ms + BAND_BAR_MS // 2)))
-
-
-def _draw_cycle_candles(axis: Axes, candles: Sequence[Candle]) -> None:
-    """Draw ``candles`` as wicks and ``Rectangle`` bodies at ``cycle_x``, hollow where they closed up."""
-    places = [cycle_x(int(candle.timestamp)) for candle in candles]
-    axis.vlines(
-        places,
-        [candle.low for candle in candles],
-        [candle.high for candle in candles],
-        color=ink("ink_mute"),
-        linewidth=0.7,
-        zorder=2,
-        label=f"{BAND_BAR_NAME} candles",
-    )
-    width = BAND_BAR_MS / DAY_MS * CYCLE_BODY_SHARE
-    for place, candle in zip(places, candles, strict=True):
-        axis.add_patch(
-            Rectangle(
-                (place - width / 2, min(candle.open, candle.close)),
-                width,
-                abs(candle.close - candle.open),
-                facecolor=ink("bg") if candle.close >= candle.open else ink("ink_mute"),
-                edgecolor=ink("ink_mute"),
-                linewidth=0.5,
-                zorder=2.2,
-            )
-        )
-
-
-def _draw_cycle_band(axis: Axes, band: Sequence[BandBar]) -> None:
-    """Shade ``band`` at each bar's ``cycle_x``, with its upper, lower and middle lines."""
-    if not band:
-        return
-    places = [cycle_x(bar.start_ms) for bar in band]
-    axis.fill_between(
-        places,
-        [bar.lower for bar in band],
-        [bar.upper for bar in band],
-        color=ink("info_soft"),
-        linewidth=0.0,
-        zorder=0.5,
-        label=f"Bollinger {CHART_BAND.period} / {CHART_BAND.std_dev:g}"
-        f" on {BAND_BAR_NAME} candles",
-    )
-    for line, style in (
-        ([bar.upper for bar in band], "-"),
-        ([bar.lower for bar in band], "-"),
-        ([bar.middle for bar in band], (0, (4, 3))),
-    ):
-        axis.plot(places, line, color=ink("info"), lw=0.8, ls=style, zorder=1)
-
-
-def _draw_cycle_orders(axis: Axes, pair: CyclePair, end_ms: int) -> None:
-    """Draw ``pair.level`` from ``pair.opener`` to ``end_ms``, and both orders."""
-    scrum_x = cycle_x(bar_start_ms(pair.scrum.when))
-    fold_x = cycle_x(bar_start_ms(pair.fold.when))
-    axis.hlines(
-        pair.level,
-        cycle_x(bar_start_ms(pair.opener.when)),
-        cycle_x(end_ms),
-        colors=ink("warn"),
-        linestyles=(0, (6, 3)),
-        linewidth=1.3,
-        zorder=3,
-        label="MOTD level from the pair's first order",
-    )
-    for place, price, marker, pen, name in (
-        (scrum_x, pair.scrum.price, "v", series()[SELL_PEN], "Scrum, the sell order"),
-        (fold_x, pair.fold.price, "^", series()[BUY_PEN], "Fold, the buy order"),
-    ):
-        axis.plot(
-            [place],
-            [price],
-            linestyle="none",
-            marker=marker,
-            markersize=CYCLE_MARKER_SIZE,
-            color=pen,
-            markeredgecolor=ink("ink_strong"),
-            markeredgewidth=0.8,
-            zorder=5,
-            label=name,
-        )
-
-
-def cycle_title(number: int, total: int, pair: CyclePair) -> str:
-    """Return cycle ``number``'s title: direction and times, then the gain split."""
-    first, second = pair.direction.split("-")
-    hours = (bar_start_ms(pair.closer.when) - bar_start_ms(pair.opener.when)) / HOUR_MS
-    gain, captured, preserved = split_hundredths(
-        sale_share_pct(pair, gain_usd(pair)),
-        sale_share_pct(pair, captured_usd(pair)),
-    )
-    return (
-        f"Cycle {number} of {total}, {pair.direction}: {first}"
-        f" {pair.opener.when:%d %b %H:%M}, {second} {pair.closer.when:%d %b %H:%M} UTC,"
-        f" {hours:.1f} hours apart\n"
-        f"gain {gain / 100:+.2f}% of the sale = captured {captured / 100:+.2f}%"
-        f" ({captured_units(pair):+.6g} units) + preserved {preserved / 100:+.2f}%"
-    )
-
-
-def _draw_cycle(
-    axis: Axes, label: str, pair: CyclePair, rows: Sequence[Sequence[float]]
-) -> None:
-    """Draw ``pair``'s ``cycle_window`` on ``axis``: candles, band, buy-back level and both orders."""
-    first_ms, last_ms = cycle_window(pair)
-    stamps = [row[0] for row in rows]
-    lead = max(bisect_left(stamps, first_ms) - (CHART_BAND.period - 1), 0)
-    candles = candles_from_raw(rows[lead : bisect_right(stamps, last_ms)])
-    band = [bar for bar in candle_band(candles) if bar.start_ms >= first_ms]
-    drawn = [candle for candle in candles if candle.timestamp >= first_ms]
-    _draw_cycle_band(axis, band)
-    _draw_cycle_candles(axis, drawn)
-    _draw_cycle_orders(axis, pair, last_ms)
-    prices = [pair.level, pair.scrum.price, pair.fold.price]
-    prices += [candle.low for candle in drawn] + [candle.high for candle in drawn]
-    prices += [bar.lower for bar in band] + [bar.upper for bar in band]
-    pad = (max(prices) - min(prices)) * CYCLE_PRICE_PAD
-    axis.set_ylim(min(prices) - pad, max(prices) + pad)
-    axis.set_xlim(cycle_x(first_ms - BAND_BAR_MS), cycle_x(last_ms))
-    _label_plain_axis(axis.yaxis)
-    axis.set_ylabel(f"{label} price, USD")
-    axis.xaxis.set_major_formatter(DateFormatter("%d %b %H:%M"))
-
-
-def _draw_latest_cycles(
-    figure: Figure,
-    label: str,
-    pairs: Sequence[CyclePair],
-    rows: Sequence[Sequence[float]],
-) -> None:
-    """Draw a ``_draw_cycle`` panel per ``latest_cycles`` pair, legend below."""
-    chosen = latest_cycles(pairs, rows)
-    if not chosen:
-        figure.text(
-            CYCLE_LEGEND_AT[0],
-            CYCLE_PANEL_BOTTOMS[0],
-            f"no {SCRUM_FOLD} or {FOLD_SCRUM} pair within"
-            f" {CYCLE_SPAN_LIMIT_MS // HOUR_MS} hours on covered"
-            f" {BAND_BAR_NAME} candles",
-            ha="center",
-            fontsize=size("cap"),
-            color=ink("ink_mute"),
-        )
-        return
-    axes = [
-        figure.add_axes(
-            (CYCLE_PANEL_LEFT, bottom, CYCLE_PANEL_WIDTH, CYCLE_PANEL_HEIGHT)
-        )
-        for bottom in CYCLE_PANEL_BOTTOMS[: len(chosen)]
-    ]
-    for number, (axis, pair) in enumerate(zip(axes, chosen, strict=True), 1):
-        _draw_cycle(axis, label, pair, rows)
-        axis.set_title(
-            cycle_title(number, len(chosen), pair),
-            loc="left",
-            fontsize=size("cap"),
-            color=ink("ink_strong"),
-        )
-    figure.legend(
-        *axes[0].get_legend_handles_labels(),
-        loc="lower center",
-        bbox_to_anchor=CYCLE_LEGEND_AT,
-        ncols=CYCLE_LEGEND_COLUMNS,
-    )
 
 
 def priced_rows(rows: Sequence[HodlRow]) -> list[HodlRow]:
@@ -3374,22 +3249,28 @@ def read_evidence(
     }
     candles = {asset: tablet_candles(asset) for asset in labels}
     cache_dir = evidence_dir / CANDLE_CACHE_FOLDER
+    filled = {
+        asset: fill_slots(rows, cache_candles(asset, cache_dir))
+        for asset, rows in candles.items()
+    }
     by_asset: dict[str, list[Fill]] = {}
     for fill in indexed[newest]:
         by_asset.setdefault(fill.asset, []).append(fill)
+    ranked = sorted(by_asset.items(), key=lambda one: labels[one[0]])
     return Evidence(
         exports=len(paths),
         labels=labels,
         fills=indexed[newest],
         reading=export_reading(newest),
         candles=candles,
-        filled_candles={
-            asset: fill_slots(rows, cache_candles(asset, cache_dir))
-            for asset, rows in candles.items()
-        },
+        filled_candles=filled,
         pairs=tuple(
             (labels[asset], base_pairs(venue_orders(held), motd_pct))
-            for asset, held in sorted(by_asset.items(), key=lambda one: labels[one[0]])
+            for asset, held in ranked
+        ),
+        market_cycles=tuple(
+            (labels[asset], market_cycle_count(filled[asset], held))
+            for asset, held in ranked
         ),
         live_evidence_fills=tuple(indexed[newest_export(dated)]) if dated else (),
     )
@@ -3413,7 +3294,14 @@ def write_evidence_figures(
         return [(name, f"absent - no venue export under {missing}") for name in names]
     labels, fills, candles = evidence.labels, evidence.fills, evidence.candles
     pairs = {label: base.pairs for label, base in evidence.pairs}
-    out = _write_asset_vwap(figures_dir, labels, fills, evidence.filled_candles, pairs)
+    out = _write_asset_vwap(
+        figures_dir,
+        labels,
+        fills,
+        evidence.filled_candles,
+        pairs,
+        dict(evidence.market_cycles),
+    )
     out += _write_live_evidence(
         figures_dir, labels, candles, evidence.live_evidence_fills
     )
@@ -3530,11 +3418,12 @@ def cause_text(unpaired: Sequence[tuple[str, int]]) -> str:
 def bound_lines(evidence: Evidence) -> list[str]:
     """Return one row per label of its two ``bound_reading`` results, and a total."""
     directions = (SCRUM_FOLD, FOLD_SCRUM)
+    cycles = dict(evidence.market_cycles)
     out = [
         "",
         f"| Asset | Buys | Sells | Lower | {SCRUM_FOLD} | Short | {FOLD_SCRUM}"
-        f" | Short | Unpaired, {SCRUM_FOLD} | Unpaired, {FOLD_SCRUM} |",
-        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- | --- |",
+        f" | Short | Market cycles | Unpaired, {SCRUM_FOLD} | Unpaired, {FOLD_SCRUM} |",
+        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     total: Counter[str] = Counter()
     unpaired: dict[str, Counter[str]] = {one: Counter() for one in directions}
@@ -3547,9 +3436,9 @@ def bound_lines(evidence: Evidence) -> list[str]:
         causes = " | ".join(cause_text(one.unpaired) for one in readings)
         out.append(
             f"| {label} | {buys} | {sells} | {lower} {readings[0].lower_side}"
-            f" | {counts} | {causes} |"
+            f" | {counts} | {cycles.get(label, 0)} | {causes} |"
         )
-        total.update(buys=buys, sells=sells, lower=lower)
+        total.update(buys=buys, sells=sells, lower=lower, cycles=cycles.get(label, 0))
         for direction, one in zip(directions, readings, strict=True):
             total[direction] += one.pairs
             unpaired[direction].update(dict(one.unpaired))
@@ -3559,7 +3448,7 @@ def bound_lines(evidence: Evidence) -> list[str]:
     causes = " | ".join(cause_text(tuple(unpaired[one].items())) for one in directions)
     out.append(
         f"| All | {total['buys']} | {total['sells']} | {total['lower']}"
-        f" | {counts} | {causes} |"
+        f" | {counts} | {total['cycles']} | {causes} |"
     )
     return out
 
@@ -3990,12 +3879,19 @@ def _deck_band_edges(prs: Presentation, source: DeckSource) -> None:
     source_note(slide, "tools/build_product_manual.py, in band_tally")
 
 
-def _deck_cycle_dollars(prs: Presentation, source: DeckSource, label: str) -> None:
-    """Add the slide giving ``label``'s ``latest_cycles`` and all its pairs in account dollars."""
+DOLLAR_SLIDE_PAIRS = 3
+
+
+def latest_pairs(pairs: Sequence[CyclePair]) -> list[CyclePair]:
+    """Return the ``DOLLAR_SLIDE_PAIRS`` pairs with the latest closing orders, oldest first."""
+    return sorted(pairs, key=lambda pair: pair.closer.when)[-DOLLAR_SLIDE_PAIRS:]
+
+
+def _deck_pair_dollars(prs: Presentation, source: DeckSource, label: str) -> None:
+    """Add the slide giving ``label``'s ``latest_pairs`` and all its pairs in account dollars."""
     base = dict(source.evidence.pairs).get(label)
     if base is None:
         return
-    rows = label_candles(source.evidence.labels, source.evidence.filled_candles)
     lines = [
         [
             pair.direction,
@@ -4005,7 +3901,7 @@ def _deck_cycle_dollars(prs: Presentation, source: DeckSource, label: str) -> No
             f"${sale_usd(pair):,.2f}",
             *split_dollars([pair]),
         ]
-        for pair in latest_cycles(base.pairs, rows[label])
+        for pair in latest_pairs(base.pairs)
     ]
     lines.append(
         [
@@ -4020,7 +3916,7 @@ def _deck_cycle_dollars(prs: Presentation, source: DeckSource, label: str) -> No
     slide = blank(prs)
     heading(
         slide,
-        f"{label} — each cycle's gain in dollars",
+        f"{label} — each pair's gain in dollars",
         "Captured is the part of a pair's gain held as the Fold's extra units."
         " Preserved is the part kept as dollars. The two sum to the gain.",
     )
@@ -4187,7 +4083,7 @@ def write_evidence_deck(
     for label in sorted(groups):
         _deck_base(prs, source, label, ledger)
         if account_dollars:
-            _deck_cycle_dollars(prs, source, label)
+            _deck_pair_dollars(prs, source, label)
     _deck_band_bars(prs, source)
     _deck_band_edges(prs, source)
     _deck_grader(prs)

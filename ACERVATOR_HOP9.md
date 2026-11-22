@@ -350,7 +350,12 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
 ```
 
 - **#1789, the VWAP charts, waits on his review** of the pages and both
-  presentations. The body's Decisions row holds the one reading only he can
+  presentations. Each base's page draws no cycle panel. It counts the base's
+  market cycles from three alternating touches of its five-minute band and
+  states the count beside its pair counts. Each pair's gain sits on a stem split
+  into captured and preserved, and every order dot is the height of a lowercase
+  caption letter (`tools/build_product_manual.py, in market_cycle_count` and
+  `_draw_pairs`). The body's Decisions row holds the one reading only he can
   settle: his bound on the pair count against the MOTD pairing.
 - **#53, the mouse-over texts.** #1803 is in 1408, and he runs 1107. Once he runs
   1408 and says so, count the console log's twenty-word refusals, read only, over

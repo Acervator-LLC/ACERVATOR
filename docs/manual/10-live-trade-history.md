@@ -273,7 +273,7 @@ which this repository does not carry.
 
 Every chart carries two panels over one time axis.
 
-Now: every chart is one page. Its price panel, pair-gain panel and net-units panel share one time axis, and up to three cycle panels sit under them (`tools/build_product_manual.py, in _draw_vwap`).
+Now: every chart is one page. Its price panel, pair-gain panel and net-units panel share one time axis, and no cycle panel sits under them (`tools/build_product_manual.py, in _draw_vwap`).
 
 ```python
 PRICE_PANEL = (0.08, 0.42, 0.77, 0.46)
@@ -290,7 +290,7 @@ UNITS_PANEL = (0.08, 0.15, 0.77, 0.13)
 VWAP_LEGEND_AT = (0.465, 0.0)
 ```
 
-Now: the page stands upright and is sized so its heading, the chart and its caption fill one page of the manual. The three panels sit at the top, their legend under them, then the cycle panels and their legend (`tools/build_product_manual.py, in _draw_vwap`).
+Now: the page stands upright and is sized so its heading, the chart and its caption fill one page of the manual. The three panels sit at the top, and their legend under them (`tools/build_product_manual.py, in _draw_vwap`).
 
 ```python
 ASSET_PAGE_SIZE = (8.5, 10.2)
@@ -298,8 +298,18 @@ PRICE_PANEL = (0.1, 0.715, 0.85, 0.225)
 PAIRS_PANEL = (0.1, 0.617, 0.85, 0.068)
 UNITS_PANEL = (0.1, 0.519, 0.85, 0.068)
 VWAP_LEGEND_AT = (0.525, 0.452)
-CYCLE_PANEL_HEIGHT = 0.068
-CYCLE_PANEL_BOTTOMS = (0.334, 0.201, 0.068)
+```
+
+Now: with no cycle panel under them, the three panels fill the page. The price panel takes almost half its height, the pair legend sits under the pair panel, and the chart legend sits at the foot of the page (`tools/build_product_manual.py, in _draw_vwap`).
+
+```python
+ASSET_PAGE_SIZE = (8.5, 10.2)
+PRICE_PANEL = (0.1, 0.485, 0.85, 0.455)
+PAIRS_PANEL = (0.1, 0.29, 0.85, 0.135)
+UNITS_PANEL = (0.1, 0.1, 0.85, 0.095)
+PAIRS_LEGEND_AT = (0.525, 0.233)
+PAIRS_LEGEND_COLUMNS = 2
+VWAP_LEGEND_AT = (0.525, 0.0)
 ```
 
 The upper panel draws every fill as a dot at its price, buys in
@@ -312,6 +322,26 @@ other asset. A chart of 30 fills or fewer marks each step with a dot: A31,
 A32, A33, A34, A35, A36, A37 and A38.
 
 Now: the upper panel also draws each five-minute candle as a grey line from its low to its high. No line joins a pair's two orders. Each pair, set out under "Pairs by order time and MOTD", marks its gain in the panel under the upper panel (`tools/build_product_manual.py, in _draw_candles` and `_draw_pairs`).
+
+Now: every fill dot, every step dot and every pair's gain dot is one size, `ORDER_MARKER_PT` across. That is the height of a lowercase letter in the page's caption type, 9 point DejaVu Sans (`tools/build_product_manual.py, in _draw_dots`).
+
+```python
+SANS_X_HEIGHT_EM = 1120 / 2048
+ORDER_MARKER_PT = size("cap") * SANS_X_HEIGHT_EM
+
+axis.plot(
+    np.asarray([bar_time(fill.when) for fill in own]),
+    [fill.price for fill in own],
+    linestyle="none",
+    marker="o",
+    markersize=ORDER_MARKER_PT,
+    markeredgewidth=0.0,
+    color=pen,
+    alpha=0.7,
+    zorder=2,
+    label=f"{side} fills ({len(own)})",
+)
+```
 
 The lower panel draws net units accumulated — every bought quantity minus every
 sold quantity, running — in `COLORS["accent"]`, filled down to zero. It answers
@@ -737,7 +767,7 @@ A40 has 21 fills, 15 buys and 6 sells, between 27 October and 30 October. Its St
 
 Now: the A40 chart draws 63 fills, 40 buys and 23 sells, from 27 October to 20 November. Its band runs on five-minute candles from the candle cache across the whole window, it carries 15 Scrum-Fold and 17 Fold-Scrum pairs at a 5% MOTD, and at 63 fills it does not dot every step (`tools/build_product_manual.py, in _draw_vwap`).
 
-Now: A40 has no weekly chart. Its page's cycle panels draw the candle cache's five-minute candles around its latest cycles (`tools/build_product_manual.py, in latest_cycles`).
+Now: A40 has no weekly chart. Its page draws the candle cache's five-minute candles across its window (`tools/build_product_manual.py, in _draw_candles`).
 
 
 ## What this repository holds for these charts
@@ -1144,7 +1174,30 @@ def preserved_usd(pair: CyclePair) -> float:
 
 The manual, the PDF and the tracked deck give each part as a percent of the sale, and the extra units as a count. A deck the builder writes outside the repository adds each cycle's dollars.
 
-Now: a pair's captured part counts only the Fold's extra units its own gain could pay for, and any other extra units count in no pair. Each title prints preserved as its gain less its captured part, so the three printed figures sum (`tools/build_product_manual.py, in captured_usd`).
+Now: a pair's captured part counts only the Fold's extra units its own gain could pay for, and any other extra units count in no pair. Each dollar row prints preserved as its gain less its captured part, so the three printed figures sum (`tools/build_product_manual.py, in captured_usd`).
+
+Now: each page marks every pair's gain as a dot on a stem from zero. The stem's lower part is the captured share and its upper part the preserved share, both a percent of the sale. A deck written outside the repository gives each pair's dollars (`tools/build_product_manual.py, in _draw_pairs` and `_deck_pair_dollars`).
+
+```python
+gains.vlines(
+    places,
+    0.0,
+    captured,
+    colors=ink("accent"),
+    linewidth=DATA_LINE_PT,
+    zorder=1.5,
+    label="captured, held as the Fold's extra units",
+)
+gains.vlines(
+    places,
+    captured,
+    shares,
+    colors=series()[PRESERVED_PEN],
+    linewidth=DATA_LINE_PT,
+    zorder=1.5,
+    label="preserved, kept as dollars",
+)
+```
 
 ### The buy-back level on each cycle
 
@@ -1163,7 +1216,7 @@ except (DistanceSettingUnreadable, TypeError, ValueError):
 
 The replay pays a tranche only at or under its level, so every pair's Fold sits on or below the dashed line its view draws.
 
-Now: no saved setting is read, and every base's level uses a 5% MOTD. The level is the MOTD level of the pair's first order. A Scrum-Fold pair's level is its Scrum's price less the MOTD, and a Fold-Scrum pair's level is its Fold's price plus the MOTD, so every pair's later order sits on or past the dashed line (`tools/build_product_manual.py, in motd_level`).
+Now: no saved setting is read, and every base's level uses a 5% MOTD. The level is the MOTD level of the pair's first order. A Scrum-Fold pair's level is its Scrum's price less the MOTD, and a Fold-Scrum pair's level is its Fold's price plus the MOTD, so every pair's later order sits on or past its level (`tools/build_product_manual.py, in motd_level`).
 
 ### The cycle views
 
@@ -1176,20 +1229,9 @@ Each base has one cycle view beside its VWAP chart. It draws up to three of the 
 
 A panel's title gives the two times, the hours between them, and the gain split into captured and preserved. A base with no such pair has no cycle view.
 
-`tools/build_product_manual.py, in latest_cycles`
-
-```python
-for pair in sorted(by_fold.values(), key=lambda one: one.fold.when, reverse=True):
-    if len(chosen) >= CYCLE_VIEWS:
-        break
-    span_ms = bar_start_ms(pair.fold.when) - bar_start_ms(pair.scrum.when)
-    if span_ms <= CYCLE_SPAN_LIMIT_MS and cycle_covered(pair, stamps):
-        chosen.append(pair)
-```
-
 The manual PDF has a budget of 30 MB, and the cycle views a budget of 12 MB within it.
 
-Now: the cycle panels sit on each base's page, under its net-units panel, and carry no budget of their own. They take the base's latest pairs by their later order, and each panel's title names the direction, Scrum-Fold or Fold-Scrum. The Scrum and the Fold sit as triangles on their own candles, and no line joins them (`tools/build_product_manual.py, in latest_cycles` and `_draw_cycle_orders`).
+Now: no page draws a cycle panel. Each page counts its market cycles from its five-minute band, as "The market cycle count" sets out (`tools/build_product_manual.py, in market_cycle_count`).
 
 ### Every legend sits below its plot
 
@@ -1229,6 +1271,69 @@ if replay.sells <= replay.buys:
 
 Now: each row counts the base's Scrum-Fold and Fold-Scrum pairs against the lower side. In each direction, the lower count less the pairs is the shortfall. Each unpaired lower-side order counts under one cause: no run of the other side next to its run, no order of the run next to it clears the MOTD, its run is longer than the run next to it, or each order of that run that clears the MOTD paired another (`tools/build_product_manual.py, in bound_reading`).
 
+Now: each row also carries the base's market cycles beside its pairs, and the last row their total (`tools/build_product_manual.py, in bound_lines`).
+
+```python
+out.append(
+    f"| {label} | {buys} | {sells} | {lower} {readings[0].lower_side}"
+    f" | {counts} | {cycles.get(label, 0)} | {causes} |"
+)
+```
+
+### The market cycle count
+
+The operator defines a market cycle:
+
+> A 'cycle' is a touch of the BBs or consists of price action that comes within tolerance of the BB thresholds to form two sides of a triangle.  If trades were to be executed at each threshold then it would read fold-scrum-fold or scrum-fold-scrum.  The third touch or approach is the end of cycle AND the beginning of the next since they are linked in an endless chain.
+
+Now: each base's page counts its market cycles across its window, on the five-minute candles and the band at period 20 and width 2 that its price panel draws. The pair panel's title states the count beside the Scrum-Fold and Fold-Scrum pairs (`tools/build_product_manual.py, in market_cycle_count`).
+
+- A touch is a candle that the platform's own band reading marks at a line, at the platform's own tolerances (`src/trading/ata_gate_scan.py, in band_touch`).
+- Touches on one side in a row count as one touch, so the touches alternate.
+- A candle whose close reaches both lines gives no touch. Neither does a candle whose wicks reach both lines while its close reaches neither.
+- A candle whose close reaches one line and whose wick reaches the other gives two touches, the wick's line first.
+- A candle with no band gives no touch, and the chain runs on past it.
+- Three alternating touches make one cycle, and the third touch opens the next cycle. A chain of n touches holds (n - 1) / 2 cycles, rounded down.
+
+| Candles in time order | Touches | Cycles |
+| --- | ---: | ---: |
+| no candle | 0 | 0 |
+| three candles at no line | 0 | 0 |
+| lower, lower, lower | 1 | 0 |
+| lower, upper | 2 | 0 |
+| lower, upper, lower | 3 | 1 |
+| upper, lower, upper | 3 | 1 |
+| lower, fifty uppers, lower | 3 | 1 |
+| lower, upper, lower, upper | 4 | 1 |
+| lower, upper, lower, upper, lower | 5 | 2 |
+| lower, two at no line, upper, one at no line, lower | 3 | 1 |
+| lower, an upper candle with no band, lower | 1 | 0 |
+| lower, an upper candle with no band, upper, lower | 3 | 1 |
+| lower, an upper candle on a band with a line at zero, lower | 1 | 0 |
+| lower, a close on both lines, lower | 1 | 0 |
+| lower, wicks on both lines and a close on neither, lower | 1 | 0 |
+| lower, a close on the upper line with a wick on the lower, lower | 3 | 1 |
+| upper, a close on the upper line with a wick on the lower, lower | 4 | 1 |
+| lower, a close on the lower line with a wick on the upper, upper | 4 | 1 |
+
+`tools/build_product_manual.py, in touch_sides` and `chain_cycles`
+
+```python
+at_upper, at_lower = band_touch(candle.close, bar, (candle,))
+if at_upper != at_lower:
+    return (TOUCH_UPPER,) if at_upper else (TOUCH_LOWER,)
+if not at_upper:
+    return ()
+close_upper, close_lower = band_touch(candle.close, bar, ())
+if close_upper == close_lower:
+    return ()
+return (TOUCH_LOWER, TOUCH_UPPER) if close_upper else (TOUCH_UPPER, TOUCH_LOWER)
+
+
+def chain_cycles(chain: Sequence[str]) -> int:
+    return max(len(chain) - 1, 0) // 2
+```
+
 ### Where a chart draws a hatch
 
 A chart hatches any stretch of its window where neither the Stone Tablets nor the candle cache holds a candle, and writes the dates in the hatch. The chart draws no band there. The function `lacking_spans` finds the stretch before the first candle or after the last one, and `_draw_uncovered` hatches it.
@@ -1261,7 +1366,7 @@ evidence = read_evidence(args.evidence_dir)
 deck = write_evidence_deck(args.deck, args.figures_dir, evidence)
 ```
 
-Now: each base has one slide, and it carries that base's page. With `--operator-deck` the builder writes a second deck that adds each cycle's dollars, and it refuses a path inside the repository (`tools/build_product_manual.py, in write_evidence_deck`).
+Now: each base has one slide, and it carries that base's page. With `--operator-deck` the builder writes a second deck that adds each pair's dollars, and it refuses a path inside the repository (`tools/build_product_manual.py, in write_evidence_deck`).
 
 ## The 38 per-asset charts
 
@@ -1366,14 +1471,14 @@ The code has overtaken the paragraph above, and the paragraph stays word for wor
 
 Now: the builder draws every VWAP chart, and no VWAP chart labels its price axis in scientific notation. The A01, A03 and A10 blocks below show the code that draws the price axis today (`tools/build_product_manual.py, in _label_price_axis`).
 
-Now: no axis on a base's page carries an offset or a multiplier. Its price, gain and net-units panels and each cycle panel label their values in plain decimals (`tools/build_product_manual.py, in _label_plain_axis`). The A31 block below shows the code that marks every step today (`tools/build_product_manual.py, in _draw_vwap`).
+Now: no axis on a base's page carries an offset or a multiplier. Its price, gain and net-units panels label their values in plain decimals (`tools/build_product_manual.py, in _label_plain_axis`). The last A31 block below shows the code that marks every step today (`tools/build_product_manual.py, in _draw_vwap`).
 
 Each of the 38 headings below holds three charts for one base, under one label:
 its VWAP chart, its weekly chart and its price trace. The VWAP chart draws the
 fills. The weekly chart and the price trace draw the market those fills ran in,
 from the Stone Tablet rows the next two sections set out.
 
-Now: each heading holds one page for its base: the VWAP chart with its pairs, its pair gains, its net units and its latest cycles. No weekly chart, cycle view or price trace is drawn (`tools/build_product_manual.py, in _draw_vwap`).
+Now: each heading holds one page for its base: the VWAP chart with its pairs, its pair gains split into captured and preserved, its market cycle count beside its pair counts, and its net units. No weekly chart, cycle view or price trace is drawn (`tools/build_product_manual.py, in _draw_vwap`).
 
 ### A01
 
@@ -1613,7 +1718,7 @@ converge near 0.088 and finish together. Net units end at 1,153.
 Both lines hold near 85 through May, step to about 83 at the start of June, and
 end within a dollar of each other. Net units end below one whole unit, at 0.75.
 
-Now: A23's page draws 3 cycle panels from its 15 Scrum-Fold and 15 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
+Now: A23's page draws no cycle panel. Its pair panel splits each pair's gain into captured and preserved, beside its market cycle count (`tools/build_product_manual.py, in _draw_pairs`).
 
 ### A24
 
@@ -1698,6 +1803,24 @@ for side, line in (("buy", buy_v), ("sell", sell_v)):
     )
 ```
 
+Now: every step dot is `ORDER_MARKER_PT` across, the size of every fill dot and pair dot on the page (`tools/build_product_manual.py, in _draw_vwap`).
+
+```python
+marker = "o" if len(fills) <= STEP_DOT_MAX_FILLS else "None"
+for side, line in (("buy", buy_v), ("sell", sell_v)):
+    price.plot(
+        stamps,
+        line,
+        color=pens[side],
+        lw=DATA_LINE_PT,
+        marker=marker,
+        markersize=ORDER_MARKER_PT,
+        markeredgewidth=0.0,
+        zorder=3,
+        label=f"running {side} VWAP",
+    )
+```
+
 ### A32
 
 ![A32, 24 fills, with eight buys and sixteen sells.](figures/vwap_a32.png)
@@ -1749,7 +1872,7 @@ single horizontal line at 2,148.63 and its index exactly 1.000. The sell line
 rises across the four sells, 2,307 up to 2,577. Net units drop across the
 window, 0.0114 down to 0.0088.
 
-Now: A38's page draws 1 cycle panel from its 5 Scrum-Fold and 4 Fold-Scrum pairs at a 5% MOTD (`tools/build_product_manual.py, in latest_cycles`).
+Now: A38's page draws no cycle panel. Its pair panel splits each pair's gain into captured and preserved, beside its market cycle count (`tools/build_product_manual.py, in _draw_pairs`).
 
 ## Trade grading
 
@@ -1968,7 +2091,7 @@ multiplier.
 _label_price_axis(axis, [bar[3] for bar in bars] + [bar[2] for bar in bars])
 ```
 
-Now: the builder draws no weekly chart. Each base's page holds its latest cycles under its net-units panel (`tools/build_product_manual.py, in _draw_latest_cycles`).
+Now: the builder draws no weekly chart. Each base's page counts its market cycles on its five-minute candles and draws no cycle panel (`tools/build_product_manual.py, in market_cycle_count`).
 
 ## The price at the finest resolution the record carries
 
@@ -2000,4 +2123,4 @@ axis.plot(stamps, closes, color=accessible_series()[0], linewidth=0.5)
 _label_price_axis(axis, closes)
 ```
 
-Now: no weekly bar and no price trace is drawn. Each base's page draws its five-minute candles across its whole window and around its latest cycles (`tools/build_product_manual.py, in _draw_cycle`).
+Now: no weekly bar and no price trace is drawn. Each base's page draws its five-minute candles across its whole window (`tools/build_product_manual.py, in _draw_candles`).
