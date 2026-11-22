@@ -48,4 +48,4 @@ Part Title and Area of Focus
 
 10 The Sigil Project
 
-• Named Checks That Read Finished Code Against a Published Rule Set - Design and Progress - One Page per Built Sigil
+• Complex Function Sets That Hold the Canon of One Domain as Code - The Spine - What a Hosted Model Allows - Measures - Build Order With the Status of Each Row - The Nine Coding Sigils Outside This Design
