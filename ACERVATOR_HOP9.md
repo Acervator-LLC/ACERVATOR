@@ -294,8 +294,8 @@ wrong far more often than right.
   prompt is processed. It also holds the published work checked against it, what
   a hosted model allows, and a build order whose nine rows all read unbuilt. Its
   first comment, 7071205806, is the restart record and quotes his defining words
-  from 2026-10-30 on. `docs/manual/16-sigil-project.md` still describes the
-  earlier design; its rewrite to the body's concept is the next manual unit. Row
+  from 2026-10-30 on. `docs/manual/16-sigil-project.md` describes the body's
+  design. Row
   1 starts when he says the reachable form is worth building.
 
 ```bash
