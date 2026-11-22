@@ -14,8 +14,6 @@ from ..main_tabs.spendable_profits_surface import (
     COLUMNS,
     FIELD_ID_BY_KEY,
     MONEY_KEYS,
-    SPENDABLE_UNKNOWN_TOOLTIP,
-    UNREADABLE_TOOLTIP,
     column_cell,
     money_amount,
 )
@@ -78,8 +76,6 @@ if _HAS_QT:
 
         #: Every column drawing money, which shrinks rather than shortens.
         _MONEY_KEYS = MONEY_KEYS
-        _SPENDABLE_ABSENT_TIP = SPENDABLE_UNKNOWN_TOOLTIP
-        _UNREADABLE_TIP = UNREADABLE_TOOLTIP
         #: Each column's description, read from the declaration the React strip reads.
         _TIP_BY_KEY = {column["key"]: column["label_tooltip"] for column in COLUMNS}
 
@@ -196,24 +192,22 @@ if _HAS_QT:
             column this strip does not draw.
             """
             kept = dict(data) if isinstance(data, dict) else {}
-            sp = kept.get("spendable")
-            amount = self._amount_of(sp)
-            if sp is None:
-                skin, tip = self._VALUE_SKIN_MUTED, self._SPENDABLE_ABSENT_TIP
-            elif amount is None:
-                skin, tip = self._VALUE_SKIN_MUTED, self._UNREADABLE_TIP
+            amount = self._amount_of(kept.get("spendable"))
+            if amount is None:
+                skin = self._VALUE_SKIN_MUTED
             elif amount >= 0:
-                skin, tip = self._VALUE_SKIN_HIGHLIGHT, ""
+                skin = self._VALUE_SKIN_HIGHLIGHT
             else:
-                skin, tip = self._VALUE_SKIN_NEGATIVE, ""
+                skin = self._VALUE_SKIN_NEGATIVE
             ammo = kept.get("total_ammo")
             cells = {column["key"]: column_cell(column, kept) for column in COLUMNS}
             self._stats["total_ammo"].set_skin(
                 self._ammo_skin(ammo, kept.get("ammo_lean"))
             )
+            spendable = cells[COLUMNS[0]["key"]]
             self._amount.set_skin(skin)
-            set_description(self._amount, tip)
-            self._amount.setText(cells[COLUMNS[0]["key"]]["text"])
+            set_description(self._amount, spendable["tooltip"])
+            self._amount.setText(spendable["text"])
             for key, label in self._stats.items():
                 label.setText(cells[key]["text"])
             self._last_data = kept

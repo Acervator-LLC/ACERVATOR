@@ -420,7 +420,7 @@ Every figure repaints each 2 seconds (`src/gui/main_window.py, in MainWindow._re
 
 | Cell | What it shows and what it reads |
 | --- | --- |
-| SPENDABLE | Exchange wallet cash, the highest reading among the bots. A dash until cash or positions read above zero. `src/trading/container/aggregation.py, in FleetAggregationMixin._add_bot_stats` |
+| SPENDABLE | Cash each exchange reports, available plus held, in USD and USDC, added across exchanges. The mouse-over names each exchange's figure, to read against that exchange's own screen. An exchange not read yet adds nothing, and the mouse-over says so. A dash until an exchange answers, and while cash and positions both read zero. `src/trading/container/aggregation.py, in exchange_cash`, `src/gui/main_tabs/header_strip_surface.py, in exchange_cash_lines` |
 | P/L | Unrealised profit and loss, signed, as the exchange reports it. `src/gui/main_tabs/header_strip_surface.py, in unrealised_amount` |
 | LOCKED | Dollar value of all positions: holdings times price times the quote's dollar rate, summed. A dash until cash or positions read above zero. `src/trading/container/aggregation.py, in FleetAggregationMixin._bot_position_usd` |
 | MATURE | Position value above three times cost, summed, once an exchange answers. `src/trading/container/aggregation.py, in FleetAggregationMixin._add_bot_stats` |

@@ -10,6 +10,7 @@ from ...core.privacy_mask_registry import (
     mask_or,
 )
 from ...trading.container.config import (
+    CASH_CURRENCIES,
     UNREADABLE_TOTALS_KEY,
     as_finite_float,
     as_whole_count,
@@ -38,6 +39,9 @@ EMPTY_TEXT = _ABSENT_TEXT
 MONEY_PREFIX = "$"
 MONEY_FORMAT = ",.2f"
 COUNT_FORMAT = "str"
+
+#: ``CASH_CURRENCIES`` as the SPENDABLE caption's hover text names them.
+CASH_CURRENCY_NAMES = " and ".join(CASH_CURRENCIES)
 
 #: How one ``KPI_COLUMNS`` cell is rendered, named per column so no cell is
 #: drawn from its position in the declaration.
@@ -202,7 +206,8 @@ SEPARATOR_STYLE = f"color: {ds.MAIN_SEPARATOR}; font-size: 24px; margin: 0 2px;"
 SEPARATOR = {"text": "|", "style_sheet": SEPARATOR_STYLE}
 
 SPENDABLE_TOOLTIP = (
-    "Cash balance pulled from the exchange, across the bots sharing one wallet."
+    f"Cash each exchange reports in {CASH_CURRENCY_NAMES}, available and held, "
+    "added across exchanges."
 )
 SPENDABLE_UNKNOWN_TOOLTIP = (
     "This amount is not in the data the strip was given for this refresh."
@@ -210,6 +215,12 @@ SPENDABLE_UNKNOWN_TOOLTIP = (
 UNREADABLE_TOOLTIP = (
     "This amount did not arrive as a number, so nothing is shown for it."
 )
+
+#: The payload field ``profits_payload`` fills with each exchange's cash.
+SPENDABLE_BY_EXCHANGE = "spendable_by_exchange"
+
+#: What ``exchange_cash_lines`` writes for an exchange whose balance is not read yet.
+SPENDABLE_UNREAD_TEXT = "no balance read yet"
 
 AMMO_LABEL = "AMMO"
 AMMO_TOOLTIP = (
@@ -499,6 +510,7 @@ TOP_ROW = {
 
 PROFITS_SOURCE_KEYS = (
     "wallet_cash_usd",
+    "wallet_cash_by_exchange",
     "crypto_position_value_usd",
     "total_unrealized_exchange",
     "total_mature_exchange",
@@ -834,8 +846,30 @@ def privacy_dot(field_id: str, masked: Optional[bool] = None) -> dict:
     }
 
 
-def spendable_cell(value: Any) -> dict:
-    """The SPENDABLE cell's text, skin and tooltip for one amount."""
+def exchange_cash_lines(by_exchange: Any) -> str:
+    """One line per exchange in ``by_exchange``, its name and its cash, in name order.
+
+    ``SPENDABLE_UNREAD_TEXT`` stands for a figure ``money_amount`` refuses, and
+    ``mask_or`` hides each figure while ``kpi.spendable`` is masked.
+    """
+    held = by_exchange if isinstance(by_exchange, dict) else {}
+    lines = []
+    for exchange_id in sorted(held, key=str):
+        amount = money_amount(held[exchange_id])
+        figure = (
+            SPENDABLE_UNREAD_TEXT
+            if amount is None
+            else mask_or(money_text(amount), "kpi.spendable")
+        )
+        lines.append(f"{str(exchange_id).capitalize()} {figure}")
+    return "\n".join(lines)
+
+
+def spendable_cell(value: Any, by_exchange: Any = None) -> dict:
+    """The SPENDABLE cell's text, skin and tooltip for one amount.
+
+    A drawn amount's tooltip is ``exchange_cash_lines`` of ``by_exchange``.
+    """
     if value is None:
         return {
             "text": mask_or(EMPTY_TEXT, "kpi.spendable"),
@@ -853,22 +887,23 @@ def spendable_cell(value: Any) -> dict:
     return {
         "text": mask_or(money_text(amount), "kpi.spendable"),
         "style_sheet": style,
-        "tooltip": "",
+        "tooltip": exchange_cash_lines(by_exchange),
     }
 
 
 def kpi_cell(column: dict, profits: Optional[dict]) -> dict:
     """One ``KPI_COLUMNS`` cell's text, skin and tooltip, by its own ``render``.
 
-    ``RENDER_AMMO`` reads ``ammo_lean`` out of the payload for its colour, and
-    every other renderer reads the column's own ``source_key`` alone.
+    ``RENDER_AMMO`` reads ``ammo_lean`` for its colour, ``RENDER_SPENDABLE`` reads
+    ``SPENDABLE_BY_EXCHANGE`` for its tooltip, and every other renderer reads the
+    column's own ``source_key`` alone.
     """
     data = profits if isinstance(profits, dict) else {}
     raw = data.get(column["source_key"])
     kind = column["render"]
     field_id = column["field_id"]
     if kind == RENDER_SPENDABLE:
-        return spendable_cell(raw)
+        return spendable_cell(raw, data.get(SPENDABLE_BY_EXCHANGE))
     if kind == RENDER_AMMO:
         return ammo_cell(raw, data.get("ammo_lean"))
     if kind == RENDER_PNL:
@@ -1003,6 +1038,7 @@ def profits_payload(
     total_ammo, lean = ammo_figures(data, statuses)
     return {
         "spendable": cash_published if known else None,
+        SPENDABLE_BY_EXCHANGE: aggregate_amount(data, "wallet_cash_by_exchange"),
         "locked": locked_published if known else None,
         "unrealised": unrealised_amount(data),
         "mature": exchange_amount(data, "total_mature_exchange"),
