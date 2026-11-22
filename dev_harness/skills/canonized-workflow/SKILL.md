@@ -121,11 +121,6 @@ The Truth Archetype evaluates the record before any action. Keep this order:
 See Skill: ocir, row C131, for what a draft gated outside the repository
 reports.
 
-The first record is comment 6967123516 on #1633. It holds four OCIR lines and
-six W5H answers for each of two experiment blocks. Those two blocks ran before
-this rule, so that record follows them. Every later record comes before its
-action.
-
 #### The test statement, for an iteration that runs anything
 
 Operator, 2026-11-21:
@@ -279,10 +274,9 @@ starts. The critique reads the design, not the result. A design fault it finds i
 fixed before the next round. The difference between the arms is read only after
 the last round the statement names.
 
-Measured 2026-11-21 on #1633: step 2's 48 runs pooled 15 of 24 against 11 of 24,
-which Fisher's exact test reads at p 0.39. A planned block of 48 more runs met,
-in 7 of its 8 tasks, no line it could act on (comment 7065980062). Comment
-7066741563 is the first record with a test statement.
+Measured 2026-11-21 on #1633: 48 runs of its earlier design pooled 15 of 24
+against 11 of 24, which Fisher's exact test reads at p 0.39. A planned block of
+48 more runs met, in 7 of its 8 tasks, no line it could act on.
 
 ### The built bundle is the thing he runs, and it is not the source tree
 

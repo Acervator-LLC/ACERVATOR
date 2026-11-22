@@ -103,6 +103,10 @@ Every one was found in this project. **Hunt these in your own checks before
 reporting a count.** Add to the list when a new shape appears; that is the
 Iterate step.
 
+Rows C125, C155, C158, C159 and C160 cite comment ids on #1633 that were purged
+on 2026-11-21. Their text is in the gitignored folder
+`artifacts/referee/1633_archive/` of the main tree, keyed by comment id.
+
 | id | shape | how it hides |
 |---|---|---|
 | **C1** a value compared to itself | always true |

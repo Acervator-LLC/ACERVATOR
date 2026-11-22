@@ -3,7 +3,7 @@
 Reference. This page carries current state and an index, for a session that has
 lost its context or is starting on a new machine. Not a history.
 
-Written 2026-11-21 against `1d137dee`. **Every claim here names one command that
+Written 2026-11-21 against `84ab232e`. **Every claim here names one command that
 checks it. Run the command; do not trust the sentence.**
 
 ```bash
@@ -18,47 +18,26 @@ none of them binds.
 
 ## HOW THE LAST SESSION ENDED
 
-The session that wrote this was still running. The 22 pull requests since
-`a5e44099` are #1800 to #1821: fourteen on #1633, four on #1789, and one each on
-#1622, #53, #1660 and #319. #1789, #53, #1660 and #319 are open.
+The session that wrote this was still running. The 23 pull requests since
+`a5e44099` are #1800 to #1822: fifteen on #1633, four on #1789, and one each on
+#1622, #53, #1660 and #319. All six issues are open.
 
 ```bash
-git log --oneline --first-parent a5e44099..e6dcd126   # the 22 pull requests
-gh pr view 1821 --json state --jq .state              # MERGED, and the same for the other 21
-gh issue view 1633 --comments                         # each record and result, newest last
+git log --oneline --first-parent a5e44099..84ab232e   # the 23 pull requests
+gh pr view 1822 --json state --jq .state              # MERGED, and the same for the other 22
+gh issue view 1633 --comments                         # the restart record first, newest last
 gh issue view 1789 --comments                         # his chart rulings and the units that built them
 gh release list                                       # what is published
 gh pr list --state open                               # what is still landing
 ```
 
-- **Experiment 4's step 2 has run** (comment 7056017260): 8 tasks, three runs a
-  version, each request ending "Just work in that file, no need to look at
-  anything else." Only CODE.LOOP beats the plain archetype, 5 of 6 runs against 1
-  of 6, so the alpha bar is not met. The feedback runs moved an import under a
-  type-checking block in 6 of 24 runs, the runs without it in 0 of 24.
-- **Calibration 1 changes that import line.** #1806 gave CODE.IMPORT's TC001 to
-  TC003 findings the HOLD flag; comment 7056816207 records why HOLD does not fit,
-  and #1808 gives them the OPTIMIZE flag in every folder (record 7057774204).
-  Three rounds on Task_04_Event_Log, Task_05_Meter_Readings and Task_19_Env_Report
-  kept the fault removals, and 4 of 9 runs still moved an import, each copying the
-  corrected form the line prints (comment 7059063897). #1810 makes a row under the
-  OPTIMIZE flag read "the merge proceeds" with no corrected form and no command:
-  0 of 9 runs moved an import, and the fault was removed in 9 of 9 (comment
-  7060342296).
-- **Calibration 2 states what a FIX or HOLD flag asks.** #1811 puts the flag's own
-  text from `FLAGS` on the first line. CODE.SECURE's credential fault was removed
-  in 6 of 6 runs, against 1 of 6 in step 2 (comment 7061923194).
-- **The alpha bar is met** (comment 7062093229): each stratum's line acted on on
-  two tasks under the current lines, CODE.OPTIMIZE's read as the flag table
-  defines OPTIMIZE; every valid feedback run works; every not-read line names its
-  reason. The referee judges the sigil-based Coding Archetype ready for alpha.
-- **The real-unit comparison has run two pairs.** Each pair builds one real row
-  twice off one commit, one arm with sigil feedback and one with an empty
-  SIGIL_FEEDBACK_OFF file at its worktree's root, and the referee opens a pull
-  request from the feedback arm when it meets the row's terms. The pilot, #1660
-  row 5, merged as #1813 (comment 7062528211); pair two, one file under #319,
-  merged as #1814 (comment 7064363430). Both arms met the terms both times, and
-  the feedback arm took fewer minutes and gate runs.
+- **#1633 restarted on 2026-11-21.** The body states his concept from his own
+  words, the published work it was checked against, and a build order whose rows
+  all read unbuilt. The 334 earlier comments are purged and kept in the
+  gitignored folder `artifacts/referee/1633_archive/`.
+- **#1813** declares `__all__` as a plain list in the Console and Status Qt tabs
+  (#1660 row 5), and **#1814** makes the Activity Log surface obey the comment
+  rule (#319).
 - **The VWAP charts (#1789).** #1802 draws each Scrum-Fold cycle on five-minute
   candles and removes the weekly charts. #1804 makes the live-evidence market
   chart show the 33 bases its text names. #1805 puts each base's charts on one
@@ -81,7 +60,7 @@ gh pr list --state open                               # what is still landing
 - **Each feedback line carries one flag**, defined in `dev_harness/sigils/core.py,
   in FLAGS`. HOLD prints only for application source (`src`, `desktop` and
   `main.py`), FIX for a fault anywhere else, OPTIMIZE for a named optimization
-  rule. Read a flag's own text there before choosing it (comment 7056816207).
+  rule. Read a flag's own text there before choosing it.
   A row under OPTIMIZE reads "the merge proceeds" with no form (#1810), and a
   first line under FIX or HOLD states its flag's text (#1811). The hook that runs
   is the copy in the Claude Code user folder; after a merge that changes
@@ -91,8 +70,8 @@ gh pr list --state open                               # what is still landing
   in the data sets under the gitignored artifacts/sigil_runs/.
 - **Every iteration has a record first:** W5H and OCIR, gated by the Truth
   Archetype with `--item`, posted, then acted on. The rule is part 6 of Skill:
-  canonized-workflow (#1742). In experiment 4 each task also carries its own W5H
-  file (comment 7030835431).
+  canonized-workflow (#1742). Each experiment task also carries its own W5H
+  file.
 - **A control is measured on its failure modes, not on a sweep** of src/: inputs
   that show each known failure mode, a corrected twin and a near-miss twin each,
   and a seeded sample stratified by folder where src/ is used. Every input cites
@@ -147,13 +126,11 @@ he runs      1107, the dist folder of each running Acervator process
   was refused permission to stop it, so it waits on his word and no one else
   stops it. Find it by its command line, which names the scratch file
   `react_swarm_saves_wires_readings.py`.
-  Moving the Coding Archetype's own ruff call onto the step 1c selection, a
-  change in dev_harness/harness/ (comment 6870001755). #1764: committing the
-  watcher as a new file under tools/ needs his word, because
-  `dev_harness/hooks/block_detour.py` admits a new file there only when its
-  COMMISSIONED set names it. The proposed rule in comment 7030292555: the dispatch
-  hook's build pattern reads a word inside quoted data, such as a dictionary key,
-  as a build verb. Do not raise them as a round.
+  #1764: committing the watcher as a new file under tools/ needs his word,
+  because `dev_harness/hooks/block_detour.py` admits a new file there only when
+  its COMMISSIONED set names it. A proposed rule: the dispatch hook's build
+  pattern reads a word inside quoted data, such as a dictionary key, as a build
+  verb. Do not raise them as a round.
 
 ---
 
@@ -311,14 +288,20 @@ wrong far more often than right.
 
 ## ACTIVE ITEMS AND RESUME POINTS
 
-- **#1633 is abandoned.** His words, 2026-11-21: "Okay, time to abandon 1633.
-  It was not approached correctly and is entirely hallucinated at this stage.
-  We can try again later." No work on it runs, and none resumes without his
-  word. The abandonment record, comment 7070958497, names what stays live in
-  the repository and what a retry needs.
+- **#1633, restarted 2026-11-21.** The body states his concept: a sigil is a
+  complex function set for one domain, a Python Sigil first, that holds its
+  canonized rules and workflows as code and constrains input inference while a
+  prompt is processed. It also holds the published work checked against it, what
+  a hosted model allows, and a build order whose nine rows all read unbuilt. Its
+  first comment, 7071205806, is the restart record and quotes his defining words
+  from 2026-10-30 on. `docs/manual/16-sigil-project.md` still describes the
+  earlier design; its rewrite to the body's concept is the next manual unit. Row
+  1 starts when he says the reachable form is worth building, and Decision 1 in
+  the body waits on him.
 
 ```bash
-gh api repos/Acervator-LLC/ACERVATOR/issues/comments/7070958497 --jq .body   # the abandonment record
+gh issue view 1633                                                           # the concept, the build order, Decision 1
+gh api repos/Acervator-LLC/ACERVATOR/issues/comments/7071205806 --jq .body   # the restart record and his words
 ```
 
 - **#1622, the wire rows, on his rulings of 2026-11-19** (comments 7028680362 to
@@ -453,7 +436,7 @@ VWAP pairs                  from order times and the MOTD only, never tranche da
 VWAP pages                  one page per base holds all its charts, and no line joins a pair,
                             #1789 comments 7054040450 and 7056959204
 a coding rule               runs only where the input's file type, constructs and imports
-                            select it; the house says "can run" for its count, #1633 step 1c
+                            select it; the house says "can run" for its count
                             dev_harness/sigils/coding_partition.py, in selection
 ```
 
@@ -557,3 +540,4 @@ python -m tools.hop_check                         # exit 0 before any work
 ## CITED AS ABSENT
 
 - `dev_harness/sigils/semgrep_rule_packs/` is gitignored, because the two packs carry the registry's licence. A new clone holds no such folder until the two fetch commands on `docs/manual/16-sigil-project/code-secure.md` run.
+- `artifacts/referee/1633_archive/` is gitignored and sits in the main tree only. It holds the 334 comments purged from #1633 on 2026-11-21 and the body's 68 earlier revisions.
