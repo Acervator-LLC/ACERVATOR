@@ -48,4 +48,4 @@ Part Title and Area of Focus
 
 10 The Sigil Project
 
-• Complex Function Sets That Hold the Canon of One Domain as Code - The Spine - What a Hosted Model Allows - Measures - Build Order With the Status of Each Row - The Nine Coding Sigils Outside This Design
+• Closed on 2026-11-23 With Nothing Built - Complex Function Sets That Hold the Canon of One Domain as Code - The Spine - What a Hosted Model Allows - Measures - Build Order With the Status of Each Row - The Nine Coding Sigils Outside This Design, Which the Write Hook Does Not Run

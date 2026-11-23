@@ -20,21 +20,28 @@ none of them binds.
 
 The session that wrote this was still running. The 23 pull requests since
 `a5e44099` are #1800 to #1822: fifteen on #1633, four on #1789, and one each on
-#1622, #53, #1660 and #319. All six issues are open.
+#1622, #53, #1660 and #319. Five of the six issues are open. #1633 closed on
+2026-11-23, as not planned.
 
 ```bash
 git log --oneline --first-parent a5e44099..84ab232e   # the 23 pull requests
 gh pr view 1822 --json state --jq .state              # MERGED, and the same for the other 22
-gh issue view 1633 --comments                         # the restart record first, newest last
+gh issue view 1633 --json state,stateReason           # CLOSED, NOT_PLANNED
+gh api repos/Acervator-LLC/ACERVATOR/issues/comments/7110762631 --jq .body   # the closure
 gh issue view 1789 --comments                         # his chart rulings and the units that built them
 gh release list                                       # what is published
 gh pr list --state open                               # what is still landing
 ```
 
-- **#1633 restarted on 2026-11-21.** The body states his concept from his own
-  words, the published work it was checked against, and a build order whose rows
-  all read unbuilt. The 334 earlier comments are purged and kept in the
-  gitignored folder `artifacts/referee/1633_archive/`.
+- **#1633 closed on 2026-11-23, as not planned.** His words:
+  "Okay, that is fine.  We are done with 1633.  It is not showing enough promise to continue."
+  Then:
+  "Science must be allowed to win even if you do not like the results."
+  The last measurement is comment 7094741655, and the closure is comment
+  7110762631. Nothing under the restarted design was built, and no work on it
+  resumes. `docs/manual/16-sigil-project.md` states the closure. The 334
+  comments purged on 2026-11-21 stay in the gitignored folder
+  `artifacts/referee/1633_archive/`.
 - **#1813** declares `__all__` as a plain list in the Console and Status Qt tabs
   (#1660 row 5), and **#1814** makes the Activity Log surface obey the comment
   rule (#319).
@@ -51,21 +58,20 @@ gh pr list --state open                               # what is still landing
 
 ### Standing state
 
-- **The write hook's sigil feedback is on by default** (#1777). The function
-  `dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off` turns it off only
-  when ACERVATOR_SIGIL_FEEDBACK reads off, or when a SIGIL_FEEDBACK_OFF file sits
-  in the file's folder or a folder above it.
+- **The write hook's sigil feedback is off and removed.** The write hook,
+  `dev_harness/hooks/archetype_gate.py`, runs no coding sigil, before a write or
+  after it. His ruling of 2026-11-23:
+  "Coding Sigils should not be active at all since they were supposed to be part of a separate archetype version that was being tested and not yet deployed."
+  The nine stay under `dev_harness/sigils/` as the record of that version.
 - **The sigils hold rules of their own.** CODE.SECURE holds SECURE001 (#1779) and
   CODE.LOOP holds LOOP001 to LOOP004 (#1782), each in its module's OWN_RULES.
-- **Each feedback line carries one flag**, defined in `dev_harness/sigils/core.py,
+- **A sigil run by hand gives one flag**, defined in `dev_harness/sigils/core.py,
   in FLAGS`. HOLD prints only for application source (`src`, `desktop` and
   `main.py`), FIX for a fault anywhere else, OPTIMIZE for a named optimization
-  rule. Read a flag's own text there before choosing it.
-  A row under OPTIMIZE reads "the merge proceeds" with no form (#1810), and a
-  first line under FIX or HOLD states its flag's text (#1811). The hook that runs
-  is the copy in the Claude Code user folder; after a merge that changes
-  `dev_harness/hooks/archetype_gate.py`, copy it there and compare
-  `git hash-object` with the merge's blob.
+  rule.
+- **The hook that runs is the copy in the Claude Code user folder.** After a
+  merge that changes `dev_harness/hooks/archetype_gate.py`, copy it there and
+  compare `git hash-object` with the merge's blob.
 - **No sigil page carries a figure measured on src/** (#1770): those figures live
   in the data sets under the gitignored artifacts/sigil_runs/.
 - **Every iteration has a record first:** W5H and OCIR, gated by the Truth
@@ -198,7 +204,8 @@ under THE QUEUE.
 His ruling of 2026-11-13: the session sets the work order across items and rows
 unless he prompts otherwise. Live faults on the Trading path go first, then each
 issue's own row order, and a report states the order and its ground in one line.
-An order he gives wins, and his focus on #1633 is such an order.
+An order he gives wins. His focus on #1633 ended when he closed it on
+2026-11-23.
 
 ```bash
 grep -n "prompt otherwise" ~/.claude/projects/*/memory/feedback_sequencing_is_mine.md
@@ -278,7 +285,7 @@ gh issue list --state open --limit 200          # 39 open when written
 
 | To clear | Excluded, and why |
 |---|---|
-| #53, #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1633, #1643, #1656, #1657, #1659, #1660, #1695, #1785, #1789 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540, #1764 |
+| #53, #63, #319, #407, #412, #433, #665, #881, #993, #1125, #1136, #1486, #1622, #1643, #1656, #1657, #1659, #1660, #1695, #1785, #1789 | build-outs #23, #34, #55, #128, #147, #156, #300, #571; living #1440; stock window parked, #220, #571, #1120; Proof of Accumulation paused, #147, #594; his decisions, #937, #980, #1025, #1540, #1764 |
 
 Read the body before dispatching, and grep the symbols a row names in the same
 call: a row's status can be stale, and a scan that calls a row built has been
@@ -287,21 +294,6 @@ wrong far more often than right.
 ---
 
 ## ACTIVE ITEMS AND RESUME POINTS
-
-- **#1633, restarted 2026-11-21.** The body states his concept: a sigil is a
-  complex function set for one domain, a Python Sigil first, that holds its
-  canonized rules and workflows as code and constrains input inference while a
-  prompt is processed. It also holds the published work checked against it, what
-  a hosted model allows, and a build order whose nine rows all read unbuilt. Its
-  first comment, 7071205806, is the restart record and quotes his defining words
-  from 2026-10-30 on. `docs/manual/16-sigil-project.md` describes the body's
-  design. Row
-  1 starts when he says the reachable form is worth building.
-
-```bash
-gh issue view 1633                                                           # the concept and the build order
-gh api repos/Acervator-LLC/ACERVATOR/issues/comments/7071205806 --jq .body   # the restart record and his words
-```
 
 - **#1622, the wire rows, on his rulings of 2026-11-19** (comments 7028680362 to
   7029270222). #1787, #1788, #1791 and #1798 are built. The body's spine still
@@ -549,4 +541,4 @@ python -m tools.hop_check                         # exit 0 before any work
 ## CITED AS ABSENT
 
 - `dev_harness/sigils/semgrep_rule_packs/` is gitignored, because the two packs carry the registry's licence. A new clone holds no such folder until the two fetch commands on `docs/manual/16-sigil-project/code-secure.md` run.
-- `artifacts/referee/1633_archive/` is gitignored and sits in the main tree only. It holds the 334 comments purged from #1633 on 2026-11-21 and the body's 68 earlier revisions.
+- `artifacts/referee/1633_archive/` is gitignored and sits in the main tree only. It holds the 334 comments purged from #1633 on 2026-11-21 and the body's 68 earlier revisions. #1633 closed on 2026-11-23, and the folder stays as its record.

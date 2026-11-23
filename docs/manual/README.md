@@ -35,7 +35,7 @@ meaning; the Part column below is what places a file in the manual.
 | [08-tabs.md](08-tabs.md) | 3 | 29 to 44 | Main Window, Market Inspector and Asset Charts, and the pointers to every other screen's own section under [08-tabs/](08-tabs/README.md) |
 | [12-adr-index-and-glossary.md](12-adr-index-and-glossary.md) | 6 | — | Where a decision is recorded, and the glossary anchored to the modules behind it |
 | [10-live-trade-history.md](10-live-trade-history.md) | 9 | — | The live fill record, VWAP charts, trade grading, gate coverage |
-| [16-sigil-project.md](16-sigil-project.md) | 10 | — | The sigil project: the concept, the spine, what a hosted model allows, the measures, the build order with each row's status, and the nine coding sigils outside the design |
+| [16-sigil-project.md](16-sigil-project.md) | 10 | — | The sigil project, closed on 2026-11-23 with nothing built: the concept, the spine, what a hosted model allows, the measures, the build order with each row's status, and the nine coding sigils outside the design, which the write hook does not run |
 | [FIGURES.md](FIGURES.md) | — | 15 to 44 | The figure inventory |
 
 The Part column is the table's second job: it tells the build tool which manual
