@@ -710,8 +710,7 @@ rule only while the house holds it.
 OWN = hold(OWN_TOOL, tuple(OWN_RULES), DISCIPLINES, CHARACTERISTICS)
 ```
 
-SECURE001 carries no corrected form. The finding names the missing words, and
-the write hook's feedback prints its row with them.
+SECURE001 carries no corrected form. The finding names the missing words.
 
 These forms have no rule:
 

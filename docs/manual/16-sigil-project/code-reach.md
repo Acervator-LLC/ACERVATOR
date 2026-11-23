@@ -54,9 +54,8 @@ files git lists.
     return files + [name for name in _beside(root, file) if name not in held]
 ```
 
-The pre-write gate reads a staged copy of a file before the write lands. For
-that copy, the gate gives CODE.REACH the option `--replaces`, with the path of
-the file that the copy replaces. CODE.REACH then takes that file out of the
+The option `--replaces` takes the path of a file that the input, a copy,
+replaces. CODE.REACH then takes that file out of the
 list that vulture reads. The list is the list above, less that one file.
 Outside git, the list is every Python file under the root, less that file. A
 name that only the old content of the file uses therefore reads as unused in
@@ -83,26 +82,8 @@ def _scavenge_paths(root: Path, file: Path, replaced: str | None) -> list[str]:
     return [name for name in files if root / name != gone]
 ```
 
-The gate gives the option to CODE.REACH only, and only for the staged copy.
-The after-write reading and a run by hand name no replaced file, so they read
-the list above.
-[A marker that refuses a write](../16-sigil-project.md#a-marker-that-refuses-a-write)
-states when the gate reads a staged copy.
-
-`dev_harness/hooks/archetype_gate.py, in _own_argv`:
-
-```python
-def _own_argv(name: str, target: SigilTarget) -> list[str]:
-    """Return `name`'s command on `target.listing`; `TREE_SIGILS` get `replaces`."""
-    told = (
-        [SIGIL_REPLACES, target.replaces]
-        if target.replaces and name in TREE_SIGILS else []
-    )
-    return [
-        sys.executable, "-m", _sigil_module(name), str(target.listing),
-        "--root", str(target.root), *told,
-    ]
-```
+The write hook runs no sigil, so it gives the option to none. A run by hand
+names no replaced file, so it reads the list above.
 
 The option takes a path in the form of an input line: relative to the root, in
 forward slashes, and with no symbol. Any other form stops the command before it

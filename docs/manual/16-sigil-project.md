@@ -15,8 +15,16 @@ consistent, valid, professional results from prompts that word one objective
 differently, with less drift and hallucination. It is not compression, and a
 speed gain is secondary.
 
-The project's name is Sigil-based Vernacular Condensate. The work is research,
-and nothing here changes the trading platform.
+The project, Sigil-based Vernacular Condensate, closed on 2026-11-23. The
+operator, 2026-11-23:
+
+> "Okay, that is fine.  We are done with 1633.  It is not showing enough promise to continue."
+>
+> "Science must be allowed to win even if you do not like the results."
+
+The last measurement is comment 7094741655 on #1633, and the closure is
+comment 7110762631. Nothing under this design was built. The concept, the
+spine, the build order and the sigil pages below stay as the record.
 
 ## The spine
 
@@ -107,38 +115,18 @@ under this design, so every row reads unbuilt.
 
 ## In the repository, outside this design
 
-The write hook runs nine coding sigils, each for one kind of check, on each
-Python write. They come from an earlier design. This design holds one Python
-Sigil in their place, and the nine stay until rows 1 to 6 replace them.
+The write hook runs none of the nine coding sigils, before a write or after
+it. They come from an earlier design. The operator, 2026-11-23:
 
-After each write of a Python file, the hook prints the archetype verdict first.
-Then it adds the sigil feedback, marked `[sigil-feedback]`. A sigil with
-findings gets a block that names each rule and its lines. The other sigils
-share one line for each state: clean, does not cover this file, or not read.
-The nine are the names in `dev_harness/hooks/archetype_gate.py, in CODING_SIGILS`:
+> "Coding Sigils should not be active at all since they were supposed to be part of a separate archetype version that was being tested and not yet deployed."
+
+The nine stay under `dev_harness/sigils/` as the record of that version:
 CODE.LOOP, CODE.IMPORT, CODE.FLOW, CODE.VARIABLE, CODE.COLLECTION,
 CODE.OPTIMIZE, CODE.TYPE, CODE.REACH and CODE.SECURE.
 
-The feedback is on by default, and
-`dev_harness/hooks/archetype_gate.py, in _sigil_feedback_off` turns it off in
-two cases. The first is the environment variable ACERVATOR_SIGIL_FEEDBACK
-reading off, and the hook ignores the case of that value and the spaces around
-it. The second is a file named SIGIL_FEEDBACK_OFF in the written file's folder,
-or in a folder above it up to the repository root.
-
-```python
-def _sigil_feedback_off(path: Path) -> bool:
-    """Report off when `SIGIL_SWITCH` reads `SIGIL_OFF` or `_sigil_marked` holds."""
-    if os.environ.get(SIGIL_SWITCH, "").strip().lower() == SIGIL_OFF:
-        return True
-    return _sigil_marked(path)
-```
-
-Their lines after a write are advice.
-`dev_harness/hooks/archetype_gate.py, in _run_post` builds the archetype
-verdict before any sigil runs, and it adds the sigil lines after the verdict
-only while the feedback is on. The archetype verdict reads the same with the
-feedback on or off.
+After each write of a Python file,
+`dev_harness/hooks/archetype_gate.py, in _run_post` prints the archetype
+verdict and no sigil line.
 
 ```python
     deadline = time.monotonic() + POST_BUDGET_S
@@ -148,10 +136,13 @@ feedback on or off.
         parts.append(
             _summarize(_run_archetype(module, path, deadline=deadline),
                        module, path))
-    if path.suffix == SIGIL_SUFFIX and not _sigil_feedback_off(path):
-        _debug_log(f"post: running the coding sigils on {path.name}")
-        parts.append(_sigil_part(path, deadline))
+    if not parts:
+        return 0
 ```
+
+Before a write, `dev_harness/hooks/archetype_gate.py, in _run_pre` refuses the
+write only when the archetype finds a new high or critical fault in it. The
+hook reads no sigil marker file.
 
 ### The construct scope
 
@@ -196,30 +187,10 @@ def hold(
     return Held(tool, tuple(named), tuple(characteristics), tuple(held), left)
 ```
 
-### A marker that refuses a write
-
-A file named SIGIL_FEEDBACK_REFUSE lets the nine refuse a write before it
-lands. When it sits in the folder of a Python file, or in a folder above it up
-to the repository root, the hook stages the pending content beside the file
-and the sigils read that copy. The hook refuses the write when a sigil flags a
-fault, FIX or HOLD, on a line that the write adds or changes. The archetype
-check runs first, and no sigil runs while the feedback is off.
-
-`dev_harness/hooks/archetype_gate.py, in _sigil_refusal`:
-
-```python
-def _sigil_refusal(path: Path, content: str, deadline: float) -> str:
-    """Return `_REFUSAL` text when a sigil flags a `_changed_lines` line, else empty."""
-    if path.suffix != SIGIL_SUFFIX or not _sigil_marked(path, SIGIL_REFUSE_MARKER):
-        return ""
-    if _sigil_feedback_off(path):
-        return ""
-```
-
 ### The sigil pages
 
 Each page states what one sigil reads, its outputs and flags, its command and
-its rules. The nine that the write hook runs:
+its rules. The nine coding sigils, none of which the write hook runs:
 
 - [CODE.LOOP@1](16-sigil-project/code-loop.md)
 - [CODE.IMPORT@1](16-sigil-project/code-import.md)
