@@ -88,6 +88,49 @@ del budget_sec
 return 0.0
 ```
 
+### A call that waits its turn, and a call that never answers
+
+The worker runs one call at a time. A read keeps its place in the queue until
+the worker reaches it or its caller stops waiting. A caller waits up to 102
+seconds for a read's turn, retries included. That is a full queue of eight calls
+at 12.8 seconds each, the slowest answer measured. An order or a cancel waits up
+to 25 seconds, and so does each try of a read in front of a fold's or a hedge's
+buy. A call that misses its turn is not sent.
+
+`src/exchange/ccxt_connector.py, in SyncCall.to_venue`
+
+```python
+if not reads or _QUEUE_CAP_WAIVED.get():
+    return cls(name, run, reads, ORDER_TURN_WAIT_SEC)
+return cls(name, run, reads, read_turn_left_sec(), missed=TurnMissed)
+```
+
+The limit on one call is 25 seconds, and it starts when the worker starts the
+call. A slow answer inside the limit comes back, and its worker keeps the queue.
+A call with no answer at the limit is stuck. Its caller reads an error at that
+moment, and a fresh worker takes the queue.
+
+`src/exchange/ccxt_connector.py, in SyncWorker.stuck_call`
+
+```python
+call = self.running
+return call if call is not None and call.run_left_sec() <= 0.0 else None
+```
+
+Each read that waited behind the stuck call moves to the fresh worker, in the
+same order, and goes to the venue once. An order or a cancel that waited there
+is dropped and is never sent. A stuck order is not sent again. A stuck read is
+tried again by its caller, up to three tries in all.
+
+`src/exchange/ccxt_connector.py, in CCXTConnector._replace_stuck_worker`
+
+```python
+if fresh is not None and call.keeps_turn:
+    fresh.take(call)
+else:
+    call.dropped = True
+```
+
 ## Where the trade record is kept
 
 Refresh reads the venue live and keeps nothing. The year of trades the Simulator

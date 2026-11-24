@@ -45,10 +45,10 @@ BALANCE_TTL_SECONDS = 10.0
 LOCK_WAIT_BUDGET_SECONDS = DEFAULT_WINDOW_SECONDS
 
 #: Budgets a waiter gives a holder that is slow while other slots still refresh.
-#: Three budgets is 180 s, above the 157 s one balance fetch can legitimately
-#: hold: two account reads, each three ``CCXTConnector`` attempts of
-#: ``SYNC_CALL_TIMEOUT_SEC`` with the retry backoff between them.
-LOCK_WAIT_BUDGETS_BEFORE_CLEAR = 3
+#: Five budgets is 300 s, above the 259 s one balance fetch can legitimately
+#: hold: two account reads, each ``READ_TURN_WAIT_SEC``, one run of
+#: ``SYNC_CALL_TIMEOUT_SEC`` and the last retry backoff.
+LOCK_WAIT_BUDGETS_BEFORE_CLEAR = 5
 
 TF_SECONDS = {
     "1m": 60,
