@@ -13,6 +13,7 @@ from ..core.safe_url import SafeRequest, safe_urlopen
 from ..trading.ta_engine import DEFAULT_WEIGHTS
 from .api_load_monitor import DEFAULT_WINDOW_SECONDS
 import asyncio
+import functools
 import logging
 import math
 import threading
@@ -20,13 +21,13 @@ import time
 from collections import Counter
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
 from collections.abc import Callable, Iterator, Mapping
 from functools import lru_cache
 from urllib.error import HTTPError, URLError
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 
 from src.core.trade_historian import HistoryAnalysis, scan_on_connect
 from typing import Any, Optional
@@ -52,6 +53,21 @@ def queue_cap_waived() -> Iterator[None]:
         _QUEUE_CAP_WAIVED.reset(token)
 
 
+# The task inside one _with_retry call, and when the turn of its attempts ends.
+_READ_TURN: ContextVar[tuple[Optional[asyncio.Task], float]] = ContextVar(
+    "read_turn", default=(None, math.inf)
+)
+
+
+def read_turn_left_sec() -> float:
+    """Seconds left of the turn this task's ``_with_retry`` call opened, else
+    ``READ_TURN_WAIT_SEC``."""
+    task, ends_at = _READ_TURN.get()
+    if task is None or task is not asyncio.current_task():
+        return READ_TURN_WAIT_SEC
+    return max(0.0, ends_at - time.monotonic())
+
+
 # Calls one connector runs at once. One worker serves them all, so
 # SYNC_QUEUE_CAP bounds the queue in front of that worker and not concurrency.
 SYNC_CALL_CONCURRENCY: int = 1
@@ -69,11 +85,14 @@ BULK_READ_WAIT_BUDGET_SEC: float = 60.0
 # Gap between two reads of _sync_queue_depth while a bulk read waits.
 BULK_READ_WAIT_SLICE_SEC: float = 0.05
 
+# Gap between two looks disconnect takes at the calls it waits for.
+CLOSE_WAIT_SLICE_SEC: float = 0.05
+
 # sync_connect market-load budget: 3 tries, waiting 2s then 4s.
 CONNECT_ATTEMPTS: int = 3
 CONNECT_BACKOFF_STEP_S: float = 2.0
 
-# Outer wait_for budget for one sync CCXT call.
+# Longest one sync call runs, counted from the moment the worker starts it.
 SYNC_CALL_TIMEOUT_SEC: float = 25.0
 
 # Gap between ccxt abandoning a request and the outer wait firing. It only has
@@ -81,11 +100,25 @@ SYNC_CALL_TIMEOUT_SEC: float = 25.0
 # 90ms, so a wider gap would refuse slow reads that still return a price.
 CCXT_TIMEOUT_HEADROOM_SEC: float = 1.0
 
-# ccxt's own per-request timeout, kept below the outer wait so ccxt gives up
-# first and returns the single worker instead of leaking it.
+# ccxt's limit on one connection and on each wait for data, not on a whole call.
 CCXT_REQUEST_TIMEOUT_MS: int = int(
     (SYNC_CALL_TIMEOUT_SEC - CCXT_TIMEOUT_HEADROOM_SEC) * 1000
 )
+
+# ccxt names every read with this prefix.
+READ_CALL_PREFIX: str = "fetch_"
+
+# Slowest whole answer measured from a venue, on a saturated link.
+SLOWEST_ANSWER_SEC: float = 12.8
+
+# Longest a read waits for its turn: SYNC_QUEUE_CAP calls of SLOWEST_ANSWER_SEC each.
+READ_TURN_WAIT_SEC: float = SYNC_QUEUE_CAP * SLOWEST_ANSWER_SEC
+
+# Longest an order, a cancel, or a read inside queue_cap_waived waits for its turn.
+ORDER_TURN_WAIT_SEC: float = SYNC_CALL_TIMEOUT_SEC
+
+# Longest sync_connect runs on the worker: CONNECT_ATTEMPTS of READ_TURN_WAIT_SEC.
+CONNECT_LIMIT_SEC: float = CONNECT_ATTEMPTS * READ_TURN_WAIT_SEC
 
 # How long a history scan waits on `_history_scan_lock` before it asks whether
 # the holding scan has landed a symbol. `APILoadMonitor`'s rate window, the span
@@ -112,8 +145,12 @@ class CCXTQueueFullError(RuntimeError):
 
 
 class ConnectorClosed(RuntimeError):
-    """Raised by ``_ensure_connected`` and ``_sync_executor_for_submit`` on a closed
-    connector, before any request."""
+    """Raised by ``_ensure_connected`` and ``_queue_sync_call`` on a closed connector,
+    before any request."""
+
+
+class TurnMissed(asyncio.TimeoutError):
+    """Raised for a read unstarted at its ``turn_wait_sec``, which ``with_retry`` ends."""
 
 
 @dataclass
@@ -151,6 +188,85 @@ class SyncCallTiming:
         the next caller.
         """
         return self.started_at > 0.0 and self.finished_at <= 0.0
+
+
+@dataclass(eq=False)
+class SyncCall:
+    """One call on a ``SyncWorker``, its turn bounded by ``turn_wait_sec`` and its run
+    by ``limit_sec``; one whose ``keeps_turn`` is False never moves to another worker.
+    """
+
+    name: str
+    run: Callable[[], Any]
+    keeps_turn: bool
+    turn_wait_sec: float
+    limit_sec: float = SYNC_CALL_TIMEOUT_SEC
+    missed: type[asyncio.TimeoutError] = asyncio.TimeoutError
+    timing: SyncCallTiming = field(default_factory=SyncCallTiming)
+    submitted_at: float = field(default_factory=time.monotonic)
+    job: Future[Any] = field(default_factory=Future)
+    worker: Optional[SyncWorker] = None
+    counted: bool = True
+    dropped: bool = False
+
+    @classmethod
+    def to_venue(cls, name: str, fn: Callable, args: tuple, kwargs: dict) -> SyncCall:
+        """``fn`` on its arguments, a read where ``name`` opens with ``READ_CALL_PREFIX``;
+        one inside ``queue_cap_waived`` waits for its turn as an order does."""
+        run = functools.partial(fn, *args, **kwargs)
+        reads = name.startswith(READ_CALL_PREFIX)
+        if not reads or _QUEUE_CAP_WAIVED.get():
+            return cls(name, run, reads, ORDER_TURN_WAIT_SEC)
+        return cls(name, run, reads, read_turn_left_sec(), missed=TurnMissed)
+
+    def turn_left_sec(self) -> float:
+        """Seconds left of ``turn_wait_sec``."""
+        return self.submitted_at + self.turn_wait_sec - time.monotonic()
+
+    def run_left_sec(self) -> float:
+        """Seconds left of ``limit_sec`` for a started call."""
+        return self.timing.started_at + self.limit_sec - time.monotonic()
+
+    def missed_turn(self, exchange_id: str) -> asyncio.TimeoutError:
+        """The ``missed`` error of a call unstarted at the end of ``turn_wait_sec``."""
+        return self.missed(
+            f"{self.name} on {exchange_id} waited {self.turn_wait_sec:.0f}s for its "
+            f"turn; it never reached the venue"
+        )
+
+
+class SyncWorker:
+    """One connector's single call thread, and the ``SyncCall`` it is inside."""
+
+    def __init__(self, exchange_id: str) -> None:
+        self._exchange_id = exchange_id
+        self.pool = ThreadPoolExecutor(
+            max_workers=SYNC_CALL_CONCURRENCY,
+            thread_name_prefix=f"ccxt-{exchange_id}",
+        )
+        self.running: Optional[SyncCall] = None
+
+    def take(self, call: SyncCall) -> None:
+        """Queue ``call`` behind every call this worker holds."""
+        call.worker = self
+        call.job = self.pool.submit(self._serve, call)
+
+    def _serve(self, call: SyncCall) -> Any:
+        """Run ``call`` on the worker thread, or raise its ``missed_turn`` unrun."""
+        if call.turn_left_sec() <= 0.0:
+            raise call.missed_turn(self._exchange_id)
+        call.timing.started_at = time.monotonic()
+        self.running = call
+        try:
+            return call.run()
+        finally:
+            call.timing.finished_at = time.monotonic()
+            self.running = None
+
+    def stuck_call(self) -> Optional[SyncCall]:
+        """The running call, None while it is inside its ``limit_sec``."""
+        call = self.running
+        return call if call is not None and call.run_left_sec() <= 0.0 else None
 
 
 from .base import (
@@ -1805,8 +1921,25 @@ _LOGO_FALLBACK = "https://www.cryptocompare.com/media/img/cc_icons/{symbol}.png"
 
 # Retry decorator for transient failures
 def _with_retry(max_retries: int = 3, base_delay: float = 1.0):
-    """Bind :func:`src.core.retry.with_retry` to this module's logger."""
-    return with_retry(max_retries=max_retries, base_delay=base_delay, log=logger)
+    """Bind :func:`src.core.retry.with_retry` to this module's logger, every attempt of
+    one call inside one ``READ_TURN_WAIT_SEC``."""
+    retry = with_retry(max_retries=max_retries, base_delay=base_delay, log=logger)
+
+    def decorator(method):
+        retried = retry(method)
+
+        @functools.wraps(method)
+        async def in_one_turn(self, *args, **kwargs):
+            ends_at = time.monotonic() + READ_TURN_WAIT_SEC
+            token = _READ_TURN.set((asyncio.current_task(), ends_at))
+            try:
+                return await retried(self, *args, **kwargs)
+            finally:
+                _READ_TURN.reset(token)
+
+        return in_one_turn
+
+    return decorator
 
 
 class CCXTConnector(ExchangeInterface):
@@ -1846,20 +1979,15 @@ class CCXTConnector(ExchangeInterface):
         self._on_history_ready: Optional[HistoryCallback] = None
 
         # One worker serialises every sync CCXT call on this connector.
-        self._sync_executor: Optional[ThreadPoolExecutor] = ThreadPoolExecutor(
-            max_workers=SYNC_CALL_CONCURRENCY,
-            thread_name_prefix=f"ccxt-{exchange_id}",
-        )
-        # The abandoned call whose worker thread never came back, if any.
-        self._leaked_call: Optional[tuple[str, SyncCallTiming]] = None
+        self._sync_worker: Optional[SyncWorker] = SyncWorker(exchange_id)
+        # Every call whose caller still waits, in the order it was queued.
+        self._sync_calls: list[SyncCall] = []
         self._leaked_worker_fault = ThrottledFault(
             f"the {exchange_id} call path and its one worker thread",
             f"Every price, balance and candle from {exchange_id} had stopped "
             f"updating. A fresh worker is in place and the abandoned call is "
             f"not sent again.",
         )
-        # In-flight plus queued calls; touched only on the asyncio loop thread.
-        self._sync_queue_depth: int = 0
         # Deepest the queue has been, and every call the cap has refused.
         self._sync_queue_depth_peak: int = 0
         self._sync_queue_refusals: int = 0
@@ -1869,7 +1997,7 @@ class CCXTConnector(ExchangeInterface):
         # Set once this connector has recorded the venue as validated, so a
         # steady stream of balance fetches reads the store no further.
         self._venue_answer_noted: bool = False
-        # disconnect() may run on a different thread than _call_sync.
+        # Held across each change to _sync_worker and _sync_calls, on any thread.
         self._sync_executor_lock = threading.Lock()
         # Serialises history scans; add_scan_symbol spawns one thread per symbol.
         self._history_scan_lock = threading.Lock()
@@ -1886,6 +2014,14 @@ class CCXTConnector(ExchangeInterface):
         )
 
     @property
+    def _sync_queue_depth(self) -> int:
+        """Running and queued venue calls whose callers wait, ``connect`` left out."""
+        with self._sync_executor_lock:
+            return sum(
+                call.counted and not call.job.done() for call in self._sync_calls
+            )
+
+    @property
     def exchange_id(self) -> str:
         return self._exchange_id
 
@@ -1900,24 +2036,18 @@ class CCXTConnector(ExchangeInterface):
     async def connect(
         self, api_key: str, api_secret: str, passphrase: str = ""
     ) -> None:
-        """Run ``sync_connect`` on the single-worker executor, off the caller's thread.
-
-        ``sync_connect`` blocks for the 15 s pre-flight plus
-        ``CONNECT_ATTEMPTS`` ``load_markets`` tries, each bounded by
-        ``CCXT_REQUEST_TIMEOUT_MS`` and spaced by ``CONNECT_BACKOFF_STEP_S``
-        steps. It does not use :meth:`_call_sync`, whose
-        ``SYNC_CALL_TIMEOUT_SEC`` budget is shorter than a legitimate connect,
-        and does not count against ``_sync_queue_depth``.
-        """
-        executor = self._sync_executor_for_submit()
-
-        import functools
-
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            executor,
+        """Run ``sync_connect`` on the single worker, off the caller's thread, inside
+        ``CONNECT_LIMIT_SEC`` and outside ``_sync_queue_depth``."""
+        call = SyncCall(
+            "connect",
             functools.partial(self.sync_connect, api_key, api_secret, passphrase),
+            keeps_turn=True,
+            turn_wait_sec=math.inf,
+            limit_sec=CONNECT_LIMIT_SEC,
+            counted=False,
         )
+        self._queue_sync_call(call)
+        await self._sync_call_answer(call)
 
     def sync_connect(
         self,
@@ -2210,72 +2340,122 @@ class CCXTConnector(ExchangeInterface):
         if held is not None and held is asyncio.current_task():
             self._bulk_read_admitted = None
 
-    def _note_leaked_worker(self, timing: SyncCallTiming, call_name: str) -> bool:
-        """Record an abandoned call that still holds the worker, and say whether it does.
-
-        A call the outer wait or a cancellation gave up on while it was still
-        queued was removed from the queue and leaks nothing.
-        """
-        if not timing.worker_held:
-            return False
-        self._leaked_call = (call_name, timing)
-        return True
-
-    @staticmethod
-    def _awaiter_asked_to_cancel() -> bool:
-        """True when this task's own cancellation interrupted the await.
-
-        A queued call dropped by ``_sync_executor_for_submit`` cancels the
-        future its awaiter is still inside, and that awaiter asked for nothing.
-        """
-        task = asyncio.current_task()
-        return task is not None and task.cancelling() > 0
-
-    def _sync_executor_for_submit(self) -> ThreadPoolExecutor:
-        """The executor to submit on, rebuilt first when its one worker is leaked.
-
-        ``_call_sync_timed`` abandons a call whose outer wait expires while the
-        worker thread runs on, and no Python call can stop that thread.
-        ``SYNC_CALL_CONCURRENCY`` worker serves every sync call on a connector,
-        so without this the next caller queues behind the leaked thread for the
-        life of the process and only closing the platform clears it. The old
-        executor is shut down without waiting and its queued calls are dropped,
-        because a worker that does come back would otherwise run that whole
-        backlog against the venue minutes late, orders included. The abandoned
-        call is never re-submitted, so nothing reaches the venue twice.
-        ``connect`` and ``_call_sync_timed`` both read the executor through
-        here.
-
-        Raises:
-            ConnectorClosed: ``disconnect`` or ``release`` has closed the connector.
-        """
+    def _replace_stuck_worker(self, worker: Optional[SyncWorker]) -> None:
+        """Put a fresh worker in place of one ``stuck_call`` names, its queued reads in
+        order on the fresh one; every other queued call is ``dropped``, and a call
+        ``Future.cancel`` finds started stays where it runs."""
         with self._sync_executor_lock:
-            wedged = self._sync_executor
-            if wedged is None:
+            stuck = worker.stuck_call() if worker is not None else None
+            if worker is None or stuck is None:
+                return
+            fresh = None
+            if worker is self._sync_worker:
+                fresh = self._sync_worker = SyncWorker(self._exchange_id)
+            for call in self._sync_calls:
+                if call.worker is not worker or not call.job.cancel():
+                    continue
+                if fresh is not None and call.keeps_turn:
+                    fresh.take(call)
+                else:
+                    call.dropped = True
+        worker.pool.shutdown(wait=False, cancel_futures=True)
+        if fresh is not None:
+            self._leaked_worker_fault.note_cleared(
+                f"{stuck.name} on {self._exchange_id}",
+                max(0.0, time.monotonic() - stuck.timing.started_at),
+            )
+
+    def _queue_sync_call(self, call: SyncCall) -> None:
+        """Queue ``call`` on the worker, past any stuck one, or raise ``ConnectorClosed``
+        once ``disconnect`` or ``release`` has taken the worker."""
+        self._replace_stuck_worker(self._sync_worker)
+        with self._sync_executor_lock:
+            worker = self._sync_worker
+            if worker is None:
                 raise ConnectorClosed(
                     f"CCXTConnector({self._exchange_id}) has been disconnected; "
                     f"cannot submit new sync calls."
                 )
-            leak = self._leaked_call
-            if leak is None or not leak[1].worker_held:
-                self._leaked_call = None
-                return wedged
-            call_name, timing = leak
-            self._leaked_call = None
-            fresh = ThreadPoolExecutor(
-                max_workers=SYNC_CALL_CONCURRENCY,
-                thread_name_prefix=f"ccxt-{self._exchange_id}",
+            worker.take(call)
+            live = [held for held in self._sync_calls if not held.job.done()]
+            self._sync_calls = [*live, call]
+
+    def _withdraw_sync_call(self, call: SyncCall) -> bool:
+        """Cancel ``call`` where it has not started, and answer whether it never will."""
+        with self._sync_executor_lock:
+            unsent = call.job.cancel()
+            if unsent and call in self._sync_calls:
+                self._sync_calls.remove(call)
+        return unsent
+
+    def _sync_call_watch_sec(self, call: SyncCall) -> float:
+        """Seconds until ``call`` needs another look, at most ``SYNC_CALL_TIMEOUT_SEC``,
+        or the ``TimeoutError`` of a run past ``limit_sec`` or a turn that never came.
+        """
+        self._replace_stuck_worker(call.worker)
+        if call.timing.worker_held:
+            left = call.run_left_sec()
+            if left > 0.0:
+                return min(left, SYNC_CALL_TIMEOUT_SEC)
+            logger.warning(
+                "sync CCXT call exceeded the outer wait (%ss from its start) for %s on "
+                "%s; ccxt's own %sms timeout did not return, so the worker thread is "
+                "left behind",
+                call.limit_sec,
+                call.name,
+                self._exchange_id,
+                CCXT_REQUEST_TIMEOUT_MS,
             )
-            self._sync_executor = fresh
+            raise asyncio.TimeoutError(
+                f"{call.name} on {self._exchange_id} gave no answer in "
+                f"{call.limit_sec:g}s"
+            )
+        left = call.turn_left_sec()
+        if call.timing.started_at > 0.0:
+            return SYNC_CALL_TIMEOUT_SEC
+        if left <= 0.0 and self._withdraw_sync_call(call):
+            logger.warning(
+                "sync CCXT call exceeded the outer wait (%ss) for %s on %s while "
+                "still queued behind another call; it never reached the venue",
+                call.turn_wait_sec,
+                call.name,
+                self._exchange_id,
+            )
+            raise call.missed_turn(self._exchange_id)
+        ahead = call.worker.running if call.worker is not None else None
+        if ahead is not None:
+            left = min(left, ahead.run_left_sec())
+        return max(0.0, min(left, SYNC_CALL_TIMEOUT_SEC))
+
+    async def _sync_call_answer(self, call: SyncCall) -> Any:
+        """What ``call`` returns, from whichever worker ran it, or the ``TimeoutError`` of
+        ``_sync_call_watch_sec`` or of a ``dropped`` call."""
+        job = call.job
+        answer = asyncio.wrap_future(job)
         try:
-            wedged.shutdown(wait=False, cancel_futures=True)
-        except Exception as exc:  # noqa: BLE001 - a fresh worker is already in place
-            logger.warning("wedged sync executor shutdown failed: %s", exc)
-        self._leaked_worker_fault.note_cleared(
-            f"{call_name} on {self._exchange_id}",
-            max(0.0, time.monotonic() - timing.started_at),
-        )
-        return fresh
+            while True:
+                if not answer.done():
+                    await asyncio.wait(
+                        {answer}, timeout=self._sync_call_watch_sec(call)
+                    )
+                elif not answer.cancelled():
+                    return answer.result()
+                else:
+                    with self._sync_executor_lock:
+                        moved = call.job is not job
+                    if not moved:
+                        raise asyncio.TimeoutError(
+                            f"{call.name} on {self._exchange_id} was dropped with the "
+                            f"queue of a wedged worker; it never reached the venue"
+                        )
+                    job = call.job
+                    answer = asyncio.wrap_future(job)
+        finally:
+            with self._sync_executor_lock:
+                call.job.cancel()
+                if call in self._sync_calls:
+                    self._sync_calls.remove(call)
+            answer.cancel()
 
     async def _call_sync(self, fn, *args, **kwargs):
         """Run one sync CCXT call on the single worker and answer its result.
@@ -2289,23 +2469,19 @@ class CCXTConnector(ExchangeInterface):
     async def _call_sync_timed(self, fn, *args, **kwargs):
         """Run one sync CCXT call and answer ``(result, SyncCallTiming)``.
 
-        ``SyncCallTiming.served_ms`` is the venue's own answer, timed on the
-        worker thread around ``fn`` alone. ``queued_ms`` is the wait for that
-        worker, which every caller used to fold into one figure and report as
-        venue latency.
+        ``SyncCallTiming.served_ms`` is the venue's own answer, timed on the worker
+        thread around ``fn`` alone, and ``queued_ms`` is the wait for that worker.
 
         Raises:
             CCXTQueueFullError: queue depth is at ``SYNC_QUEUE_CAP`` outside
                 ``queue_cap_waived``.
-            TimeoutError: the call exceeded ``SYNC_CALL_TIMEOUT_SEC``, or it was
-                still queued on a wedged worker whose executor was replaced.
-            asyncio.CancelledError: this awaiter itself was cancelled; a worker
-                already inside the call runs on and the next submission
-                replaces it.
+            TimeoutError: ``fn`` ran past ``SYNC_CALL_TIMEOUT_SEC``, its turn never came
+                inside ``SyncCall.turn_wait_sec``, or it was ``SyncCall.dropped``.
+            asyncio.CancelledError: this awaiter itself was cancelled; a queued call
+                never starts, and a started one keeps its worker up to its limit.
             Any CCXT exception: propagated unchanged.
         """
         call_name = getattr(fn, "__name__", repr(fn))
-        # Read and written only on the asyncio loop thread, so no lock.
         if self._sync_queue_depth >= SYNC_QUEUE_CAP and not _QUEUE_CAP_WAIVED.get():
             self._release_bulk_read_slot()
             self._sync_queue_refusals += 1
@@ -2318,78 +2494,25 @@ class CCXTConnector(ExchangeInterface):
                 f"Call: {call_name}"
             )
 
+        call = SyncCall.to_venue(call_name, fn, args, kwargs)
         try:
-            executor = self._sync_executor_for_submit()
+            self._queue_sync_call(call)
         except RuntimeError:
             self._release_bulk_read_slot()
             raise
 
-        submitted_at = time.monotonic()
-        timing = SyncCallTiming()
-
-        def _timed_call(*call_args, **call_kwargs):
-            timing.started_at = time.monotonic()
-            try:
-                return fn(*call_args, **call_kwargs)
-            finally:
-                timing.finished_at = time.monotonic()
-
-        self._sync_queue_depth += 1
         self._sync_queue_depth_peak = max(
             self._sync_queue_depth_peak, self._sync_queue_depth
         )
         try:
-            loop = asyncio.get_event_loop()
-            # Submit to single-worker executor → serialized by construction
-            if kwargs:
-                # run_in_executor doesn't accept kwargs — wrap in functools.partial
-                import functools
-
-                fut = loop.run_in_executor(
-                    executor, functools.partial(_timed_call, *args, **kwargs)
-                )
-            else:
-                fut = loop.run_in_executor(executor, _timed_call, *args)
-
-            try:
-                result = await asyncio.wait_for(fut, timeout=SYNC_CALL_TIMEOUT_SEC)
-                timing.resolve(submitted_at)
-                return result, timing
-            except asyncio.TimeoutError as timed_out:
-                if self._note_leaked_worker(timing, call_name):
-                    logger.warning(
-                        "sync CCXT call exceeded the outer wait (%ss) for %s on "
-                        "%s; ccxt's own %sms timeout did not return, so the "
-                        "worker thread is leaked and the next call rebuilds it",
-                        SYNC_CALL_TIMEOUT_SEC,
-                        call_name,
-                        self._exchange_id,
-                        CCXT_REQUEST_TIMEOUT_MS,
-                    )
-                else:
-                    logger.warning(
-                        "sync CCXT call exceeded the outer wait (%ss) for %s on "
-                        "%s while still queued behind another call; it never "
-                        "reached the venue",
-                        SYNC_CALL_TIMEOUT_SEC,
-                        call_name,
-                        self._exchange_id,
-                    )
-                self._note_venue_refusal(timed_out)
-                raise
-            except asyncio.CancelledError:
-                self._note_leaked_worker(timing, call_name)
-                if self._awaiter_asked_to_cancel():
-                    raise
-                raise asyncio.TimeoutError(
-                    f"{call_name} on {self._exchange_id} was dropped with the "
-                    f"queue of a wedged worker; it never reached the venue"
-                ) from None
-            except Exception as refused:
+            result = await self._sync_call_answer(call)
+            call.timing.resolve(call.submitted_at)
+            return result, call.timing
+        except Exception as refused:
+            if not call.dropped:
                 self._note_venue_refusal(refused)
-                raise
+            raise
         finally:
-            self._sync_queue_depth = max(0, self._sync_queue_depth - 1)
             self._release_bulk_read_slot()
 
     def set_history_callback(self, callback: HistoryCallback) -> None:
@@ -2673,19 +2796,18 @@ class CCXTConnector(ExchangeInterface):
         self._connected = False
         self._markets_cache = None
 
-        # Shut the executor down under the lock; in-flight calls run to
-        # completion, except a leaked worker thread, which never finishes and
-        # would hold this await for the life of the process.
         with self._sync_executor_lock:
-            executor = self._sync_executor
-            self._sync_executor = None
-            leak = self._leaked_call
-        if executor is not None:
-            await_worker = leak is None or not leak[1].worker_held
-            try:
-                executor.shutdown(wait=await_worker)
-            except Exception as exc:
-                logger.warning("sync executor shutdown failed: %s", exc)
+            worker = self._sync_worker
+            self._sync_worker = None
+            waiting = list(self._sync_calls)
+        if worker is not None:
+            worker.pool.shutdown(wait=False)
+        # Each call in waiting ends at its own limits while this loop keeps running.
+        ends_at = time.monotonic() + sum(call.limit_sec for call in waiting)
+        while time.monotonic() < ends_at and any(
+            call in self._sync_calls and not call.job.done() for call in waiting
+        ):
+            await asyncio.sleep(CLOSE_WAIT_SLICE_SEC)
         logger.info("Disconnected from %s", self.display_name)
 
     def release(self) -> int:
@@ -2702,13 +2824,10 @@ class CCXTConnector(ExchangeInterface):
         self._connected = False
         self._markets_cache = None
         with self._sync_executor_lock:
-            executor = self._sync_executor
-            self._sync_executor = None
-        if executor is not None:
-            try:
-                executor.shutdown(wait=False)
-            except Exception as exc:
-                logger.warning("sync executor shutdown failed: %s", exc)
+            worker = self._sync_worker
+            self._sync_worker = None
+        if worker is not None:
+            worker.pool.shutdown(wait=False)
         logger.info(
             "Released %s connector — %d scan symbol(s) dropped",
             self.display_name,
@@ -2965,7 +3084,8 @@ class CCXTConnector(ExchangeInterface):
         ):
             no_price_cause = ""
             try:
-                ticker = await self._call_sync(self._ex.fetch_ticker, symbol)
+                async with asyncio.timeout(ORDER_TURN_WAIT_SEC):
+                    ticker = await self._call_sync(self._ex.fetch_ticker, symbol)
                 exec_price = float(ticker.get("last", 0) or ticker.get("ask", 0) or 0)
                 if exec_price <= 0:
                     exec_price = None
@@ -3021,7 +3141,8 @@ class CCXTConnector(ExchangeInterface):
         ):
             return
         try:
-            held = await self.get_balance(quote)
+            async with asyncio.timeout(ORDER_TURN_WAIT_SEC):
+                held = await self.get_balance(quote)
         except Exception as unread:
             logger.warning(
                 "%s %s balance unread before a %s buy, sent unread: %s",
