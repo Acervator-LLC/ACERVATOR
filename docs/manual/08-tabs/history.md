@@ -210,8 +210,8 @@ On Coinbase a reading asks by name. It names each base a row asked for in four
 quotes: the dollar, its stablecoin and the two coins of the Target columns. One
 call names 200 pairs at most. A pair Coinbase does not list costs no other pair its
 price. A pair the answer leaves out leaves the book. An exchange that takes no
-names gets one call for every market, and no call where a read of every market
-landed in the last 10 seconds.
+names gets one call for every market. It gets no call where a read of every market
+landed in the last 10 seconds or is on its way.
 
 `src/exchange/market_pairs_scout.py, in MarketPairsScout._pairs_asked`
 

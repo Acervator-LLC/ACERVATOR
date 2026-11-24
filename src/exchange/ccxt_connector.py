@@ -2031,6 +2031,8 @@ class CCXTConnector(ExchangeInterface):
         self._every_ticker_at: float = time.monotonic()
         # time.time() at the last answer that held every market, and its rows.
         self._every_ticker_answer: tuple[float, dict] = (0.0, {})
+        # time.monotonic() up to which a read of every market can still land.
+        self._every_ticker_until: float = 0.0
 
         self._scan_symbols: set[str] = set()
         self._history_analyses: dict = {}
@@ -2987,10 +2989,12 @@ class CCXTConnector(ExchangeInterface):
         return list(ids)
 
     def _every_ticker_due(self) -> bool:
-        """True once ``DEFAULT_MIN_REFRESH_S`` has passed since ``_every_ticker_at``."""
+        """True ``DEFAULT_MIN_REFRESH_S`` after ``_every_ticker_at``, with no such read
+        on its way."""
         from .market_inspector_fetcher import DEFAULT_MIN_REFRESH_S
 
-        return time.monotonic() - self._every_ticker_at >= DEFAULT_MIN_REFRESH_S
+        rested = time.monotonic() - self._every_ticker_at >= DEFAULT_MIN_REFRESH_S
+        return rested and not self.every_ticker_on_way
 
     def _named_ticker_params(
         self, symbols: Optional[list[str]]
@@ -3006,20 +3010,28 @@ class CCXTConnector(ExchangeInterface):
         return {named.ids_param: ids} if ids else {}
 
     async def _every_ticker(self) -> dict:
-        """Every market's raw ticker, stamping ``_every_ticker_at`` at its start and its
-        end, which a refused or cancelled call puts back."""
+        """Every market's raw ticker, stamping ``_every_ticker_at`` unless the queue
+        refused the call or its caller cancelled it."""
         sent = True
-        last_read_at, self._every_ticker_at = self._every_ticker_at, time.monotonic()
+        longest_s = READ_TURN_WAIT_SEC + SYNC_CALL_TIMEOUT_SEC
+        self._every_ticker_until = time.monotonic() + longest_s
         try:
             rows = await self._call_sync(self._ex.fetch_tickers)
         except (CCXTQueueFullError, asyncio.CancelledError):
             sent = False
             raise
         finally:
-            self._every_ticker_at = time.monotonic() if sent else last_read_at
+            self._every_ticker_until = 0.0
+            if sent:
+                self._every_ticker_at = time.monotonic()
         if rows and isinstance(rows, dict):
             self._every_ticker_answer = (time.time(), rows)
         return rows
+
+    @property
+    def every_ticker_on_way(self) -> bool:
+        """True while a read of every market can still land."""
+        return time.monotonic() < self._every_ticker_until
 
     def every_ticker_answer(self) -> tuple[float, dict]:
         """``time.time()`` at the last answer that held every market, and its rows; 0.0

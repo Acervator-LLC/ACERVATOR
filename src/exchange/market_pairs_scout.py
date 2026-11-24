@@ -74,6 +74,13 @@ def row_quote_volume_24h(row: object) -> float:
     return max(0.0, derived)
 
 
+def takes_names(exchange_id: str) -> bool:
+    """True where ``NAMED_TICKERS`` holds ``exchange_id``."""
+    from .ccxt_connector import NAMED_TICKERS, venue_record_key
+
+    return venue_record_key(exchange_id) in NAMED_TICKERS
+
+
 @dataclass
 class PairSnapshot:
     """One trading pair on one exchange at one moment.
@@ -404,9 +411,7 @@ class MarketPairsScout:
         self, exchange_id: str, connector: CCXTConnector
     ) -> list[Optional[list[str]]]:
         """The pairs each call of a ``_read`` names; None names every market."""
-        from .ccxt_connector import NAMED_TICKERS, venue_record_key
-
-        if venue_record_key(exchange_id) not in NAMED_TICKERS:
+        if not takes_names(exchange_id):
             return [None]
         markets = getattr(getattr(connector, "_ex", None), "markets", None) or {}
         listed = {*markets, *self.books[exchange_id].pairs}
@@ -460,15 +465,17 @@ class MarketPairsScout:
         book.rest_until = time.monotonic() + rest
 
     def _at_rest(self, exchange_id: str, connector: CCXTConnector) -> bool:
-        """True before ``rest_until``, which a new ``every_ticker_answer`` moves."""
+        """True before ``rest_until``, or where another read of every market serves."""
         book = self.books[exchange_id]
         if time.monotonic() < book.rest_until:
             return True
-        if not self._take_every_ticker(exchange_id, connector):
-            return False
-        rest = self._refresh_s - max(0.0, time.time() - book.read_at)
-        book.rest_until = time.monotonic() + rest
-        return rest > 0
+        if self._take_every_ticker(exchange_id, connector):
+            rest = self._refresh_s - max(0.0, time.time() - book.read_at)
+            book.rest_until = time.monotonic() + rest
+            if rest > 0:
+                return True
+        on_way = getattr(connector, "every_ticker_on_way", False)
+        return on_way and not takes_names(exchange_id)
 
     async def refresh_from_connectors(
         self,
