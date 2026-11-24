@@ -220,11 +220,10 @@ class CurrencyRateMonitor:
 
 
 def _monitor_has_stopped(monitor: CurrencyRateMonitor) -> bool:
-    """True when ``monitor`` holds a reading and ``is_stale`` now reports it.
+    """True when ``monitor`` is not ``reading`` and ``is_stale`` reports its snapshot.
 
-    ``_MONITOR`` passes this as ``has_stopped``; a ``reading`` monitor is kept
-    for its answer, and one whose ``last_updated`` is still zero is never
-    reported stopped.
+    ``_MONITOR`` passes this as ``has_stopped``, and a monitor whose
+    ``last_updated`` is still zero is never reported stopped.
     """
     return (
         monitor.snapshot().last_updated > 0

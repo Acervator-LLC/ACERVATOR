@@ -988,8 +988,8 @@ if _HAS_QT:
             self._scan_pace = None
             #: Whether the tile region drew a tile at the last redraw.
             self._tiles_drawn = False
-            #: The thread ``_read_follow_ups`` runs on, the timers it was handed,
-            #: the one it reads now and the ``time.monotonic`` that read ends by.
+            #: The reading thread, the timers it was handed, the one it reads and the
+            #: ``time.monotonic`` that read ends by.
             self._follow_up_thread: Optional[threading.Thread] = None
             self._follow_up_due: list = []
             self._follow_up_on: Any = None
@@ -2331,9 +2331,8 @@ if _HAS_QT:
             return played
 
         def _tick_follow_ups(self) -> None:
-            """The clock's wake: hand every due ``FollowUpTimer`` to one worker
-            thread while no ``_follow_up_reading`` is on its way, then redraw the
-            tiles so each countdown falls by one."""
+            """Hand every due ``FollowUpTimer`` to one worker thread unless
+            ``_follow_up_reading``, then redraw the tiles."""
             import time
 
             due = [] if self._follow_up_reading() else self._push_board.due_timers()
@@ -2360,9 +2359,9 @@ if _HAS_QT:
             return len(DEFAULT_QUOTES) * exchanges * VENUE_CALL_SEC
 
         def _follow_up_reading(self) -> bool:
-            """Whether ``_follow_up_thread`` still reads; past ``_follow_up_ends_at`` it
-            is left behind, ``_follow_up_on`` waits ``FOLLOW_UP_RETRY_S`` and the
-            rest of ``_follow_up_due`` falls due again."""
+            """Whether ``_follow_up_thread`` reads; past ``_follow_up_ends_at`` it is left,
+            ``_follow_up_on`` waits ``FOLLOW_UP_RETRY_S`` and ``_follow_up_due`` falls
+            due again."""
             import time
 
             thread = self._follow_up_thread

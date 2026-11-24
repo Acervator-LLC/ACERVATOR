@@ -882,10 +882,7 @@ if _HAS_QT:
                 self._currency_pump_fault.note_failure(exc)
 
         async def _read_currency_rates(self) -> None:
-            """Refresh CurrencyRateMonitor through the connectors held when the read starts.
-
-            With no connector and ``fleet_locked`` True the rates come through ``_public_feed``.
-            """
+            """Refresh CurrencyRateMonitor through the connectors held now, or ``_public_feed`` with none and ``fleet_locked`` True."""
             from ..exchange.currency_rate_monitor import get_currency_monitor
 
             mon = get_currency_monitor()
@@ -3020,12 +3017,7 @@ if _HAS_QT:
         def _schedule_coalesced(
             self, slot: str, coro, calls: int, venue: str = ""
         ) -> None:
-            """Hand ``coro``, of ``calls`` venue calls, to the ``ReadSlot`` named ``slot``.
-
-            Every pump that starts a venue read calls this, so ``ReadSlot.ask``
-            alone decides whether it starts or waits. ``venue`` names the
-            exchange ``coro`` asks, where it asks one alone.
-            """
+            """Hand ``coro``, of ``calls`` venue calls at ``venue`` where it asks one alone, to the ``ReadSlot`` named ``slot``."""
             from .read_slot import ReadAsk, ReadSlot
 
             slots = getattr(self, "_read_slots", None)
