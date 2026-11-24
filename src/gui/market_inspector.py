@@ -309,6 +309,7 @@ ATA_SCAN_THREAD_LOG = "ATA-SPM scan on thread %s: %s"
 #: ``FollowUpTimer`` rows due; the window-drawing thread takes the outcome.
 FOLLOW_UP_THREAD_NAME = "ata-smp-follow-up"
 FOLLOW_UP_THREAD_LOG = "ATA-SPM confirmation read on thread %s: %s %s"
+FOLLOW_UP_UNREAD_LOG = "ATA-SPM confirmation read of %s %s was not judged: %s"
 #: The window-drawing thread's clock for the timers: one wake a second.
 FOLLOW_UP_TICK_MS = 1000
 #: Post Selected, Post All and a Full Auto release run here, one thread per
@@ -987,6 +988,12 @@ if _HAS_QT:
             self._scan_pace = None
             #: Whether the tile region drew a tile at the last redraw.
             self._tiles_drawn = False
+            #: The thread ``_read_follow_ups`` runs on, the timers it was handed,
+            #: the one it reads now and the ``time.monotonic`` that read ends by.
+            self._follow_up_thread: Optional[threading.Thread] = None
+            self._follow_up_due: list = []
+            self._follow_up_on: Any = None
+            self._follow_up_ends_at = 0.0
             self._follow_up_clock = QTimer(self)
             self._follow_up_clock.setTimerType(Qt.PreciseTimer)
             self._follow_up_clock.setInterval(FOLLOW_UP_TICK_MS)
@@ -2325,17 +2332,59 @@ if _HAS_QT:
 
         def _tick_follow_ups(self) -> None:
             """The clock's wake: hand every due ``FollowUpTimer`` to one worker
-            thread, then redraw the tiles so each countdown falls by one."""
-            due = self._push_board.due_timers()
+            thread while no ``_follow_up_reading`` is on its way, then redraw the
+            tiles so each countdown falls by one."""
+            import time
+
+            due = [] if self._follow_up_reading() else self._push_board.due_timers()
             if due:
-                threading.Thread(
+                self._follow_up_due = due
+                self._follow_up_ends_at = time.monotonic() + self._follow_up_limit_sec()
+                self._follow_up_thread = threading.Thread(
                     target=self._read_follow_ups,
                     args=(due,),
                     name=FOLLOW_UP_THREAD_NAME,
                     daemon=True,
-                ).start()
+                )
+                self._follow_up_thread.start()
             if due or self._push_board.follow_up.timers or self._tiles_drawn:
                 self._render_timer_tiles()
+
+        def _follow_up_limit_sec(self) -> float:
+            """The longest one timer's read takes: one ask for each of ``DEFAULT_QUOTES``
+            at each exchange."""
+            from ..exchange.market_inspector_fetcher import DEFAULT_QUOTES
+            from .read_slot import VENUE_CALL_SEC
+
+            exchanges = max(1, len(self._connectors_now() or {}))
+            return len(DEFAULT_QUOTES) * exchanges * VENUE_CALL_SEC
+
+        def _follow_up_reading(self) -> bool:
+            """Whether ``_follow_up_thread`` still reads; past ``_follow_up_ends_at`` it
+            is left behind, ``_follow_up_on`` waits ``FOLLOW_UP_RETRY_S`` and the
+            rest of ``_follow_up_due`` falls due again."""
+            import time
+
+            thread = self._follow_up_thread
+            if thread is None or not thread.is_alive():
+                return False
+            if time.monotonic() < self._follow_up_ends_at:
+                return True
+            self._follow_up_thread = None
+            for timer in self._follow_up_due:
+                timer.reading = False
+            left = self._follow_up_on
+            if left is not None:
+                left.next_read_ts = (
+                    self._push_board.now() + ata_spm_push.FOLLOW_UP_RETRY_S
+                )
+                logger.warning(
+                    FOLLOW_UP_UNREAD_LOG,
+                    left.call.symbol,
+                    left.call.timeframe,
+                    "no answer at its limit",
+                )
+            return False
 
         def _render_timer_tiles(self) -> None:
             """Draw one tile per ``PushBoard.timer_tiles`` row in the region
@@ -2386,19 +2435,32 @@ if _HAS_QT:
             """Read each timer's candles and judge its call, then cross to the GUI thread.
 
             ``_follow_up_candles`` is the scan's own route with the universe
-            scan's cache skipped; ``followUpRead`` carries the outcome across.
+            scan's cache skipped; ``followUpRead`` carries the outcome across. A
+            thread ``_follow_up_reading`` left behind reads no further timer.
             """
-            thread_name = threading.current_thread().name
+            import time
+
+            reader = threading.current_thread()
             source = self._ata_candle_source
             if source is None or source == self._scanned_candles:
                 source = self._follow_up_candles
             for timer in timers:
+                if reader is not self._follow_up_thread:
+                    return
+                self._follow_up_on = timer
+                self._follow_up_ends_at = time.monotonic() + self._follow_up_limit_sec()
                 call = timer.call
                 logger.info(
-                    FOLLOW_UP_THREAD_LOG, thread_name, call.symbol, call.timeframe
+                    FOLLOW_UP_THREAD_LOG, reader.name, call.symbol, call.timeframe
                 )
                 candles = ata_spm.candles_for(source, call.symbol, call.timeframe)
-                outcome = self._push_board.read_outcome(timer, candles)
+                try:
+                    outcome = self._push_board.read_outcome(timer, candles)
+                except Exception as exc:
+                    logger.warning(
+                        FOLLOW_UP_UNREAD_LOG, call.symbol, call.timeframe, exc
+                    )
+                    outcome = self._push_board.read_outcome(timer, [])
                 try:
                     self.followUpRead.emit(call.key, outcome)
                 except RuntimeError as exc:
