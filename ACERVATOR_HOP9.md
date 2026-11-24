@@ -359,7 +359,10 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   (`src/exchange/ccxt_connector.py, in CCXTConnector._replace_stuck_worker`). Row 8
   is built: the shared price read asks Coinbase for the markets the slots hold, and
   for every market once 15 minutes have passed, for the 24 hour volumes
-  (`src/exchange/ccxt_connector.py, in CCXTConnector._named_ticker_params`). The
+  (`src/exchange/ccxt_connector.py, in CCXTConnector._named_ticker_params`). Row 10
+  is built: the pairs scout asks Coinbase for the pairs its rows asked for, in a free
+  place, and rests after each reading
+  (`src/exchange/market_pairs_scout.py, in MarketPairsScout._read`). The
   body's build order names the rest: rows 3 and 7, then 2 and 4, then 5 and 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
