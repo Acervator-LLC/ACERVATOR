@@ -107,9 +107,8 @@ PAIRS_SLOT_FORMAT = "pairs of {eid}"
 CHART_READ_CALLS = 2
 #: A currency read asks two prices of each exchange.
 CURRENCY_READ_CALLS = 2
-#: The time of three calls holds two of ``PAIRS_PER_CALL`` pairs, each with its wait
-#: for a free place.
-PAIRS_READ_CALLS = 3
+#: The time of two calls holds one call of a pairs reading and its wait for a free place.
+PAIRS_READ_CALLS = 2
 
 #: The route a broker publishing a paper one opens on, which chooses the paper
 #: host in ``AlpacaConnector.connect``. A key reaches one host only, paper or
@@ -926,7 +925,8 @@ if _HAS_QT:
             try:
                 from ..exchange.market_pairs_scout import get_scout
 
-                if get_scout() is None:
+                scout = get_scout()
+                if scout is None:
                     return
                 for eid in list(getattr(self, "_exchange_connectors", {}) or {}):
                     self._schedule_coalesced(
@@ -934,6 +934,7 @@ if _HAS_QT:
                         self._read_market_pairs(eid),
                         PAIRS_READ_CALLS,
                         venue=eid,
+                        mark=partial(scout.last_refresh, eid),
                     )
                 self._scout_pump_fault.note_success()
             except Exception as exc:
@@ -3026,9 +3027,9 @@ if _HAS_QT:
             return loop.run_until_complete(coro)
 
         def _schedule_coalesced(
-            self, slot: str, coro, calls: int, venue: str = ""
+            self, slot: str, coro, calls: int, venue: str = "", mark=None
         ) -> None:
-            """Hand ``coro``, of ``calls`` venue calls at ``venue`` where it asks one alone, to the ``ReadSlot`` named ``slot``."""
+            """Hand the ``ReadAsk`` of ``coro`` to the ``ReadSlot`` named ``slot``."""
             from .read_slot import ReadAsk, ReadSlot
 
             slots = getattr(self, "_read_slots", None)
@@ -3037,7 +3038,8 @@ if _HAS_QT:
                 self._read_slots = slots
             if slot not in slots:
                 slots[slot] = ReadSlot(slot)
-            slots[slot].ask(ReadAsk(coro, calls, venue), self._schedule_async)
+            ask = ReadAsk(coro, calls, venue, mark or float)
+            slots[slot].ask(ask, self._schedule_async)
 
         def _end_reads(self, eid: str = "") -> None:
             """End every read in ``_read_slots``, or those that ``may_ask`` *eid*."""

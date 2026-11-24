@@ -27,15 +27,18 @@ Read = Coroutine[Any, Any, Any]
 
 @dataclass
 class ReadAsk:
-    """One ``read`` of ``calls`` venue calls, at ``venue`` where it asks one alone."""
+    """One ``read`` of ``calls`` venue calls for each move of ``mark``, at ``venue``
+    where it asks one alone."""
 
     read: Read
     calls: int
     venue: str = ""
+    mark: Callable[[], float] = float
 
     @property
     def limit_sec(self) -> float:
-        """The longest ``read`` takes, one ``VENUE_CALL_SEC`` for each of ``calls``."""
+        """The longest ``mark`` stays unmoved, one ``VENUE_CALL_SEC`` for each of
+        ``calls``."""
         return self.calls * VENUE_CALL_SEC
 
 
@@ -97,10 +100,14 @@ class ReadSlot:
             self._close_waiting()
 
     async def _answer(self, ask: ReadAsk) -> None:
-        """Wait for the read of ``ask``, and end it once its ``limit_sec`` has passed."""
+        """Wait for the read of ``ask``, and end it where its ``mark`` does not move in
+        one ``limit_sec``."""
         task = asyncio.ensure_future(ask.read)
+        mark: Optional[float] = None
         try:
-            await asyncio.wait({task}, timeout=ask.limit_sec)
+            while not task.done() and mark != ask.mark():
+                mark = ask.mark()
+                await asyncio.wait({task}, timeout=ask.limit_sec)
             if not task.done():
                 logger.warning(
                     "window read %s gave no answer in %.1fs and was ended",
