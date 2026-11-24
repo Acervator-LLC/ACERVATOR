@@ -505,24 +505,30 @@ class MarketDataPool:
 
     async def refresh_all_tickers(self, connector, exchange_id: str) -> int:
         """Refill every ``_tickers`` entry for ``exchange_id`` from one
-        ``get_all_tickers`` call.
+        ``get_all_tickers`` call given their symbols, and return how many it updated.
 
-        Symbols absent from ``_tickers`` are skipped, an entry written after
-        ``batch_start`` is left alone, and every exception is logged and
-        swallowed. Returns the number of entries updated, and zero without a
-        venue call when this exchange holds no ticker slot.
+        An ``exchange_id`` with no entry makes no call, an entry the answer leaves out
+        or one written after ``batch_start`` is left alone, and every exception is
+        logged and swallowed.
         """
-        if not self._slots_held(self._tickers, exchange_id):
+        symbols = [
+            entry.symbol
+            for entry in self._tickers.values()
+            if entry.exchange_id == exchange_id
+        ]
+        if not symbols:
             return 0
         batch_start = time.time()
         try:
-            raw = await connector.get_all_tickers()
+            raw = await connector.get_all_tickers(symbols)
         except Exception as exc:
+            # The text of a failed request holds its URL, whose query lists symbols.
+            said = " ".join(word.partition("?")[0] for word in str(exc).split(" "))
             logger.warning(
                 "DataPool: bulk ticker refresh failed for %s (%s); bots "
                 "fall back to individual fetches.",
                 exchange_id,
-                exc,
+                said,
             )
             return 0
 

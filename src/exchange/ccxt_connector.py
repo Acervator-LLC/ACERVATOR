@@ -31,9 +31,51 @@ from concurrent.futures import Future, ThreadPoolExecutor
 
 from src.core.trade_historian import HistoryAnalysis, scan_on_connect
 from typing import Any, Optional
+from urllib.parse import urlencode
 
 # The historian thread calls it as cb(symbol, analysis) and discards the result.
 HistoryCallback = Callable[[str, HistoryAnalysis], object]
+
+
+#: The URI length RFC 9110 section 4.1 recommends every recipient to support.
+REQUEST_URI_OCTETS: int = 8000
+
+#: The ``_every_ticker_at`` that makes the next read ask for every market.
+EVERY_TICKER_DUE: float = float("-inf")
+
+
+@dataclass(frozen=True)
+class NamedTickers:
+    """The request one venue's ``fetch_tickers`` names its markets in."""
+
+    address: str
+    ids_param: str
+    id_separator: str
+
+    def unloaded_id(self, symbol: str) -> str:
+        """The id of a ``symbol`` no loaded market holds, empty for any shape but two
+        upper-case alphanumeric legs."""
+        base, _, quote = str(symbol).partition("/")
+        plain = all(
+            leg.isascii() and leg.isalnum() and leg == leg.upper()
+            for leg in (base, quote)
+        )
+        return f"{base}{self.id_separator}{quote}" if plain else ""
+
+    def fits(self, ids: list[str]) -> bool:
+        """True where the URI asking for ``ids`` is within ``REQUEST_URI_OCTETS``."""
+        query = urlencode({self.ids_param: ids}, doseq=True)
+        return len(f"{self.address}?{query}") <= REQUEST_URI_OCTETS
+
+
+#: Venues measured to answer each id they list in ``ids_param`` and leave out the rest.
+NAMED_TICKERS: dict[str, NamedTickers] = {
+    "coinbase": NamedTickers(
+        address="https://api.coinbase.com/api/v3/brokerage/market/products",
+        ids_param="product_ids",
+        id_separator="-",
+    ),
+}
 
 
 # Submissions past this depth are refused, outside queue_cap_waived.
@@ -1198,6 +1240,9 @@ CONTRACT_SIZE_FIELD = "contractSize"
 #: ``price_increment``, so no parsed field names the quote step alone.
 QUOTE_INCREMENT_KEY = "quote_increment"
 
+#: The key a Coinbase product record carries its 24h quote volume under.
+QUOTE_VOLUME_KEY = "approximate_quote_24h_volume"
+
 #: The record a product carries the venue's own trading session under. Coinbase
 #: publishes it on every product, holding a daily window on a dated contract and
 #: nothing on a spot pair and a perpetual.
@@ -1906,6 +1951,15 @@ def record_price(market: Any) -> Optional[float]:
     return parsed
 
 
+def record_quote_volume(market: Any) -> float:
+    """The 24h quote volume one spot record carries under ``QUOTE_VOLUME_KEY``, 0.0 for
+    a contract and where it carries none; no venue is asked."""
+    raw = (market or {}).get("info")
+    if is_contract_market(market) or not isinstance(raw, dict):
+        return 0.0
+    return row_quote_volume_24h({"quoteVolume": raw.get(QUOTE_VOLUME_KEY)})
+
+
 def ohlcv_data_usage() -> str:
     """The Data usage line a candle fetch writes, naming every voter
     ``DEFAULT_WEIGHTS`` declares."""
@@ -1973,6 +2027,8 @@ class CCXTConnector(ExchangeInterface):
 
         # fetch_ticker serves no volume on coinbase; get_all_tickers fills this.
         self._quote_volumes: dict[str, float] = {}
+        # time.monotonic() at the last read of every market.
+        self._every_ticker_at: float = time.monotonic()
 
         self._scan_symbols: set[str] = set()
         self._history_analyses: dict = {}
@@ -2877,13 +2933,17 @@ class CCXTConnector(ExchangeInterface):
         """Return ``symbol``'s 24h quote volume from ``raw``, else the recorded one.
 
         Coinbase's ``fetch_ticker`` serves neither ``quoteVolume`` nor
-        ``baseVolume``, so ``get_ticker`` falls back to what the last
-        ``get_all_tickers`` recorded for that symbol, and 0.0 before the first.
+        ``baseVolume``, so ``get_ticker`` falls back to what ``get_all_tickers``
+        recorded for that symbol, then to its loaded market's ``record_quote_volume``.
         """
         served = row_quote_volume_24h(raw)
         if served > 0:
             return served
-        return float(self._quote_volumes.get(symbol, 0.0))
+        recorded = self._quote_volumes.get(symbol)
+        if recorded is not None:
+            return float(recorded)
+        markets = getattr(self._ex, "markets", None) or {}
+        return record_quote_volume(markets.get(symbol))
 
     @_with_retry()
     async def get_ticker(self, symbol: str) -> Ticker:
@@ -2913,16 +2973,77 @@ class CCXTConnector(ExchangeInterface):
         )
         return ticker
 
-    async def get_all_tickers(self) -> dict:
-        """Return the raw CCXT tickers dict for every symbol in one call.
+    def _ticker_ids(self, symbols: list[str], named: NamedTickers) -> list[str]:
+        """The venue id of each of ``symbols`` once, contracts left out."""
+        markets = getattr(self._ex, "markets", None) or {}
+        ids: dict[str, None] = {}
+        for symbol in symbols:
+            market = markets.get(symbol) or {}
+            asked = str(market.get("id") or named.unloaded_id(symbol))
+            if asked and not is_contract_market(market):
+                ids[asked] = None
+        return list(ids)
 
-        Not normalised into :class:`Ticker`, which does not carry the 24h
-        percentage change callers need. Each row's quote volume is recorded for
-        ``get_ticker``, whose own call serves none on coinbase.
+    def _every_ticker_due(self) -> bool:
+        """True once ``DEFAULT_MIN_REFRESH_S`` has passed since ``_every_ticker_at``."""
+        from .market_inspector_fetcher import DEFAULT_MIN_REFRESH_S
+
+        return time.monotonic() - self._every_ticker_at >= DEFAULT_MIN_REFRESH_S
+
+    def _named_ticker_params(
+        self, symbols: Optional[list[str]]
+    ) -> Optional[dict[str, list[str]]]:
+        """The ``fetch_tickers`` params asking for ``symbols`` alone, empty where every
+        one is a contract, None where the read asks for every market."""
+        named = NAMED_TICKERS.get(venue_record_key(self._exchange_id))
+        if symbols is None or named is None or self._every_ticker_due():
+            return None
+        ids = self._ticker_ids(symbols, named)
+        if not named.fits(ids):
+            return None
+        return {named.ids_param: ids} if ids else {}
+
+    async def _every_ticker(self) -> dict:
+        """Every market's raw ticker, stamping ``_every_ticker_at`` unless the queue
+        refused the call or its caller cancelled it."""
+        sent = True
+        try:
+            return await self._call_sync(self._ex.fetch_tickers)
+        except (CCXTQueueFullError, asyncio.CancelledError):
+            sent = False
+            raise
+        finally:
+            if sent:
+                self._every_ticker_at = time.monotonic()
+
+    async def _named_tickers(self, params: dict[str, list[str]]) -> dict:
+        """The raw tickers ``params`` names; an empty answer or a venue refusal sets
+        ``_every_ticker_at`` to ``EVERY_TICKER_DUE``."""
+        try:
+            rows = await self._call_sync(self._ex.fetch_tickers, None, params)
+        except _ccxt_error_types(("ExchangeError",)):
+            self._every_ticker_at = EVERY_TICKER_DUE
+            raise
+        if not rows:
+            self._every_ticker_at = EVERY_TICKER_DUE
+        return rows
+
+    async def get_all_tickers(self, symbols: Optional[list[str]] = None) -> dict:
+        """Return the raw CCXT tickers dict of every market in one call, or of
+        ``symbols`` alone where ``_named_ticker_params`` names them.
+
+        Each row's quote volume is recorded for ``get_ticker``, whose own call serves
+        none on coinbase.
         """
         self._ensure_connected()
         await self._rate_limit()
-        rows = await self._call_sync(self._ex.fetch_tickers)
+        params = self._named_ticker_params(symbols)
+        if params is None:
+            rows = await self._every_ticker()
+        elif params:
+            rows = await self._named_tickers(params)
+        else:
+            rows = {}
         for symbol, row in (rows or {}).items():
             volume = row_quote_volume_24h(row)
             if volume > 0:
