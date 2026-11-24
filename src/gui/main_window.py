@@ -103,11 +103,13 @@ CHART_SLOT = "chart"
 CURRENCY_SLOT = "currency rates"
 PAIRS_SLOT_FORMAT = "pairs of {eid}"
 
-#: Venue calls one read makes: the chart asks the venue, then the public source, and
-#: the currency rates ask two prices of each exchange.
+#: A chart read asks the venue, then the public source.
 CHART_READ_CALLS = 2
+#: A currency read asks two prices of each exchange.
 CURRENCY_READ_CALLS = 2
-PAIRS_READ_CALLS = 1
+#: The time of three calls holds two of ``PAIRS_PER_CALL`` pairs, each with its wait
+#: for a free place.
+PAIRS_READ_CALLS = 3
 
 #: The route a broker publishing a paper one opens on, which chooses the paper
 #: host in ``AlpacaConnector.connect``. A key reaches one host only, paper or
@@ -938,13 +940,22 @@ if _HAS_QT:
                 self._scout_pump_fault.note_failure(exc)
 
         async def _read_market_pairs(self, eid: str) -> None:
-            """Refresh MarketPairsScout through the connector held for *eid* when the read starts."""
+            """Wait for the ``reading`` MarketPairsScout makes of *eid*, and end it where this read ends first."""
             from ..exchange.market_pairs_scout import get_scout
 
             scout = get_scout()
             connector = (getattr(self, "_exchange_connectors", {}) or {}).get(eid)
-            if scout is not None and connector is not None:
+            if scout is None or connector is None:
+                return
+            try:
                 await scout.refresh_from_connectors({eid: connector})
+                reading = scout.books[eid].reading
+                if reading is not None:
+                    await reading
+            finally:
+                book = scout.books.get(eid)
+                if book is not None and book.reading is not None:
+                    book.reading.cancel()
 
         def _report_fetch_stall(self) -> None:
             """Tell the Console when no exchange call has come back across the fleet.
