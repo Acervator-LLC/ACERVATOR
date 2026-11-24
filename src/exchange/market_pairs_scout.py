@@ -1,49 +1,44 @@
-"""market_pairs_scout.py — per-exchange multi-pair rate scout.
+"""``MarketPairsScout`` keeps each exchange's pairs of the bases its readers ask for.
 
-Sibling of ``currency_rate_monitor``. Where the currency monitor gives
-BTC/USD + ETH/USD spot rates for the whole GUI, this scout gives every
-trading pair the exchange lists, grouped by base asset, so callers can
-ask "what pairs trade ETH on this exchange right now, and how are they
-moving?".
-
-Delivers **read-only** cross-pair awareness. This module deliberately
-does **not** rank / pick / route. It observes.
-
-Sourcing:
-    ``connector.get_all_tickers()`` — one bulk CCXT call per exchange
-    per refresh cycle. On Coinbase this is the correct primitive
-    (``fetch_ticker`` and ``fetch_tickers`` return different shapes;
-    always use tickers-plural here for consistency).
-
-Consumers (planned):
-    * ScrummingBot — reads ``pairs_for(target_asset)`` in the tick to
-      log divergence and, in a future cascade, potentially route.
-    * Bot Details Status tab — renders "Target BTC / Target ETH"
-      rows + Δ24h vs USD %.
-    * Any future calibration harness that wants historical spread /
-      volume / drift per pair (data collected here in advance).
-
-Not persisted — a fresh process starts with an empty snapshot and
-populates on the first successful poll.
-
-A replacement built for a stopped scout takes the previous scout's books
-through ``_carry_pairs``, so ``get_pair`` keeps answering from the last poll
-while the scout recovers. Each ``PairSnapshot`` keeps its own
-``last_updated``, so ``age_seconds`` still reports the true age.
+``refresh_from_connectors`` reads them by name through ``get_all_tickers`` where
+``NAMED_TICKERS`` holds the exchange, and asks for every market elsewhere.
+``every_ticker_answer`` fills the rest of a book, which ``pairs_on`` and
+``_build_topology_proposals`` read whole. ``_carry_pairs`` shares the books, the asks
+and the readings of a stopped scout with its replacement.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Optional
 
 from .lazy_singleton import LazySingleton
+
+if TYPE_CHECKING:
+    from .ccxt_connector import CCXTConnector
 
 logger = logging.getLogger("acervator.market_pairs_scout")
 
 DEFAULT_REFRESH_SECONDS = 10.0  # per prior-art research § 6.2
+
+#: The quotes the Target cells and Detail rows read one base in.
+READER_QUOTES = ("USD", "USDC", "BTC", "ETH")
+
+#: The quote of an ask for every pair of a base, and the exchange of an ask for any.
+EVERY_QUOTE = ""
+ANY_EXCHANGE = "*"
+
+#: Pairs one call names: 200 ids of up to 26 characters fit ``REQUEST_URI_OCTETS``.
+PAIRS_PER_CALL = 200
+
+#: Seconds of rest per second of answer, which leaves a reading a third of the worker.
+REST_PER_ANSWER = 2.0
+
+#: Longest ``refresh_from_connectors`` waits for the readings it started, which run on.
+REFRESH_WAIT_S = 2.0
 
 
 def row_quote_volume_24h(row: object) -> float:
@@ -77,6 +72,13 @@ def row_quote_volume_24h(row: object) -> float:
             last,
         )
     return max(0.0, derived)
+
+
+def takes_names(exchange_id: str) -> bool:
+    """True where ``NAMED_TICKERS`` holds ``exchange_id``."""
+    from .ccxt_connector import NAMED_TICKERS, venue_record_key
+
+    return venue_record_key(exchange_id) in NAMED_TICKERS
 
 
 @dataclass
@@ -140,25 +142,54 @@ class PairSnapshot:
         return 0.0
 
 
+@dataclass
+class VenueBook:
+    """One exchange's ``pairs``, and the ``rest_until`` its next reading waits for."""
+
+    pairs: dict[str, PairSnapshot] = field(default_factory=dict)
+    read_at: float = 0.0  # time.time() of the last successful reading
+    error: Optional[str] = None  # last error message (kept for diagnostic display)
+    rest_until: float = 0.0  # time.monotonic() the next reading may start
+    reading: Optional[asyncio.Task[None]] = None  # on its way, or the last one
+
+
 class MarketPairsScout:
-    """Per-exchange multi-pair rate scout.
+    """One ``VenueBook`` per exchange, filled by ``refresh_from_connectors``."""
 
-    Not a QThread — pure Python. Caller (main_window / test harness)
-    schedules ``refresh_from_connectors`` at ``refresh_seconds`` cadence.
-    """
-
-    def __init__(self, refresh_seconds: float = DEFAULT_REFRESH_SECONDS):
+    def __init__(self, refresh_seconds: float = DEFAULT_REFRESH_SECONDS) -> None:
         self._refresh_s = float(refresh_seconds)
-        # exchange_id -> { symbol -> PairSnapshot }
-        self._snapshots: dict[str, dict[str, PairSnapshot]] = {}
-        # exchange_id -> epoch_seconds of last successful poll
-        self._last_refresh: dict[str, float] = {}
-        # exchange_id -> last error message (kept for diagnostic display)
-        self._last_error: dict[str, Optional[str]] = {}
+        # exchange_id -> its book; hold_books shares this dict with a replacement
+        self.books: dict[str, VenueBook] = {}
+        # (exchange_id, base, quote) -> time.monotonic() of the last ask; shared too
+        self.asked: dict[tuple[str, str, str], float] = {}
 
     @property
     def refresh_seconds(self) -> float:
         return self._refresh_s
+
+    @property
+    def _allowed_age_s(self) -> float:
+        """Age past which ``is_stale`` reports a book."""
+        return self._refresh_s * 2
+
+    @property
+    def _snapshots(self) -> dict[str, dict[str, PairSnapshot]]:
+        """Each exchange's pairs, which ``_build_topology_proposals`` reads."""
+        return {eid: book.pairs for eid, book in list(self.books.items())}
+
+    def _note_ask(self, base: str, quote: str, exchange_id: Optional[str]) -> None:
+        """Keep one ask for ``base`` in ``quote``, which ``_pairs_asked`` reads."""
+        venue = ANY_EXCHANGE if exchange_id is None else exchange_id
+        self.asked[(venue, base, quote)] = time.monotonic()
+
+    def _held(self, base: str, exchange_id: Optional[str]) -> list[PairSnapshot]:
+        """``base``'s pairs on ``exchange_id``, or on every one, by symbol."""
+        out: list[PairSnapshot] = []
+        for eid, book in list(self.books.items()):
+            if exchange_id is None or eid == exchange_id:
+                out.extend(s for s in book.pairs.values() if s.base == base)
+        out.sort(key=lambda s: s.symbol)
+        return out
 
     def pairs_for(
         self,
@@ -173,37 +204,22 @@ class MarketPairsScout:
         _asset = (asset or "").upper()
         if not _asset:
             return []
-        out: list[PairSnapshot] = []
-        if exchange_id is not None:
-            book = self._snapshots.get(exchange_id, {})
-            out.extend(s for s in book.values() if s.base == _asset)
-        else:
-            for book in self._snapshots.values():
-                out.extend(s for s in book.values() if s.base == _asset)
-        out.sort(key=lambda s: s.symbol)
-        return out
+        self._note_ask(_asset, EVERY_QUOTE, exchange_id)
+        return self._held(_asset, exchange_id)
 
     def pairs_on(self, exchange_id: str) -> list[PairSnapshot]:
-        """Every pair the last poll of ``exchange_id`` recorded, symbol ascending."""
-        book = self._snapshots.get(exchange_id, {})
-        return sorted(book.values(), key=lambda s: s.symbol)
+        """Every pair the book of ``exchange_id`` holds, symbol ascending."""
+        book = self.books.get(exchange_id, VenueBook())
+        return sorted(book.pairs.values(), key=lambda s: s.symbol)
 
     def hold_books(self, other: MarketPairsScout) -> int:
-        """Adopt every book ``other`` polled, with its refresh time and error.
+        """Share every book, ask and reading of ``other``, and answer the pair count.
 
-        ``_carry_pairs`` calls it so a replacement scout answers ``pairs_for``
-        from the stopped scout's poll; the pair count adopted is returned.
+        ``_carry_pairs`` calls it, and a reading ``other`` started lands here too.
         """
-        carried = 0
-        for eid in other.polled_exchanges():
-            book = {snap.symbol: snap for snap in other.pairs_on(eid)}
-            if not book:
-                continue
-            self._snapshots[eid] = book
-            self._last_refresh[eid] = other.last_refresh(eid)
-            self._last_error[eid] = other.last_error(eid)
-            carried += len(book)
-        return carried
+        self.books = other.books
+        self.asked = other.asked
+        return sum(len(book.pairs) for book in self.books.values())
 
     def quote_currencies_for(
         self,
@@ -221,12 +237,7 @@ class MarketPairsScout:
         quote: str,
         exchange_id: Optional[str] = None,
     ) -> bool:
-        _b = (base or "").upper()
-        _q = (quote or "").upper()
-        for s in self.pairs_for(_b, exchange_id):
-            if s.quote == _q:
-                return True
-        return False
+        return self.get_pair(base, quote, exchange_id) is not None
 
     def get_pair(
         self,
@@ -236,20 +247,23 @@ class MarketPairsScout:
     ) -> Optional[PairSnapshot]:
         _b = (base or "").upper()
         _q = (quote or "").upper()
-        for s in self.pairs_for(_b, exchange_id):
+        if not _b or not _q:
+            return None
+        self._note_ask(_b, _q, exchange_id)
+        for s in self._held(_b, exchange_id):
             if s.quote == _q:
                 return s
         return None
 
     def last_refresh(self, exchange_id: str) -> float:
-        return float(self._last_refresh.get(exchange_id, 0.0))
+        return float(self.books.get(exchange_id, VenueBook()).read_at)
 
     def polled_exchanges(self) -> list[str]:
-        """Exchange ids ``ingest_tickers`` has recorded a refresh for, ascending."""
-        return sorted(eid for eid, at in self._last_refresh.items() if float(at) > 0.0)
+        """Exchange ids whose ``read_at`` a reading has set, ascending."""
+        return sorted(eid for eid, book in list(self.books.items()) if book.read_at > 0)
 
     def last_error(self, exchange_id: str) -> Optional[str]:
-        return self._last_error.get(exchange_id)
+        return self.books.get(exchange_id, VenueBook()).error
 
     def is_stale(
         self,
@@ -262,26 +276,25 @@ class MarketPairsScout:
         last = self.last_refresh(exchange_id)
         if last <= 0:
             return True
-        return (_now - last) > (self._refresh_s * 2)
+        return (_now - last) > self._allowed_age_s
+
+    def is_paced(self, exchange_id: str) -> bool:
+        """True with no ``error`` and the next reading on its way, at rest or due."""
+        book = self.books.get(exchange_id, VenueBook())
+        if book.error is not None:
+            return False
+        if book.reading is not None and not book.reading.done():
+            return True
+        return time.monotonic() < book.rest_until + self._allowed_age_s
 
     # Ingest — either directly from a raw tickers dict (tests) or
     # by polling a set of connectors (production).
 
-    def ingest_tickers(
-        self,
-        exchange_id: str,
-        tickers: dict,
-        now: Optional[float] = None,
-    ) -> int:
-        """Fold a raw CCXT ``fetch_tickers`` dict into the snapshot.
-
-        Returns the number of pairs recorded. Tolerates partial /
-        malformed rows silently (per-row exceptions logged at DEBUG,
-        the good rows still make it in).
-        """
-        _now = time.time() if now is None else now
-        book: dict[str, PairSnapshot] = {}
-        good = 0
+    def _snapshots_of(
+        self, exchange_id: str, tickers: dict, now: float
+    ) -> dict[str, PairSnapshot]:
+        """One ``PairSnapshot`` per good row of ``tickers``, each stamped ``now``."""
+        pairs: dict[str, PairSnapshot] = {}
         for symbol, row in (tickers or {}).items():
             try:
                 if not symbol or "/" not in symbol:
@@ -297,7 +310,7 @@ class MarketPairsScout:
                 ask = float(row.get("ask", 0) or 0)
                 pct = float(row.get("percentage", 0) or 0)
                 vol = float(row.get("baseVolume", 0) or 0)
-                snap = PairSnapshot(
+                pairs[symbol] = PairSnapshot(
                     symbol=symbol,
                     base=base,
                     quote=quote,
@@ -308,10 +321,8 @@ class MarketPairsScout:
                     volume_24h=vol,
                     quote_volume_24h=row_quote_volume_24h(row),
                     exchange_id=exchange_id,
-                    last_updated=_now,
+                    last_updated=now,
                 )
-                book[symbol] = snap
-                good += 1
             except Exception as _row_exc:  # noqa: BLE001 - per-row best-effort
                 logger.debug(
                     "MarketPairsScout: skip row %s on %s (%s)",
@@ -319,62 +330,195 @@ class MarketPairsScout:
                     exchange_id,
                     _row_exc,
                 )
-        self._snapshots[exchange_id] = book
-        self._last_refresh[exchange_id] = _now
-        self._last_error[exchange_id] = None
-        return good
+        return pairs
+
+    def _put_book(
+        self, exchange_id: str, pairs: dict[str, PairSnapshot], now: float
+    ) -> int:
+        """Make ``pairs`` the book of ``exchange_id``, read at ``now``."""
+        book = self.books.setdefault(exchange_id, VenueBook())
+        book.pairs = pairs
+        book.read_at = now
+        book.error = None
+        return len(pairs)
+
+    def ingest_tickers(
+        self,
+        exchange_id: str,
+        tickers: dict,
+        now: Optional[float] = None,
+    ) -> int:
+        """Make a raw CCXT ``fetch_tickers`` dict of every market the book.
+
+        A row ``_snapshots_of`` cannot read is left out of the count returned.
+        """
+        _now = time.time() if now is None else now
+        pairs = self._snapshots_of(exchange_id, tickers, _now)
+        return self._put_book(exchange_id, pairs, _now)
+
+    def _take_every_ticker(self, exchange_id: str, connector: CCXTConnector) -> bool:
+        """Make ``connector``'s ``every_ticker_answer`` the book, where it is newer."""
+        answer = getattr(connector, "every_ticker_answer", None)
+        if answer is None:
+            return False
+        read_at, rows = answer()
+        if read_at <= self.last_refresh(exchange_id):
+            return False
+        self.ingest_tickers(exchange_id, rows, now=read_at)
+        return True
+
+    def _land(
+        self,
+        exchange_id: str,
+        connector: CCXTConnector,
+        names: list[str],
+        rows: object,
+    ) -> bool:
+        """Put the answer to ``names`` in the book, and say if it held every market."""
+        if not rows or not isinstance(rows, dict):
+            raise LookupError(f"{exchange_id} answered no market")
+        self._take_every_ticker(exchange_id, connector)
+        if rows is connector.every_ticker_answer()[1]:
+            return True
+        now = time.time()
+        landed = self._snapshots_of(exchange_id, rows, now)
+        left_out = set(names) - landed.keys()
+        held = self.books[exchange_id].pairs
+        kept = {name: pair for name, pair in held.items() if name not in left_out}
+        self._put_book(exchange_id, {**kept, **landed}, now)
+        return False
+
+    def _pairs_asked(self, exchange_id: str, listed: set[str]) -> list[str]:
+        """Each pair asked of ``exchange_id`` in ``DEFAULT_MIN_REFRESH_S``, by base."""
+        from .market_inspector_fetcher import DEFAULT_MIN_REFRESH_S
+
+        oldest = time.monotonic() - DEFAULT_MIN_REFRESH_S
+        names: set[str] = set()
+        for ask, asked_at in list(self.asked.items()):
+            venue, base, quote = ask
+            if asked_at < oldest:
+                self.asked.pop(ask, None)
+            elif venue not in (exchange_id, ANY_EXCHANGE):
+                continue
+            elif quote == EVERY_QUOTE:
+                names.update(one for one in listed if one.split("/")[0] == base)
+            else:
+                quotes = {*READER_QUOTES, quote} - {base}
+                names.update(f"{base}/{one}" for one in quotes)
+        return sorted(one for one in names if ":" not in one)
+
+    def _calls(
+        self, exchange_id: str, connector: CCXTConnector
+    ) -> list[Optional[list[str]]]:
+        """The pairs each call of a ``_read`` names; None names every market."""
+        if not takes_names(exchange_id):
+            return [None]
+        markets = getattr(getattr(connector, "_ex", None), "markets", None) or {}
+        listed = {*markets, *self.books[exchange_id].pairs}
+        names = self._pairs_asked(exchange_id, listed)
+        calls = [
+            names[at : at + PAIRS_PER_CALL]
+            for at in range(0, len(names), PAIRS_PER_CALL)
+        ]
+        return [one for one in calls if not listed or not listed.isdisjoint(one)]
+
+    async def _free_place(self, connector: CCXTConnector) -> bool:
+        """True once ``connector`` admits a bulk read, False past ``_allowed_age_s``."""
+        try:
+            async with asyncio.timeout(self._allowed_age_s):
+                await connector.await_bulk_read_slot()
+        except TimeoutError:
+            return False
+        return True
+
+    async def _read(self, exchange_id: str, connector: CCXTConnector) -> None:
+        """Make each of ``_calls`` in a free place, then set ``rest_until``."""
+        from .ccxt_connector import SYNC_CALL_TIMEOUT_SEC
+
+        book = self.books[exchange_id]
+        took = 0.0
+        shortest_rest = 0.0
+        try:
+            for names in self._calls(exchange_id, connector):
+                if not await self._free_place(connector):
+                    book.error = "no free place in the call queue"
+                    break
+                shortest_rest = self._refresh_s
+                asked_at = time.monotonic()
+                try:
+                    rows = await connector.get_all_tickers(names)
+                finally:
+                    took += min(time.monotonic() - asked_at, SYNC_CALL_TIMEOUT_SEC)
+                if self._land(exchange_id, connector, names or [], rows):
+                    break
+        except Exception as _conn_exc:  # noqa: BLE001 - per-connector probe
+            shortest_rest = self._allowed_age_s
+            # The text of a failed request holds its URL, whose query lists pairs.
+            said = str(_conn_exc).partition("?")[0]
+            book.error = f"{type(_conn_exc).__name__}: {said}"
+            logger.debug(
+                "MarketPairsScout: connector %s refresh failed: %s",
+                exchange_id,
+                book.error,
+            )
+        rest = max(shortest_rest, REST_PER_ANSWER * took)
+        book.rest_until = time.monotonic() + rest
+
+    def _at_rest(self, exchange_id: str, connector: CCXTConnector) -> bool:
+        """True before ``rest_until``, or where another read of every market serves."""
+        book = self.books[exchange_id]
+        if time.monotonic() < book.rest_until:
+            return True
+        if self._take_every_ticker(exchange_id, connector):
+            rest = self._refresh_s - max(0.0, time.time() - book.read_at)
+            book.rest_until = time.monotonic() + rest
+            if rest > 0:
+                return True
+        on_way = getattr(connector, "every_ticker_on_way", False)
+        return on_way and not takes_names(exchange_id)
 
     async def refresh_from_connectors(
         self,
         connectors: dict,
         force: bool = False,
     ) -> dict[str, int]:
-        """Poll ``get_all_tickers`` on each connector, ingest results.
+        """Start a ``_read`` task per exchange past ``rest_until``; answer pair counts.
 
-        Returns ``{exchange_id: pair_count}`` for each connector that
-        answered. Connectors that fail are logged and their previous
-        snapshot is retained (better stale than empty).
-
-        Skips per-exchange refresh when the last snapshot is still
-        fresh unless ``force=True``.
+        A caller that gives up ends no ``reading``, and ``force`` reads one at rest.
         """
-        out: dict[str, int] = {}
-        if not connectors:
-            return out
-        for eid, connector in connectors.items():
-            if not force and not self.is_stale(eid):
-                out[eid] = len(self._snapshots.get(eid, {}))
+        started: list[asyncio.Task[None]] = []
+        for eid, connector in (connectors or {}).items():
+            book = self.books.setdefault(eid, VenueBook())
+            if book.reading is not None and not book.reading.done():
                 continue
-            try:
-                raw = await connector.get_all_tickers()
-                out[eid] = self.ingest_tickers(eid, raw)
-            except Exception as _conn_exc:  # noqa: BLE001 - per-connector probe
-                self._last_error[eid] = f"{type(_conn_exc).__name__}: {_conn_exc}"
-                out[eid] = len(self._snapshots.get(eid, {}))
-                logger.debug(
-                    "MarketPairsScout: connector %s refresh failed: %s", eid, _conn_exc
-                )
-        return out
+            if not force and self._at_rest(eid, connector):
+                continue
+            book.reading = asyncio.create_task(self._read(eid, connector))
+            started.append(book.reading)
+        if started:
+            await asyncio.wait(started, timeout=REFRESH_WAIT_S)
+        return {eid: len(self.books[eid].pairs) for eid in connectors or {}}
 
 
 # Process-wide shared scout
 
 
 def _scout_has_stopped(scout: MarketPairsScout) -> bool:
-    """True when ``is_stale`` reports every exchange in ``polled_exchanges``.
+    """True when each of ``polled_exchanges`` ``is_stale`` and not ``is_paced``.
 
-    ``_SCOUT`` passes this as ``has_stopped``, so one fresh exchange keeps
-    the scout and an empty ``polled_exchanges`` never reports stopped.
+    ``_SCOUT`` passes this as ``has_stopped``, and an empty ``polled_exchanges``
+    keeps the scout.
     """
     polled = scout.polled_exchanges()
-    return bool(polled) and all(scout.is_stale(eid) for eid in polled)
+    return bool(polled) and all(
+        scout.is_stale(eid) and not scout.is_paced(eid) for eid in polled
+    )
 
 
 def _carry_pairs(previous: MarketPairsScout, replacement: MarketPairsScout) -> None:
-    """Move ``previous``'s pair books onto ``replacement``.
+    """Share ``previous``'s books, asks and readings with ``replacement``.
 
-    ``_SCOUT`` passes this as ``carry_reading``; a scout whose
-    ``polled_exchanges`` is empty carries nothing.
+    ``_SCOUT`` passes this as ``carry_reading``.
     """
     replacement.hold_books(previous)
 
