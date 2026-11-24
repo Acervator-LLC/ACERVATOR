@@ -179,8 +179,8 @@ if not named.fits(ids):
 The 24 hour volume of a market with no stored price comes from a read of every
 market. One price answer on Coinbase carries no volume, so the connector gives
 the volume its last read of that market recorded, and before any read the one in
-the loaded market list. The Extractor ranks its watch list by it. The pairs scout
-and the Market Inspector always ask for every market.
+the loaded market list. The Extractor ranks its watch list by it. The Market
+Inspector always asks for every market.
 
 `src/exchange/ccxt_connector.py, in CCXTConnector._quote_volume_for`
 
@@ -190,6 +190,76 @@ if recorded is not None:
     return float(recorded)
 markets = getattr(self._ex, "markets", None) or {}
 return record_quote_volume(markets.get(symbol))
+```
+
+### The pairs the pairs scout asks for
+
+The window calls the pairs scout each 2 seconds. The scout keeps one book of pairs
+for each exchange. The two Target columns of the bot table and the two Target rows
+of the Detail window ask it for one base at a time, and it keeps each ask for 15
+minutes. The Market Inspector's proposals read every book whole.
+
+`src/exchange/market_pairs_scout.py, in MarketPairsScout._note_ask`
+
+```python
+venue = ANY_EXCHANGE if exchange_id is None else exchange_id
+self.asked[(venue, base, quote)] = time.monotonic()
+```
+
+On Coinbase a reading asks by name. It names each base a row asked for in four
+quotes: the dollar, its stablecoin and the two coins of the Target columns. One
+call names 200 pairs at most. A pair Coinbase does not list costs no other pair its
+price. A pair the answer leaves out leaves the book. An exchange that takes no
+names gets one call for every market, and no call where a read of every market
+landed in the last 10 seconds.
+
+`src/exchange/market_pairs_scout.py, in MarketPairsScout._pairs_asked`
+
+```python
+quotes = {*READER_QUOTES, quote} - {base}
+names.update(f"{base}/{one}" for one in quotes)
+```
+
+A reading by name does not reset the 15 minutes of the shared price read. The first
+read by name after them asks for every market, and one such read is on its way at a
+time. The connector keeps its last answer that held every market, and the scout
+takes that answer into its book. A proposal reads a figure up to 15 minutes old for
+a market that no row asks for.
+
+`src/exchange/market_pairs_scout.py, in MarketPairsScout._take_every_ticker`
+
+```python
+read_at, rows = answer()
+if read_at <= self.last_refresh(exchange_id):
+    return False
+self.ingest_tickers(exchange_id, rows, now=read_at)
+```
+
+Each call waits for a free place in the queue, 20 seconds at most. With no free
+place the book stays, and the next call of the window starts again. After a reading
+the exchange rests 10 seconds, or twice the time its answers took where that is
+longer. After a failed reading it rests 20 seconds or more. One call earns a rest
+of 50 seconds at most. So the scout holds the worker of one exchange for a third of
+the time at most. A book stays under 20 seconds old while the answers of one reading
+take 6 seconds or less, and it grows older behind slower ones.
+
+`src/exchange/market_pairs_scout.py, in MarketPairsScout._read`
+
+```python
+rest = max(shortest_rest, REST_PER_ANSWER * took)
+book.rest_until = time.monotonic() + rest
+```
+
+Each exchange has a reading of its own. A refresh that the window gives up ends no
+reading, no second one starts beside it, and no exchange waits for another. A scout
+at rest has not stopped. A scout that stops shares its books, its asks and the
+reading on its way with its replacement.
+
+`src/exchange/market_pairs_scout.py, in MarketPairsScout.hold_books`
+
+```python
+self.books = other.books
+self.asked = other.asked
 ```
 
 ## Where the trade record is kept

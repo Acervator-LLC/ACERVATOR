@@ -2029,6 +2029,8 @@ class CCXTConnector(ExchangeInterface):
         self._quote_volumes: dict[str, float] = {}
         # time.monotonic() at the last read of every market.
         self._every_ticker_at: float = time.monotonic()
+        # time.time() at the last answer that held every market, and its rows.
+        self._every_ticker_answer: tuple[float, dict] = (0.0, {})
 
         self._scan_symbols: set[str] = set()
         self._history_analyses: dict = {}
@@ -3004,17 +3006,25 @@ class CCXTConnector(ExchangeInterface):
         return {named.ids_param: ids} if ids else {}
 
     async def _every_ticker(self) -> dict:
-        """Every market's raw ticker, stamping ``_every_ticker_at`` unless the queue
-        refused the call or its caller cancelled it."""
+        """Every market's raw ticker, stamping ``_every_ticker_at`` at its start and its
+        end, which a refused or cancelled call puts back."""
         sent = True
+        last_read_at, self._every_ticker_at = self._every_ticker_at, time.monotonic()
         try:
-            return await self._call_sync(self._ex.fetch_tickers)
+            rows = await self._call_sync(self._ex.fetch_tickers)
         except (CCXTQueueFullError, asyncio.CancelledError):
             sent = False
             raise
         finally:
-            if sent:
-                self._every_ticker_at = time.monotonic()
+            self._every_ticker_at = time.monotonic() if sent else last_read_at
+        if rows and isinstance(rows, dict):
+            self._every_ticker_answer = (time.time(), rows)
+        return rows
+
+    def every_ticker_answer(self) -> tuple[float, dict]:
+        """``time.time()`` at the last answer that held every market, and its rows; 0.0
+        and none before one."""
+        return self._every_ticker_answer
 
     async def _named_tickers(self, params: dict[str, list[str]]) -> dict:
         """The raw tickers ``params`` names; an empty answer or a venue refusal sets

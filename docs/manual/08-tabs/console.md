@@ -1108,7 +1108,7 @@ strip and the Charts ATA-SMP list did not.
 | the read | why it waits |
 | --- | --- |
 | the venue page bot rows, the bulk ticker refresher, the Charts live list, the header strip, the voting panel's votes | each one reads a bot, and no bot is loaded |
-| the market pairs scout | it reads each venue's ticker list through a venue connection, and only a bot's start opens one |
+| the market pairs scout | it reads its pairs through a venue connection, and only a bot's start opens one |
 | Market Inspector, Refresh | its markets are the connected venue's own list, read through a venue connection |
 
 On a locked launch the Refresh line names the seal instead of asking for an
