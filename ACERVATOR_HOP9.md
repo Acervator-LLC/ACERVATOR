@@ -356,8 +356,11 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   when the worker starts it, a read waits up to `READ_TURN_WAIT_SEC` for its turn,
   and a stuck call's worker is replaced at that limit: the reads behind it move to
   the fresh worker and an order is dropped unsent
-  (`src/exchange/ccxt_connector.py, in CCXTConnector._replace_stuck_worker`). The
-  body's build order names the rest: rows 8, 3 and 7, then 2 and 4, then 5 and 6.
+  (`src/exchange/ccxt_connector.py, in CCXTConnector._replace_stuck_worker`). Row 8
+  is built: the shared price read asks Coinbase for the markets the slots hold, and
+  for every market once 15 minutes have passed, for the 24 hour volumes
+  (`src/exchange/ccxt_connector.py, in CCXTConnector._named_ticker_params`). The
+  body's build order names the rest: rows 3 and 7, then 2 and 4, then 5 and 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before

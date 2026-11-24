@@ -37,7 +37,7 @@ from urllib.parse import urlencode
 HistoryCallback = Callable[[str, HistoryAnalysis], object]
 
 
-#: The URI length every recipient supports, RFC 9110 section 4.1, in octets.
+#: The URI length RFC 9110 section 4.1 recommends every recipient to support.
 REQUEST_URI_OCTETS: int = 8000
 
 #: The ``_every_ticker_at`` that makes the next read ask for every market.
@@ -3017,8 +3017,8 @@ class CCXTConnector(ExchangeInterface):
                 self._every_ticker_at = time.monotonic()
 
     async def _named_tickers(self, params: dict[str, list[str]]) -> dict:
-        """The raw tickers ``params`` names, and ``EVERY_TICKER_DUE`` after an empty
-        answer or a venue refusal."""
+        """The raw tickers ``params`` names; an empty answer or a venue refusal sets
+        ``_every_ticker_at`` to ``EVERY_TICKER_DUE``."""
         try:
             rows = await self._call_sync(self._ex.fetch_tickers, None, params)
         except _ccxt_error_types(("ExchangeError",)):

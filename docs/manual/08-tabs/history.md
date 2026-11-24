@@ -131,6 +131,67 @@ else:
     call.dropped = True
 ```
 
+### The markets the shared price read asks for
+
+One read refills the stored prices of an exchange. It starts each 2.5 seconds for
+each exchange the fleet uses, and it hands the connector the markets that have a
+stored price. Each row that comes back refills its own market. A market the
+answer leaves out keeps its last price.
+
+`src/exchange/data_pool.py, in MarketDataPool.refresh_all_tickers`
+
+```python
+raw = await connector.get_all_tickers(symbols)
+```
+
+Coinbase takes the markets by name, in one request. A market goes by the id in
+the market list the connector loaded, and a market that list does not hold goes
+by its two codes. Coinbase answers the ids it lists and leaves out the rest, so a
+market it does not list costs no other market its price. A contract is never
+named, and its price comes from its own bot's read.
+
+`src/exchange/ccxt_connector.py, in CCXTConnector._ticker_ids`
+
+```python
+market = markets.get(symbol) or {}
+asked = str(market.get("id") or named.unloaded_id(symbol))
+if asked and not is_contract_market(market):
+    ids[asked] = None
+```
+
+The read asks for every market instead, in one request, in four cases:
+
+- on every exchange but Coinbase;
+- for a request address longer than 8,000 characters;
+- once 15 minutes have passed since every market was last read;
+- after Coinbase refused a read by name, or answered it with no row.
+
+`src/exchange/ccxt_connector.py, in CCXTConnector._named_ticker_params`
+
+```python
+if symbols is None or named is None or self._every_ticker_due():
+    return None
+ids = self._ticker_ids(symbols, named)
+if not named.fits(ids):
+    return None
+```
+
+The 24 hour volume of a market with no stored price comes from a read of every
+market. One price answer on Coinbase carries no volume, so the connector gives
+the volume its last read of that market recorded, and before any read the one in
+the loaded market list. The Extractor ranks its watch list by it. The pairs scout
+and the Market Inspector always ask for every market.
+
+`src/exchange/ccxt_connector.py, in CCXTConnector._quote_volume_for`
+
+```python
+recorded = self._quote_volumes.get(symbol)
+if recorded is not None:
+    return float(recorded)
+markets = getattr(self._ex, "markets", None) or {}
+return record_quote_volume(markets.get(symbol))
+```
+
 ## Where the trade record is kept
 
 Refresh reads the venue live and keeps nothing. The year of trades the Simulator
