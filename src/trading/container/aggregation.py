@@ -479,7 +479,7 @@ class FleetAggregationMixin:
           * **ScrummingBot** whose ``config.base_currency == currency``:
             its ``target_balance``, converted through the asking bot's
             ``_quote_to_usd``, whose age that bot's ``price_reads`` holds, and
-            through its own where the asking bot holds none. That rate reads
+            through its own where the asking bot has read none. That rate reads
             "1 unit of quote currency = N USD", so ``USD / _quote_to_usd``
             yields quote units. A pool of a coin meant to be worth one dollar
             needs no rate; any other pool with no usable rate counts as
@@ -514,8 +514,8 @@ class FleetAggregationMixin:
             return None
         dollar_pegged = currency_norm in DOLLAR_PEGGED_CURRENCIES
         asker = self._bots.get(bot_id)
-        holds_rate = self._sibling_pool_rate(asker, False)[0] is not None
-        rate_bot = asker if holds_rate and not dollar_pegged else None
+        rate_read = getattr(asker, "_quote_rate_read_at", None) is not None
+        rate_bot = asker if rate_read and not dollar_pegged else None
         total = 0.0
         unread: list[str] = []
         for other_id, other_bot in self._bots.items():
