@@ -427,7 +427,7 @@ BLOCKERS_SEPARATOR = ", "
 #: How many gate labels the held-by line names before it counts the rest.
 BLOCKERS_SHOWN = 3
 BLOCKERS_MORE_FORMAT = " +{count}"
-#: The label a blocker no gate prefix names reads as.
+#: The label a blocker with no text reads as.
 OTHER_BLOCKER_LABEL = "other"
 NO_BLOCKERS_TEXT = ""
 
@@ -904,14 +904,15 @@ def fold_taper_of(status: Any) -> float:
 def blockers_text(blockers: list) -> str:
     """The line naming, by gate label, the gates that hold automatic fire back.
 
-    ``gate_for_blocker`` names each refusal phrase; the first ``BLOCKERS_SHOWN``
-    labels print and ``BLOCKERS_MORE_FORMAT`` counts the rest.
+    ``gate_for_blocker`` names each refusal phrase, and ``bare_gate_name`` one no gate
+    names, such as ``PRICE_BLOCKER``; the first ``BLOCKERS_SHOWN`` labels print and
+    ``BLOCKERS_MORE_FORMAT`` counts the rest.
     """
-    from ...trading.gate_vocabulary import gate_for_blocker
+    from ...trading.gate_vocabulary import bare_gate_name, gate_for_blocker
 
     labels: list = []
     for one in blockers or []:
-        named = gate_for_blocker(one) or OTHER_BLOCKER_LABEL
+        named = gate_for_blocker(one) or bare_gate_name(one) or OTHER_BLOCKER_LABEL
         if named not in labels:
             labels.append(named)
     if not labels:
