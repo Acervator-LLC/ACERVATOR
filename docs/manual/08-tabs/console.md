@@ -1384,4 +1384,108 @@ On the React build, a screen reader reads each bot row's pair and bot id
 (`src/gui/web/bot_status_table.js, in rowLabel`), and the bot the voting panel
 shows (`src/gui/web/indicator_panel.js, in chosenText`).
 
+## The venue reads a window tick starts
+
+The window ticks each 2 seconds, and a tick can ask a venue for three kinds of data.
+One kind is the candles of the chart on screen. One is the two prices of the rate
+strip. One is the pairs of each connected exchange. Each kind has a slot, and the
+pairs have one slot for each exchange.
+
+A slot has one read on its way at a time. An ask made meanwhile waits, and a newer
+ask takes its place. The waiting read starts when the read on its way ends. No tick
+ends a read.
+
+`src/gui/read_slot.py, in ReadSlot.ask`
+
+```python
+self._close_waiting()
+self._waiting = ask
+if self._serving:
+    return
+```
+
+A read ends with its answer, with an error or at its limit. One venue call takes 128.4
+seconds at most: 102.4 for its turn, 25 for its run and 1 for the hand-off of its
+answer. A read has that time for each call it makes.
+
+`src/gui/read_slot.py, in VENUE_CALL_SEC`
+
+```python
+VENUE_CALL_SEC: float = (
+    READ_TURN_WAIT_SEC + SYNC_CALL_TIMEOUT_SEC + CCXT_TIMEOUT_HEADROOM_SEC
+)
+```
+
+| the read | its venue calls | its limit |
+| --- | --- | --- |
+| the chart on screen | the venue, then the public source | 256.8 seconds |
+| the rate strip | two prices of each connected exchange | 256.8 seconds for each exchange |
+| the pairs of one exchange | one for each 200 pairs | 256.8 seconds without a call that lands |
+
+The pairs read waits for
+[the reading of the pairs scout](history.md#the-pairs-the-pairs-scout-asks-for).
+That reading makes one call for each 200 pairs. Each call that lands gives the next
+one the same time, so a long reading ends by itself.
+
+`src/gui/read_slot.py, in ReadSlot._answer`
+
+```python
+while not task.done() and mark != ask.mark():
+    mark = ask.mark()
+    await asyncio.wait({task}, timeout=ask.limit_sec)
+```
+
+A read with no answer at its limit is ended, and the waiting one starts. The upper
+pane takes one line that names the read and the limit.
+
+`src/gui/read_slot.py, in ReadSlot._answer`
+
+```python
+logger.warning(
+    "window read %s gave no answer in %.1fs and was ended",
+    self.name,
+    ask.limit_sec,
+)
+```
+
+A window close and a locked fleet end every read. A disconnect ends the reads that can
+ask that exchange. Nothing stays on its way and nothing waits. The next tick asks
+again, on the connection the window has then.
+
+`src/gui/main_window.py, in MainWindow._end_reads`
+
+```python
+for name, held in list(slots.items()):
+    if not eid or held.may_ask(eid):
+        slots.pop(name).end()
+```
+
+The end of a pairs read ends the reading of the scout with it.
+
+`src/gui/main_window.py, in MainWindow._read_market_pairs`
+
+```python
+finally:
+    book = scout.books.get(eid)
+    if book is not None and book.reading is not None:
+        book.reading.cancel()
+```
+
+A rate monitor that waits for an answer is kept until the answer lands, so the strip
+reads that answer.
+
+`src/exchange/currency_rate_monitor.py, in _monitor_has_stopped`
+
+```python
+return (
+    monitor.snapshot().last_updated > 0
+    and not monitor.reading
+    and monitor.is_stale()
+)
+```
+
+Two more clocks ask a venue: the confirmation clock of the
+[Market Inspector](market-inspector.md) and the one ask of the
+[History tab](history.md).
+
 Back to [the subsystem index](README.md).

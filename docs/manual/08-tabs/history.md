@@ -194,7 +194,8 @@ return record_quote_volume(markets.get(symbol))
 
 ### The pairs the pairs scout asks for
 
-The window calls the pairs scout each 2 seconds. The scout keeps one book of pairs
+The window calls the pairs scout each 2 seconds, and while a reading is on its way
+the newest call waits for it. The scout keeps one book of pairs
 for each exchange. The two Target columns of the bot table and the two Target rows
 of the Detail window ask it for one base at a time, and it keeps each ask for 15
 minutes. The Market Inspector's proposals read every book whole.
@@ -250,9 +251,11 @@ rest = max(shortest_rest, REST_PER_ANSWER * took)
 book.rest_until = time.monotonic() + rest
 ```
 
-Each exchange has a reading of its own. A refresh that the window gives up ends no
-reading, no second one starts beside it, and no exchange waits for another. A scout
-at rest has not stopped. A scout that stops shares its books, its asks and the
+Each exchange has a reading of its own. No second one starts beside it, and no
+exchange waits for another. The window waits for the reading, and ends it only at a
+limit, a close, a disconnect or a locked fleet; see
+[the venue reads a window tick starts](console.md#the-venue-reads-a-window-tick-starts).
+A scout at rest has not stopped. A scout that stops shares its books, its asks and the
 reading on its way with its replacement.
 
 `src/exchange/market_pairs_scout.py, in MarketPairsScout.hold_books`
@@ -754,7 +757,8 @@ STATUS_TEXT = {
 
 Two constants bound the fetch, in the same module: the poll runs on a 400 ms
 timer, so an observed latency is the true latency plus up to one interval, and
-the fetch is abandoned after three hundred seconds.
+the fetch is abandoned after three hundred seconds. At that limit the fetch is
+cancelled, so a second Refresh has no earlier fetch beside it.
 
 `src/exchange/history_read_contract.py` — the fetch bounds
 

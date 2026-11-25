@@ -589,6 +589,25 @@ The dashboard pass calls `update_charts` every two seconds, and the header
 label carries the price, so a moving price repaints on most passes. Candles
 refetch at most every 30 seconds.
 
+### An answer draws on the chart it was asked for
+
+A fetch can answer after you select another market or another timeframe. The tab
+draws the answer only while the chart shows the market and the timeframe of that
+fetch, and no ATA-SMP call. Another answer, or its error, draws nothing. It does not
+count as a fetch of the market on screen, so the next pass fetches that market.
+
+`src/gui/widgets/trade_charts_tab.py, in TradeChartsTab._still_shows`
+
+```python
+called = self._showing_ata() and entry.get("call") is not None
+return (
+    not called
+    and self.current_entry() is entry
+    and entry.get("symbol") == symbol
+    and self._panel.timeframe == timeframe
+)
+```
+
 ### Live candles reach the React chart
 
 The React tab's fetch handed the fetcher's rows to `list`, and the fetcher's

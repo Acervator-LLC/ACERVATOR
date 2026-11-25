@@ -485,8 +485,8 @@ module.
 ```python
 _ALWAYS_ON_PINS: dict[str, str] = {
     "charts.indicators.drawn": (
-        "the same `fetch_chart_data` pass calls `set_candles` on every fetch "
-        "that returns candles"
+        "the same `fetch_chart_data` pass calls `set_candles` on every fetch that "
+        "returns candles for the chart on screen"
     ),
 ```
 
@@ -536,8 +536,8 @@ from src.core.signal_contract import (
 Thirty-six names entered: 7 `charts.*`, 15 `inspector.*`, 14 `sim.*`. One of
 them, `charts.indicators.drawn`, is always-on: the 2000 ms dashboard timer
 schedules `fetch_chart_data`, and that pass calls `set_candles` on every fetch
-that returns candles. The other thirty-five need a press, a pointer, a call, or
-a run the operator starts.
+that returns candles for the chart on screen. The other thirty-five need a press, a
+pointer, a call, or a run the operator starts.
 
 Twenty-seven entries left, each with no call site under `src/`: every
 `fleet.03.*` entry (8), every `sim.06.*` entry (14), `ta.07.001` and `ta.07.002`,

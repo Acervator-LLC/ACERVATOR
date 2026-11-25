@@ -3770,6 +3770,19 @@ thread. The worker reads the market's newest candles through the scan's own rout
 and judges the call. The outcome crosses back to the window thread, which writes the
 entry, the field, the Activity Log and the emitter row.
 
+The clock starts that thread only after the thread before it has ended. One read has a
+limit: 128.4 seconds for each of the three quotes at each connected exchange, 385.2
+seconds with one exchange. A read with no answer at its limit is left behind. Its
+timer reads again after 60 seconds, and the other due timers go to a new thread. A
+read that raises an error counts as a read with no candles.
+
+`src/gui/market_inspector.py, in MarketInspectorTab._follow_up_limit_sec`
+
+```python
+exchanges = max(1, len(self._connectors_now() or {}))
+return len(DEFAULT_QUOTES) * exchanges * VENUE_CALL_SEC
+```
+
 The verdict counts closed candles and reads no clock; the timer reads the clock only
 to choose when to read. The candles counted are those opened at or after the call's
 bar open whose close time is at or before the read, so the call's own candle is
