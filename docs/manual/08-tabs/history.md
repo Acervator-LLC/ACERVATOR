@@ -134,14 +134,16 @@ else:
 ### The markets the shared price read asks for
 
 One read refills the stored prices of an exchange. It starts each 2.5 seconds for
-each exchange the fleet uses, and it hands the connector the markets that have a
-stored price. Each row that comes back refills its own market. A market the
-answer leaves out keeps its last price.
+each exchange the fleet uses while that exchange answers quickly, and it hands the
+connector the markets that have a stored price. Each row that comes back refills its
+own market. A market the answer leaves out keeps its last price. Behind slow answers
+the read starts later, as [the pace of the shared reads](#the-pace-of-the-shared-reads)
+describes.
 
 `src/exchange/data_pool.py, in MarketDataPool.refresh_all_tickers`
 
 ```python
-raw = await connector.get_all_tickers(symbols)
+return await reader(asked)
 ```
 
 Coinbase takes the markets by name, in one request. A market goes by the id in
@@ -225,6 +227,107 @@ describes.
 ```python
 self._quote_to_usd = rate
 self._quote_rate_read_at = usd_ticker.read_at
+```
+
+### The pace of the shared reads
+
+Each exchange the fleet uses has its own loop. The loop reads the prices, then the
+account, and then rests. A slow exchange does not slow another. While the two answers
+take 1.67 seconds or less together, the loop starts again each 2.5 seconds. Longer
+answers make the rest longer. The rest is at least half the time the two reads held
+the worker, so the shared reads hold it for two thirds of the time at most.
+
+`src/exchange/data_pool.py, in SharedReads.period_s`
+
+```python
+own = max(self.interval_s, self.held_s * TURN_PER_HELD_SECOND)
+return max(own, min(own * BACKOFF_FACTOR**self.steps, longest_period_s()))
+```
+
+That time is counted on the worker. A pause of the program does not add to it, and
+the wait in the queue does not. At 6.3 seconds an answer the two reads start each
+18.9 seconds. A stored price then stays under 20 seconds, as long as no other call
+stands in the queue in front of them. Two answers of more than 13 seconds together
+make it older. The [Current Position Value](../06-trading-tab.md#the-bot-tables) cell
+is then blank, and
+[no order starts on it](../06-trading-tab.md#an-order-and-the-age-of-its-price).
+
+A throttled answer doubles the time between two turns of the loop, to 5, 10 and 20
+seconds, and a read with no answer does the same. A good answer halves it. The 20 is
+the age limit of a price, and a smaller stored limit ends the doubling there. Where a
+throttled answer names a wait, the loop keeps that wait, up to 300 seconds. After a
+read with no answer the loop rests 20 seconds at most. A shared read is sent once, and
+the next one is the next try. After the first good answer the loop is back at 2.5
+seconds inside 15 seconds, with no restart and no press.
+
+`src/exchange/data_pool.py, in SharedReads.note_failed`
+
+```python
+if label == VENUE_LOST:
+    self.lost_at[kind] = time.monotonic()
+else:
+    stated = min(stated_wait_seconds(exc), DEFAULT_MAX_COOLOFF_S)
+    self.wait_until = max(self.wait_until, time.monotonic() + stated)
+```
+
+### What a bot does while a shared read is late
+
+A bot whose stored price or balance has passed its lifetime asks the venue nothing
+while a shared read is on its way or due. While the venue throttles or gives no
+answer, the bot waits for the next shared read. It looks again at each step of the
+program and takes the new figure from the store. The wait ends after 60 seconds. The
+bot then asks alone, or its read ends in an error and the next tick tries again.
+
+`src/exchange/data_pool.py, in SharedReads.awaited`
+
+```python
+if self.slowed():
+    return True
+soon = self.due_at - now <= sum(self.answer_s.values())
+return now < ends_at and (bool(self.reading) or soon)
+```
+
+A figure inside its lifetime waits for the next shared read too, once it is older
+than 2.5 seconds and older than the two newest answers together.
+
+`src/exchange/data_pool.py, in SharedReads.replaces`
+
+```python
+answers_s = sum(self.answer_s.values())
+return age_s > max(self.interval_s, answers_s + self.min_rest_s)
+```
+
+A bot asks the venue alone where no shared read serves it:
+
+- a new market, between two shared reads;
+- a market the shared answer leaves out;
+- a balance that a fill has just ended;
+- a shared read the venue refuses;
+- shared prices that are lost while the venue answers other calls;
+- an exchange with no such loop.
+
+One price and one account read go out alone at a time for each exchange. Each waits
+for two free places in the queue, so the last place stays for a shared read. A fold's
+or a hedge's buy needs none.
+
+`src/exchange/data_pool.py, in MarketDataPool._ask_alone`
+
+```python
+token = self._take_turn(turn, label)
+if token is None or reads.places.take(connector, SPARE_PLACES):
+    return token
+```
+
+A candle read waits for two free places as well, 60 seconds at most, and then asks.
+A shared read waits for one free place.
+
+`src/exchange/data_pool.py, in MarketDataPool._await_place`
+
+```python
+places = self.shared_reads(exchange_id).places
+ends_at = time.monotonic() + SHARED_WAIT_SECONDS
+while not places.take(connector, spare) and time.monotonic() < ends_at:
+    await asyncio.sleep(SHARED_WAIT_SLICE_SECONDS)
 ```
 
 ### The pairs the pairs scout asks for
