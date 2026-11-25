@@ -25,6 +25,7 @@ from ..container.config import (
     smart_cartridge_ceiling_pct,
     target_growth_pct,
 )
+from ..container.order_watch import PRESS_AGAIN_FRESH
 from ..indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..otd_math import (
     DistanceSettings,
@@ -89,6 +90,27 @@ from .target_ramp import (
 
 logger = logging.getLogger("acervator.scrumming")
 
+#: The blocker and the tick exit of a tick that waits for a fresh price.
+PRICE_BLOCKER = "price-too-old"
+
+#: The blocker the Fire button's mouse-over names, with why the tick waits.
+PRICE_BLOCKER_FORMAT = PRICE_BLOCKER + "({wait})"
+
+#: The line of a Manual Fire the tick drops over an old price.
+AGED_FIRE_FORMAT = "MANUAL FIRE REFUSED: {wait}. " + PRESS_AGAIN_FRESH + "."
+
+#: The line a run of waiting ticks writes once.
+PRICE_WAIT_FORMAT = (
+    "PRICE WAIT: {wait}. Nothing is sent and nothing is booked on it. The next tick "
+    "reads the price again."
+)
+
+#: The line of a boot handshake that adopts nothing over an old price.
+INIT_WAIT_FORMAT = (
+    "INIT HANDSHAKE WAITS: {wait}. No unit is adopted and none is claimed at it. "
+    "Retrying next tick."
+)
+
 #: The voters ``three_agree`` asks for, which ``_third_indicator_text`` counts against.
 AGREEING_VOTERS = 3
 
@@ -133,6 +155,7 @@ class TickPhaseMixin:
     _combine_fold_tranches_within_distance: Callable[..., Any]
     _count_trade_volume: Callable[..., float]
     _current_holdings: float
+    _detonation_last_check_ts: float
     _detonation_last_signal_bullish: bool
     _dist_sets: list[dict]
     _drop_malformed_fold_tranches: Callable[..., int]
@@ -163,7 +186,9 @@ class TickPhaseMixin:
     _get_market_rules: Callable[..., Any]
     _get_ohlcv: Callable[..., Any]
     _get_ticker: Callable[..., Any]
+    exit_watch: Callable[..., Any]
     guarded_place_order: Callable[..., Any]
+    market_read: Callable[..., Any]
     order_watch: Callable[..., Any]
     _hedge_bal: float
     _hedge_trades: int
@@ -227,6 +252,9 @@ class TickPhaseMixin:
     reset_swos_cycle: Callable[..., None]
     stats: Any
 
+    #: True once a run of ticks that wait for a fresh price has written its line.
+    _price_wait_named: bool = False
+
     @property
     def _hedge_balance_initial(self) -> float:
         """Return the hedge ceiling off config.hedge_balance, and zero while
@@ -249,8 +277,8 @@ class TickPhaseMixin:
     async def _tick_initialise(self, symbol: str) -> None:
         """Run the boot handshake; the tick ends whatever this decides."""
         ticker = await self._get_ticker(symbol)
-        self._last_price = ticker.last
-        self.stats.current_price = ticker.last
+        if not self.market_read(ticker).wait():
+            self._last_price = ticker.last
         try:
             await self._refresh_quote_to_usd()
         except Exception as _sup:
@@ -351,6 +379,14 @@ class TickPhaseMixin:
             and float(getattr(self, "_tranches_counters_reset_ts", 0.0) or 0.0) <= 0.0
         )
         if _never_scrummed and _h2 > 0:
+            _wait = self.market_read(ticker).wait()
+            if _wait:
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=INIT_WAIT_FORMAT.format(wait=_wait),
+                )
+                return
             _sib_units = 0.0
             _mgr = getattr(self, "_bot_manager", None)
             if _mgr is not None:
@@ -568,6 +604,36 @@ class TickPhaseMixin:
                     message=self._phantom_tf_set_aside_note,
                 )
 
+    def _tick_waits_for_price(self, watch: Any) -> bool:
+        """True where a price ``watch`` stands on is past the age limit, which ends the
+        tick with nothing decided, booked or counted as an error.
+
+        A pending Manual Fire is dropped in words, ``PRICE_WAIT_FORMAT`` is written once a
+        run of such ticks, and both sides of the gate record name ``PRICE_BLOCKER``.
+        """
+        wait = watch.price_wait()
+        if not wait:
+            self._price_wait_named = False
+            return False
+        lines = []
+        if self._manual_fire_pending:
+            self._manual_fire_pending = False
+            lines.append(AGED_FIRE_FORMAT.format(wait=wait))
+        if not self._price_wait_named:
+            self._price_wait_named = True
+            lines.append(PRICE_WAIT_FORMAT.format(wait=wait))
+        for line in lines:
+            self._bus.emit("bot.log", bot_id=self.bot_id, message=line)
+        blockers = [PRICE_BLOCKER_FORMAT.format(wait=wait)]
+        self._last_gate_state.update(
+            scrum_armed=False,
+            fold_armed=False,
+            scrum_blockers=list(blockers),
+            fold_blockers=list(blockers),
+        )
+        self._emit_gate_decision_at_quiet_tick(PRICE_BLOCKER)
+        return True
+
     async def _tick_manual_fire(self, ticker: Any) -> None:
         """Run the operator-invoked rebalance for this tick."""
         _mf_usd = priced_usd(
@@ -754,16 +820,21 @@ class TickPhaseMixin:
         so an executor that refused — most often because the venue balance it
         sizes the sale from could not be read — re-arms
         ``_detonation_last_signal_bullish``, leaving the next check free to
-        fire the same bull run. An executor that raised does not re-arm,
-        because an order may already be at the venue.
+        fire the same bull run. One an old price held gives back its check as
+        well, so the next tick reads it again. An executor that raised does not
+        re-arm, because an order may already be at the venue.
         """
         if getattr(self.config, "detonation_enabled", False):
+            watch = self.order_watch(ticker)
+            checked_ts = self._detonation_last_check_ts
             try:
                 fired = await self._check_detonation_trigger(ticker)
                 if fired:
-                    if await self._execute_detonation(ticker):
+                    if await self._execute_detonation(ticker, watch=watch):
                         return True
                     self._detonation_last_signal_bullish = False
+                    if watch.held_by_age:
+                        self._detonation_last_check_ts = checked_ts
             except Exception as exc:
                 self._bus.emit(
                     "bot.log",
@@ -858,7 +929,7 @@ class TickPhaseMixin:
         )
 
         self._expiry_close_sent_units = held
-        _watch = self.order_watch()
+        _watch = self.exit_watch()
         try:
             order = await self.guarded_place_order(
                 symbol=symbol,
@@ -1466,6 +1537,7 @@ class TickPhaseMixin:
             booker="_book_entry_fill",
             booking={"buy_cost": float(buy_cost), "intended": float(price)},
             decision=ENTRY_BUY,
+            watch=self.order_watch(ticker),
         )
         if entry_fill is not None and entry_fill > 0:
             return ""
@@ -1777,6 +1849,7 @@ class TickPhaseMixin:
                 summary,
                 label="SCRUM",
                 decision=EXCESS_SALE,
+                watch=self.order_watch(ticker),
                 booker="_book_scrum_fill",
                 booking={
                     "scrum_asset": float(scrum_asset),
@@ -2334,6 +2407,7 @@ class TickPhaseMixin:
                     or fold_decision(
                         [src for src, _take_usd, _take_units in _fold_plan]
                     ),
+                    watch=self.order_watch(ticker),
                 )
             if buy_fill is None or buy_fill <= 0:
                 if not _fold_skipped_below_min and self._refusal_is_new(
@@ -2655,8 +2729,9 @@ class TickPhaseMixin:
         except DistanceSettingUnreadable as unread:
             self._refuse_unreadable_distance(unread, "DIST", price)
             return
+        watch = self.order_watch(ticker)
         if getattr(self.config, "stack_mode", False):
-            stopped = await self._ladder_dist_sets(price, summary)
+            stopped = await self._ladder_dist_sets(price, summary, watch)
             if stopped or not self._dist_sets:
                 return
         clearing = dist_sets_clearing(self._dist_sets, price, otd_pct)
@@ -2672,6 +2747,7 @@ class TickPhaseMixin:
                 bypass_stack=True,
                 label="DIST",
                 decision=DIST_SALE,
+                watch=watch,
                 booker="_book_dist_fill",
                 booking={
                     "dist_asset": float(dist_asset),
@@ -2697,7 +2773,7 @@ class TickPhaseMixin:
                     ),
                 )
 
-    async def _ladder_dist_sets(self, price: float, summary: Any) -> bool:
+    async def _ladder_dist_sets(self, price: float, summary: Any, watch: Any) -> bool:
         """Open one ``_open_stack_from_scrum`` ladder per untried set, anchored no
         lower than its fold price, and drop each set a rung now holds. True where
         ``LADDER_STOPPED`` ended the walk, which leaves that set untried."""
@@ -2714,6 +2790,7 @@ class TickPhaseMixin:
                 summary=summary,
                 origin="dist",
                 floor_ref_price=fold_price,
+                watch=watch,
             )
             if opened == LADDER_STOPPED:
                 stopped = True

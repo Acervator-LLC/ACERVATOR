@@ -154,6 +154,7 @@ class ShadowTrancheMixin:
     bot_id: Any
     config: Any
     opposing_trade_distance_pct: Callable[..., float]
+    order_watch: Callable[..., Any]
 
     def _shadow_held_units(self) -> float:
         """The units this bot's ``_shadow_tranches`` hold at the venue."""
@@ -233,7 +234,7 @@ class ShadowTrancheMixin:
 
         Every send leaves ``_shadow_regime`` at ``REGIME_NONE``, so one reading sends at
         most one order, and a ``_book_shadow_detonation`` order still resting holds the
-        next.
+        next. A sale an old price held leaves the regime as it read.
         """
         if not self._shadow_tranches and not shadow_switched_on(self.config):
             return False
@@ -250,7 +251,13 @@ class ShadowTrancheMixin:
                 self._hold_shadow_rows(price, otd_pct)
                 return False
             self._shadow_regime = REGIME_NONE
-            return bool(await self._execute_detonation(ticker, shadow_rows=clearing))
+            watch = self.order_watch(ticker)
+            sent = await self._execute_detonation(
+                ticker, shadow_rows=clearing, watch=watch
+            )
+            if not sent and watch.held_by_age:
+                self._shadow_regime = regime
+            return bool(sent)
         except DistanceSettingUnreadable as unread:
             self._refuse_unreadable_distance(unread, "SHADOW", price)
         except Exception as exc:

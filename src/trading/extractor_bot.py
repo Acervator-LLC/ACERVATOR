@@ -42,6 +42,7 @@ from .bot_container import (
 )
 from .buy_safety import verify_buy_safe_or_refuse
 from .container.config import stored_list
+from .container.order_watch import OrderWatch
 from .phantom_balance import TIMEFRAME_SECONDS
 from .scrumming.execution import SettledFillFee, fill_fee_fields, venue_fee_record
 from .scrumming.sizing import DRAWDOWN_STATE
@@ -809,8 +810,10 @@ class ExtractorBot(BotContainer):
         pos: ExtractorPosition,
         snapshot: TASnapshot,
         alt_price_in_base: float,
+        watch: OrderWatch,
     ) -> None:
-        """Drive an open position through its state transitions."""
+        """Drive an open position through its state transitions, keeping its state where
+        ``watch`` held the exit over the age of the price."""
         if self._is_in_drawdown(pos, alt_price_in_base):
             pos.state = POSITION_STATE_DRAWDOWN
         elif pos.state == POSITION_STATE_DRAWDOWN:
@@ -819,8 +822,11 @@ class ExtractorBot(BotContainer):
         if self._exit_signal_matched(snapshot) and self._exit_is_profitable_in_base(
             pos, alt_price_in_base
         ):
+            state_before = pos.state
             pos.state = POSITION_STATE_BULLISH_EXIT
-            await self._execute_bullish_exit(pos, alt_price_in_base)
+            await self._execute_bullish_exit(pos, alt_price_in_base, watch)
+            if watch.held_by_age:
+                pos.state = state_before
             return
 
     async def manual_fire_position(self, pair: str) -> dict:
@@ -905,9 +911,14 @@ class ExtractorBot(BotContainer):
 
         # FULL_EXIT_PCT is passed, never stored, so a save taken while the order
         # is in flight writes config.extractor_exit_pct as the operator set it.
+        watch = self.order_watch(ticker, press=True)
         try:
             await self._execute_bullish_exit(
-                pos, alt_price_in_base, exit_pct=FULL_EXIT_PCT, operator_initiated=True
+                pos,
+                alt_price_in_base,
+                watch,
+                exit_pct=FULL_EXIT_PCT,
+                operator_initiated=True,
             )
         except Exception as exc:
             msg = (
@@ -929,17 +940,22 @@ class ExtractorBot(BotContainer):
         # A full exit always pops the pair, so a pair still held means the exit
         # sold nothing and the last closed-log entry belongs to an earlier close.
         if pair in self._positions:
+            refused = f"{watch.refusal}. {watch.press_again()}" if watch.refusal else ""
+            why = (
+                f"REFUSED: {refused}."
+                if refused
+                else "The exit's own refusal line carries the reason."
+            )
             msg = (
                 f"EXTRACTOR MANUAL FIRE {pair}: nothing sold. The position is "
                 f"still open and still holds "
-                f"{self._positions[pair].alt_units:.6f} units. The exit's own "
-                f"refusal line carries the reason."
+                f"{self._positions[pair].alt_units:.6f} units. {why}"
             )
             self._bus.emit("bot.log", bot_id=self.bot_id, message=msg)
             return {
                 "success": False,
                 "pair": pair,
-                "reason": "the exit sold nothing",
+                "reason": refused or "the exit sold nothing",
                 "alt_units_closed": 0.0,
                 "base_received": 0.0,
                 "gain_base": 0.0,
@@ -970,6 +986,7 @@ class ExtractorBot(BotContainer):
         self,
         pos: ExtractorPosition,
         alt_price_in_base: float,
+        watch: OrderWatch,
         exit_pct: Optional[float] = None,
         operator_initiated: bool = False,
     ) -> None:
@@ -978,6 +995,7 @@ class ExtractorBot(BotContainer):
         ``exit_pct`` defaults to ``config.extractor_exit_pct``;
         ``manual_fire_position`` passes ``FULL_EXIT_PCT`` and ``operator_initiated``
         instead of writing the config field, so no save can read a temporary share.
+        ``watch`` stops the sale where ``alt_price_in_base`` is too old.
         """
         share_pct = (
             float(self.config.extractor_exit_pct)
@@ -995,6 +1013,7 @@ class ExtractorBot(BotContainer):
                 order_type=OrderType.MARKET,
                 amount=units_to_sell,
                 price=None,
+                watch=watch,
             )
         except Exception as exc:
             self._bus.emit(
@@ -1184,9 +1203,11 @@ class ExtractorBot(BotContainer):
         pair: str,
         snapshot: TASnapshot,
         alt_price_in_base: float,
+        watch: OrderWatch,
     ) -> None:
         """Fire one artillery round into `pair`. Creates a new
-        ExtractorPosition on success."""
+        ExtractorPosition on success; ``watch`` stops it where
+        ``alt_price_in_base`` is too old."""
         artillery_usd = float(self.config.extractor_artillery_size_usd)
         artillery_base = self._usd_to_base(artillery_usd)
         if artillery_base <= 0:
@@ -1210,6 +1231,8 @@ class ExtractorBot(BotContainer):
             self._bus.emit("bot.log", bot_id=self.bot_id, message=refuse)
             logger.warning("Bot %s %s", self.bot_id, refuse)
             return
+        if self.held_by_age(watch, "BUY", pair):
+            return
 
         alt_units_to_buy = artillery_base / alt_price_in_base
         try:
@@ -1219,6 +1242,7 @@ class ExtractorBot(BotContainer):
                 order_type=OrderType.MARKET,
                 amount=alt_units_to_buy,
                 price=None,
+                watch=watch,
             )
         except Exception as exc:
             self._bus.emit(
@@ -1431,9 +1455,12 @@ class ExtractorBot(BotContainer):
                 continue
             # The parent values the tranche from this field, with no network call.
             pos.last_price_base_per_alt = alt_price_in_base
-            pos.last_priced_at = time.time()
+            pos.last_priced_at = ticker.read_at.wall_s
+            watch = self.order_watch(ticker)
             try:
-                await self._evaluate_open_position(pos, snapshot, alt_price_in_base)
+                await self._evaluate_open_position(
+                    pos, snapshot, alt_price_in_base, watch
+                )
             except Exception as exc:
                 self._bus.emit(
                     "bot.log",
@@ -1468,8 +1495,9 @@ class ExtractorBot(BotContainer):
                 continue
             if alt_price_in_base <= 0:
                 continue
+            watch = self.order_watch(ticker)
             try:
-                await self._fire_artillery(pair, snapshot, alt_price_in_base)
+                await self._fire_artillery(pair, snapshot, alt_price_in_base, watch)
             except Exception as exc:
                 self._bus.emit(
                     "bot.log",

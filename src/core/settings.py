@@ -17,6 +17,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
+from .price_age import DEFAULT_PRICE_AGE_LIMIT_S
 from .sms_engine import SMSConfig
 from .sound_engine import SoundConfig
 
@@ -125,6 +126,10 @@ class AppSettings:
 
     bot_visibility: str = BotVisibility.ORDERBOOK.value
     aggressive_trading: bool = False
+
+    # Seconds old a price may be when an order starts on it or a cell draws it;
+    # price_age.price_age_limit_s reads this.
+    price_age_limit_s: float = DEFAULT_PRICE_AGE_LIMIT_S
 
     # The asset class the header strip group last had active. _build_class_group
     # reads it at build; select_asset_class writes it on every press.

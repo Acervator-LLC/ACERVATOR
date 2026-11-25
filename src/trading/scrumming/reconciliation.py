@@ -67,6 +67,8 @@ class ReconciliationEngineMixin:
 
     # Supplied by ScrummingBot at runtime; annotations only, no attribute
     # is created.
+    _audit_next_tick: Callable[..., None]
+    market_read: Callable[..., Any]
     _book_manual_purchase: Callable[..., Any]
     _book_manual_sale: Callable[..., Any]
     _book_self_destruct: Callable[..., Any]
@@ -817,10 +819,12 @@ class ReconciliationEngineMixin:
                     else 0.0
                 )
                 self._bootstrap_adopt_from_exchange(
-                    max(0.0, _units), _tracked_units_bootstrap, _price, target_asset
+                    max(0.0, _units),
+                    _tracked_units_bootstrap,
+                    _price,
+                    target_asset,
+                    self.market_read(_ticker).wait(),
                 )
-            if _price > 0:
-                self.stats.current_price = _price
             if _price > 0 and self._current_holdings > 0:
                 self.stats.position_value = priced_usd(
                     self._current_holdings, _price, float(self._quote_to_usd or 1.0)
@@ -1040,18 +1044,36 @@ class ReconciliationEngineMixin:
         return min(_units, _claimable), None
 
     def _bootstrap_adopt_from_exchange(
-        self, exchange_units: float, book_units: float, price: float, asset: str
+        self,
+        exchange_units: float,
+        book_units: float,
+        price: float,
+        asset: str,
+        wait: str = "",
     ) -> float | None:
         """Raise a restored book to the wallet at startup, once.
 
         Calls ``_claimable_exchange_units`` and ``_book_reconciliation_lot``,
         the pair ``_reconcile_holdings`` also uses, and returns the units
-        added or ``None``.
+        added or ``None``. A ``wait`` books nothing at ``price`` and asks the next
+        tick's audit instead.
         """
         if book_units <= 0:
             return None
         _claimable, _sib = self._claimable_exchange_units(exchange_units)
         _adopt = min(exchange_units, _claimable)
+        if wait and _adopt - book_units > 1e-9:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"DRIFT UP (bootstrap): {_adopt - book_units:.8f} {asset} on "
+                    f"exchange is this bot's. ADOPTION DEFERRED — {wait}, and no lot "
+                    f"is booked at it. Retrying at the next tick's audit."
+                ),
+            )
+            self._audit_next_tick()
+            return None
         _gain = self._book_reconciliation_lot(_adopt, book_units, price)
         if _gain is None:
             return None
@@ -1083,6 +1105,28 @@ class ReconciliationEngineMixin:
             _foreign,
         )
         return _gain
+
+    async def _lot_price(self) -> tuple[float, str]:
+        """The price a lot is booked at, read again where the stored one is past the age
+        limit, and 0.0 with why where neither is inside it."""
+        wait = self.market_read().wait()
+        if wait:
+            try:
+                await self._get_ticker(self.config.symbol)
+            except Exception as exc:
+                return 0.0, (
+                    f"{wait}, and a fresh one could not be read "
+                    f"({type(exc).__name__}: {exc})"
+                )
+            wait = self.market_read().wait()
+        if wait:
+            return 0.0, wait
+        price = float(getattr(self.stats, "current_price", 0.0) or 0.0)
+        return price, f"stats.current_price reads {price:.8f}"
+
+    def _book_moved(self, lot_each: list[float]) -> bool:
+        """True where ``_main_lots`` no longer holds the units ``lot_each`` listed."""
+        return self._reconcilable_lot_book()[0] != lot_each
 
     def _book_reconciliation_lot(
         self, adopt_units: float, book_units: float, price: float
@@ -1512,16 +1556,18 @@ class ReconciliationEngineMixin:
         lot_each: list[float],
         scalar_units: float,
         reason: str,
+        lot_price: tuple[float, str],
     ) -> None:
         """Set ``_current_holdings`` and the ``_main_lots`` total to ``exchange_units``.
 
         A lot book above it scales every lot by the ratio; one below it books
         the gap through ``_book_reconciliation_lot`` under the
-        ``_claimable_exchange_units`` ceiling at ``stats.current_price``.
+        ``_claimable_exchange_units`` ceiling at what ``_lot_price`` answered.
         """
         _asset = self.config.target_asset
         _lots_before = sum(lot_each)
         _short_why = ""
+        _basis, _no_basis = lot_price
         if _lots_before > exchange_units:
             _ratio = exchange_units / _lots_before
             for _lot, _units in zip(self._main_lots, lot_each, strict=True):
@@ -1530,19 +1576,13 @@ class ReconciliationEngineMixin:
         elif exchange_units - _lots_before > 1e-9:
             _claimable, _sib_units = self._claimable_exchange_units(exchange_units)
             _adopt = min(exchange_units, _claimable)
-            _basis = float(
-                getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
-            )
             _written = (
                 self._book_reconciliation_lot(_adopt, _lots_before, _basis)
                 if _adopt - _lots_before > 1e-9
                 else None
             )
             if _adopt - _lots_before > 1e-9 and _written is None:
-                _short_why = (
-                    f"no usable price to book it at (stats.current_price "
-                    f"{_basis:.8f})"
-                )
+                _short_why = f"no usable price to book it at ({_no_basis})"
             elif exchange_units - _adopt > 1e-9:
                 _short_why = (
                     f"sibling bots hold {_sib_units:.8f} {_asset} on this exchange"
@@ -1715,7 +1755,14 @@ class ReconciliationEngineMixin:
                 SIDE_SELL, internal_units - exchange_units, exchange_units
             ):
                 return True
-            self._adopt_drift_down(exchange_units, _lot_each, _scalar_units, reason)
+            _lot_px = (0.0, "")
+            if exchange_units - _lot_units > 1e-9:
+                _lot_px = await self._lot_price()
+                if self._book_moved(_lot_each):
+                    return False
+            self._adopt_drift_down(
+                exchange_units, _lot_each, _scalar_units, reason, _lot_px
+            )
             self._note_audit_adoption(_lot_units)
         else:
 
@@ -1726,13 +1773,13 @@ class ReconciliationEngineMixin:
                 # Measured from _lot_units; internal_units is
                 # max(scalar, book) and would write a short lot.
                 _gain = _adopt - _lot_units
-                _basis = float(
-                    getattr(getattr(self, "stats", None), "current_price", 0.0) or 0.0
-                )
-                if _gain > 1e-9 and await self._settle_lost_order(
-                    SIDE_BUY, _gain, exchange_units
-                ):
-                    return True
+                _basis, _no_basis = 0.0, ""
+                if _gain > 1e-9:
+                    if await self._settle_lost_order(SIDE_BUY, _gain, exchange_units):
+                        return True
+                    _basis, _no_basis = await self._lot_price()
+                    if self._book_moved(_lot_each):
+                        return False
 
                 # _book_reconciliation_lot returns the units it wrote;
                 # both branches below read that, not _basis.
@@ -1789,19 +1836,17 @@ class ReconciliationEngineMixin:
                             f"this bot's, but there is no usable price "
                             f"to book it at (internal={internal_units:.8f} "
                             f"exchange={exchange_units:.8f}). ADOPTION "
-                            f"DEFERRED — stats.current_price reads "
-                            f"{_basis:.8f}, and a lot booked without a "
+                            f"DEFERRED — {_no_basis}, and a lot booked without a "
                             f"real basis claims unlimited profit against "
                             f"every price. Retrying next cycle."
                         ),
                     )
                     logger.warning(
-                        "Bot %s drift UP (%s): adoption of %.8f deferred "
-                        "— stats.current_price is %.8f",
+                        "Bot %s drift UP (%s): adoption of %.8f deferred — %s",
                         self.bot_id,
                         reason,
                         _gain,
-                        _basis,
+                        _no_basis,
                     )
                 else:
                     # The whole surplus is attributed to other bots,

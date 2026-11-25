@@ -95,6 +95,8 @@ The Twilio Auth Token, SMTP Password and Anthropic API Key rows hide only the sc
 | SMS | `message_channels` | At Save. |
 | AI Monitor | `ai_monitor` | At Save. |
 
+The file also holds `price_age_limit_s`, and no page has a row for it. It is the most seconds old a price may be when an order starts on it, 20 at the start ([the Trading tab page](../06-trading-tab.md#an-order-and-the-age-of-its-price)). It takes effect at each read (`src/core/price_age.py, in price_age_limit_s`).
+
 | Control | What it does and what it reads |
 | --- | --- |
 | Page tabs | Move between pages. Edits stay held until Save, Cancel or a passing Add, which closes the window and drops every unsaved edit. Each tab's mouse-over says what the page holds. `src/gui/main_tabs/settings_dialog_surface.py, in TAB_TOOLTIPS` |

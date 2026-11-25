@@ -192,6 +192,41 @@ markets = getattr(self._ex, "markets", None) or {}
 return record_quote_volume(markets.get(symbol))
 ```
 
+### The moment a price was read
+
+Each price carries the moment the venue answered it. The worker marks that moment
+when the call comes back, so a price that waits for the program grows older while it
+waits. Each row of a shared answer carries the moment of that answer.
+
+`src/exchange/ccxt_connector.py, in answered_at`
+
+```python
+return ReadMoment.at_monotonic(timing.finished_at)
+```
+
+A stored price takes an answer and its moment together. An answer older than the one
+it holds changes nothing. A price served after a refused call carries the moment of
+the answer it came from, so it is never read as new.
+
+`src/exchange/data_pool.py, in TickerEntry.take`
+
+```python
+if self.read_at is not None and ticker.read_at.before(self.read_at):
+    return False
+```
+
+The dollar rate of a quote keeps its moment in the same way. The bot reads the rate
+again once it is over 5 seconds old. An order reads both ages against one limit, which
+[An order and the age of its price](../06-trading-tab.md#an-order-and-the-age-of-its-price)
+describes.
+
+`src/trading/scrumming_bot.py, in ScrummingBot._refresh_quote_to_usd`
+
+```python
+self._quote_to_usd = rate
+self._quote_rate_read_at = usd_ticker.read_at
+```
+
 ### The pairs the pairs scout asks for
 
 The window calls the pairs scout each 2 seconds, and while a reading is on its way

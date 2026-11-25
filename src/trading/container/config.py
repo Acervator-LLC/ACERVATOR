@@ -753,17 +753,6 @@ FIRE_NEEDS_A_TICK = (
 NO_ORDER_BACK = "exchange returned no order"
 
 
-@dataclass
-class OrderWatch:
-    """One decision's reads of ``BotContainer.order_refusal``: ``trips`` as it began,
-    ``press`` true for an operator's press, ``refusal`` why ``guarded_place_order``
-    stopped its newest send."""
-
-    trips: int = 0
-    press: bool = False
-    refusal: str = ""
-
-
 def despawn_age_seconds(tranche: object, field: str, now: float) -> Optional[float]:
     """Return one tranche's age in seconds, or None when it has no usable timestamp.
 

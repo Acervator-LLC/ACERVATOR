@@ -21,10 +21,12 @@ import logging
 import math
 import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
+from ..core.price_age import ReadMoment
 from ..trading.ta_engine import MIN_CANDLES_FOR_TA
 from .api_load_monitor import DEFAULT_WINDOW_SECONDS
+from .base import Ticker
 from .lazy_singleton import ThrottledFault
 from .market_pairs_scout import row_quote_volume_24h
 
@@ -65,6 +67,25 @@ TF_SECONDS = {
     "1d": 86400,
     "1w": 604800,
 }
+
+
+def _row_ticker(symbol: str, row: Any, read_at: ReadMoment) -> Optional[Ticker]:
+    """The ``Ticker`` one raw bulk row holds, mapped as ``CCXTConnector.get_ticker`` maps
+    it, and None for a row with no ``last`` above zero."""
+    if not isinstance(row, dict):
+        return None
+    last = float(row.get("last", 0) or 0)
+    if last <= 0:
+        return None
+    return Ticker(
+        symbol=symbol,
+        bid=float(row.get("bid", 0) or 0),
+        ask=float(row.get("ask", 0) or 0),
+        last=last,
+        volume_24h=row_quote_volume_24h(row),
+        timestamp=float(row.get("timestamp", 0) or 0) / 1000,
+        read_at=read_at,
+    )
 
 
 def _row_timestamp(row) -> Optional[float]:
@@ -196,11 +217,12 @@ class BalanceEntry:
         return self.fetch_time > 0.0
 
 
-@dataclass
+@dataclass(slots=True)
 class TickerEntry:
-    """Last, bid and ask for one exchange and symbol.
+    """Last, bid and ask for one exchange and symbol, and ``read_at``, the moment the
+    venue answered them.
 
-    ``is_stale`` turns True 5 seconds after ``fetch_time``.
+    ``is_stale`` turns True 5 seconds after ``read_at``.
     """
 
     exchange_id: str
@@ -210,17 +232,54 @@ class TickerEntry:
     ask: float = 0
     volume_24h: float = 0
     timestamp: float = 0.0
-    fetch_time: float = 0.0
+    read_at: Optional[ReadMoment] = None
     subscribers: int = 0
+
+    @classmethod
+    def answered_now(
+        cls, exchange_id: str, symbol: str, **figures: float
+    ) -> TickerEntry:
+        """A slot holding ``figures`` the venue answered at this moment."""
+        return cls(exchange_id, symbol, read_at=ReadMoment.now(), **figures)
+
+    @property
+    def age_seconds(self) -> float:
+        """Seconds since ``read_at``, infinite before the first read."""
+        return math.inf if self.read_at is None else self.read_at.age_s()
 
     @property
     def is_stale(self) -> bool:
-        return (time.time() - self.fetch_time) > TICKER_TTL_SECONDS
+        return self.age_seconds > TICKER_TTL_SECONDS
 
     @property
     def has_data(self) -> bool:
-        """True once ``fetch_time`` and ``last`` are both above zero."""
-        return self.fetch_time > 0.0 and self.last > 0.0
+        """True once a read left ``last`` above zero."""
+        return self.read_at is not None and self.last > 0.0
+
+    def take(self, ticker: Ticker) -> bool:
+        """Hold the figures of ``ticker``, and answer False where this slot already holds
+        a later read."""
+        if self.read_at is not None and ticker.read_at.before(self.read_at):
+            return False
+        self.last = float(ticker.last or 0)
+        self.bid = float(ticker.bid or 0)
+        self.ask = float(ticker.ask or 0)
+        self.volume_24h = float(ticker.volume_24h or 0)
+        self.timestamp = float(ticker.timestamp or 0)
+        self.read_at = ticker.read_at
+        return True
+
+    def ticker(self) -> Ticker:
+        """This slot as the ``Ticker`` a connector answers, its ``read_at`` included."""
+        return Ticker(
+            symbol=self.symbol,
+            bid=self.bid,
+            ask=self.ask,
+            last=self.last,
+            volume_24h=self.volume_24h,
+            timestamp=self.timestamp,
+            read_at=self.read_at or ReadMoment(0.0),
+        )
 
 
 def _candle_key(exchange_id: str, symbol: str, timeframe: str) -> str:
@@ -416,10 +475,9 @@ class MarketDataPool:
         """Return a ``Ticker`` for ``symbol``, fetching when the entry is stale.
 
         Concurrent misses on one ``_ticker_key`` queue on a single lock, and a
-        ``CCXTQueueFullError`` is answered from a stale entry that ``has_data``.
+        ``CCXTQueueFullError`` is answered from a stale entry that ``has_data``, whose
+        ``Ticker.read_at`` says how old it is.
         """
-        from .base import Ticker
-
         try:
             from .ccxt_connector import CCXTQueueFullError
         except Exception:
@@ -430,14 +488,7 @@ class MarketDataPool:
 
         if entry is not None and not entry.is_stale and entry.has_data:
             self._ticker_cache_hits += 1
-            return Ticker(
-                symbol=entry.symbol,
-                bid=entry.bid,
-                ask=entry.ask,
-                last=entry.last,
-                volume_24h=entry.volume_24h,
-                timestamp=entry.timestamp,
-            )
+            return entry.ticker()
 
         lock = await self._acquire_fetch_lock(
             self._ticker_fetch_locks, tkey, f"the price for {symbol} on {exchange_id}"
@@ -446,14 +497,7 @@ class MarketDataPool:
             entry = self._tickers.get(tkey)
             if entry is not None and not entry.is_stale and entry.has_data:
                 self._ticker_cache_hits += 1
-                return Ticker(
-                    symbol=entry.symbol,
-                    bid=entry.bid,
-                    ask=entry.ask,
-                    last=entry.last,
-                    volume_24h=entry.volume_24h,
-                    timestamp=entry.timestamp,
-                )
+                return entry.ticker()
 
             # ``register`` is not a precondition; USD-conversion symbols
             # arrive here first.
@@ -470,26 +514,14 @@ class MarketDataPool:
                         "DataPool: queue-full on %s/%s; serving stale " "(age=%.1fs)",
                         exchange_id,
                         symbol,
-                        time.time() - entry.fetch_time,
+                        entry.age_seconds,
                     )
-                    return Ticker(
-                        symbol=entry.symbol,
-                        bid=entry.bid,
-                        ask=entry.ask,
-                        last=entry.last,
-                        volume_24h=entry.volume_24h,
-                        timestamp=entry.timestamp,
-                    )
+                    return entry.ticker()
                 raise
 
-            entry.last = float(getattr(ticker, "last", 0) or 0)
-            entry.bid = float(getattr(ticker, "bid", 0) or 0)
-            entry.ask = float(getattr(ticker, "ask", 0) or 0)
-            entry.volume_24h = float(getattr(ticker, "volume_24h", 0) or 0)
-            entry.timestamp = float(getattr(ticker, "timestamp", 0) or 0)
-            entry.fetch_time = time.time()
+            entry.take(ticker)
             self._ticker_fetches += 1
-            return ticker
+            return entry.ticker()
         finally:
             lock.release()
 
@@ -508,8 +540,8 @@ class MarketDataPool:
         ``get_all_tickers`` call given their symbols, and return how many it updated.
 
         An ``exchange_id`` with no entry makes no call, an entry the answer leaves out
-        or one written after ``batch_start`` is left alone, and every exception is
-        logged and swallowed.
+        or one holding a later read is left alone, and every exception is logged and
+        swallowed. Rows that carry no ``read_at`` of their own count from the ask.
         """
         symbols = [
             entry.symbol
@@ -518,7 +550,7 @@ class MarketDataPool:
         ]
         if not symbols:
             return 0
-        batch_start = time.time()
+        asked_at = ReadMoment.now()
         try:
             raw = await connector.get_all_tickers(symbols)
         except Exception as exc:
@@ -541,28 +573,18 @@ class MarketDataPool:
             )
             return 0
 
+        read_at = getattr(raw, "read_at", asked_at)
         updated = 0
-        for tkey, entry in list(self._tickers.items()):
+        for entry in list(self._tickers.values()):
             if entry.exchange_id != exchange_id:
                 continue
-            row = raw.get(entry.symbol)
-            if not isinstance(row, dict):
+            answered = _row_ticker(entry.symbol, raw.get(entry.symbol), read_at)
+            if answered is None:
                 continue
-            last = float(row.get("last", 0) or 0)
-            if last <= 0:
-                continue
-            if entry.fetch_time > batch_start:
+            if not entry.take(answered):
                 # A newer individual fetch already wrote this entry.
                 self._ticker_batch_races += 1
                 continue
-            # row_quote_volume_24h and millisecond timestamps match
-            # CCXTConnector.get_ticker's own mapping.
-            entry.last = last
-            entry.bid = float(row.get("bid", 0) or 0)
-            entry.ask = float(row.get("ask", 0) or 0)
-            entry.volume_24h = row_quote_volume_24h(row)
-            entry.timestamp = float(row.get("timestamp", 0) or 0) / 1000
-            entry.fetch_time = time.time()
             updated += 1
 
         self._ticker_batch_refreshes += 1
@@ -863,9 +885,9 @@ class MarketDataPool:
         best = float("inf")
         now = time.time()
         for te in self._tickers.values():
-            if te.fetch_time <= 0:
+            if te.read_at is None:
                 continue
-            remaining = max(0.0, TICKER_TTL_SECONDS - (now - te.fetch_time))
+            remaining = max(0.0, TICKER_TTL_SECONDS - te.age_seconds)
             if remaining < best:
                 best = remaining
         for ce in self._candles.values():
@@ -884,7 +906,7 @@ class MarketDataPool:
 
     def slot_ages(self) -> dict:
         """Return freshness telemetry across the ticker, candle and balance
-        slots, ignoring any whose ``fetch_time`` is 0.
+        slots, ignoring any that was never read.
 
         The dict carries ``freshest_age_s`` and ``oldest_age_s`` (None when
         nothing has been fetched), ``fetched_slots`` and ``stale_slots``.
@@ -892,9 +914,9 @@ class MarketDataPool:
         now = time.time()
         ages: list[tuple[float, bool]] = []  # (age, is_stale)
         for te in self._tickers.values():
-            if te.fetch_time <= 0:
+            if te.read_at is None:
                 continue
-            age = now - te.fetch_time
+            age = te.age_seconds
             ages.append((age, age > TICKER_TTL_SECONDS))
         for ce in self._candles.values():
             if ce.fetch_time <= 0:
@@ -967,12 +989,7 @@ class MarketDataPool:
                 if not connector:
                     continue
                 try:
-                    ticker = await connector.get_ticker(te.symbol)
-                    te.last = ticker.last
-                    te.bid = ticker.bid
-                    te.ask = ticker.ask
-                    te.volume_24h = ticker.volume_24h
-                    te.fetch_time = time.time()
+                    te.take(await connector.get_ticker(te.symbol))
                     fetched += 1
                 except Exception as exc:
                     errors += 1

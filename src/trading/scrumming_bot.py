@@ -27,9 +27,12 @@ if TYPE_CHECKING:
     from ..exchange.base import ExchangeInterface
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
+from ..core.price_age import PriceRead, ReadMoment
 from ..exchange.base import OrderSide, OrderType
 from ..exchange.ccxt_connector import order_stayed_home
+from ..exchange.data_pool import TICKER_TTL_SECONDS
 from ..exchange.idempotency import decision_purpose
+from ..exchange.market_rules_store import quote_currency
 from .target_bands import at_target_dust_band, empty_position
 from .bot_container import (
     BotContainer,
@@ -61,6 +64,7 @@ from .container.config import (
     ceiling_multiple,
     target_growth_pct,
 )
+from .container.order_watch import OrderWatch
 from .otd_math import (
     WIRE_ABSENT_PCT,
     DistanceSettings,
@@ -157,6 +161,33 @@ _DETONATION_CHECK_INTERVAL_S: float = 3600.0
 
 #: Minimum seconds the detonation bullish latch survives without a check.
 _DETONATION_LATCH_MIN_TTL_S: float = 2.0 * _DETONATION_CHECK_INTERVAL_S
+
+
+def rate_quote(symbol: str) -> str:
+    """The quote currency a dollar rate is read for on ``symbol``, empty for a quote that
+    is a dollar and for a symbol that names none."""
+    quote = quote_currency(symbol).upper()
+    return "" if is_usd_stable_quote(quote) else quote
+
+
+def rate_is_fresh(read_at: Optional[ReadMoment]) -> bool:
+    """True while a rate read at ``read_at`` is inside the lifetime of a stored price."""
+    return read_at is not None and read_at.age_s() <= TICKER_TTL_SECONDS
+
+
+def market_and_rate(
+    market: PriceRead, quote: str, rate_at: Optional[ReadMoment]
+) -> tuple[PriceRead, ...]:
+    """``market``, and the read of the dollar rate of ``quote`` where it names one."""
+    if not quote:
+        return (market,)
+    return (market, PriceRead(f"the {quote}/USD rate", rate_at))
+
+
+def ladder_held(watch: OrderWatch, hold: str, invisible: bool) -> bool:
+    """True where ``hold`` stops a ladder before it opens: any hold for resting rungs, and
+    an old price alone for rungs the book keeps."""
+    return bool(hold) and (not invisible or hold == watch.aged)
 
 
 _TA_CONFIDENCE_FLOOR = 0.25
@@ -385,6 +416,9 @@ class ScrummingBot(
 ):
     """Speculative Scrumming auto-trader."""
 
+    #: When the venue answered ``_quote_to_usd``, None before this run read it.
+    _quote_rate_read_at: Optional[ReadMoment] = None
+
     def __init__(
         self,
         config: BotConfig,
@@ -573,7 +607,6 @@ class ScrummingBot(
         self._hyst_ref_scrum_side: float = 0.0
 
         self._quote_to_usd: float = 1.0
-        self._quote_to_usd_last_fetch: float = 0.0
         self._quote_to_usd_warned: bool = False
 
         self._tick_counter: int = 0
@@ -1746,7 +1779,8 @@ class ScrummingBot(
         }
 
     async def manual_fire_tranche(self, tranche_index: int) -> dict:
-        """Operator-initiated fold-back of a specific tranche.
+        """Operator-initiated fold-back of a specific tranche, on a price inside the age
+        limit.
 
         Args:
           tranche_index: 0-based index into self._fold_tranches.
@@ -1755,18 +1789,10 @@ class ScrummingBot(
           {"applied": True|False, "reason"?: str, ...}
 
         """
-        _watch = self.order_watch(press=True)
+        _watch = self.exit_watch(press=True)
         _hold = self.order_refusal(_watch)
         if _hold:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"MANUAL TRANCHE FIRE REFUSED: {_hold}. Tranche unchanged. "
-                    f"{PRESS_AGAIN}."
-                ),
-            )
-            return {"applied": False, "reason": f"{_hold}. {PRESS_AGAIN}"}
+            return self._refuse_tranche_fire(_watch, _hold)
         if not isinstance(tranche_index, int):
             try:
                 tranche_index = int(tranche_index)
@@ -1809,6 +1835,11 @@ class ScrummingBot(
         price = getattr(ticker, "last", 0) or 0
         if not price or price <= 0:
             return {"applied": False, "reason": "no valid price"}
+        await self._refresh_quote_to_usd()
+        _watch.reads = self.price_reads(ticker)
+        _hold = self.order_refusal(_watch)
+        if _hold:
+            return self._refuse_tranche_fire(_watch, _hold)
 
         self._bus.emit(
             "bot.log",
@@ -1858,7 +1889,10 @@ class ScrummingBot(
             watch=_watch,
         )
         if _watch.refusal:
-            return {"applied": False, "reason": f"{_watch.refusal}. {PRESS_AGAIN}"}
+            return {
+                "applied": False,
+                "reason": f"{_watch.refusal}. {_watch.press_again()}",
+            }
         if fill_price is None or fill_price <= 0:
             return {
                 "applied": False,
@@ -1876,6 +1910,18 @@ class ScrummingBot(
             "units_returned": float(self._last_buy_filled_units or 0.0),
             "remaining_tranches": len(self._fold_tranches),
         }
+
+    def _refuse_tranche_fire(self, watch: OrderWatch, hold: str) -> dict:
+        """Write one ``MANUAL TRANCHE FIRE REFUSED`` line naming ``hold``, and answer what
+        ``manual_fire_tranche`` returns for a press it keeps nothing of."""
+        watch.refusal = hold
+        tail = watch.press_again()
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=f"MANUAL TRANCHE FIRE REFUSED: {hold}. Tranche unchanged. {tail}.",
+        )
+        return {"applied": False, "reason": f"{hold}. {tail}"}
 
     def _audit_next_tick(self) -> None:
         """Bring ``tick``'s periodic ``_reconcile_holdings`` to the next tick, ahead of
@@ -2132,17 +2178,19 @@ class ScrummingBot(
         return self._scrum_target_mode
 
     async def _get_ticker(self, symbol: Optional[str] = None):
-        """Fetch a ticker through ``_data_pool``, else direct from the exchange."""
+        """Fetch a ticker through ``_data_pool``, else direct from the exchange, and
+        ``note_price`` the one of this bot's own market."""
         if symbol is None:
             symbol = self.config.symbol
         if self._data_pool is not None:
-            try:
-                return await self._data_pool.get_or_fetch_ticker(
-                    self.exchange, self.config.exchange_id, symbol
-                )
-            except Exception:
-                raise
-        return await self.exchange.get_ticker(symbol)
+            ticker = await self._data_pool.get_or_fetch_ticker(
+                self.exchange, self.config.exchange_id, symbol
+            )
+        else:
+            ticker = await self.exchange.get_ticker(symbol)
+        if symbol == self.config.symbol:
+            self.note_price(ticker)
+        return ticker
 
     async def _get_ohlcv(
         self,
@@ -2269,29 +2317,37 @@ class ScrummingBot(
             return self._net_of_shadows(currency, balance)
         return self._net_of_shadows(currency, await self.exchange.get_balance(currency))
 
+    def price_reads(self, ticker: Any = None) -> tuple[PriceRead, ...]:
+        """``market_and_rate`` of ``ticker`` and ``_quote_to_usd``, the two figures every
+        decision of this bot is sized with."""
+        return market_and_rate(
+            self.market_read(ticker),
+            rate_quote(self.config.symbol),
+            self._quote_rate_read_at,
+        )
+
     async def _refresh_quote_to_usd(self) -> Optional[float]:
-        """Refresh the cached quote→USD rate, at most once per 30s and 1.0 for
-        USD-stable quotes.
+        """Refresh the cached quote→USD rate unless ``rate_is_fresh``, and hold it at 1.0
+        where ``rate_quote`` names none.
 
         Returns:
           The resolved rate, or ``None`` when the fetch failed and no cached
-          rate exists. On failure the cached rate is preserved and one
-          bot.log warning is emitted.
+          rate exists. On failure the cached rate and ``_quote_rate_read_at``
+          are preserved and one bot.log warning is emitted.
 
         """
-        quote = self.config.symbol.split("/")[-1].upper()
-        if is_usd_stable_quote(quote):
+        quote = rate_quote(self.config.symbol)
+        if not quote:
             self._quote_to_usd = 1.0
             return 1.0
-        now = time.time()
-        if (now - self._quote_to_usd_last_fetch) < 30.0 and self._quote_to_usd > 0:
+        if rate_is_fresh(self._quote_rate_read_at) and self._quote_to_usd > 0:
             return self._quote_to_usd
         try:
             usd_ticker = await self._get_ticker(f"{quote}/USD")
             rate = float(getattr(usd_ticker, "last", 0) or 0)
             if rate > 0:
                 self._quote_to_usd = rate
-                self._quote_to_usd_last_fetch = now
+                self._quote_rate_read_at = usd_ticker.read_at
                 self._quote_to_usd_warned = False
                 return rate
         except Exception as exc:
@@ -2371,7 +2427,7 @@ class ScrummingBot(
                 "fill_price": 0.0,
             }
 
-        _watch = self.order_watch(press=True)
+        _watch = self.exit_watch(press=True)
         _hold = self.order_refusal(_watch)
         if _hold:
             return self._refuse_self_destruct(_hold)
@@ -2483,7 +2539,6 @@ class ScrummingBot(
         try:
             ticker = await self._get_ticker(self.config.symbol)
             ref_price = float(ticker.last)
-            self.stats.current_price = ref_price
         except Exception:
             ref_price = float(self._last_trade_price or 0)
 
@@ -3263,23 +3318,26 @@ class ScrummingBot(
                 logger.debug("Bot %s periodic reconcile raised: %s", self.bot_id, exc)
 
         ticker = await self._get_ticker(symbol)
-        self.stats.current_price = ticker.last
         await self._refresh_market_reading(symbol)
         try:
             await self._refresh_quote_to_usd()
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
+        _watch = self.order_watch(ticker)
+        # A rung's activation and a pivot are kept figures, so an old price sets neither.
+        _keeps_price = not _watch.price_wait()
 
         self._despawn_aged_tranches()
 
-        try:
-            await self._reconcile_stack_tranches_invisible(
-                current_price=float(ticker.last)
-            )
-        except Exception as _stack_exc:
-            logger.warning(
-                "Bot %s stack reconciler raised: %s", self.bot_id, _stack_exc
-            )
+        if _keeps_price:
+            try:
+                await self._reconcile_stack_tranches_invisible(
+                    current_price=float(ticker.last)
+                )
+            except Exception as _stack_exc:
+                logger.warning(
+                    "Bot %s stack reconciler raised: %s", self.bot_id, _stack_exc
+                )
 
         try:
             await self._reconcile_stack_tranches_visible()
@@ -3292,8 +3350,9 @@ class ScrummingBot(
             self._current_holdings, ticker.last, float(self._quote_to_usd or 1.0)
         )
 
-        _delta_early = target_delta_usd(current_value, self._target_balance)
-        self._update_opposing_hysteresis_state(_delta_early, ticker.last)
+        if _keeps_price:
+            _delta_early = target_delta_usd(current_value, self._target_balance)
+            self._update_opposing_hysteresis_state(_delta_early, ticker.last)
 
         if self._tick_breaker_holds(current_value):
             return
@@ -3302,6 +3361,10 @@ class ScrummingBot(
         # at the dust band, and a dated contract must still close.
         if await self._tick_expiry_close(ticker):
             return
+
+        if self._tick_waits_for_price(_watch):
+            return
+        self._last_price = self._last_price or ticker.last
 
         if await self._tick_shadow(ticker):
             return
@@ -4288,7 +4351,9 @@ class ScrummingBot(
         _stack_spent = 0
         if _scrum_chain_result.should_fire:
             _stack_spent = await self._spend_activated_stack_tranches(
-                current_price=float(ticker.last), summary=summary
+                current_price=float(ticker.last),
+                summary=summary,
+                watch=self.order_watch(ticker),
             )
 
         if _stack_spent > 0:
@@ -4773,6 +4838,7 @@ class ScrummingBot(
                             "intended": float(ticker.last),
                         },
                         decision=HEDGE_BUY,
+                        watch=self.order_watch(ticker),
                     )
                     if (hedge_fill is None or hedge_fill <= 0) and self._refusal_is_new(
                         "hedge_buy_refused", ticker.last
@@ -5199,12 +5265,14 @@ class ScrummingBot(
         summary: Optional[VotingSummary] = None,
         origin: str = "scrum",
         floor_ref_price: float = 0.0,
+        watch: Optional[OrderWatch] = None,
     ) -> int:
         """Split a SCRUM decision into Stack tranches instead of one immediate sell.
 
         A ``floor_ref_price`` above zero is written on every rung as
         ``STACK_FLOOR_REF_KEY``, and a new rung combines only with a standing rung
-        holding the same figure.
+        holding the same figure. ``watch`` names the prices the ladder stands on, the
+        bot's own last price where it is None.
 
         Returns:
             The number of tranches created (>=1), or ``LADDER_STOPPED`` when
@@ -5212,9 +5280,9 @@ class ScrummingBot(
             ``self._stack_tranches`` and records ``origin`` on every tranche.
 
         """
-        _watch = self.order_watch()
+        _watch = watch or self.order_watch()
         _hold = self.order_refusal(_watch)
-        if _hold and not self._invisible:
+        if ladder_held(_watch, _hold, self._invisible):
             self._report_held_order(_watch, "SELL", self.config.symbol, _hold)
             return LADDER_STOPPED
 
@@ -5251,6 +5319,8 @@ class ScrummingBot(
         split_dist = float(getattr(self.config, "split_distance", 1.0) or 1.0)
         spacing = str(getattr(self.config, "stack_spacing_mode", "linear") or "linear")
         _rules = await self._get_market_rules(self.config.symbol)
+        if self.held_by_age(_watch, "SELL"):
+            return LADDER_STOPPED
         # Passed through unmasked: None is the venue publishing no size rule,
         # and split_scrum_into_tranches refuses an unknown floor.
         min_order = _rules.smallest_amount
@@ -5600,6 +5670,7 @@ class ScrummingBot(
         self,
         current_price: float,
         summary: Optional[VotingSummary] = None,
+        watch: Optional[OrderWatch] = None,
     ) -> int:
         """Stage two: spend the tranches the price threshold already activated.
 
@@ -5609,6 +5680,8 @@ class ScrummingBot(
           summary: the live vote that authorised the sell; a tranche's
                    ``open_confidence`` and ``open_direction`` are used only
                    when no live vote is supplied.
+          watch: the prices the sale stands on, the bot's own last price where
+                 it is None.
 
         Returns:
           The number of tranches spent this tick. A tranche not spent keeps
@@ -5625,6 +5698,7 @@ class ScrummingBot(
             return 0
 
         spent = 0
+        _watch = watch or self.order_watch()
         for t in self._stack_tranches:
             if t.get("status") != "pending":
                 continue
@@ -5632,6 +5706,8 @@ class ScrummingBot(
                 continue
             if self._rung_under_floor(t, float(current_price)):
                 continue
+            if self.held_by_age(_watch, "SELL"):
+                break
             _vote = summary
             if _vote is None:
                 _vote = StackTrancheSummary(
@@ -5648,6 +5724,7 @@ class ScrummingBot(
                     bypass_stack=True,
                     label="STACK",
                     decision=stack_rung_decision(t),
+                    watch=_watch,
                     booker="_book_stack_spend",
                     booking={
                         "rung_index": t.get("index"),
@@ -5844,6 +5921,7 @@ class ScrummingBot(
                 summary=summary,
                 origin="fold",
                 floor_ref_price=float(fold_price),
+                watch=self.exit_watch(),
             )
         except Exception as _spawn_exc:
             logger.error(

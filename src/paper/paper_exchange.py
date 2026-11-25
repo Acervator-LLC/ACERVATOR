@@ -303,14 +303,13 @@ class PaperExchange:
         body = call.body if isinstance(call.body, dict) else {}
         trades = [one for one in body.get("trades") or [] if isinstance(one, dict)]
         first = trades[0] if trades else {}
-        entry = TickerEntry(
-            exchange_id=VENUE,
-            symbol=key,
+        entry = TickerEntry.answered_now(
+            VENUE,
+            key,
             last=_number(first.get("price")) or 0.0,
             bid=_number(body.get("best_bid")) or 0.0,
             ask=_number(body.get("best_ask")) or 0.0,
             timestamp=_trade_time_s(first.get("time")),
-            fetch_time=time.time(),
         )
         if not (entry.last or entry.bid or entry.ask):
             self._record(

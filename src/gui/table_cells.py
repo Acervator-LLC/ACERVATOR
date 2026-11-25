@@ -8,16 +8,15 @@ so the bot tables and their pin tests read one definition.
 from __future__ import annotations
 
 import logging
-import time
 
 from . import design_system as ds
+from ..core.price_age import past_age_limit, price_age_limit_s
 
 # One definition of the texts the Electron table also draws.
 from .main_tabs.table_cells_surface import (
     AGED_PRICE_TIP_FORMAT,
     EMPTY_POSITION_TIP,
     PENDING_PRICE_TIP,
-    PRICE_STALE_AFTER_S,
     PRICED_POSITION_TIP_FORMAT,
     STALE_TIP_FORMAT,
     TERRITORY_TIPS,
@@ -47,9 +46,6 @@ _STALE_MARKER = "(stale)"
 _AMMO_SCRUM = ds.SUCCESS
 _AMMO_FOLD = ds.ERROR
 _AMMO_NEUTRAL = ds.TEXT_MED
-
-# The age past which a displayed price is called old; the refresher rewarms every 5s.
-_PRICE_STALE_AFTER_S = PRICE_STALE_AFTER_S
 
 # Manual Fire's no-op band is ten times the dashboard's actionable band.
 _MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_REFUSE_PCT
@@ -83,9 +79,8 @@ def _fresh_display_price(pool, exchange_id: str, symbol: str, fallback_price: fl
         entry = pool.get_ticker(exchange_id, symbol) if pool else None
         if entry is not None:
             last = float(getattr(entry, "last", 0) or 0)
-            fetched = float(getattr(entry, "fetch_time", 0) or 0)
-            if last > 0 and fetched > 0:
-                return last, max(0.0, time.time() - fetched)
+            if last > 0 and entry.has_data:
+                return last, entry.age_seconds
     except Exception:
         logger.debug(
             "Ammo: pool price lookup failed for %s/%s",
@@ -154,13 +149,13 @@ def _compose_position_value_cell(
             "priced": False,
             "path": "off_exchange",
         }
-    if price_age_s > _PRICE_STALE_AFTER_S:
+    if past_age_limit(price_age_s):
         return {
             "text": "",
             "color": "",
             "tip": (
                 f"Exchange price is {price_age_s:,.0f}s old, past the "
-                f"{_PRICE_STALE_AFTER_S:,.0f}s limit. Blank rather than a "
+                f"{price_age_limit_s():g}s limit. Blank rather than a "
                 f"figure priced off it."
             ),
             "position_val": None,
@@ -264,7 +259,7 @@ def _compose_ammo_cell(
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
         tip = STALE_TIP_FORMAT.format(stats_pv=stats_pv)
-    elif price_age_s is not None and price_age_s > _PRICE_STALE_AFTER_S:
+    elif price_age_s is not None and past_age_limit(price_age_s):
         # The arithmetic ran; the input price is what aged.
         color = _AMMO_NEUTRAL
         text = f"{text} {_STALE_MARKER}"
