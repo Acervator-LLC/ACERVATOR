@@ -311,6 +311,7 @@ class SyncWorker:
         return call if call is not None and call.run_left_sec() <= 0.0 else None
 
 
+from ..core.price_age import ReadMoment
 from .base import (
     AssetInfo,
     Balance,
@@ -324,6 +325,7 @@ from .base import (
     OrderStatus,
     OrderType,
     Ticker,
+    TickerRows,
     no_order_hold,
     refuse_held_order,
 )
@@ -334,6 +336,18 @@ from .market_pairs_scout import row_quote_volume_24h
 from .market_rules_store import base_currency, quote_currency, record_venue
 
 logger = logging.getLogger("acervator.exchange")
+
+
+def answered_at(timing: SyncCallTiming) -> ReadMoment:
+    """The moment the venue answered the call ``timing`` was stamped on the worker for."""
+    return ReadMoment.at_monotonic(timing.finished_at)
+
+
+def stamped_rows(rows: Any, timing: SyncCallTiming) -> Any:
+    """``rows`` as ``TickerRows`` read at ``answered_at``, unchanged where they are no
+    dict."""
+    return TickerRows(rows, answered_at(timing)) if isinstance(rows, dict) else rows
+
 
 # Supported exchanges — maps exchange_id to the CCXT class name
 SUPPORTED_EXCHANGES: dict[str, str] = {
@@ -2029,8 +2043,8 @@ class CCXTConnector(ExchangeInterface):
         self._quote_volumes: dict[str, float] = {}
         # time.monotonic() at the last read of every market.
         self._every_ticker_at: float = time.monotonic()
-        # time.time() at the last answer that held every market, and its rows.
-        self._every_ticker_answer: tuple[float, dict] = (0.0, {})
+        # The last answer that held every market, read at 0.0 before one.
+        self._every_ticker_answer = TickerRows({}, ReadMoment(0.0))
         # time.monotonic() up to which a read of every market can still land.
         self._every_ticker_until: float = 0.0
 
@@ -2962,6 +2976,7 @@ class CCXTConnector(ExchangeInterface):
             last=float(raw.get("last", 0) or 0),
             volume_24h=self._quote_volume_for(symbol, raw),
             timestamp=float(raw.get("timestamp", 0) or 0) / 1000,
+            read_at=answered_at(timing),
         )
         _log.record(
             exchange=self._exchange_id,
@@ -3016,7 +3031,7 @@ class CCXTConnector(ExchangeInterface):
         longest_s = READ_TURN_WAIT_SEC + SYNC_CALL_TIMEOUT_SEC
         self._every_ticker_until = time.monotonic() + longest_s
         try:
-            rows = await self._call_sync(self._ex.fetch_tickers)
+            raw, timing = await self._call_sync_timed(self._ex.fetch_tickers)
         except (CCXTQueueFullError, asyncio.CancelledError):
             sent = False
             raise
@@ -3024,8 +3039,9 @@ class CCXTConnector(ExchangeInterface):
             self._every_ticker_until = 0.0
             if sent:
                 self._every_ticker_at = time.monotonic()
-        if rows and isinstance(rows, dict):
-            self._every_ticker_answer = (time.time(), rows)
+        rows = stamped_rows(raw, timing)
+        if rows and isinstance(rows, TickerRows):
+            self._every_ticker_answer = rows
         return rows
 
     @property
@@ -3036,23 +3052,26 @@ class CCXTConnector(ExchangeInterface):
     def every_ticker_answer(self) -> tuple[float, dict]:
         """``time.time()`` at the last answer that held every market, and its rows; 0.0
         and none before one."""
-        return self._every_ticker_answer
+        rows = self._every_ticker_answer
+        return rows.read_at.wall_s, rows
 
     async def _named_tickers(self, params: dict[str, list[str]]) -> dict:
         """The raw tickers ``params`` names; an empty answer or a venue refusal sets
         ``_every_ticker_at`` to ``EVERY_TICKER_DUE``."""
         try:
-            rows = await self._call_sync(self._ex.fetch_tickers, None, params)
+            rows, timing = await self._call_sync_timed(
+                self._ex.fetch_tickers, None, params
+            )
         except _ccxt_error_types(("ExchangeError",)):
             self._every_ticker_at = EVERY_TICKER_DUE
             raise
         if not rows:
             self._every_ticker_at = EVERY_TICKER_DUE
-        return rows
+        return stamped_rows(rows, timing)
 
     async def get_all_tickers(self, symbols: Optional[list[str]] = None) -> dict:
-        """Return the raw CCXT tickers dict of every market in one call, or of
-        ``symbols`` alone where ``_named_ticker_params`` names them.
+        """Return the raw CCXT tickers of every market in one call as ``TickerRows``, or
+        of ``symbols`` alone where ``_named_ticker_params`` names them.
 
         Each row's quote volume is recorded for ``get_ticker``, whose own call serves
         none on coinbase.

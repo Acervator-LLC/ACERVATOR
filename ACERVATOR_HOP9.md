@@ -362,8 +362,11 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   (`src/exchange/ccxt_connector.py, in CCXTConnector._named_ticker_params`). Row 10
   is built: the pairs scout asks Coinbase for the pairs its rows asked for, in a free
   place, and rests after each reading
-  (`src/exchange/market_pairs_scout.py, in MarketPairsScout._read`). The
-  body's build order names the rest: rows 3 and 7, then 2 and 4, then 5 and 6.
+  (`src/exchange/market_pairs_scout.py, in MarketPairsScout._read`). Row 4 is
+  built: no order starts on a price or a rate older than `price_age_limit_s`, counted
+  from the venue's answer, and Self-Destruct and the expiry close alone go at any age
+  (`src/trading/bot_container.py, in BotContainer.order_refusal`). The
+  body's build order names the rest: rows 3 and 7, then 2, then 5 and 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before

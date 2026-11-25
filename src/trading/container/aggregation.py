@@ -382,6 +382,7 @@ class FleetAggregationMixin:
         other_bot: Any,
         other_cfg: Any,
         dollar_pegged: bool,
+        rate_bot: Any = None,
     ) -> tuple[Optional[float], str]:
         """What one other bot has claimed from the shared pool.
 
@@ -392,9 +393,9 @@ class FleetAggregationMixin:
         what it claims, and a bot that does not know must not guess low.
 
         Two kinds of claim are added together. A dollar allocation is
-        turned into pool units with the bot's own cached rate. An
-        allocated chunk is already in pool units and is added as it
-        stands.
+        turned into pool units with the cached rate of ``rate_bot``, its own
+        where that is None. An allocated chunk is already in pool units and
+        is added as it stands.
         """
         claim = 0.0
         try:
@@ -409,7 +410,9 @@ class FleetAggregationMixin:
                 f"cannot be an amount of money"
             )
         if target_usd > 0:
-            rate, why = self._sibling_pool_rate(other_bot, dollar_pegged)
+            rate, why = self._sibling_pool_rate(
+                other_bot if rate_bot is None else rate_bot, dollar_pegged
+            )
             if rate is None:
                 return None, why
             claim += target_usd / rate
@@ -474,11 +477,13 @@ class FleetAggregationMixin:
         not actively deployed:
 
           * **ScrummingBot** whose ``config.base_currency == currency``:
-            its ``target_balance``, converted through that bot's own
-            cached ``_quote_to_usd``. That rate reads "1 unit of quote
-            currency = N USD", so ``USD / _quote_to_usd`` yields quote
-            units. A pool of a coin meant to be worth one dollar needs no
-            rate; any other pool with no usable rate counts as unreadable.
+            its ``target_balance``, converted through the asking bot's
+            ``_quote_to_usd``, whose age that bot's ``price_reads`` holds, and
+            through its own where the asking bot holds none. That rate reads
+            "1 unit of quote currency = N USD", so ``USD / _quote_to_usd``
+            yields quote units. A pool of a coin meant to be worth one dollar
+            needs no rate; any other pool with no usable rate counts as
+            unreadable.
           * **ExtractorBot** whose ``config.base_currency == currency``:
             its ``_chunk_size_base``, the operator-allocated base-unit
             chunk, already in base units.
@@ -508,6 +513,9 @@ class FleetAggregationMixin:
             )
             return None
         dollar_pegged = currency_norm in DOLLAR_PEGGED_CURRENCIES
+        asker = self._bots.get(bot_id)
+        holds_rate = self._sibling_pool_rate(asker, False)[0] is not None
+        rate_bot = asker if holds_rate and not dollar_pegged else None
         total = 0.0
         unread: list[str] = []
         for other_id, other_bot in self._bots.items():
@@ -526,7 +534,9 @@ class FleetAggregationMixin:
                 continue
             if not same_exchange or other_base != currency_norm:
                 continue
-            claim, why = self._one_sibling_claim(other_bot, other_cfg, dollar_pegged)
+            claim, why = self._one_sibling_claim(
+                other_bot, other_cfg, dollar_pegged, rate_bot
+            )
             if claim is None:
                 unread.append(f"{other_id} ({why})")
                 continue

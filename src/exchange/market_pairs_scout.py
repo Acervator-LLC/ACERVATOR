@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
+from .base import TickerRows
 from .lazy_singleton import LazySingleton
 
 if TYPE_CHECKING:
@@ -380,12 +381,12 @@ class MarketPairsScout:
         self._take_every_ticker(exchange_id, connector)
         if rows is connector.every_ticker_answer()[1]:
             return True
-        now = time.time()
-        landed = self._snapshots_of(exchange_id, rows, now)
+        read_s = rows.read_at.wall_s if isinstance(rows, TickerRows) else time.time()
+        landed = self._snapshots_of(exchange_id, rows, read_s)
         left_out = set(names) - landed.keys()
         held = self.books[exchange_id].pairs
         kept = {name: pair for name, pair in held.items() if name not in left_out}
-        self._put_book(exchange_id, {**kept, **landed}, now)
+        self._put_book(exchange_id, {**kept, **landed}, read_s)
         return False
 
     def _pairs_asked(self, exchange_id: str, listed: set[str]) -> list[str]:

@@ -21,6 +21,8 @@ from decimal import (
 from enum import Enum
 from typing import Callable, Optional
 
+from ..core.price_age import ReadMoment
+
 #: Seconds in one day, the grain ``MarketRules.days_to_expiry`` answers in and
 #: the grain a venue's ``settlement_days`` is stated in.
 SETTLEMENT_DAY_SECONDS = 86400.0
@@ -48,7 +50,8 @@ class OrderStatus(str, Enum):
 
 @dataclass
 class Ticker:
-    """Price snapshot, as ``get_ticker`` returns it."""
+    """Price snapshot, as ``get_ticker`` returns it, and ``read_at``, the moment the
+    venue answered it."""
 
     symbol: str
     bid: float
@@ -56,6 +59,16 @@ class Ticker:
     last: float
     volume_24h: float
     timestamp: float
+    read_at: ReadMoment = field(default_factory=ReadMoment.now)
+
+
+class TickerRows(dict):
+    """Raw ticker rows by symbol, as ``get_all_tickers`` returns them, and ``read_at``,
+    the moment the venue answered them."""
+
+    def __init__(self, rows: dict, read_at: ReadMoment) -> None:
+        super().__init__(rows)
+        self.read_at = read_at
 
 
 @dataclass

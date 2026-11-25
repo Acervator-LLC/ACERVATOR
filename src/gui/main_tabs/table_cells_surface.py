@@ -34,10 +34,10 @@ from __future__ import annotations
 
 import logging
 import math
-import time
 from typing import Any, Optional
 
 from .. import design_system as ds
+from ...core.price_age import past_age_limit, price_age_limit_s
 from ...trading.target_bands import (
     MANUAL_FIRE_REFUSE_PCT,
     TERRITORY_AT_TARGET,
@@ -67,7 +67,6 @@ AMMO_SCRUM_COLOR = ds.SUCCESS
 AMMO_FOLD_COLOR = ds.ERROR
 AMMO_NEUTRAL_COLOR = ds.TEXT_MED
 
-PRICE_STALE_AFTER_S = 20.0
 MANUAL_FIRE_DUST_PCT = MANUAL_FIRE_REFUSE_PCT
 
 MAGNITUDE_FORMAT = "${magnitude:,.4f}"
@@ -147,7 +146,7 @@ OFF_EXCHANGE_POSITION_TIP = (
     "reading, which is not a current value."
 )
 AGED_POSITION_TIP_FORMAT = (
-    "Exchange price is {price_age_s:,.0f}s old, past the {stale_after_s:,.0f}s "
+    "Exchange price is {price_age_s:,.0f}s old, past the {stale_after_s:g}s "
     "limit. Blank rather than a figure priced off it."
 )
 PRICED_POSITION_TIP_FORMAT = (
@@ -243,8 +242,6 @@ POOL_LOOKUP_FAILED_LOG = "Ammo: pool price lookup failed for %s/%s"
 
 MISSING_PRICE_AGE_S: Optional[float] = None
 MISSING_LAST = 0
-MISSING_FETCH_TIME = 0
-YOUNGEST_AGE_S = 0.0
 
 AMMO_CELL = "ammo"
 TARGET_BTC_CELL = "target_btc"
@@ -421,7 +418,7 @@ def position_path(
         return POSITION_PATH_NO_PRICE
     if price_age_s is None:
         return POSITION_PATH_OFF_EXCHANGE
-    if price_age_s > PRICE_STALE_AFTER_S:
+    if past_age_limit(price_age_s):
         return POSITION_PATH_AGED
     return POSITION_PATH_PRICED
 
@@ -578,14 +575,9 @@ class TableCellsModel:
             entry = pool.get_ticker(exchange_id, symbol) if pool else None
             if entry is not None:
                 last = float(getattr(entry, "last", MISSING_LAST) or MISSING_LAST)
-                fetched = float(
-                    getattr(entry, "fetch_time", MISSING_FETCH_TIME)
-                    or MISSING_FETCH_TIME
-                )
-                if last > 0 and fetched > 0:
-                    age = max(YOUNGEST_AGE_S, time.time() - fetched)
+                if last > 0 and entry.has_data:
                     self.calls.append([PRICE_HIT, last])
-                    return self._priced(last, age)
+                    return self._priced(last, entry.age_seconds)
             self.calls.append([PRICE_MISS])
         except Exception:
             logger.debug(
@@ -631,7 +623,7 @@ class TableCellsModel:
                     "text": POSITION_BLANK_TEXT,
                     "color": NO_CELL_COLOR,
                     "tip": AGED_POSITION_TIP_FORMAT.format(
-                        price_age_s=price_age_s, stale_after_s=PRICE_STALE_AFTER_S
+                        price_age_s=price_age_s, stale_after_s=price_age_limit_s()
                     ),
                     "position_val": NO_POSITION_VALUE,
                     "priced": False,
@@ -797,7 +789,7 @@ class TableCellsModel:
             color = AMMO_NEUTRAL_COLOR
             text = MARKED_FIGURE_FORMAT.format(text=text, marker=STALE_MARKER)
             tip = STALE_TIP_FORMAT.format(stats_pv=stats_pv)
-        elif price_age_s is not None and price_age_s > PRICE_STALE_AFTER_S:
+        elif price_age_s is not None and past_age_limit(price_age_s):
             color = AMMO_NEUTRAL_COLOR
             text = MARKED_FIGURE_FORMAT.format(text=text, marker=STALE_MARKER)
             tip = AGED_PRICE_TIP_FORMAT.format(price_age_s=price_age_s)
@@ -994,7 +986,7 @@ def build_view_model(
         "territory_tips": dict(TERRITORY_TIPS),
         "price": model.price,
         "price_age_s": model.price_age_s,
-        "price_stale_after_s": PRICE_STALE_AFTER_S,
+        "price_stale_after_s": price_age_limit_s(),
         "manual_fire_dust_pct": MANUAL_FIRE_DUST_PCT,
         "stale_marker": STALE_MARKER,
         "pool_found": model.pool_found,

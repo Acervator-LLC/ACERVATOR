@@ -37,6 +37,7 @@ from typing import Any, Dict, Optional
 
 from ...core.asset_logos import LogoCache, image_extension
 from ...core.privacy_mask_registry import get_privacy_mask_registry, mask_or
+from ...core.price_age import past_age_limit
 from ...core.safe_url import NO_ADDRESS_REASON, openable_url
 from ...exchange.crypto_assets import AssetManager
 from ...exchange.exchange_chart_urls import chart_url
@@ -54,7 +55,6 @@ from .table_cells_surface import (
     NO_TARGET_TEXT,
     POSITION_BLANK_TEXT,
     POSITION_PATHS,
-    PRICE_STALE_AFTER_S,
     TableCellsModel,
     magnitude,
     priced_position,
@@ -1160,7 +1160,7 @@ def position_sort_value(status: Any, lookups: SortLookups):
     """The figure the Position Value cell draws, or None where it is blank.
 
     The cell blanks on no holdings, on no price, on a price ``lookups``
-    did not age, and on an age past ``PRICE_STALE_AFTER_S``.
+    did not age, and on an age ``past_age_limit`` refuses.
     """
     holdings = holdings_of(status)
     if holdings <= NO_HOLDINGS:
@@ -1168,7 +1168,7 @@ def position_sort_value(status: Any, lookups: SortLookups):
     price, age_s = lookups.price(status)
     if float(price or NO_PRICE) <= NO_PRICE:
         return None
-    if age_s is None or float(age_s) > PRICE_STALE_AFTER_S:
+    if age_s is None or past_age_limit(float(age_s)):
         return None
     return priced_position(holdings, float(price), quote_rate_of(status))
 

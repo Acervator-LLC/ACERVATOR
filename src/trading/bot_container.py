@@ -24,10 +24,12 @@ if TYPE_CHECKING:
         Order,
         OrderSide,
         OrderType,
+        Ticker,
     )
 
 from ..core.emit_contracts import FILL_BUY, FILL_TOPIC, TRADE_TYPES, SettledFill
 from ..core.event_bus import get_event_bus
+from ..core.price_age import PriceRead, ReadMoment
 from ..exchange.base import OrderRefused, OrderStatus
 from ..exchange.data_pool import BALANCE_TTL_SECONDS, TICKER_TTL_SECONDS
 from ..exchange.timeframes import ALL_TIMEFRAMES
@@ -59,7 +61,6 @@ from .container.config import (
     BotMode,
     BotState,
     BotStats,
-    OrderWatch,
     _BOT_CONFIG_EXTRACTOR_ONLY_FIELDS,
     _BOT_CONFIG_SCRUMMING_ONLY_FIELDS,
     _BOT_CONFIG_SHARED_FIELDS,
@@ -76,6 +77,7 @@ from .container.config import (
     whole_position_units,
     whole_unit_opening_units,
 )
+from .container.order_watch import OrderWatch
 
 logger = logging.getLogger("acervator.bot")
 
@@ -106,6 +108,9 @@ RESTING_SIDES = ("buy", "sell")
 
 #: The ``CircuitBreakerMixin.reset_circuit_breaker`` scope that clears both breakers.
 RESET_ALL_SCOPE = "all"
+
+#: What ``PriceRead.what`` calls the price of the market a decision is on.
+MARKET_PRICE = "the price"
 
 
 def order_status_text(order: object) -> str:
@@ -204,6 +209,9 @@ class BotContainer:
     MAX_CONSECUTIVE_ERRORS = 5
     COOLDOWN_SECONDS = 60
 
+    #: When the venue answered ``stats.current_price``, None before the first read.
+    _price_read_at: Optional[ReadMoment] = None
+
     def __init__(
         self,
         config: BotConfig,
@@ -257,19 +265,52 @@ class BotContainer:
         answers its pause and its stop."""
         return ""
 
-    def order_watch(self, press: bool = False) -> OrderWatch:
-        """The ``OrderWatch`` of a decision that starts now."""
-        return OrderWatch(trips=self._cb_hard_trips, press=press)
+    def note_price(self, ticker: Ticker) -> None:
+        """Keep ``ticker.last`` above zero as ``stats.current_price`` with the moment it
+        was read, unless a later read is held."""
+        held = self._price_read_at
+        if finite_reading(ticker.last) <= 0.0:
+            return
+        if held is not None and ticker.read_at.before(held):
+            return
+        self._price_read_at = ticker.read_at
+        self.stats.current_price = ticker.last
+
+    def market_read(self, ticker: Optional[Ticker] = None) -> PriceRead:
+        """The read of ``ticker``, or of ``stats.current_price`` where it is None."""
+        at = self._price_read_at if ticker is None else ticker.read_at
+        return PriceRead(MARKET_PRICE, at)
+
+    def price_reads(self, ticker: Optional[Ticker] = None) -> tuple[PriceRead, ...]:
+        """Every price a decision on ``ticker`` stands on, ``market_read`` alone here."""
+        return (self.market_read(ticker),)
+
+    def order_watch(
+        self, ticker: Optional[Ticker] = None, press: bool = False
+    ) -> OrderWatch:
+        """The ``OrderWatch`` of a decision on ``ticker`` that starts now."""
+        reads = self.price_reads(ticker)
+        return OrderWatch(trips=self._cb_hard_trips, reads=reads, press=press)
+
+    def exit_watch(self, press: bool = False) -> OrderWatch:
+        """The ``OrderWatch`` of a decision no market price sizes or allows, which the age
+        of a price never stops."""
+        return OrderWatch(trips=self._cb_hard_trips, reads=(), press=press)
 
     def order_refusal(self, watch: OrderWatch) -> str:
         """Why the decision ``watch`` follows sends nothing now: ``order_hold_reason``,
-        ``HOLD_PASSED`` for a trip since ``watch`` began, or ``tick_stop_reason``."""
+        ``HOLD_PASSED`` for a trip since ``watch`` began, ``tick_stop_reason``, or the age
+        of a price it stands on, kept on ``OrderWatch.aged``."""
         hold = self.order_hold_reason()
         if hold:
             return hold
         if self._cb_hard_trips != watch.trips:
             return HOLD_PASSED
-        return "" if watch.press else self.tick_stop_reason()
+        stop = "" if watch.press else self.tick_stop_reason()
+        if stop:
+            return stop
+        watch.aged = watch.price_wait()
+        return watch.aged
 
     def start_settled(self) -> bool:
         """True once a start has nothing left to wait for: RUNNING, or held by
@@ -957,16 +998,57 @@ class BotContainer:
         self, watch: OrderWatch, side: str, symbol: str, reason: str
     ) -> None:
         """Keep ``reason`` on ``watch`` for the caller, and put one ``HELD`` line on the
-        Console per ``side`` and ``reason``."""
+        Console per ``side`` and ``reason``, and one per order an old price held."""
         watch.refusal = reason
-        key = (reason, side)
-        if key in self._held_orders_named:
-            return
-        self._held_orders_named.add(key)
+        if reason != watch.aged:
+            key = (reason, side)
+            if key in self._held_orders_named:
+                return
+            self._held_orders_named.add(key)
         self._warn_order(
             f"HELD: {side} {symbol} is refused: {reason}. Nothing is submitted "
             f"and nothing is booked. API not called."
         )
+
+    def held_by_age(self, watch: OrderWatch, side: str, symbol: str = "") -> bool:
+        """True where an old price stops the decision ``watch`` follows, read between its
+        waits; ``symbol`` is ``config.symbol`` where empty."""
+        watch.aged = watch.price_wait()
+        if not watch.aged:
+            return False
+        self._report_held_order(watch, side, symbol or self.config.symbol, watch.aged)
+        return True
+
+    async def _exit_limit_price(
+        self, symbol: str, watch: OrderWatch, stored_px: float
+    ) -> float:
+        """The limit price of a sale no price decides: ``stored_px`` inside the age limit,
+        else one fresh read.
+
+        A read that fails leaves a press at ``stored_px``, with its age on the Console,
+        and leaves a tick's sale unsent, with why on ``OrderWatch.refusal``.
+        """
+        from ..exchange.ccxt_connector import queue_cap_waived
+
+        wait = self.market_read().wait()
+        if not wait:
+            return stored_px
+        cause = "the venue answered no price"
+        try:
+            with queue_cap_waived():
+                ticker = await self.exchange.get_ticker(symbol)
+            fresh_px = finite_reading(ticker.last)
+            if fresh_px > 0.0:
+                self.note_price(ticker)
+                return fresh_px
+        except Exception as exc:
+            cause = f"{type(exc).__name__}: {exc}"
+        unread = f"{wait}, and a fresh price could not be read ({cause})"
+        if watch.press:
+            self._warn_order(f"SELL {symbol} GOES AT THE STORED PRICE: {unread}.")
+        else:
+            watch.aged = watch.refusal = unread
+        return stored_px
 
     # OVERTAKEN in the docstring below: "``amount`` reaches ``place_order``
     # unchanged; the market's rules are read to refuse a sub-minimum size and a
@@ -1402,6 +1484,11 @@ class BotContainer:
             )
             and order_type == OrderType.MARKET
         ):
+            if not _watch.reads:
+                _ref_px = await self._exit_limit_price(symbol, _watch, _ref_px)
+                if _watch.refusal:
+                    self._report_held_order(_watch, _side_str, symbol, _watch.refusal)
+                    return None
             _limit_px = _rules.price_on_tick(_ref_px) if _ref_px else None
             if _limit_px is None or not math.isfinite(_limit_px) or _limit_px <= 0.0:
                 _limit_px = _ref_px

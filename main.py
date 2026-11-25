@@ -1192,9 +1192,11 @@ def main() -> int:
         KeyringManager,
     )
     from src.core.event_bus import get_event_bus
+    from src.core.price_age import read_limit_from
     from src.trading.bot_container import BotManager
 
     settings = SettingsManager()
+    read_limit_from(settings)
     log_manager = LogManager()
     KeyringManager()  # constructed for its side effect
     bus = get_event_bus()

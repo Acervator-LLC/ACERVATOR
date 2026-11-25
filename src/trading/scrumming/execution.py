@@ -20,7 +20,8 @@ from typing import Any, Callable, Optional, ParamSpec, TypeVar
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType
 from ...exchange.idempotency import decision_purpose, get_idempotency_layer
-from ..container.config import NO_ORDER_BACK, OrderWatch, target_growth_pct
+from ..container.config import NO_ORDER_BACK, target_growth_pct
+from ..container.order_watch import OrderWatch
 from ..otd_math import (
     ROUND_TRIP_FEES,
     DistanceSettings,
@@ -316,6 +317,7 @@ class ExecutionEngineMixin:
     config: Any
     exchange: Any
     guarded_place_order: Callable[..., Any]
+    held_by_age: Callable[..., bool]
     note_scrum_retention_usd: Callable[..., None]
     order_watch: Callable[..., OrderWatch]
     refresh_priced_figures_after_fill: Callable[..., Any]
@@ -1144,12 +1146,24 @@ class ExecutionEngineMixin:
             return True
         return rules.min_cost is not None and units * price < rules.min_cost
 
-    def _refused_no_order(self, tag: str, role: str, watch: OrderWatch) -> None:
-        """Write ``tag``'s line and ``role``'s ``REFUSED`` trade line for a send that
-        came back None, naming ``OrderWatch.refusal``, else ``NO_ORDER_BACK``."""
+    def _refused_no_order(
+        self, tag: str, role: str, watch: OrderWatch, pressed: bool = False
+    ) -> None:
+        """Write ``tag``'s line and ``role``'s ``REFUSED`` trade line for a send that came
+        back None, naming ``OrderWatch.refusal``, else ``NO_ORDER_BACK``, and telling a
+        press an old price held to press again."""
         reason = watch.refusal or NO_ORDER_BACK
-        self._bus.emit("bot.log", bot_id=self.bot_id, message=f"{tag}: {reason}.")
+        tail = f" {watch.press_again()}." if pressed and watch.held_by_age else ""
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=f"{tag}: {reason}.{tail}")
         self._emit_trade_notification(role, "REFUSED", reason)
+
+    def _refused_rebalance(
+        self, side: str, role: str, watch: OrderWatch, price: float, pressed: bool
+    ) -> None:
+        """``_refused_no_order`` for a rebalance ``side``: every press, and a cartridge
+        once a stretch ``_refusal_is_new`` opens."""
+        if pressed or self._refusal_is_new("manual_no_order", price):
+            self._refused_no_order(f"MANUAL FIRE {side}", role, watch, pressed=pressed)
 
     async def _execute_manual_rebalance(
         self,
@@ -1222,6 +1236,7 @@ class ExecutionEngineMixin:
                 _sup,
             )
         _qrate = float(self._quote_to_usd or 1.0)
+        _watch = self.order_watch(ticker)
 
         current_value = priced_usd(self._current_holdings, price, _qrate)
         delta_usd = target_delta_usd(current_value, self._target_balance)
@@ -1361,6 +1376,12 @@ class ExecutionEngineMixin:
                 )
                 return REBALANCE_REFUSED
 
+            if self.held_by_age(_watch, "SELL"):
+                self._refused_rebalance(
+                    "SCRUM", _scrum_label, _watch, price, _announce_every_refusal
+                )
+                return REBALANCE_REFUSED
+
             self._bus.emit(
                 "bot.log",
                 bot_id=self.bot_id,
@@ -1372,7 +1393,6 @@ class ExecutionEngineMixin:
                 ),
             )
 
-            _watch = self.order_watch()
             order = await self.guarded_place_order(
                 symbol=self.config.symbol,
                 side=OrderSide.SELL,
@@ -1384,10 +1404,9 @@ class ExecutionEngineMixin:
             )
 
             if order is None:
-                if _announce_every_refusal or self._refusal_is_new(
-                    "manual_no_order", price
-                ):
-                    self._refused_no_order("MANUAL FIRE SCRUM", _scrum_label, _watch)
+                self._refused_rebalance(
+                    "SCRUM", _scrum_label, _watch, price, _announce_every_refusal
+                )
                 return REBALANCE_REFUSED
 
             if on_order is not None:
@@ -1432,6 +1451,11 @@ class ExecutionEngineMixin:
 
         else:
             if await self._refuses_stacked_buy(price, _announce_every_refusal):
+                return REBALANCE_REFUSED
+            if self.held_by_age(_watch, "BUY"):
+                self._refused_rebalance(
+                    "FOLD", _fold_label, _watch, price, _announce_every_refusal
+                )
                 return REBALANCE_REFUSED
 
             _floor: Optional[DistanceSettings] = None
@@ -1726,6 +1750,11 @@ class ExecutionEngineMixin:
                         ),
                     )
                 return REBALANCE_UNFUNDED
+            if self.held_by_age(_watch, "BUY"):
+                self._refused_rebalance(
+                    "FOLD", _fold_label, _watch, price, _announce_every_refusal
+                )
+                return REBALANCE_REFUSED
             if _growth_preview > 1e-9:
                 self._bus.emit(
                     "bot.log",
@@ -1761,7 +1790,6 @@ class ExecutionEngineMixin:
             )
             _lost = self._lost_buy(_decision)
             _reservations.reserve(_wallet_key, buy_usd)
-            _watch = self.order_watch()
             try:
                 order = await self.guarded_place_order(
                     symbol=self.config.symbol,
@@ -1776,10 +1804,9 @@ class ExecutionEngineMixin:
                 _reservations.release(_wallet_key, buy_usd)
 
             if order is None:
-                if _announce_every_refusal or self._refusal_is_new(
-                    "manual_no_order", price
-                ):
-                    self._refused_no_order("MANUAL FIRE FOLD", _fold_label, _watch)
+                self._refused_rebalance(
+                    "FOLD", _fold_label, _watch, price, _announce_every_refusal
+                )
                 return REBALANCE_REFUSED
 
             if on_order is not None:
@@ -2306,7 +2333,10 @@ class ExecutionEngineMixin:
         )
 
     async def _execute_detonation(
-        self, ticker, shadow_rows: Optional[list] = None
+        self,
+        ticker,
+        shadow_rows: Optional[list] = None,
+        watch: Optional[OrderWatch] = None,
     ) -> bool:
         """Sell everything above ``_anchor_target_balance`` and reset to it, or with
         ``shadow_rows`` what those rows stand above their own cost.
@@ -2328,6 +2358,9 @@ class ExecutionEngineMixin:
                 bot_id=self.bot_id,
                 message="DETONATION: no valid price; aborting.",
             )
+            return False
+        _watch = watch or self.order_watch(ticker)
+        if self.held_by_age(_watch, "SELL"):
             return False
 
         if shadow_rows is not None:
@@ -2366,6 +2399,7 @@ class ExecutionEngineMixin:
                 SHADOW_BOOKER,
                 _booking,
                 decision=_lost_exit or shadow_exit_decision(shadow_rows),
+                watch=_watch,
             )
 
         venue_units, refusal = await self._venue_claimable_units()
@@ -2386,6 +2420,8 @@ class ExecutionEngineMixin:
                 refusal,
                 self._current_holdings,
             )
+            return False
+        if self.held_by_age(_watch, "SELL"):
             return False
 
         _qrate = float(self._quote_to_usd or 1.0)
@@ -2424,6 +2460,7 @@ class ExecutionEngineMixin:
             "_book_detonation",
             {"excess_usd": float(excess_usd)},
             {"venue_units": venue_units},
+            watch=_watch,
         )
 
     async def _sell_detonation(
@@ -2434,6 +2471,8 @@ class ExecutionEngineMixin:
         booking: dict,
         first_piece: Optional[dict] = None,
         decision: str = DETONATION_SALE,
+        *,
+        watch: OrderWatch,
     ) -> bool:
         """Send one market sale of ``sell_amount`` under ``decision`` and book its fill
         through ``booker`` with ``booking``, plus ``first_piece`` for the piece settled
@@ -2444,7 +2483,6 @@ class ExecutionEngineMixin:
         share of ``sell_amount``.
         """
         _repeats = decision in self._unanswered_decisions(SIDE_SELL)
-        _watch = self.order_watch()
         order = await self.guarded_place_order(
             symbol=self.config.symbol,
             side=OrderSide.SELL,
@@ -2452,11 +2490,11 @@ class ExecutionEngineMixin:
             amount=sell_amount,
             price=None,
             purpose=decision_purpose(decision),
-            watch=_watch,
+            watch=watch,
         )
 
         if order is None:
-            self._refused_no_order("DETONATION", "DETONATION", _watch)
+            self._refused_no_order("DETONATION", "DETONATION", watch)
             return False
 
         fill_amount, fill_price, _ = await self._settled_fill(
@@ -2616,6 +2654,7 @@ class ExecutionEngineMixin:
         booker: str = "",
         booking: Optional[dict] = None,
         decision: str = "",
+        watch: Optional[OrderWatch] = None,
     ) -> Optional[float]:
         """Place a market sell and return the fill price, or None when refused.
 
@@ -2629,11 +2668,13 @@ class ExecutionEngineMixin:
         the same units off ``_main_lots``. Both venue-fee records are cleared on
         entry and written by ``_settled_fill`` off whichever order object
         settled. ``decision`` names the order, so a retry keeps its id at any
-        size or price.
+        size or price. ``watch`` names the prices it stands on, the bot's own last
+        price where it is None, and one past the age limit ends it after any wait.
         """
         self._last_sell_venue_fee = None
         self._last_fill_venue_fee = None
         self._last_sell_filled_units = 0.0
+        _watch = watch or self.order_watch()
 
         if (
             not bypass_stack
@@ -2647,9 +2688,12 @@ class ExecutionEngineMixin:
                 scrum_price=float(price),
                 scrum_size=float(amount),
                 summary=summary,
+                watch=_watch,
             )
             if _n:
                 return None
+        if self.held_by_age(_watch, "SELL"):
+            return None
 
         if self._hyst_armed_scrum_side and self._hyst_ref_scrum_side > 0:
             try:
@@ -2824,6 +2868,8 @@ class ExecutionEngineMixin:
                     ),
                 )
             return None
+        if self.held_by_age(_watch, "SELL"):
+            return None
 
         try:
             from ...core.execution_discipline import verify_book_spread as _vbs
@@ -2858,6 +2904,8 @@ class ExecutionEngineMixin:
                 self.stats.verify_clean += 1
             elif vh_status == "adjusted":
                 self.stats.verify_adjusted += 1
+            if self.held_by_age(_watch, "SELL"):
+                return None
 
             if self._invisible:
                 ot = OrderType.MARKET
@@ -2880,7 +2928,6 @@ class ExecutionEngineMixin:
                 "SCRUM", "SENT", f"{amount:.6f} @ ${price:.8f}"
             )
 
-            _watch = self.order_watch()
             order = await self.guarded_place_order(
                 symbol=self.config.symbol,
                 side=OrderSide.SELL,
@@ -3265,7 +3312,9 @@ class ExecutionEngineMixin:
                 )
             return None
 
-        if await self._refuses_stacked_buy(price):
+        if self.held_by_age(_watch, "BUY") or await self._refuses_stacked_buy(price):
+            return None
+        if self.held_by_age(_watch, "BUY"):
             return None
 
         _ctx = trace_context or {}
@@ -3277,7 +3326,7 @@ class ExecutionEngineMixin:
         _fresh_units, _refuse_reason_msg = await self._verify_buy_safe_or_refuse(
             path=_path, price=price
         )
-        if _refuse_reason_msg:
+        if _refuse_reason_msg or self.held_by_age(_watch, "BUY"):
             return None
 
         _qrate_buy = float(self._quote_to_usd or 1.0)
@@ -3397,6 +3446,8 @@ class ExecutionEngineMixin:
                 self.stats.verify_adjusted += 1
 
             if not _own_tranche and await self._spends_held_dollars(cost, price):
+                return None
+            if self.held_by_age(_watch, "BUY"):
                 return None
             _wallet = wallet_key(self.config.exchange_id, self._wallet_currency())
             _reservations = get_wallet_reservations()

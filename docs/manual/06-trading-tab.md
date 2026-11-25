@@ -475,12 +475,12 @@ On the Scrumming table, a press on a row draws that bot on the Indicator Voting 
 | --- | --- |
 | Asset | The asset's kept logo, else its name. A press opens the asset's organisation site over https, and an asset with no address opens nothing. `src/gui/main_tabs/bot_status_table_surface.py, in organisation_address` |
 | Symbol | The pair, coloured by bot state. A press opens the pair's chart on the exchange's site. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._symbol_cell` |
-| Current Position Value | Held units at a fresh exchange price. Blank when the price is missing or over 20 seconds old. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.position_value_cell` |
+| Current Position Value | Held units at a fresh exchange price. Blank when the price is missing or over 20 seconds old. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.position_value_cell`. The 20 is the stored limit an order reads too. `src/core/price_age.py, in price_age_limit_s` |
 | Trades | The bot's trade count. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._write_row` |
 | Target | The balance the bot returns to: the grown target, else the Target Balance. `src/gui/main_tabs/bot_status_table_surface.py, in target_value` |
 | Target A15, Target A14 | The target restated in that asset, with its 24-hour drift. Blank when the asset is that market, a dash when the pair is unlisted, and pending until the rate arrives. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.target_denom_cell` |
 | Ammo | Distance from target, unsigned. Green above target, red below, grey when stale. It reads the exchange's units where it has them, else the bot's. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.ammo_cell` |
-| Fire | One press on one bot. The next section covers it. While the hard breaker holds, a press is refused and keeps nothing, so press it again after Reset All Breakers. On a bot no tick runs, it is refused the same way, so press it again after Start. `src/trading/bot_container.py, in BotManager.force_fire` |
+| Fire | One press on one bot. The next section covers it. While the hard breaker holds, a press is refused and keeps nothing, so press it again after Reset All Breakers. On a bot no tick runs, it is refused the same way, so press it again after Start. `src/trading/bot_container.py, in BotManager.force_fire`. On a price past its age limit the tick drops the press, so press it again once a fresh price is in. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_waits_for_price` |
 | Detail button | Opens the bot settings window and selects the row. `src/gui/main_window.py, in MainWindow._on_bot_clicked` |
 | Round header dots | Hides that column behind asterisks. Filled shows and hollow hides. Target's three columns share one field, as do Position Value and Ammo. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel.on_privacy_toggled` |
 
@@ -510,14 +510,40 @@ Fire and Ammo use their colours differently. Ammo is green above target, and Fir
 | What the button shows | What it means |
 | --- | --- |
 | Solid red, glowing | Above target, every gate clear. A press sells to target. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire` |
-| Dashed red | Above target, and a gate holds the sale. The mouse-over names it. A press sells anyway. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire` |
+| Dashed red | Above target, and a gate holds the sale. The mouse-over names it. A press sells anyway. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire`. A press does not pass a price past its age limit. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_waits_for_price` |
 | Solid green, glowing | Below target, every gate clear. A press buys to target. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire` |
-| Dashed green | Below target, and a gate holds the buy. A press buys anyway. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire` |
+| Dashed green | Below target, and a gate holds the buy. A press buys anyway. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire`. A press does not pass a price past its age limit. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_waits_for_price` |
 | Muted, dashed, glowing | The position ceiling stops automatic buys. A press buys past it. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire` |
 | Amber fill, amber text or red text | Parked at target: at the band, tracking or searching. A press does nothing. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._armed_fire` |
 | No Trade, dotted | A press will not act. The distance sits inside 1% of target, or the exchange disputes the bot's unit count. `src/gui/main_tabs/bot_status_table_surface.py, in manual_fire_verdict` |
 | Held, dotted | A press will not act. The hard breaker holds every order, and the mouse-over names the hold. `src/gui/main_tabs/bot_status_table_surface.py, in manual_fire_verdict` |
 | Grey, off | The bot is neither running nor paused. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._fire_button` |
+
+### An order and the age of its price
+
+An order starts on a price at most 20 seconds old. The age counts from the moment the venue answered, whichever read brought the price. The bot's own read, the shared read and a price kept after a refused read all keep that moment (`src/exchange/data_pool.py, in TickerEntry.take`). On Robinhood and on a broker it is the moment the program read the answer (`src/exchange/base.py, in Ticker`).
+
+Two clocks count the age, and the larger figure stands. A wall clock that steps back cannot make a price young (`src/core/price_age.py, in ReadMoment.age_s`).
+
+The bot reads the age at its decision, after each wait, and at the last moment before the order leaves. An order that waits behind other calls is read at its turn, and once more at its own request to the venue (`src/exchange/ccxt_connector.py, in reads_hold_at_post`).
+
+Past the limit the order does not start. Nothing is booked, spent or queued, and no error is counted. The bot's log reads HELD or PRICE WAIT with the age and the limit, and the Fire button's mouse-over names the wait. The bot decides again at its next read of the price, which its Read Rate sets (`src/trading/bot_container.py, in BotContainer.order_refusal`).
+
+A bot whose quote is not a dollar sizes its orders with the quote's dollar rate. The rate keeps the moment it was read, and the same limit holds the order (`src/trading/scrumming_bot.py, in ScrummingBot.price_reads`).
+
+The limit is one stored figure, 20 at the start, and the Current Position Value cell reads it too. No row sets it. A stored value that is not a number above zero reads as 20 (`src/core/price_age.py, in price_age_limit_s`).
+
+| Path | On a price past the limit |
+| --- | --- |
+| An order a tick sends on its own | Not sent. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_waits_for_price` |
+| A rung of the ladder a filled fold opens | Sent. Its price is the fold's own cost, and no market price decides it. `src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold` |
+| Fire on a bot's row | Dropped by the tick it asked for, and the status log says to press it again. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_waits_for_price` |
+| Fire on a queued tranche | Refused in words, and the tranche stays as it is. `src/trading/scrumming_bot.py, in ScrummingBot._refuse_tranche_fire` |
+| Self-Destruct, the expiry close | Sent at market, at any age. Where the market takes no market order, a fresh price is read first and becomes the limit price. When that read fails, the close waits for the next tick, and Self-Destruct goes at the stored price with its age in the log. `src/trading/bot_container.py, in BotContainer._exit_limit_price` |
+| The start handshake, the start-up pull, the holdings audit | No unit is adopted and no lot is booked. Each says so and tries again. `src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._lot_price` |
+| An Extractor's buy, exit and Fire | Held the same way. `src/trading/extractor_bot.py, in ExtractorBot._fire_artillery` |
+| A resend of an order with no answer | Waits and keeps its id. `src/exchange/idempotency.py, in IdempotencyLayer.withdraw_send` |
+| A cancel | Always sent, because it carries no price. `src/exchange/ccxt_connector.py, in CCXTConnector.cancel_order` |
 
 ### The command bar
 
@@ -774,7 +800,7 @@ Each group shows only for a market that needs it.
 | Whole-Unit Market group | Shows for a Scrumming market sized in whole units, or one whose session takes whole units out of hours. `src/gui/bot_wizard.py, in TradingParamsPage.set_market` |
 | Open Position At (0 to 1,000 units, 0) | The opening size. 0 or 1 leaves the two-unit minimum. Reads `whole_unit_opening_units`. `src/trading/container/config.py, in whole_unit_opening_units` |
 | Contract Expiry group | Shows for a Scrumming market with an expiry date. `src/gui/main_tabs/bot_wizard_surface.py, in market_expires` |
-| Expiry Close (Finish the sell ladder) | Finishes the sell ladder or sells the whole position inside the lead time. Buys stop there either way. Reads `expiry_close_action`. `src/trading/bot_container.py, in BotContainer.guarded_place_order` |
+| Expiry Close (Finish the sell ladder) | Finishes the sell ladder or sells the whole position inside the lead time. Buys stop there either way. Reads `expiry_close_action`. `src/trading/bot_container.py, in BotContainer.guarded_place_order`. The age of the price never stops the sale of the whole position. `src/trading/bot_container.py, in BotContainer.exit_watch` |
 | Expiry Lead Mode (Share of the contract's life) | Picks a share of the contract's life or a number of days. Reads `expiry_lead_mode`. `src/trading/container/config.py, in expiry_lead_resolved_days` |
 | Lead Fraction (0 to 1, 0.20) | The share of life left at bot start. 0 is off. Reads `expiry_lead_fraction`. `src/trading/container/config.py, in expiry_lead_resolved_days` |
 | Lead Days (0 to 36,500, 11) | Days before expiry, read in days mode only. 0 is off. Reads `expiry_lead_days`. `src/trading/container/config.py, in expiry_lead_resolved_days` |
@@ -808,7 +834,7 @@ These sit on the Settings tab beside the wizard's rows.
 | Profit Folding Active (on) | Lets fold surplus grow the target. Reads `profit_folding_active`. `src/trading/scrumming_bot.py, in ScrummingBot._apply_fold_target_growth` |
 | Tranche Despawn Timer (0 to 365 days, Off) | Removes fold and stack tranches this old on each tick. It places no order, and a tranche with a resting order stays. A hard hold removes nothing, and time under a hold does not count toward the age. Reads `tranche_despawn_days`. `src/trading/scrumming/fold_tranches.py, in FoldTrancheAccountingMixin._despawn_aged_tranches` |
 | Reset All Breakers | Clears both breakers at once, and it is the only press that ends a hard hold. A bot the hard breaker paused runs again, a bot paused by hand stays paused, and a bot with no tick loop waits for Start. Hold SHIFT to clear every bot in the fleet, after Yes or No. `src/gui/live_settings/settings_tab.py, in SettingsTabMixin._on_cb_reset_all` |
-| Self-Destruct | After you type SELF-DESTRUCT, it sells the asset's whole venue balance at market, clears the fold queue and pauses the bot. The pause lands once the sale has gone to the venue, whether it filled, rests or lost its reply, and it holds until you press Start. Reopening the app starts the bot with the fleet. A later piece books after Start and never pauses the bot again. A sale that lost its reply books at the first worked tick after Start, once the venue shows those units gone. A sale the venue refuses flat leaves the bot as it was, and the log says so. Shadow Tranches join the sale only once an order comes back. `src/trading/scrumming_bot.py, in ScrummingBot.self_destruct`. While the hard breaker holds, the press shows a box that names the hold, changes nothing and says to press it again after the reset. `src/gui/live_settings/settings_tab.py, in SettingsTabMixin._on_self_destruct_clicked` |
+| Self-Destruct | After you type SELF-DESTRUCT, it sells the asset's whole venue balance at market, clears the fold queue and pauses the bot. The pause lands once the sale has gone to the venue, whether it filled, rests or lost its reply, and it holds until you press Start. Reopening the app starts the bot with the fleet. A later piece books after Start and never pauses the bot again. A sale that lost its reply books at the first worked tick after Start, once the venue shows those units gone. A sale the venue refuses flat leaves the bot as it was, and the log says so. Shadow Tranches join the sale only once an order comes back. `src/trading/scrumming_bot.py, in ScrummingBot.self_destruct`. While the hard breaker holds, the press shows a box that names the hold, changes nothing and says to press it again after the reset. `src/gui/live_settings/settings_tab.py, in SettingsTabMixin._on_self_destruct_clicked`. The age of the price never stops the sale. `src/trading/bot_container.py, in BotContainer.exit_watch` |
 | Hunger (off) | Eases the vote floor after idle candles past the opposing distance. It never lets two indicators trade. Reads `hunger_enabled`. `src/trading/scrumming_bot.py, in ScrummingBot._count_hunger_candle` |
 | Hunger Pace (a dash means none) | Sets the idle candles to full hunger. A dash does nothing. Reads `hunger_pace_candles`. `src/trading/container/config.py, in BotConfig.hunger_gain_per_candle` |
 | Accumulation Shadow (off) | In a bearish regime, each fold's extra units go to a Shadow Tranche, held until a bullish regime. Reads `shadow_enabled`. `src/trading/scrumming/shadow.py, in ShadowTrancheMixin._mark_shadow_rows` |
@@ -818,7 +844,7 @@ These sit on the Settings tab beside the wizard's rows.
 | Tab | What it holds |
 | --- | --- |
 | Status | Read-only at open: realised profit and loss, trades, open orders, price, uptime and last error. `src/gui/live_settings/status_tab.py, in StatusTabMixin._create_status_tab` |
-| Fold Tranches | The queued buy-backs and their counters. Fire buys one tranche with its own sale dollars, skipping the vote and Target Delta gates. While the hard breaker holds it refuses and leaves the tranche as it is, so press it again after the reset. On a paused bot it still buys, and its Stack rungs do not open. Each Clear button asks first and places no order. `src/trading/scrumming_bot.py, in ScrummingBot.manual_fire_tranche` |
+| Fold Tranches | The queued buy-backs and their counters. Fire buys one tranche with its own sale dollars, skipping the vote and Target Delta gates. While the hard breaker holds it refuses and leaves the tranche as it is, so press it again after the reset. On a paused bot it still buys, and its Stack rungs do not open. Each Clear button asks first and places no order. `src/trading/scrumming_bot.py, in ScrummingBot.manual_fire_tranche`. On a price past its age limit Fire refuses and leaves the tranche as it is, so press it again once a fresh price is in. `src/trading/scrumming_bot.py, in ScrummingBot._refuse_tranche_fire` |
 | Fold Tranches: Order, Filter | Order sets the row order, and Filter hides rows that do not match. `src/gui/live_settings/fold_chrome.py, in build_fold_row_controls` |
 | Fold Tranches: Arbiter button | Flips one label on an Extractor tranche and moves no money. `src/gui/live_settings/fold_tranches_tab.py, in FoldTranchesTabMixin._on_arbiter_toggle_clicked` |
 | Stack Tranches | The rising sell levels and their counters. Clear keeps a tranche that holds a resting order, and Clear Lifetime Counters asks first. `src/trading/scrumming_bot.py, in ScrummingBot.clear_stack_tranches` |
@@ -853,7 +879,7 @@ A started Extractor ranks its watch list and places no order, because its signal
 | Chunk size, Chunk free | The chunk in base units and dollars, and the base units not in a position. `src/gui/live_settings/positions_held_tab.py, in PositionsHeldTabMixin._create_positions_held_tab` |
 | Lifetime extracted | The running base-unit gain from sales. `src/trading/extractor_bot.py, in ExtractorBot._book_exit` |
 | Position rows | Pair, state, units held and dollar size at entry. Current and its change are priced at the average buy price, so neither follows the market. `src/trading/extractor_bot.py, in ExtractorBot.positions_for_gui` |
-| Fire, per position | After Yes, it sells the whole position at market and skips the profit check. `src/gui/live_settings/positions_held_tab.py, in PositionsHeldTabMixin._on_fire_position` |
+| Fire, per position | After Yes, it sells the whole position at market and skips the profit check. `src/gui/live_settings/positions_held_tab.py, in PositionsHeldTabMixin._on_fire_position`. A price past its age limit when the sale starts sells nothing, and the log says to press it again. `src/trading/extractor_bot.py, in ExtractorBot.manual_fire_position` |
 | Reset All Breakers, Self-Destruct | An Extractor has neither. Self-Destruct shows a refusal, and Reset reads Reset failed. `src/gui/live_settings/settings_tab.py, in SettingsTabMixin._on_self_destruct_clicked` |
 
 ### Two mechanisms with no control on this tab
