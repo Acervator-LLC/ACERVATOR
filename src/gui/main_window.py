@@ -97,6 +97,18 @@ FLEET_SEQUENCE_MIN_GAP_MS = 2000
 #: absent from here takes every held bot.
 FLEET_SEQUENCE_STATES = {"start": ("idle", "stopped")}
 
+#: The ``ReadSlot`` names of the window's reads; the pairs keep one for each exchange.
+CHART_SLOT = "chart"
+CURRENCY_SLOT = "currency rates"
+PAIRS_SLOT_FORMAT = "pairs of {eid}"
+
+#: A chart read asks the venue, then the public source.
+CHART_READ_CALLS = 2
+#: A currency read asks two prices of each exchange.
+CURRENCY_READ_CALLS = 2
+#: The time of two calls holds one call of a pairs reading and its wait for a free place.
+PAIRS_READ_CALLS = 2
+
 #: The route a broker publishing a paper one opens on, which chooses the paper
 #: host in ``AlpacaConnector.connect``. A key reaches one host only, paper or
 #: live, and ``broker_paper_route`` False drops this to a live session because
@@ -413,7 +425,8 @@ if _HAS_QT:
             return found
 
         def set_async_loop(self, loop) -> None:
-            """Store the asyncio loop `main.py` runs every coroutine on."""
+            """Store the asyncio loop `main.py` runs every coroutine on, with no read held from an earlier one."""
+            self._end_reads()
             self._async_loop = loop
 
         def _setup_menu(self) -> None:
@@ -844,17 +857,9 @@ if _HAS_QT:
             "the asset chart candle fetch",
             "The Asset Charts tab keeps its last candles and stops refreshing.",
         )
-        _coalesce_cancel_fault = ThrottledFault(
-            "the scheduled task cancel",
-            "A task scheduled on an earlier tick keeps running, so two "
-            "refreshes of the same feed can overlap.",
-        )
 
         def _pump_currency_rates(self) -> None:
-            """Refresh CurrencyRateMonitor and push its snapshot to the voting panel.
-
-            With no connector and ``fleet_locked`` True the rates come through ``_public_feed``.
-            """
+            """Ask for ``_read_currency_rates`` and push the monitor's snapshot to the voting panel."""
             try:
                 from ..exchange.currency_rate_monitor import get_currency_monitor
 
@@ -862,16 +867,31 @@ if _HAS_QT:
                 if mon is None:
                     return
                 connectors = getattr(self, "_exchange_connectors", {}) or {}
-                if connectors:
-                    self._schedule_async(mon.refresh_from_connectors(connectors))
-                elif self.fleet_locked():
-                    self._schedule_async(mon.refresh_from_feed(self._public_feed()))
+                if connectors or self.fleet_locked():
+                    self._schedule_coalesced(
+                        CURRENCY_SLOT,
+                        self._read_currency_rates(),
+                        CURRENCY_READ_CALLS * max(1, len(connectors)),
+                    )
                 if hasattr(self, "_indicator_panel"):
                     self._indicator_panel.update_currency_rates(mon.snapshot())
                     self._publish_votes()
                 self._currency_pump_fault.note_success()
             except Exception as exc:
                 self._currency_pump_fault.note_failure(exc)
+
+        async def _read_currency_rates(self) -> None:
+            """Refresh CurrencyRateMonitor through the connectors held now, or ``_public_feed`` with none and ``fleet_locked`` True."""
+            from ..exchange.currency_rate_monitor import get_currency_monitor
+
+            mon = get_currency_monitor()
+            if mon is None:
+                return
+            connectors = dict(getattr(self, "_exchange_connectors", {}) or {})
+            if connectors:
+                await mon.refresh_from_connectors(connectors)
+            elif self.fleet_locked():
+                await mon.refresh_from_feed(self._public_feed())
 
         def _public_feed(self):
             """The one keyless ``LiveFeedSource`` a locked window reads the rate strip through."""
@@ -891,7 +911,7 @@ if _HAS_QT:
             try:
                 self._charts_tab.update_charts([], bot_manager=self._bot_manager)
                 self._schedule_coalesced(
-                    "_pending_chart_fetch", self._charts_tab.fetch_chart_data({})
+                    CHART_SLOT, self._charts_tab.fetch_chart_data({}), CHART_READ_CALLS
                 )
                 self._chart_fetch_fault.note_success()
             except Exception as chart_fetch_exc:
@@ -899,22 +919,42 @@ if _HAS_QT:
             self._pump_currency_rates()
 
         def _pump_market_pairs_scout(self) -> None:
-            """Refresh MarketPairsScout for connected exchanges, one at a time."""
+            """Ask for one ``_read_market_pairs`` of each connected exchange."""
             try:
                 from ..exchange.market_pairs_scout import get_scout
 
                 scout = get_scout()
                 if scout is None:
                     return
-                connectors = getattr(self, "_exchange_connectors", {}) or {}
-                if connectors:
+                for eid in list(getattr(self, "_exchange_connectors", {}) or {}):
                     self._schedule_coalesced(
-                        "_pending_scout_refresh",
-                        scout.refresh_from_connectors(connectors),
+                        PAIRS_SLOT_FORMAT.format(eid=eid),
+                        self._read_market_pairs(eid),
+                        PAIRS_READ_CALLS,
+                        venue=eid,
+                        mark=partial(scout.last_refresh, eid),
                     )
                 self._scout_pump_fault.note_success()
             except Exception as exc:
                 self._scout_pump_fault.note_failure(exc)
+
+        async def _read_market_pairs(self, eid: str) -> None:
+            """Wait for the ``reading`` MarketPairsScout makes of *eid*, and end it where this read ends first."""
+            from ..exchange.market_pairs_scout import get_scout
+
+            scout = get_scout()
+            connector = (getattr(self, "_exchange_connectors", {}) or {}).get(eid)
+            if scout is None or connector is None:
+                return
+            try:
+                await scout.refresh_from_connectors({eid: connector})
+                reading = scout.books[eid].reading
+                if reading is not None:
+                    await reading
+            finally:
+                book = scout.books.get(eid)
+                if book is not None and book.reading is not None:
+                    book.reading.cancel()
 
         def _report_fetch_stall(self) -> None:
             """Tell the Console when no exchange call has come back across the fleet.
@@ -1677,11 +1717,14 @@ if _HAS_QT:
                         and self._exchange_connectors
                     ):
                         try:
+                            shown = self._charts_tab.current_entry()
                             self._schedule_coalesced(
-                                "_pending_chart_fetch",
+                                CHART_SLOT,
                                 self._charts_tab.fetch_chart_data(
                                     self._exchange_connectors
                                 ),
+                                CHART_READ_CALLS,
+                                venue=shown.get("exchange_id", ""),
                             )
                             self._chart_fetch_fault.note_success()
                         except Exception as chart_fetch_exc:
@@ -2981,28 +3024,32 @@ if _HAS_QT:
                 return asyncio.run(coro)
             return loop.run_until_complete(coro)
 
-        def _schedule_coalesced(self, slot: str, coro):
-            """Cancel the future in ``slot``, schedule ``coro`` and store it there.
+        def _schedule_coalesced(
+            self, slot: str, coro, calls: int, venue: str = "", mark=None
+        ) -> None:
+            """Hand the ``ReadAsk`` of ``coro`` to the ``ReadSlot`` named ``slot``."""
+            from .read_slot import ReadAsk, ReadSlot
 
-            Every pump that must not stack a second in-flight task calls this,
-            so no call site carries a coalescing rule of its own.
-            """
-            self._cancel_if_pending(getattr(self, slot, None))
-            found = self._schedule_async(coro)
-            setattr(self, slot, found)
-            return found
+            slots = getattr(self, "_read_slots", None)
+            if slots is None:
+                slots = dict[str, ReadSlot]()
+                self._read_slots = slots
+            if slot not in slots:
+                slots[slot] = ReadSlot(slot)
+            ask = ReadAsk(coro, calls, venue, mark or float)
+            slots[slot].ask(ask, self._schedule_async)
 
-        def _cancel_if_pending(self, fut) -> None:
-            """Cancel `fut` when it exists and is not done; a failure reports through `_coalesce_cancel_fault`."""
-            if fut is None:
-                return
-            try:
-                if not fut.done():
-                    fut.cancel()
-            except (AttributeError, RuntimeError) as _cancel_exc:
-                self._coalesce_cancel_fault.note_failure(_cancel_exc)
-            else:
-                self._coalesce_cancel_fault.note_success()
+        def _end_reads(self, eid: str = "") -> None:
+            """End every read in ``_read_slots``, or those that ``may_ask`` *eid*."""
+            slots = getattr(self, "_read_slots", None) or {}
+            for name, held in list(slots.items()):
+                if not eid or held.may_ask(eid):
+                    slots.pop(name).end()
+
+        def closeEvent(self, event) -> None:
+            """Run ``_end_reads``, then close the window."""
+            self._end_reads()
+            super().closeEvent(event)
 
         def _live_connector(self, eid: str):
             """Return the connector held for *eid* while it reports connected.
@@ -3019,7 +3066,8 @@ if _HAS_QT:
             return None
 
         def _release_connector(self, eid: str) -> None:
-            """Drop *eid* from `_exchange_connectors` and call `release` on its connector."""
+            """Drop *eid* from `_exchange_connectors`, end its reads and call `release` on its connector."""
+            self._end_reads(eid)
             held = self._exchange_connectors.pop(eid, None)
             release = getattr(held, "release", None)
             if release is not None:
@@ -4137,8 +4185,10 @@ if _HAS_QT:
             ``main.py`` calls it on a launch whose saved fleet is sealed, after
             every screen is already built, so the window draws unchanged and
             ``run_fleet_sequence`` starts nothing until ``unlock_fleet`` runs.
+            ``_end_reads`` ends the reads the fleet's connectors were asked for.
             """
             self._fleet_locked = True
+            self._end_reads()
             self._status_log.log(FLEET_LOCKED_TEXT, "warning")
             logger.info("%s (%s)", FLEET_LOCKED_TEXT, reason or "sealed")
 

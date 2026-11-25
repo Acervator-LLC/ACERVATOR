@@ -362,7 +362,9 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   (`src/exchange/ccxt_connector.py, in CCXTConnector._named_ticker_params`). Row 10
   is built: the pairs scout asks Coinbase for the pairs its rows asked for, in a free
   place, and rests after each reading
-  (`src/exchange/market_pairs_scout.py, in MarketPairsScout._read`). Row 4 is
+  (`src/exchange/market_pairs_scout.py, in MarketPairsScout._read`). Row 9 is built: a
+  window tick cancels no venue read, and each kind has one on its way and one waiting
+  (`src/gui/read_slot.py, in ReadSlot.ask`). Row 4 is
   built: no order starts on a price or a rate older than `price_age_limit_s`, counted
   from the venue's answer, and Self-Destruct and the expiry close alone go at any age
   (`src/trading/bot_container.py, in BotContainer.order_refusal`). The

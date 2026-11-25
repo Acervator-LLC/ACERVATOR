@@ -314,6 +314,7 @@ FETCH_CALL_SKIPPED = "fetch.call_skipped"
 FETCH_CANDLES = "fetch.candles"
 FETCH_EMPTY = "fetch.empty"
 FETCH_RAISED = "fetch.raised"
+FETCH_LEFT = "fetch.left"
 FETCH_EMIT_REFRESHED = "fetch.emit_refreshed"
 FETCH_EMIT_FRESH = "fetch.emit_fresh"
 LOG_TRADE = "log_trade"
@@ -354,6 +355,7 @@ CALL_NAMES = (
     FETCH_CANDLES,
     FETCH_EMPTY,
     FETCH_RAISED,
+    FETCH_LEFT,
     FETCH_EMIT_REFRESHED,
     FETCH_EMIT_FRESH,
     LOG_TRADE,
@@ -1609,13 +1611,24 @@ class TradeChartsTabModel:
         self.calls.append([TF_EMIT, rearmed])
         return None
 
+    def _still_shows(self, record: dict, symbol: Any, timeframe: Any) -> bool:
+        """Whether the chart still follows ``record`` on ``symbol`` at ``timeframe``, with no call drawn."""
+        called = self.showing_ata() and record.get(CALL_KEY) is not None
+        return (
+            not called
+            and self.current() is record
+            and record.get(SYMBOL_KEY) == symbol
+            and self.panel.timeframe == timeframe
+        )
+
     async def fetch_chart_data(
         self, exchange_connectors: Optional[dict] = None
     ) -> None:
         """Fetch the shown asset, at most once every throttle window.
 
         Neither error path clears the candles, so the emitted record reads
-        the count back off the chart with the source beside it.
+        the count back off the chart with the source beside it. An answer
+        ``_still_shows`` refuses draws nothing and records ``FETCH_LEFT``.
         """
         now = self._now()
         self.calls.append([FETCH_START, len(self.assets)])
@@ -1660,6 +1673,10 @@ class TradeChartsTabModel:
             elapsed = self._tick() - started
             returned = len(rows or [])
             source = str(answered)
+            if not self._still_shows(record, symbol, timeframe):
+                self.calls.append([FETCH_LEFT, bot_id, source])
+                self._emit_freshness(now, exchange_connectors)
+                return None
             if rows:
                 self.panel.set_candles(candle_rows(rows))
                 self.panel.set_source(answered)
@@ -1670,10 +1687,14 @@ class TradeChartsTabModel:
                 outcome = OUTCOME_EMPTY
                 self.calls.append([FETCH_EMPTY, bot_id, source])
         except Exception as exc:
+            source = type(exc).__name__
+            if not self._still_shows(record, symbol, timeframe):
+                self.calls.append([FETCH_LEFT, bot_id, source])
+                self._emit_freshness(now, exchange_connectors)
+                return None
             if elapsed is None:
                 elapsed = self._tick() - started
             self.panel.set_error(str(exc)[:ERROR_TEXT_LIMIT])
-            source = type(exc).__name__
             self.calls.append([FETCH_RAISED, bot_id, source])
         record[LAST_FETCH_KEY] = now
 

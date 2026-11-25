@@ -79,7 +79,7 @@ class CurrencyRateMonitor:
     """BTC/ETH-USD sampler holding one ``CurrencyRates`` snapshot.
 
     ``refresh_from_connectors`` is a coroutine the caller schedules
-    (``main_window._schedule_async``); the monitor owns no timer and
+    (``main_window._schedule_coalesced``); the monitor owns no timer and
     ``is_stale`` is its only pacing.
     """
 
@@ -88,10 +88,17 @@ class CurrencyRateMonitor:
         self._snapshot = CurrencyRates()
         #: True while ``refresh_from_feed`` waits on its two ticker reads.
         self._feed_asking = False
+        #: Connectors ``refresh_from_connectors`` waits on now.
+        self._reads_on_way = 0
 
     @property
     def refresh_seconds(self) -> float:
         return self._refresh_s
+
+    @property
+    def reading(self) -> bool:
+        """True while either refresh waits on its source."""
+        return self._feed_asking or self._reads_on_way > 0
 
     def snapshot(self) -> CurrencyRates:
         return self._snapshot
@@ -184,12 +191,15 @@ class CurrencyRateMonitor:
         eth = 0.0
         source = "none"
         for eid, connector in connectors.items():
+            self._reads_on_way += 1
             try:
                 btc_ticker = await connector.get_ticker("BTC/USD")
                 eth_ticker = await connector.get_ticker("ETH/USD")
             except Exception as _exc:  # noqa: BLE001 - per-connector probe
                 errors.append(f"{eid}: {_exc}")
                 continue
+            finally:
+                self._reads_on_way -= 1
             btc = float(getattr(btc_ticker, "last", 0) or 0)
             eth = float(getattr(eth_ticker, "last", 0) or 0)
             if btc > 0 and eth > 0:
@@ -210,12 +220,16 @@ class CurrencyRateMonitor:
 
 
 def _monitor_has_stopped(monitor: CurrencyRateMonitor) -> bool:
-    """True when ``monitor`` holds a reading and ``is_stale`` now reports it.
+    """True when ``monitor`` is not ``reading`` and ``is_stale`` reports its snapshot.
 
     ``_MONITOR`` passes this as ``has_stopped``, and a monitor whose
     ``last_updated`` is still zero is never reported stopped.
     """
-    return monitor.snapshot().last_updated > 0 and monitor.is_stale()
+    return (
+        monitor.snapshot().last_updated > 0
+        and not monitor.reading
+        and monitor.is_stale()
+    )
 
 
 def _carry_rates(

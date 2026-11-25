@@ -813,11 +813,22 @@ if _HAS_QT:
                     },
                 )
 
+        def _still_shows(self, entry: dict, symbol: str, timeframe: str) -> bool:
+            """Whether the panel still follows ``entry`` on ``symbol`` at ``timeframe``, with no call drawn."""
+            called = self._showing_ata() and entry.get("call") is not None
+            return (
+                not called
+                and self.current_entry() is entry
+                and entry.get("symbol") == symbol
+                and self._panel.timeframe == timeframe
+            )
+
         async def fetch_chart_data(self, exchange_connectors: dict = None) -> None:
             """Fetch OHLCV for the asset on screen, at most every 30 seconds.
 
             Neither ``set_error`` path clears the candles, so ``REFRESHED_SIGNAL``
-            reads the count back off the chart with the source beside it.
+            reads the count back off the chart with the source beside it. An
+            answer ``_still_shows`` refuses draws nothing.
             """
             from ..native_chart import Candle
 
@@ -852,6 +863,9 @@ if _HAS_QT:
                 elapsed = _time.monotonic() - started
                 raw_count = len(raw or [])
                 source_name = str(source)
+                if not self._still_shows(entry, symbol, timeframe):
+                    self._emit_freshness(now)
+                    return
                 if raw:
                     self._panel.chart.set_candles(
                         [
@@ -872,6 +886,9 @@ if _HAS_QT:
                     self._panel.chart.set_error(source)
                     outcome = "empty"
             except Exception as exc:
+                if not self._still_shows(entry, symbol, timeframe):
+                    self._emit_freshness(now)
+                    return
                 if elapsed is None:
                     elapsed = _time.monotonic() - started
                 self._panel.chart.set_error(str(exc)[:ERROR_TEXT_LIMIT])
