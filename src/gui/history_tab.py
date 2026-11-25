@@ -777,6 +777,7 @@ if _HAS_QT:
                         return
                     if time.monotonic() - start_ts > hrc.FETCH_TIMEOUT_S:
                         poll_timer.stop()
+                        future.cancel()
                         self._set_fetching(False)
                         self._set_status(hrc.STATUS_TEXT["timeout"])
                 except Exception as exc:

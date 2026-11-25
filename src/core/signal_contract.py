@@ -191,7 +191,7 @@ _ALWAYS_ON_PINS: dict[str, str] = {
     "charts.13.005.invariant.panels_fresh": "the same scheduled pass",
     "charts.indicators.drawn": (
         "the same `fetch_chart_data` pass calls `set_candles` on every fetch that "
-        "returns candles"
+        "returns candles for the chart on screen"
     ),
     "console.14.001.invariant.records_rendered": (
         "the Console's 5000 ms health timer, which runs for the life of the window"
