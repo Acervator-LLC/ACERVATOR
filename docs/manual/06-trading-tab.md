@@ -540,7 +540,7 @@ The limit is one stored figure, 20 at the start, and the Current Position Value 
 | Fire on a bot's row | Dropped by the tick it asked for, and the status log says to press it again. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_waits_for_price` |
 | Fire on a queued tranche | Refused in words, and the tranche stays as it is. `src/trading/scrumming_bot.py, in ScrummingBot._refuse_tranche_fire` |
 | Self-Destruct, the expiry close | Sent at market, at any age. Where the market takes no market order, a fresh price is read first and becomes the limit price. When that read fails, the close waits for the next tick, and Self-Destruct goes at the stored price with its age in the log. `src/trading/bot_container.py, in BotContainer._exit_limit_price` |
-| The start handshake, the start-up pull, the holdings audit | No unit is adopted and no lot is booked. Each says so and tries again. `src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._lot_price` |
+| The start handshake, the start-up pull, the holdings audit | No unit is adopted and no lot is booked at it. The audit reads the price again first. Each says so and tries again. `src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin._lot_price` |
 | An Extractor's buy, exit and Fire | Held the same way. `src/trading/extractor_bot.py, in ExtractorBot._fire_artillery` |
 | A resend of an order with no answer | Waits and keeps its id. `src/exchange/idempotency.py, in IdempotencyLayer.withdraw_send` |
 | A cancel | Always sent, because it carries no price. `src/exchange/ccxt_connector.py, in CCXTConnector.cancel_order` |
@@ -800,7 +800,7 @@ Each group shows only for a market that needs it.
 | Whole-Unit Market group | Shows for a Scrumming market sized in whole units, or one whose session takes whole units out of hours. `src/gui/bot_wizard.py, in TradingParamsPage.set_market` |
 | Open Position At (0 to 1,000 units, 0) | The opening size. 0 or 1 leaves the two-unit minimum. Reads `whole_unit_opening_units`. `src/trading/container/config.py, in whole_unit_opening_units` |
 | Contract Expiry group | Shows for a Scrumming market with an expiry date. `src/gui/main_tabs/bot_wizard_surface.py, in market_expires` |
-| Expiry Close (Finish the sell ladder) | Finishes the sell ladder or sells the whole position inside the lead time. Buys stop there either way. Reads `expiry_close_action`. `src/trading/bot_container.py, in BotContainer.guarded_place_order`. The age of the price never stops the sale of the whole position. `src/trading/bot_container.py, in BotContainer.exit_watch` |
+| Expiry Close (Finish the sell ladder) | Finishes the sell ladder or sells the whole position inside the lead time. Buys stop there either way. Reads `expiry_close_action`. `src/trading/bot_container.py, in BotContainer.guarded_place_order`. The age of the price never stops a market sale of the whole position. `src/trading/bot_container.py, in BotContainer.exit_watch` |
 | Expiry Lead Mode (Share of the contract's life) | Picks a share of the contract's life or a number of days. Reads `expiry_lead_mode`. `src/trading/container/config.py, in expiry_lead_resolved_days` |
 | Lead Fraction (0 to 1, 0.20) | The share of life left at bot start. 0 is off. Reads `expiry_lead_fraction`. `src/trading/container/config.py, in expiry_lead_resolved_days` |
 | Lead Days (0 to 36,500, 11) | Days before expiry, read in days mode only. 0 is off. Reads `expiry_lead_days`. `src/trading/container/config.py, in expiry_lead_resolved_days` |
