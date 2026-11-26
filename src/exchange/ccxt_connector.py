@@ -78,26 +78,8 @@ NAMED_TICKERS: dict[str, NamedTickers] = {
 }
 
 
-# Submissions past this depth are refused, outside queue_cap_waived.
+# Counted calls past this depth are refused; SyncCall.counted is False for an order's.
 SYNC_QUEUE_CAP: int = 8
-
-# True inside queue_cap_waived, where _call_sync_timed queues past SYNC_QUEUE_CAP.
-_QUEUE_CAP_WAIVED: ContextVar[bool] = ContextVar("queue_cap_waived", default=False)
-
-
-@contextmanager
-def queue_cap_waived() -> Iterator[None]:
-    """Queue every sync call this task makes inside the block past ``SYNC_QUEUE_CAP``."""
-    token = _QUEUE_CAP_WAIVED.set(True)
-    try:
-        yield
-    finally:
-        _QUEUE_CAP_WAIVED.reset(token)
-
-
-def queue_cap_is_waived() -> bool:
-    """True inside ``queue_cap_waived``, where a full queue refuses no call."""
-    return _QUEUE_CAP_WAIVED.get()
 
 
 # The name CCXTConnector.latest_run keeps this task's runs under, empty for none.
@@ -170,13 +152,13 @@ CCXT_REQUEST_TIMEOUT_MS: int = int(
 # ccxt names every read with this prefix.
 READ_CALL_PREFIX: str = "fetch_"
 
-# Slowest whole answer measured from a venue, on a saturated link.
-SLOWEST_ANSWER_SEC: float = 12.8
+# Slowest call to the venue's time endpoint measured on a saturated link.
+SATURATED_CALL_SEC: float = 12.8
 
-# Longest a read waits for its turn: SYNC_QUEUE_CAP calls of SLOWEST_ANSWER_SEC each.
-READ_TURN_WAIT_SEC: float = SYNC_QUEUE_CAP * SLOWEST_ANSWER_SEC
+# Longest a read waits for its turn: SYNC_QUEUE_CAP calls of SATURATED_CALL_SEC each.
+READ_TURN_WAIT_SEC: float = SYNC_QUEUE_CAP * SATURATED_CALL_SEC
 
-# Longest an order, a cancel, or a read inside queue_cap_waived waits for its turn.
+# Longest a SyncCall.goes_first call waits for its turn.
 ORDER_TURN_WAIT_SEC: float = SYNC_CALL_TIMEOUT_SEC
 
 # Longest sync_connect runs on the worker: CONNECT_ATTEMPTS of READ_TURN_WAIT_SEC.
