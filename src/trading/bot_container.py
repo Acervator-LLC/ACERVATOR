@@ -1019,6 +1019,7 @@ class BotContainer:
         self._report_held_order(watch, side, symbol or self.config.symbol, watch.aged)
         return True
 
+    @order_turn
     async def _exit_limit_price(
         self, symbol: str, watch: OrderWatch, stored_px: float
     ) -> float:

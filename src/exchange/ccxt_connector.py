@@ -259,7 +259,7 @@ class SyncCall:
     @classmethod
     def to_venue(cls, name: str, fn: Callable, args: tuple, kwargs: dict) -> SyncCall:
         """``fn`` on its arguments, a read where ``name`` opens with ``READ_CALL_PREFIX``;
-        a read ``in_order_turn`` and every other call ``goes_first``, not ``counted``."""
+        a read ``in_order_turn`` and each other call ``goes_first``, not ``counted``."""
         run = functools.partial(fn, *args, **kwargs)
         reads = name.startswith(READ_CALL_PREFIX)
         if reads and not in_order_turn():
@@ -2468,9 +2468,10 @@ class CCXTConnector(ExchangeInterface):
             self._bulk_read_admitted = None
 
     def _replace_stuck_worker(self, worker: Optional[SyncWorker]) -> None:
-        """Put a fresh worker in place of one ``stuck_call`` names, its queued reads in
-        order on the fresh one; every other queued call is ``dropped``, and a call
-        ``Future.cancel`` finds started stays where it runs."""
+        """Put a fresh worker in place of one ``stuck_call`` names, its queued reads on
+        the fresh one, each ``goes_first`` read ahead of the rest and each class in
+        order; every other queued call is ``dropped``, and a call ``Future.cancel``
+        finds started stays where it runs."""
         with self._sync_executor_lock:
             stuck = worker.stuck_call() if worker is not None else None
             if worker is None or stuck is None:
@@ -2478,7 +2479,7 @@ class CCXTConnector(ExchangeInterface):
             fresh = None
             if worker is self._sync_worker:
                 fresh = self._sync_worker = SyncWorker(self._exchange_id)
-            for call in self._sync_calls:
+            for call in sorted(self._sync_calls, key=lambda held: not held.goes_first):
                 if call.worker is not worker or not call.job.cancel():
                     continue
                 if fresh is not None and call.keeps_turn:
