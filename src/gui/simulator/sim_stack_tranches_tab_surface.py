@@ -14,6 +14,11 @@ from ..main_tabs import stack_tranches_tab_surface as live
 
 METHOD = "sim_stack_tranches_tab.state"
 
+EMPTY_TEXT = (
+    "No stack tranches yet. When Stack Mode is enabled "
+    "and a SCRUM fires, tranches will appear here."
+)
+
 
 class SimStackTranchesTabModel(live.StackTranchesTabModel):
     """Live's Stack Tranches model with no saver and no host."""
@@ -23,7 +28,9 @@ class SimStackTranchesTabModel(live.StackTranchesTabModel):
 
 
 def build_view_model(model: live.StackTranchesTabModel) -> dict:
-    """Live's ``build_view_model`` under ``METHOD``."""
+    """Live's ``build_view_model`` under ``METHOD``, with ``EMPTY_TEXT`` on its empty
+    label."""
     payload = dict(live.build_view_model(model))
     payload["method"] = METHOD
+    payload["empty_label"] = {**payload["empty_label"], "text": EMPTY_TEXT}
     return payload

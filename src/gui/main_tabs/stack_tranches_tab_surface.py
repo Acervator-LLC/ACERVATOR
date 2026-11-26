@@ -114,7 +114,7 @@ DANGER_BUTTON_STYLE = (
 
 EMPTY_TEXT = (
     "No stack tranches yet. When Stack Mode is enabled "
-    "and a SCRUM fires, tranches will appear here."
+    "and a SCRUM fires or a buy fills, tranches will appear here."
 )
 EMPTY_STYLE = f"color: {ds.CARD_METRIC_LABEL}; padding: 12px;"
 EMPTY_WORD_WRAP = True
