@@ -25,14 +25,20 @@ class _StoredWriter:
     """Puts one stored figure into a numeric control, admitting it first.
 
     ``as_box_figure`` is the admission, read against the control's own span
-    divided by ``scale``; a refused figure raises ``ValueError`` for
-    ``SettingsDialog._show_stored``, which reads ``box`` off this writer to mark
-    the control.
+    divided by ``scale``, and ``admits`` where given; a refused figure raises
+    ``ValueError`` for ``SettingsDialog._show_stored``, which reads ``box`` off
+    this writer to mark the control.
     """
 
-    def __init__(self, box: object, scale: float = 1.0) -> None:
+    def __init__(
+        self,
+        box: object,
+        scale: float = 1.0,
+        admits: Callable[[object], bool] | None = None,
+    ) -> None:
         self.box = box
         self.scale = scale
+        self.admits = admits
 
     def __call__(self, value: object) -> None:
         from src.trading.container.config import as_box_figure
@@ -43,7 +49,7 @@ class _StoredWriter:
         low = box.minimum() / self.scale
         high = box.maximum() / self.scale
         read = as_box_figure(value, low, high)
-        if read is None:
+        if read is None or (self.admits is not None and not self.admits(value)):
             raise ValueError(REFUSED_SPAN.format(found=value, low=low, high=high))
         decimals = getattr(box, "decimals", None)
         if callable(decimals):
@@ -1169,6 +1175,15 @@ if _HAS_QT:
             form.addRow("Bot Visibility:", self._visibility)
             self._aggressive = QCheckBox("Enable aggressive trading mode")
             form.addRow(self._aggressive)
+            spec = sds.spec_for("price_age_limit")
+            fleet = QGroupBox(spec["group"])
+            fleet_form = QFormLayout(fleet)
+            self._price_age_limit = QSpinBox()
+            self._price_age_limit.setRange(*spec["range"])
+            self._price_age_limit.setSuffix(spec["suffix"])
+            self._price_age_limit.setValue(spec["value"])
+            fleet_form.addRow(spec["label"], self._price_age_limit)
+            form.addRow(fleet)
             return w
 
         def _create_ta_tab(self) -> QWidget:
@@ -1701,11 +1716,13 @@ if _HAS_QT:
             key. ``_save`` and ``_load_current`` walk these same rows, so no row
             can be written without also being loaded.
             """
+            from src.core.price_age import PRICE_AGE_SETTING, is_usable_limit
             from src.gui.main_tabs.settings_dialog_surface import (
                 ACCENT_DEFAULT,
                 LOCK_CANDLE_DEFAULT,
                 PHANTOM_ENABLE_DEFAULT,
                 PHANTOM_TIMEFRAME_DEFAULT,
+                PRICE_AGE_LIMIT_DEFAULT,
                 THEME_DEFAULT,
             )
 
@@ -1733,6 +1750,12 @@ if _HAS_QT:
                     self._aggressive.isChecked,
                     lambda value: self._aggressive.setChecked(bool(value)),
                     False,
+                ),
+                (
+                    PRICE_AGE_SETTING,
+                    self._price_age_limit.value,
+                    self._put_stored(self._price_age_limit, admits=is_usable_limit),
+                    PRICE_AGE_LIMIT_DEFAULT,
                 ),
                 (
                     "default_enable_phantoms",
@@ -1962,17 +1985,21 @@ if _HAS_QT:
             )
 
         def _put_stored(
-            self, box: object, scale: float = 1.0
+            self,
+            box: object,
+            scale: float = 1.0,
+            admits: Callable[[object], bool] | None = None,
         ) -> Callable[[object], None]:
             """A writer that puts one stored figure into ``box``, admitted first.
 
             ``as_box_figure`` is the admission, read against ``box``'s own span
             divided by ``scale``, so a slider holding whole percent admits the
-            fraction the engine stores. A refused figure raises for
-            ``_show_stored`` to catch, and the returned writer carries ``box``
-            so ``_show_stored`` can mark the control it left behind.
+            fraction the engine stores, and ``admits`` refuses more where given.
+            A refused figure raises for ``_show_stored`` to catch, and the
+            returned writer carries ``box`` so ``_show_stored`` can mark the
+            control it left behind.
             """
-            return _StoredWriter(box, scale)
+            return _StoredWriter(box, scale, admits)
 
         def _show_stored(
             self,
@@ -2025,17 +2052,20 @@ if _HAS_QT:
             if callable(getattr(box, "setSpecialValueText", None)):
                 box.setSpecialValueText(REFUSED_FIGURE_TEXT)
                 box.setValue(box.minimum())
-                box.valueChanged.connect(lambda _v, _b=box: self._clear_refused(_b))
+                box.valueChanged.connect(
+                    lambda _v, _b=box, _k=key: self._clear_refused(_b, _k)
+                )
             if callable(getattr(box, "setStyleSheet", None)):
                 box.setStyleSheet(f"color: {REFUSED_FIGURE_COLOR};")
             if callable(getattr(box, "setToolTip", None)):
                 set_description(box, said())
 
-        @staticmethod
-        def _clear_refused(box: object) -> None:
-            """Take the dash off ``box`` so a figure the operator set draws as one."""
+        def _clear_refused(self, box: object, key: str) -> None:
+            """Take the dash off ``box`` and drop ``key`` from ``_refused``, so Save
+            writes the figure the operator set, its lowest one included."""
             box.setSpecialValueText("")
             box.setStyleSheet("")
+            self._refused.pop(key, None)
 
         def _untouched_since_refusal(
             self, key: str, read: Callable[[], object]
