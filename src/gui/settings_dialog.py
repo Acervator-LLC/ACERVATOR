@@ -2055,6 +2055,12 @@ if _HAS_QT:
                 box.valueChanged.connect(
                     lambda _v, _b=box, _k=key: self._clear_refused(_b, _k)
                 )
+                box.lineEdit().textEdited.connect(
+                    lambda _t, _k=key: self._refused.pop(_k, None)
+                )
+                box.editingFinished.connect(
+                    lambda _b=box, _k=key: self._clear_typed(_b, _k)
+                )
             if callable(getattr(box, "setStyleSheet", None)):
                 box.setStyleSheet(f"color: {REFUSED_FIGURE_COLOR};")
             if callable(getattr(box, "setToolTip", None)):
@@ -2066,6 +2072,11 @@ if _HAS_QT:
             box.setSpecialValueText("")
             box.setStyleSheet("")
             self._refused.pop(key, None)
+
+        def _clear_typed(self, box: object, key: str) -> None:
+            """Take the dash off ``box`` once typing in it has dropped ``key`` from ``_refused``."""
+            if key not in self._refused:
+                self._clear_refused(box, key)
 
         def _untouched_since_refusal(
             self, key: str, read: Callable[[], object]
