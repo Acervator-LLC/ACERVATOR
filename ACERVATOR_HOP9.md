@@ -400,6 +400,13 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   from the shared balance cache, and its mouse-over names each exchange's figure
   (`src/trading/container/aggregation.py, in exchange_cash`). He reads it against
   each exchange's own Cash screen after the next build.
+- **#1836, every buy opens its Stack ladder. Rows 1 and 2 are built.** On a
+  Stack Mode bot every filled buy ladders the units it bought, the first buy, a
+  hedge, a Manual Fire and a cartridge buy among them, and a buy that opens none
+  writes one bot log line naming why
+  (`src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold`). Row 3
+  waits on his yes to a read of his logs and saved state; then rows 4 and 5, then
+  6 to 8 with the Settings control of row 8, as the body orders them.
 - The rest of the queue: read each body.
 
 ---
