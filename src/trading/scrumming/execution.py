@@ -7,18 +7,14 @@ venue-fee records a settled fill produces on either side.
 from __future__ import annotations
 
 import asyncio
-import functools
-import inspect
 import logging
 import math
 import time
-from collections.abc import Awaitable
-from contextlib import nullcontext
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, ParamSpec, TypeVar
+from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
-from ...exchange.base import OrderSide, OrderType
+from ...exchange.base import OrderSide, OrderType, order_turn
 from ...exchange.idempotency import decision_purpose, get_idempotency_layer
 from ..container.config import NO_ORDER_BACK, target_growth_pct
 from ..container.order_watch import OrderWatch
@@ -103,12 +99,6 @@ BOOK_COMPARED_PATHS = ("cartridge_fold", "zero_balance_initial_entry")
 #: The booker of an order a repeated decision got back that no plan sized.
 EARLIER_ORDER_BOOKER = "_book_earlier_order"
 
-#: The ``_execute_buy`` paths whose venue calls queue past ``SYNC_QUEUE_CAP``.
-QUEUE_WAIVED_PATHS = ("fold_rebuy", "hedge_replenish")
-
-P = ParamSpec("P")
-R = TypeVar("R")
-
 
 def queues_buy_back(record: dict) -> bool:
     """True for a resting sell ``record`` whose ``booker`` or ``path_booker`` is in
@@ -118,24 +108,6 @@ def queues_buy_back(record: dict) -> bool:
         record.get("booker") in BUY_BACK_SALE_BOOKERS
         or context.get("path_booker") in BUY_BACK_SALE_BOOKERS
     )
-
-
-def waives_queue_cap_by_path(
-    send: Callable[P, Awaitable[R]],
-) -> Callable[P, Awaitable[R]]:
-    """Run ``send`` inside ``queue_cap_waived`` when its ``trace_context`` path is in ``QUEUE_WAIVED_PATHS``."""
-    signature = inspect.signature(send)
-
-    @functools.wraps(send)
-    async def waived(*args: P.args, **kwargs: P.kwargs) -> R:
-        from ...exchange.ccxt_connector import queue_cap_waived
-
-        trace_context = signature.bind(*args, **kwargs).arguments.get("trace_context")
-        path = (trace_context or {}).get("path")
-        with queue_cap_waived() if path in QUEUE_WAIVED_PATHS else nullcontext():
-            return await send(*args, **kwargs)
-
-    return waived
 
 
 @dataclass(frozen=True)
@@ -718,6 +690,7 @@ class ExecutionEngineMixin:
             return
         self._last_sell_venue_fee = self._last_fill_venue_fee
 
+    @order_turn
     async def _settle_venue_fee(self, order, units: float, price: float) -> None:
         """Re-reads ``order`` by its id and takes the settled venue fee from that body.
 
@@ -1165,6 +1138,7 @@ class ExecutionEngineMixin:
         if pressed or self._refusal_is_new("manual_no_order", price):
             self._refused_no_order(f"MANUAL FIRE {side}", role, watch, pressed=pressed)
 
+    @order_turn
     async def _execute_manual_rebalance(
         self,
         ticker,
@@ -2332,6 +2306,7 @@ class ExecutionEngineMixin:
             surplus_usd=proceeds,
         )
 
+    @order_turn
     async def _execute_detonation(
         self,
         ticker,
@@ -2644,6 +2619,7 @@ class ExecutionEngineMixin:
             fee=self._fill_fee_fields(fill_price),
         )
 
+    @order_turn
     async def _execute_sell(
         self,
         amount: float,
@@ -3175,7 +3151,7 @@ class ExecutionEngineMixin:
             )
         return held, refusal
 
-    @waives_queue_cap_by_path
+    @order_turn
     async def _execute_buy(
         self,
         cost: float,
