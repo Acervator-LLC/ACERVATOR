@@ -1,33 +1,28 @@
 """
 # Copyright (c) 2025 Anthony L. Brown (Ekthelius the Accumulator). All rights reserved.
-Shared market-data cache for candles, tickers and balances.
-
-``MarketDataPool`` holds one ``CacheEntry``, ``TickerEntry`` or ``BalanceEntry``
-per exchange, symbol and timeframe. ``get_or_fetch_ticker``,
-``get_or_fetch_ohlcv`` and ``get_or_fetch_balance`` return a fresh entry from
-cache and coalesce concurrent misses behind one ``asyncio.Lock``.
-``get_data_pool`` returns the process-wide singleton.
-
-``_acquire_fetch_lock`` bounds the wait for one of those locks, so a holder that
-never finishes cannot stop every other reader of that slot for the life of the
-process. The pool is a module singleton and nothing rebuilds its locks, so
-without the bound closing the platform is the only thing that clears one.
+Shared market-data cache for candles, tickers and balances: ``get_data_pool`` returns
+the process-wide ``MarketDataPool``, and ``SharedReads`` paces the reads that fill it.
 """
 
 from __future__ import annotations
 
 import asyncio
+import email.utils
 import logging
 import math
+import threading
 import time
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from ..core.price_age import ReadMoment
+from ..core.price_age import DEFAULT_PRICE_AGE_LIMIT_S, ReadMoment, price_age_limit_s
+from ..core.tick_driver import PUMP_INTERVAL_MS
 from ..trading.ta_engine import MIN_CANDLES_FOR_TA
 from .api_load_monitor import DEFAULT_WINDOW_SECONDS
 from .base import Ticker
-from .lazy_singleton import ThrottledFault
+from .lazy_singleton import BACKOFF_FACTOR, DEFAULT_MAX_COOLOFF_S, ThrottledFault
 from .market_pairs_scout import row_quote_volume_24h
 
 logger = logging.getLogger("acervator.data_pool")
@@ -47,10 +42,39 @@ BALANCE_TTL_SECONDS = 10.0
 LOCK_WAIT_BUDGET_SECONDS = DEFAULT_WINDOW_SECONDS
 
 #: Budgets a waiter gives a holder that is slow while other slots still refresh.
-#: Five budgets is 300 s, above the 259 s one balance fetch can legitimately
-#: hold: two account reads, each ``READ_TURN_WAIT_SEC``, one run of
+#: Four budgets is 240 s, above the 189 s one fetch can legitimately hold:
+#: ``SHARED_WAIT_SECONDS``, ``READ_TURN_WAIT_SEC``, one run of
 #: ``SYNC_CALL_TIMEOUT_SEC`` and the last retry backoff.
-LOCK_WAIT_BUDGETS_BEFORE_CLEAR = 5
+LOCK_WAIT_BUDGETS_BEFORE_CLEAR = 4
+
+# Seconds a turn lasts for each second its reads hold the worker, which they then hold
+# for two thirds of the time at most.
+TURN_PER_HELD_SECOND = 1.5
+
+# Reads in one turn of an exchange: its prices, then its account.
+READS_PER_TURN = 2
+
+# Longest a caller waits for a shared read, for its turn to ask alone or for a place.
+SHARED_WAIT_SECONDS = LOCK_WAIT_BUDGET_SECONDS
+
+# Gap between two looks of a waiting caller, one step of the app's loop.
+SHARED_WAIT_SLICE_SECONDS = PUMP_INTERVAL_MS / 1000.0
+
+# Longest an ask stays out of depth: CCXTConnector's 0.1 s request gap and two steps.
+ASK_SETTLE_SECONDS = 0.1 + 2.0 * SHARED_WAIT_SLICE_SECONDS
+
+# Places of the call queue that every caller but a shared read leaves free.
+SPARE_PLACES = 1
+
+# Age past which a ReadTurn holder counts as one that never finishes.
+TURN_CEILING_SECONDS = LOCK_WAIT_BUDGET_SECONDS * LOCK_WAIT_BUDGETS_BEFORE_CLEAR
+
+# The two kinds of shared read, each named for the ccxt call behind it.
+PRICES_CALL = "fetch_tickers"
+ACCOUNT_CALL = "fetch_balance"
+
+# Header of an HTTP answer that states when to ask again, RFC 9110 section 10.2.3.
+RETRY_AFTER_HEADER = "Retry-After"
 
 TF_SECONDS = {
     "1m": 60,
@@ -88,6 +112,11 @@ def _row_ticker(symbol: str, row: Any, read_at: ReadMoment) -> Optional[Ticker]:
     )
 
 
+def longest_period_s() -> float:
+    """Longest lengthened period: ``price_age_limit_s``, its default at most."""
+    return min(price_age_limit_s(), DEFAULT_PRICE_AGE_LIMIT_S)
+
+
 def _row_timestamp(row) -> Optional[float]:
     """The finite ``row[0]`` of one OHLCV row as a float, None when it has none."""
     try:
@@ -107,6 +136,249 @@ def _merge_candle_rows(stored: list, fetched: list) -> Optional[list]:
             return None
         by_time[at] = row
     return [by_time[at] for at in sorted(by_time)]
+
+
+def _retry_after_seconds(stated: str) -> float:
+    """Seconds from now a ``RETRY_AFTER_HEADER`` value names, 0.0 for neither a number
+    nor a date."""
+    try:
+        return max(0.0, float(stated))
+    except ValueError:
+        pass
+    try:
+        at = email.utils.parsedate_to_datetime(stated).timestamp()
+    except (OSError, OverflowError, TypeError, ValueError):
+        return 0.0
+    return max(0.0, at - time.time())
+
+
+def stated_wait_seconds(exc: BaseException) -> float:
+    """Seconds the ``RETRY_AFTER_HEADER`` of the HTTP answer behind ``exc`` asks for, 0.0
+    without one."""
+    link: Optional[BaseException] = exc
+    seen: set[int] = set()
+    while link is not None and id(link) not in seen:
+        seen.add(id(link))
+        headers = getattr(getattr(link, "response", link), "headers", None)
+        read = getattr(headers, "get", None)
+        stated = read(RETRY_AFTER_HEADER) if callable(read) else None
+        if stated is not None:
+            return _retry_after_seconds(str(stated))
+        link = link.__cause__ or link.__context__
+    return 0.0
+
+
+def held_seconds(connector, kind: str, asked: float) -> float:
+    """Seconds the run of ``kind`` that began after ``asked`` held the worker, else every
+    second since ``asked``."""
+    newest = getattr(connector, "latest_run", None)
+    began, seconds = newest(kind) if newest is not None else (0.0, 0.0)
+    return seconds if began >= asked else time.monotonic() - asked
+
+
+class LinePlaces:
+    """Free places of one call queue, less the asks its ``depth`` does not show yet."""
+
+    def __init__(self) -> None:
+        self._guard = threading.Lock()
+        self._asked: list[float] = []
+
+    def take(self, connector, spare: int) -> bool:
+        """True where more than ``spare`` places are left, one of them now taken; always
+        inside ``queue_cap_waived`` and without ``sync_queue_load``."""
+        from .ccxt_connector import queue_cap_is_waived
+
+        reader = getattr(connector, "sync_queue_load", None)
+        with self._guard:
+            now = time.monotonic()
+            self._asked = [at for at in self._asked if now - at < ASK_SETTLE_SECONDS]
+            if reader is not None and not queue_cap_is_waived():
+                load = reader()
+                free = float(load["cap"]) - float(load["depth"]) - len(self._asked)
+                if free <= spare:
+                    return False
+            self._asked.append(now)
+            return True
+
+
+class ReadTurn:
+    """One read at a time across every thread's loop, lost past
+    ``TURN_CEILING_SECONDS``."""
+
+    def __init__(self) -> None:
+        self._guard = threading.Lock()
+        self._holder: Optional[object] = None
+        self._since = 0.0
+        self.displaced_s = 0.0
+
+    def take(self) -> Optional[object]:
+        """The token of the turn now held, None while another caller holds it."""
+        with self._guard:
+            now = time.monotonic()
+            held_s = 0.0 if self._holder is None else now - self._since
+            if self._holder is not None and held_s < TURN_CEILING_SECONDS:
+                return None
+            self.displaced_s = held_s
+            self._holder = object()
+            self._since = now
+            return self._holder
+
+    def give_back(self, token: object) -> None:
+        """End the turn ``token`` names, unless another caller has it already."""
+        with self._guard:
+            if self._holder is token:
+                self._holder = None
+
+
+@dataclass
+class SharedReads:
+    """When one exchange's shared reads run, attended by ``BotManager._refresh_exchange``,
+    and which callers leave a slot to them."""
+
+    interval_s: float = 0.0
+    min_rest_s: float = 0.0
+    attendant: Optional[object] = None
+    reading: str = ""
+    due_at: float = 0.0
+    turn_began: float = 0.0
+    turn_reads: int = 0
+    held_s: float = 0.0
+    steps: int = 0
+    unanswered: bool = False
+    wait_until: float = 0.0
+    answered_at: float = 0.0
+    answer_s: dict[str, float] = field(
+        default_factory=lambda: {PRICES_CALL: 0.0, ACCOUNT_CALL: 0.0}
+    )
+    lost_at: dict[str, float] = field(default_factory=dict)
+    refused: set[str] = field(default_factory=set)
+    places: LinePlaces = field(default_factory=LinePlaces)
+    account_turn: ReadTurn = field(default_factory=ReadTurn)
+    price_turn: ReadTurn = field(default_factory=ReadTurn)
+
+    def attend(self, interval_s: float, min_rest_s: float) -> object:
+        """Serve callers every ``interval_s`` from now, and answer the token ``leave``
+        takes."""
+        self.interval_s = interval_s
+        self.min_rest_s = min_rest_s
+        self.reading = ""
+        self.turn_reads = 0
+        self.held_s = 0.0
+        self.unanswered = False
+        self.due_at = time.monotonic()
+        self.attendant = object()
+        return self.attendant
+
+    def leave(self, token: object) -> None:
+        """Stop serving callers, unless another refresher attends by now."""
+        if self.attendant is token:
+            self.attendant = None
+
+    def open_read(self) -> None:
+        """Count one read about to be asked, the first of which begins a turn."""
+        if self.turn_reads == 0:
+            self.turn_began = time.monotonic()
+        self.turn_reads += 1
+
+    @contextmanager
+    def on_its_way(self, kind: str) -> Iterator[None]:
+        """Name ``kind`` as the read on its way inside the block."""
+        self.reading = kind
+        try:
+            yield
+        finally:
+            self.reading = ""
+
+    def note_good(self, kind: str) -> None:
+        """Note an answer of ``kind``, which takes back one of ``steps``."""
+        self.refused.discard(kind)
+        self.lost_at.pop(kind, None)
+        self.steps = max(0, self.steps - 1)
+        self.answered_at = time.monotonic()
+
+    def note_failed(self, kind: str, exc: BaseException) -> bool:
+        """True where ``exc`` lost or throttled a read of ``kind``, adding to ``steps``;
+        the venue's own refusal adds to ``refused``."""
+        from .ccxt_connector import (
+            VENUE_LOST,
+            VENUE_RATE_LIMITED,
+            CCXTQueueFullError,
+            classify_venue_refusal,
+        )
+
+        if isinstance(exc, CCXTQueueFullError):
+            return False
+        label = classify_venue_refusal(exc)
+        self.lost_at.pop(kind, None)
+        if label not in (VENUE_LOST, VENUE_RATE_LIMITED):
+            self.refused.add(kind)
+            return False
+        self.refused.discard(kind)
+        if 0.0 < self.interval_s * BACKOFF_FACTOR**self.steps < longest_period_s():
+            self.steps += 1
+        if label == VENUE_LOST:
+            self.lost_at[kind] = time.monotonic()
+        else:
+            stated = min(stated_wait_seconds(exc), DEFAULT_MAX_COOLOFF_S)
+            self.wait_until = max(self.wait_until, time.monotonic() + stated)
+        return True
+
+    def period_s(self) -> float:
+        """Seconds from one turn to the next, from ``held_s`` and ``steps``."""
+        own = max(self.interval_s, self.held_s * TURN_PER_HELD_SECOND)
+        return max(own, min(own * BACKOFF_FACTOR**self.steps, longest_period_s()))
+
+    def rest_s(self) -> float:
+        """Seconds to rest after a read; ``READS_PER_TURN`` of them end a turn, as one
+        ``unanswered`` does."""
+        now = time.monotonic()
+        rest = max(0.0, self.wait_until - now)
+        if self.unanswered or self.turn_reads >= READS_PER_TURN:
+            paced = max(self.min_rest_s, self.turn_began + self.period_s() - now)
+            if self.unanswered:
+                paced = min(paced, longest_period_s())
+            rest = max(rest, paced)
+            self.held_s = 0.0
+            self.turn_reads = 0
+            self.unanswered = False
+        self.due_at = now + rest
+        return rest
+
+    def slowed(self) -> bool:
+        """True while ``steps`` or a stated wait lengthens the period of an attended
+        exchange."""
+        if self.attendant is None:
+            return False
+        return self.steps > 0 or time.monotonic() < self.wait_until
+
+    def left_alone(self, kind: str) -> bool:
+        """True where callers ask alone: the venue refused ``kind``, or lost the shared
+        prices and has answered another call since."""
+        if kind in self.refused:
+            return True
+        lost_at = self.lost_at.get(kind, math.inf)
+        return kind == PRICES_CALL and lost_at < self.answered_at
+
+    def awaited(self, kind: str, ends_at: float) -> bool:
+        """True while a caller leaves an expired slot to ``kind``; one on its way or due
+        soon counts until ``ends_at``."""
+        now = time.monotonic()
+        if self.attendant is None:
+            return False
+        if self.left_alone(kind):
+            return kind in self.refused and self.reading == kind and now < ends_at
+        if self.slowed():
+            return True
+        soon = self.due_at - now <= sum(self.answer_s.values())
+        return now < ends_at and (bool(self.reading) or soon)
+
+    def replaces(self, kind: str, age_s: float) -> bool:
+        """True where ``age_s`` passes ``interval_s`` and the newest answers with
+        ``min_rest_s``, so a caller waits for the next read."""
+        if self.attendant is None or self.left_alone(kind):
+            return False
+        answers_s = sum(self.answer_s.values())
+        return age_s > max(self.interval_s, answers_s + self.min_rest_s)
 
 
 @dataclass
@@ -209,12 +481,26 @@ class BalanceEntry:
     answered: bool = False
 
     @property
+    def age_seconds(self) -> float:
+        return time.time() - self.fetch_time
+
+    @property
     def is_stale(self) -> bool:
-        return (time.time() - self.fetch_time) > BALANCE_TTL_SECONDS
+        return self.age_seconds > BALANCE_TTL_SECONDS
 
     @property
     def has_data(self) -> bool:
         return self.fetch_time > 0.0
+
+    @property
+    def is_fresh(self) -> bool:
+        """True where the slot ``has_data`` and is not ``is_stale``."""
+        return self.has_data and not self.is_stale
+
+    @property
+    def ended(self) -> bool:
+        """True from ``invalidate_balance`` to the next answer begun after it."""
+        return self.end_count > 0 and not self.has_data
 
 
 @dataclass(slots=True)
@@ -222,7 +508,8 @@ class TickerEntry:
     """Last, bid and ask for one exchange and symbol, and ``read_at``, the moment the
     venue answered them.
 
-    ``is_stale`` turns True 5 seconds after ``read_at``.
+    ``is_stale`` turns True 5 seconds after ``read_at``, and ``left_out`` where the
+    newest shared answer asked for this slot held no price.
     """
 
     exchange_id: str
@@ -234,6 +521,7 @@ class TickerEntry:
     timestamp: float = 0.0
     read_at: Optional[ReadMoment] = None
     subscribers: int = 0
+    left_out: bool = False
 
     @classmethod
     def answered_now(
@@ -255,6 +543,11 @@ class TickerEntry:
     def has_data(self) -> bool:
         """True once a read left ``last`` above zero."""
         return self.read_at is not None and self.last > 0.0
+
+    @property
+    def is_fresh(self) -> bool:
+        """True where the slot ``has_data`` and is not ``is_stale``."""
+        return self.has_data and not self.is_stale
 
     def take(self, ticker: Ticker) -> bool:
         """Hold the figures of ``ticker``, and answer False where this slot already holds
@@ -307,7 +600,6 @@ class MarketDataPool:
         self._lock = asyncio.Lock()
         self._total_fetches = 0
         self._cache_hits = 0
-        self._ticker_fetch_locks: dict[str, asyncio.Lock] = {}
         self._ticker_fetches = 0
         self._ticker_cache_hits = 0
         self._ticker_queue_full_skips = 0
@@ -318,12 +610,13 @@ class MarketDataPool:
         self._ohlcv_fetches = 0
         self._ohlcv_cache_hits = 0
         self._balances: dict[str, BalanceEntry] = {}
-        self._balance_fetch_locks: dict[str, asyncio.Lock] = {}
         self._balance_fetches = 0
         self._balance_cache_hits = 0
         self._balance_batch_fills = 0
         self._balance_batch_slots = 0
         self._balance_end_count = 0
+        self._shared_reads: dict[str, SharedReads] = {}
+        self._slot_turns: dict[str, ReadTurn] = {}
         self._wedged_locks_cleared = 0
         self._fetch_lock_fault = ThrottledFault(
             "exchange fetching through the shared market data pool",
@@ -415,6 +708,90 @@ class MarketDataPool:
             if waited_s >= ceiling_s or self._no_reading_landed():
                 return await self._clear_wedged_lock(locks, key, label, waited_s)
 
+    def shared_reads(self, exchange_id: str) -> SharedReads:
+        """The one ``SharedReads`` of ``exchange_id``."""
+        return self._shared_reads.setdefault(exchange_id, SharedReads())
+
+    def _take_turn(self, turn: ReadTurn, label: str) -> Optional[object]:
+        """``turn.take``, counting a holder it displaced as a lock cleared."""
+        token = turn.take()
+        if token is not None and turn.displaced_s > 0.0:
+            self._wedged_locks_cleared += 1
+            self._fetch_lock_fault.note_cleared(label, turn.displaced_s)
+        return token
+
+    async def _turn_to_ask(
+        self,
+        turn: ReadTurn,
+        connector,
+        reads: SharedReads,
+        label: str,
+        served: Callable[[], bool],
+        awaits: Callable[[float], bool],
+    ) -> Optional[object]:
+        """A token of ``turn`` once this caller has to ask alone, None once ``served``.
+
+        Raises:
+            asyncio.TimeoutError: neither came inside ``SHARED_WAIT_SECONDS``.
+        """
+        ends_at = time.monotonic() + SHARED_WAIT_SECONDS
+        while not served():
+            now = time.monotonic()
+            if now >= reads.wait_until and not awaits(ends_at):
+                token = self._ask_alone(turn, connector, reads, label)
+                if token is not None:
+                    return token
+            if now >= ends_at:
+                raise asyncio.TimeoutError(
+                    f"{label} did not come in {SHARED_WAIT_SECONDS:.0f}s"
+                )
+            await asyncio.sleep(SHARED_WAIT_SLICE_SECONDS)
+        return None
+
+    def _ask_alone(
+        self, turn: ReadTurn, connector, reads: SharedReads, label: str
+    ) -> Optional[object]:
+        """A token of ``turn`` with a place in the call queue, None without both."""
+        token = self._take_turn(turn, label)
+        if token is None or reads.places.take(connector, SPARE_PLACES):
+            return token
+        turn.give_back(token)
+        return None
+
+    async def _await_place(self, connector, exchange_id: str, spare: int) -> None:
+        """Take a place past ``spare`` in the call queue, after a wait of
+        ``SHARED_WAIT_SECONDS`` at most."""
+        places = self.shared_reads(exchange_id).places
+        ends_at = time.monotonic() + SHARED_WAIT_SECONDS
+        while not places.take(connector, spare) and time.monotonic() < ends_at:
+            await asyncio.sleep(SHARED_WAIT_SLICE_SECONDS)
+
+    async def _noted_read(
+        self,
+        connector,
+        exchange_id: str,
+        kind: str,
+        read: Callable[[], Awaitable[Any]],
+    ) -> Any:
+        """What ``read`` answers from a free place, its outcome and the worker's seconds
+        noted in ``shared_reads``."""
+        from .ccxt_connector import run_timed_as
+
+        reads = self.shared_reads(exchange_id)
+        await self._await_place(connector, exchange_id, 0)
+        asked = time.monotonic()
+        try:
+            with run_timed_as(kind):
+                answer = await read()
+        except Exception as exc:
+            reads.unanswered = reads.note_failed(kind, exc)
+            reads.held_s += held_seconds(connector, kind, asked)
+            raise
+        reads.note_good(kind)
+        reads.answer_s[kind] = held_seconds(connector, kind, asked)
+        reads.held_s += reads.answer_s[kind]
+        return answer
+
     def register(self, exchange_id: str, symbol: str, timeframe: str):
         """Register a bot's data need. Same combo = shared cache slot."""
         key = _candle_key(exchange_id, symbol, timeframe)
@@ -466,119 +843,154 @@ class MarketDataPool:
         entry = self._candles.get(key)
         return entry is not None and not entry.is_stale
 
+    def _ticker_slot(self, exchange_id: str, symbol: str) -> TickerEntry:
+        """The slot of ``symbol``, made here for one ``register`` never named."""
+        tkey = _ticker_key(exchange_id, symbol)
+        entry = self._tickers.get(tkey)
+        if entry is not None:
+            return entry
+        fresh = TickerEntry(exchange_id=exchange_id, symbol=symbol)
+        return self._tickers.setdefault(tkey, fresh)
+
+    def _price_turn(self, connector, exchange_id: str, symbol: str) -> ReadTurn:
+        """The turn of a price asked alone: one for a call queue, else one for a slot."""
+        if hasattr(connector, "sync_queue_load"):
+            return self.shared_reads(exchange_id).price_turn
+        key = f"price|{_ticker_key(exchange_id, symbol)}"
+        return self._slot_turns.setdefault(key, ReadTurn())
+
     async def get_or_fetch_ticker(
         self,
         connector,
         exchange_id: str,
         symbol: str,
-    ):
-        """Return a ``Ticker`` for ``symbol``, fetching when the entry is stale.
+    ) -> Ticker:
+        """The ``Ticker`` of ``symbol`` from its slot, the shared price read on its way
+        or due, or one ``get_ticker``."""
+        reads = self.shared_reads(exchange_id)
+        bulk = hasattr(connector, "get_all_tickers")
 
-        Concurrent misses on one ``_ticker_key`` queue on a single lock, and a
-        ``CCXTQueueFullError`` is answered from a stale entry that ``has_data``, whose
-        ``Ticker.read_at`` says how old it is.
-        """
-        try:
-            from .ccxt_connector import CCXTQueueFullError
-        except Exception:
-            CCXTQueueFullError = RuntimeError  # type: ignore
+        def slot() -> TickerEntry:
+            return self._ticker_slot(exchange_id, symbol)
 
-        tkey = _ticker_key(exchange_id, symbol)
-        entry = self._tickers.get(tkey)
+        def served() -> bool:
+            entry = slot()
+            if not entry.is_fresh:
+                return False
+            listed = bulk and not entry.left_out
+            return not (listed and reads.replaces(PRICES_CALL, entry.age_seconds))
 
-        if entry is not None and not entry.is_stale and entry.has_data:
+        def awaits(ends_at: float) -> bool:
+            entry = slot()
+            if not bulk or entry.left_out:
+                return False
+            return entry.is_fresh or reads.awaited(PRICES_CALL, ends_at)
+
+        turn = self._price_turn(connector, exchange_id, symbol)
+        label = f"the price for {symbol} on {exchange_id}"
+        token = await self._turn_to_ask(turn, connector, reads, label, served, awaits)
+        if token is None:
             self._ticker_cache_hits += 1
-            return entry.ticker()
-
-        lock = await self._acquire_fetch_lock(
-            self._ticker_fetch_locks, tkey, f"the price for {symbol} on {exchange_id}"
-        )
+            return slot().ticker()
         try:
-            entry = self._tickers.get(tkey)
-            if entry is not None and not entry.is_stale and entry.has_data:
-                self._ticker_cache_hits += 1
-                return entry.ticker()
-
-            # ``register`` is not a precondition; USD-conversion symbols
-            # arrive here first.
-            if entry is None:
-                entry = TickerEntry(exchange_id=exchange_id, symbol=symbol)
-                self._tickers[tkey] = entry
-
-            try:
-                ticker = await connector.get_ticker(symbol)
-            except CCXTQueueFullError:
-                self._ticker_queue_full_skips += 1
-                if entry.has_data:
-                    logger.debug(
-                        "DataPool: queue-full on %s/%s; serving stale " "(age=%.1fs)",
-                        exchange_id,
-                        symbol,
-                        entry.age_seconds,
-                    )
-                    return entry.ticker()
-                raise
-
-            entry.take(ticker)
-            self._ticker_fetches += 1
-            return entry.ticker()
+            return await self._ask_ticker(connector, slot())
         finally:
-            lock.release()
+            turn.give_back(token)
+
+    async def _ask_ticker(self, connector, entry: TickerEntry) -> Ticker:
+        """``entry`` after one ``get_ticker``; a full queue answers where it ``has_data``,
+        whose ``Ticker.read_at`` says how old it is."""
+        from .ccxt_connector import CCXTQueueFullError
+
+        try:
+            entry.take(await connector.get_ticker(entry.symbol))
+        except CCXTQueueFullError:
+            self._ticker_queue_full_skips += 1
+            if not entry.has_data:
+                raise
+            logger.debug(
+                "DataPool: queue-full on %s/%s; serving stale (age=%.1fs)",
+                entry.exchange_id,
+                entry.symbol,
+                entry.age_seconds,
+            )
+            return entry.ticker()
+        self.shared_reads(entry.exchange_id).answered_at = time.monotonic()
+        self._ticker_fetches += 1
+        return entry.ticker()
 
     def _slots_held(self, slots: dict, exchange_id: str) -> int:
-        """How many of ``slots`` belong to ``exchange_id``.
-
-        A refresh with no slot to refill makes no venue call, so an idle fleet
-        costs nothing. The refresh is not skipped on a slot's age: the loop's
-        period already sits inside the slot lifetime, and skipping a cycle let
-        a slot expire while a slow read was still in flight.
-        """
-        return sum(1 for slot in slots.values() if slot.exchange_id == exchange_id)
+        """How many of ``slots`` belong to ``exchange_id``; a refresh of none makes no
+        venue call."""
+        held = list(slots.values())
+        return sum(1 for slot in held if slot.exchange_id == exchange_id)
 
     async def refresh_all_tickers(self, connector, exchange_id: str) -> int:
         """Refill every ``_tickers`` entry for ``exchange_id`` from one
         ``get_all_tickers`` call given their symbols, and return how many it updated.
 
-        An ``exchange_id`` with no entry makes no call, an entry the answer leaves out
-        or one holding a later read is left alone, and every exception is logged and
-        swallowed. Rows that carry no ``read_at`` of their own count from the ask.
+        An ``exchange_id`` with no entry makes no call, and every exception is logged
+        and noted in its ``SharedReads``. Rows that carry no ``read_at`` of their own
+        count from the ask.
         """
-        symbols = [
-            entry.symbol
-            for entry in self._tickers.values()
-            if entry.exchange_id == exchange_id
-        ]
-        if not symbols:
+        reader = getattr(connector, "get_all_tickers", None)
+        if reader is None or not self._slots_held(self._tickers, exchange_id):
             return 0
+        reads = self.shared_reads(exchange_id)
+        asked: list[str] = []
         asked_at = ReadMoment.now()
-        try:
-            raw = await connector.get_all_tickers(symbols)
-        except Exception as exc:
-            # The text of a failed request holds its URL, whose query lists symbols.
-            said = " ".join(word.partition("?")[0] for word in str(exc).split(" "))
-            logger.warning(
-                "DataPool: bulk ticker refresh failed for %s (%s); bots "
-                "fall back to individual fetches.",
-                exchange_id,
-                said,
-            )
-            return 0
 
-        if not isinstance(raw, dict):
-            logger.warning(
-                "DataPool: bulk ticker refresh for %s returned %s, not a "
-                "dict; ignoring.",
-                exchange_id,
-                type(raw).__name__,
-            )
-            return 0
+        async def read() -> Any:
+            nonlocal asked, asked_at
+            asked = [
+                entry.symbol
+                for entry in list(self._tickers.values())
+                if entry.exchange_id == exchange_id
+            ]
+            asked_at = ReadMoment.now()
+            return await reader(asked)
 
-        read_at = getattr(raw, "read_at", asked_at)
+        with reads.on_its_way(PRICES_CALL):
+            try:
+                raw = await self._noted_read(connector, exchange_id, PRICES_CALL, read)
+            except Exception as exc:
+                # The text of a failed request holds its URL, whose query lists symbols.
+                said = " ".join(word.partition("?")[0] for word in str(exc).split(" "))
+                logger.warning(
+                    "DataPool: shared price read of %s failed (%s: %s)",
+                    exchange_id,
+                    type(exc).__name__,
+                    said,
+                )
+                return 0
+            if not isinstance(raw, dict):
+                reads.refused.add(PRICES_CALL)
+                logger.warning(
+                    "DataPool: bulk ticker refresh for %s returned %s, not a "
+                    "dict; ignoring.",
+                    exchange_id,
+                    type(raw).__name__,
+                )
+                return 0
+            read_at = getattr(raw, "read_at", asked_at)
+            return self._fill_ticker_entries(exchange_id, raw, set(asked), read_at)
+
+    def _fill_ticker_entries(
+        self, exchange_id: str, raw: dict, asked: set[str], read_at: ReadMoment
+    ) -> int:
+        """Write every ``_tickers`` slot ``raw`` prices, and return how many.
+
+        One in ``asked`` that ``raw`` does not price is ``left_out``, and one holding a
+        read later than ``read_at`` is left alone.
+        """
         updated = 0
+        held = 0
         for entry in list(self._tickers.values()):
             if entry.exchange_id != exchange_id:
                 continue
+            held += 1
             answered = _row_ticker(entry.symbol, raw.get(entry.symbol), read_at)
+            entry.left_out = answered is None and entry.symbol in asked
             if answered is None:
                 continue
             if not entry.take(answered):
@@ -594,7 +1006,7 @@ class MarketDataPool:
             "entries in one call.",
             exchange_id,
             updated,
-            sum(1 for e in self._tickers.values() if e.exchange_id == exchange_id),
+            held,
         )
         return updated
 
@@ -638,6 +1050,7 @@ class MarketDataPool:
                 self._candles[key] = entry
 
             requested = max(limit, 100)
+            await self._await_place(connector, exchange_id, SPARE_PLACES)
             candles = await connector.get_ohlcv(
                 symbol,
                 timeframe,
@@ -652,14 +1065,30 @@ class MarketDataPool:
         finally:
             lock.release()
 
+    def _balance_slot(self, exchange_id: str, currency: str) -> BalanceEntry:
+        """The slot of ``currency``, made here on its first ask."""
+        bkey = _balance_key(exchange_id, currency)
+        entry = self._balances.get(bkey)
+        if entry is not None:
+            return entry
+        fresh = BalanceEntry(exchange_id=exchange_id, currency=currency)
+        return self._balances.setdefault(bkey, fresh)
+
+    def _balance_turn(self, connector, exchange_id: str, currency: str) -> ReadTurn:
+        """The turn of a balance asked alone: one for an account, else one for a slot."""
+        if hasattr(connector, "get_account_balances"):
+            return self.shared_reads(exchange_id).account_turn
+        key = f"balance|{_balance_key(exchange_id, currency)}"
+        return self._slot_turns.setdefault(key, ReadTurn())
+
     async def get_or_fetch_balance(
         self,
         connector,
         exchange_id: str,
         currency: str,
     ):
-        """Return a ``Balance`` for ``currency``, fetching when the entry is
-        stale.
+        """Return a ``Balance`` for ``currency`` from its slot, the account read on its
+        way or due, or one account read of its own.
 
         ``BalanceEntry.is_stale`` sets the 10-second window, ``invalidate_balance``
         ends it early, and a read during which ``invalidate_balance`` ends this slot
@@ -667,11 +1096,32 @@ class MarketDataPool:
         """
         from .base import Balance
 
-        bkey = _balance_key(exchange_id, currency)
-        entry = self._balances.get(bkey)
+        reads = self.shared_reads(exchange_id)
+        bulk = hasattr(connector, "get_account_balances")
 
-        if entry is not None and not entry.is_stale and entry.has_data:
+        def slot() -> BalanceEntry:
+            return self._balance_slot(exchange_id, currency)
+
+        def served() -> bool:
+            entry = slot()
+            if not entry.is_fresh:
+                return False
+            return not (bulk and reads.replaces(ACCOUNT_CALL, entry.age_seconds))
+
+        def awaits(ends_at: float) -> bool:
+            entry = slot()
+            if not bulk:
+                return False
+            if entry.ended:
+                return reads.slowed()
+            return entry.is_fresh or reads.awaited(ACCOUNT_CALL, ends_at)
+
+        turn = self._balance_turn(connector, exchange_id, currency)
+        label = f"the {currency} balance on {exchange_id}"
+        token = await self._turn_to_ask(turn, connector, reads, label, served, awaits)
+        if token is None:
             self._balance_cache_hits += 1
+            entry = slot()
             return Balance(
                 currency=entry.currency,
                 free=entry.free,
@@ -679,59 +1129,56 @@ class MarketDataPool:
                 total=entry.total,
                 absent=entry.absent,
             )
-
-        lock = await self._acquire_fetch_lock(
-            self._balance_fetch_locks,
-            bkey,
-            f"the {currency} balance on {exchange_id}",
-        )
         try:
-            entry = self._balances.get(bkey)
-            if entry is not None and not entry.is_stale and entry.has_data:
-                self._balance_cache_hits += 1
-                return Balance(
-                    currency=entry.currency,
-                    free=entry.free,
-                    used=entry.used,
-                    total=entry.total,
-                    absent=entry.absent,
-                )
+            return await self._ask_balance(connector, slot())
+        finally:
+            turn.give_back(token)
 
-            if entry is None:
-                entry = BalanceEntry(exchange_id=exchange_id, currency=currency)
-                self._balances[bkey] = entry
+    async def _ask_balance(self, connector, entry: BalanceEntry):
+        """The ``Balance`` of ``entry`` from one account read, or ``get_balance`` without
+        one; a read ``invalidate_balance`` ended is taken again."""
+        from .base import Balance
 
-            while True:
-                begun = self._balance_end_count
-                reported = await self._read_account(connector, exchange_id)
-                if reported is None:
-                    balance = await connector.get_balance(currency)
-                    self._balance_fetches += 1
-                    if entry.end_count > begun:
-                        self._note_read_again(exchange_id, currency)
-                        continue
-                    self._write_balance_entry(entry, currency, balance)
-                    return balance
-
-                self._fill_balance_entries(exchange_id, reported, begun)
+        exchange_id, currency = entry.exchange_id, entry.currency
+        ends_at = time.monotonic() + SHARED_WAIT_SECONDS
+        while True:
+            begun = self._balance_end_count
+            reported = await self._read_account(connector, exchange_id)
+            if reported is None:
+                balance = await connector.get_balance(currency)
                 self._balance_fetches += 1
                 if entry.end_count > begun:
-                    self._note_read_again(exchange_id, currency)
+                    self._note_read_again(exchange_id, currency, ends_at)
                     continue
-                held = reported.get(currency)
-                if held is not None:
-                    return held
-                absent = Balance(
-                    currency=currency, free=0.0, used=0.0, total=0.0, absent=True
-                )
-                self._write_balance_entry(entry, currency, absent)
-                return absent
-        finally:
-            lock.release()
+                self._write_balance_entry(entry, currency, balance)
+                return balance
+
+            self._fill_balance_entries(exchange_id, reported, begun)
+            self._balance_fetches += 1
+            if entry.end_count > begun:
+                self._note_read_again(exchange_id, currency, ends_at)
+                continue
+            held = reported.get(currency)
+            if held is not None:
+                return held
+            absent = Balance(
+                currency=currency, free=0.0, used=0.0, total=0.0, absent=True
+            )
+            self._write_balance_entry(entry, currency, absent)
+            return absent
 
     @staticmethod
-    def _note_read_again(exchange_id: str, currency: str) -> None:
-        """Log one ``get_or_fetch_balance`` read that ``invalidate_balance`` ended."""
+    def _note_read_again(exchange_id: str, currency: str, ends_at: float) -> None:
+        """Log one ``get_or_fetch_balance`` read that ``invalidate_balance`` ended.
+
+        Raises:
+            asyncio.TimeoutError: ``ends_at`` has passed.
+        """
+        if time.monotonic() >= ends_at:
+            raise asyncio.TimeoutError(
+                f"fills ended every read of the {currency} balance on {exchange_id} "
+                f"for {SHARED_WAIT_SECONDS:.0f}s"
+            )
         logger.debug(
             "DataPool: the %s balance on %s was ended while its read was in "
             "flight; reading it again.",
@@ -740,26 +1187,22 @@ class MarketDataPool:
         )
 
     async def _read_account(self, connector, exchange_id: str):
-        """One account read naming every currency, None when ``connector`` has none.
-
-        ``CCXTConnector.get_account_balances`` answers every currency in one
-        venue call, so one read fills every slot instead of one slot per call.
-        """
+        """One account read naming every currency, None where ``connector`` has none, and
+        its error raised with no second read."""
         reader = getattr(connector, "get_account_balances", None)
         if reader is None:
             return None
+        reads = self.shared_reads(exchange_id)
         try:
             reported = await reader()
-        except Exception:
-            # The per-currency path is the fallback and raises for its own caller.
-            logger.debug(
-                "DataPool: account read unavailable for %s; falling back to "
-                "one call per currency.",
-                exchange_id,
-                exc_info=True,
-            )
-            return None
-        return reported if isinstance(reported, dict) else None
+        except Exception as exc:
+            reads.note_failed(ACCOUNT_CALL, exc)
+            raise
+        reads.note_good(ACCOUNT_CALL)
+        if isinstance(reported, dict):
+            return reported
+        reads.refused.add(ACCOUNT_CALL)
+        return None
 
     def _fill_balance_entries(
         self, exchange_id: str, reported: dict, begun: int
@@ -782,7 +1225,7 @@ class MarketDataPool:
                     exchange_id=exchange_id, currency=currency
                 )
         filled = 0
-        for slot in self._balances.values():
+        for slot in list(self._balances.values()):
             if slot.exchange_id != exchange_id:
                 continue
             if slot.end_count > begun:
@@ -844,13 +1287,55 @@ class MarketDataPool:
         this exchange holds no balance slot, the connector serves no account
         read, or the read raised.
         """
+        if not hasattr(connector, "get_account_balances"):
+            return 0
         if not self._slots_held(self._balances, exchange_id):
             return 0
+        reads = self.shared_reads(exchange_id)
+        once = getattr(connector, "get_account_balances_once", None)
+        reader = connector.get_account_balances if once is None else once
         begun = self._balance_end_count
-        reported = await self._read_account(connector, exchange_id)
-        if reported is None:
-            return 0
-        return self._fill_balance_entries(exchange_id, reported, begun)
+
+        async def read() -> Any:
+            nonlocal begun
+            begun = self._balance_end_count
+            return await reader()
+
+        with reads.on_its_way(ACCOUNT_CALL):
+            token = await self._hold_account_turn(reads, exchange_id)
+            if token is None:
+                return 0
+            try:
+                reported = await self._noted_read(
+                    connector, exchange_id, ACCOUNT_CALL, read
+                )
+                if not isinstance(reported, dict):
+                    reads.refused.add(ACCOUNT_CALL)
+                    return 0
+                return self._fill_balance_entries(exchange_id, reported, begun)
+            except Exception as exc:
+                logger.warning(
+                    "DataPool: shared account read of %s failed (%s: %s)",
+                    exchange_id,
+                    type(exc).__name__,
+                    exc,
+                )
+                return 0
+            finally:
+                reads.account_turn.give_back(token)
+
+    async def _hold_account_turn(
+        self, reads: SharedReads, exchange_id: str
+    ) -> Optional[object]:
+        """A token of ``account_turn``, None where a caller's read kept it for
+        ``interval_s``."""
+        ends_at = time.monotonic() + reads.interval_s
+        label = f"the account read of {exchange_id}"
+        while True:
+            token = self._take_turn(reads.account_turn, label)
+            if token is not None or time.monotonic() >= ends_at:
+                return token
+            await asyncio.sleep(SHARED_WAIT_SLICE_SECONDS)
 
     def invalidate_balance(
         self,

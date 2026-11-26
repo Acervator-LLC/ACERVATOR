@@ -81,12 +81,10 @@ from .container.order_watch import OrderWatch
 
 logger = logging.getLogger("acervator.bot")
 
-#: Period of ``_ticker_refresh_loop``. Half of the shortest cache lifetime it
-#: fills, so a slot is refilled before it expires and a bot's own tick reads it
-#: rather than making its own venue call.
+#: Normal period of ``_refresh_exchange``, half of the shortest lifetime it fills.
 TICKER_REFRESH_INTERVAL_S = min(TICKER_TTL_SECONDS, BALANCE_TTL_SECONDS) / 2.0
 
-#: Shortest sleep ``_ticker_refresh_loop`` takes when a cycle overran its period.
+#: Shortest rest ``_refresh_exchange`` takes after a turn that overran its period.
 REFRESH_MIN_SLEEP_S = 0.1
 
 #: Units below which an unfilled remainder or a newly filled piece counts as none.
@@ -2276,59 +2274,52 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
                 out[exch_id] = conn
         return out
 
-    async def refresh_all_tickers_once(self) -> int:
-        """One bulk ticker refresh across every exchange in the fleet."""
-        pool = getattr(self, "_data_pool", None)
-        if pool is None or not hasattr(pool, "refresh_all_tickers"):
-            return 0
-        total = 0
-        for exch_id, conn in self._connectors_by_exchange().items():
-            try:
-                total += await pool.refresh_all_tickers(conn, exch_id)
-            except Exception as exc:
-                logger.warning("Bulk ticker refresh raised for %s: %s", exch_id, exc)
-        return total
-
-    async def refresh_all_balances_once(self) -> int:
-        """One account read per exchange, filling every balance slot it holds."""
-        pool = getattr(self, "_data_pool", None)
-        if pool is None or not hasattr(pool, "refresh_all_balances"):
-            return 0
-        total = 0
-        for exch_id, conn in self._connectors_by_exchange().items():
-            try:
-                total += await pool.refresh_all_balances(conn, exch_id)
-            except Exception as exc:
-                logger.warning("Account read raised for %s: %s", exch_id, exc)
-        return total
+    async def _refresh_exchange(self, exch_id: str, interval: float) -> None:
+        """Read the prices and the account of ``exch_id`` in turn, with the rest its
+        ``SharedReads`` asks for after each."""
+        pool = self._data_pool
+        reads = pool.shared_reads(exch_id)
+        token = reads.attend(interval, REFRESH_MIN_SLEEP_S)
+        prices = False
+        try:
+            while not self._ticker_refresh_stop:
+                connector = self._connectors_by_exchange().get(exch_id)
+                if connector is None:
+                    return
+                prices = not prices
+                refresh = (
+                    pool.refresh_all_tickers if prices else pool.refresh_all_balances
+                )
+                reads.open_read()
+                try:
+                    await refresh(connector, exch_id)
+                except Exception as exc:
+                    kind = type(exc).__name__
+                    logger.warning("Market refresh of %s failed: %s", exch_id, kind)
+                rest = reads.rest_s()
+                if rest > 0.0:
+                    await asyncio.sleep(rest)
+        except Exception as exc:
+            logger.warning("Market refresher of %s ended: %s", exch_id, exc)
+        finally:
+            reads.leave(token)
 
     async def _ticker_refresh_loop(self, interval: float) -> None:
-        """Refill the shared ticker and balance caches every ``interval`` seconds.
-
-        Each cycle sleeps the remainder of ``interval`` rather than the whole of
-        it, so a slow refresh does not push the period past the cache lifetime
-        the refresh exists to stay inside.
-        """
+        """Keep one ``_refresh_exchange`` task for each exchange of the fleet."""
         logger.info("Bulk market refresher started (every %.1fs)", interval)
-        while not self._ticker_refresh_stop:
-            try:
-                started = time.monotonic()
-                await self.refresh_all_tickers_once()
-                await self.refresh_all_balances_once()
-                spent = time.monotonic() - started
-                remaining = max(REFRESH_MIN_SLEEP_S, interval - spent)
-                if spent > interval:
-                    logger.warning(
-                        "Bulk market refresh took %.1fs against a %.1fs period; "
-                        "cache slots expire before the refresh lands.",
-                        spent,
-                        interval,
-                    )
-                await asyncio.sleep(remaining)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                logger.warning("Market refresh cycle failed: %s", exc)
+        lanes: dict[str, asyncio.Task] = {}
+        async with asyncio.TaskGroup() as group:
+            while not self._ticker_refresh_stop:
+                try:
+                    fleet = self._connectors_by_exchange() if self._data_pool else {}
+                    for exch_id in fleet:
+                        lane = lanes.get(exch_id)
+                        if lane is None or lane.done():
+                            lanes[exch_id] = group.create_task(
+                                self._refresh_exchange(exch_id, interval)
+                            )
+                except Exception as exc:
+                    logger.warning("Market refresher scan failed: %s", exc)
                 await asyncio.sleep(interval)
         logger.info("Bulk market refresher stopped.")
 
