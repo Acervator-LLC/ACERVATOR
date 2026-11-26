@@ -329,8 +329,9 @@ soon = self.due_at - now <= sum(self.answer_s.values())
 return now < ends_at and (bool(self.reading) or soon)
 ```
 
-A figure inside its lifetime waits for the next shared read too, once it is older
-than 2.5 seconds and older than the two newest answers together.
+A figure inside its lifetime waits for the next shared read too, outside an order's
+step, once it is older than 2.5 seconds and older than the two newest answers
+together.
 
 `src/exchange/data_pool.py, in SharedReads.replaces`
 
@@ -372,9 +373,9 @@ while not places.take(connector, spare) and time.monotonic() < ends_at:
     await asyncio.sleep(SHARED_WAIT_SLICE_SECONDS)
 ```
 
-A step of an order waits for none of this. It takes a stored price or balance that
-needs no new read, or it asks the venue at once, and the worker starts that read
-ahead of every read outside a step.
+A step of an order waits for none of this. It takes a stored price or balance inside
+its lifetime, or it asks the venue at once, and the worker starts that read ahead of
+every read outside a step.
 
 `src/exchange/data_pool.py, in MarketDataPool._turn_to_ask`
 

@@ -728,7 +728,7 @@ class MarketDataPool:
         awaits: Callable[[float], bool],
     ) -> Optional[object]:
         """A token of ``turn`` once this caller has to ask alone, None once ``served``;
-        in an order's step, one no turn holds at once.
+        in an order's step, one no turn holds at once where ``served`` is False.
 
         Raises:
             asyncio.TimeoutError: neither came inside ``SHARED_WAIT_SECONDS``.
@@ -879,7 +879,8 @@ class MarketDataPool:
             if not entry.is_fresh:
                 return False
             listed = bulk and not entry.left_out
-            return not (listed and reads.replaces(PRICES_CALL, entry.age_seconds))
+            replaced = listed and reads.replaces(PRICES_CALL, entry.age_seconds)
+            return in_order_turn() or not replaced
 
         def awaits(ends_at: float) -> bool:
             entry = slot()
@@ -1107,7 +1108,8 @@ class MarketDataPool:
             entry = slot()
             if not entry.is_fresh:
                 return False
-            return not (bulk and reads.replaces(ACCOUNT_CALL, entry.age_seconds))
+            replaced = bulk and reads.replaces(ACCOUNT_CALL, entry.age_seconds)
+            return in_order_turn() or not replaced
 
         def awaits(ends_at: float) -> bool:
             entry = slot()
