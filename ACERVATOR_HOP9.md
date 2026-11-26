@@ -367,8 +367,12 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   (`src/gui/read_slot.py, in ReadSlot.ask`). Row 4 is
   built: no order starts on a price or a rate older than `price_age_limit_s`, counted
   from the venue's answer, and Self-Destruct and the expiry close alone go at any age
-  (`src/trading/bot_container.py, in BotContainer.order_refusal`). The
-  body's build order names the rest: rows 3 and 7, then 2, then 5 and 6.
+  (`src/trading/bot_container.py, in BotContainer.order_refusal`). Rows 3 and 7 are
+  built, row 7 in its price, balance and candle parts: each exchange has its own
+  refresher, whose rest follows the seconds its reads held the worker and doubles
+  behind a throttled or lost answer (`src/exchange/data_pool.py, in SharedReads.rest_s`),
+  and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). The
+  body's build order names the rest: row 2, then 5 and 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before

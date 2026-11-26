@@ -95,6 +95,26 @@ def queue_cap_waived() -> Iterator[None]:
         _QUEUE_CAP_WAIVED.reset(token)
 
 
+def queue_cap_is_waived() -> bool:
+    """True inside ``queue_cap_waived``, where a full queue refuses no call."""
+    return _QUEUE_CAP_WAIVED.get()
+
+
+# The name CCXTConnector.latest_run keeps this task's runs under, empty for none.
+_RUN_LABEL: ContextVar[str] = ContextVar("run_label", default="")
+
+
+@contextmanager
+def run_timed_as(label: str) -> Iterator[None]:
+    """Keep the seconds of each shared read this task makes inside the block under
+    ``label``."""
+    token = _RUN_LABEL.set(label)
+    try:
+        yield
+    finally:
+        _RUN_LABEL.reset(token)
+
+
 # The task inside one _with_retry call, and when the turn of its attempts ends.
 _READ_TURN: ContextVar[tuple[Optional[asyncio.Task], float]] = ContextVar(
     "read_turn", default=(None, math.inf)
@@ -2048,6 +2068,9 @@ class CCXTConnector(ExchangeInterface):
         # time.monotonic() up to which a read of every market can still land.
         self._every_ticker_until: float = 0.0
 
+        # When the newest run of each run_timed_as label began, and its seconds.
+        self._latest_runs: dict[str, tuple[float, float]] = {}
+
         self._scan_symbols: set[str] = set()
         self._history_analyses: dict = {}
         self._on_history_ready: Optional[HistoryCallback] = None
@@ -2407,6 +2430,28 @@ class CCXTConnector(ExchangeInterface):
             "refusals": self._sync_queue_refusals,
             "refusals_by_call": dict(self._sync_queue_refusals_by_call),
         }
+
+    def latest_run(self, label: str) -> tuple[float, float]:
+        """When the newest ended run inside ``run_timed_as`` of ``label`` began on the
+        worker, and its seconds."""
+        return self._latest_runs.get(label, (0.0, 0.0))
+
+    def _run_timed(self, fn):
+        """``fn``, inside ``run_timed_as`` with each run noted in ``_latest_runs``."""
+        label = _RUN_LABEL.get()
+        if not label:
+            return fn
+
+        @functools.wraps(fn)
+        def run(*args, **kwargs):
+            began = time.monotonic()
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                if began >= self.latest_run(label)[0]:
+                    self._latest_runs[label] = (began, time.monotonic() - began)
+
+        return run
 
     def _release_bulk_read_slot(self) -> None:
         """Clear ``_bulk_read_admitted`` when this task is the one holding it."""
@@ -3031,7 +3076,8 @@ class CCXTConnector(ExchangeInterface):
         longest_s = READ_TURN_WAIT_SEC + SYNC_CALL_TIMEOUT_SEC
         self._every_ticker_until = time.monotonic() + longest_s
         try:
-            raw, timing = await self._call_sync_timed(self._ex.fetch_tickers)
+            fetch = self._run_timed(self._ex.fetch_tickers)
+            raw, timing = await self._call_sync_timed(fetch)
         except (CCXTQueueFullError, asyncio.CancelledError):
             sent = False
             raise
@@ -3059,9 +3105,8 @@ class CCXTConnector(ExchangeInterface):
         """The raw tickers ``params`` names; an empty answer or a venue refusal sets
         ``_every_ticker_at`` to ``EVERY_TICKER_DUE``."""
         try:
-            rows, timing = await self._call_sync_timed(
-                self._ex.fetch_tickers, None, params
-            )
+            fetch = self._run_timed(self._ex.fetch_tickers)
+            rows, timing = await self._call_sync_timed(fetch, None, params)
         except _ccxt_error_types(("ExchangeError",)):
             self._every_ticker_at = EVERY_TICKER_DUE
             raise
@@ -3143,6 +3188,10 @@ class CCXTConnector(ExchangeInterface):
 
     @_with_retry()
     async def get_account_balances(self) -> dict[str, Balance]:
+        """``get_account_balances_once``, under ``_with_retry``."""
+        return await self.get_account_balances_once()
+
+    async def get_account_balances_once(self) -> dict[str, Balance]:
         """Every currency one ``fetch_balance`` reports, zero totals included.
 
         A zero total carries ``absent=False``, so a caller can tell "the venue
@@ -3151,7 +3200,8 @@ class CCXTConnector(ExchangeInterface):
         self._ensure_connected()
         await self._rate_limit()
         _log = get_api_log()
-        raw, timing = await self._call_sync_timed(self._ex.fetch_balance)
+        fetch = self._run_timed(self._ex.fetch_balance)
+        raw, timing = await self._call_sync_timed(fetch)
         self._note_venue_answer()
         result: dict[str, Balance] = {}
         for currency, info in (raw.get("total") or {}).items():
