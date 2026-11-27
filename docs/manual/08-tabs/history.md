@@ -457,6 +457,66 @@ def import_ytd_csv(
     column_map = export_map_for(exchange_id)
 ```
 
+### The platform's own line for each fill
+
+The platform also keeps its own record. Every fill a bot books writes one line
+to `trade.log` in the log folder. A fill that settles in several pieces writes
+one line for each piece, and the pieces of one order carry the same order id.
+Each line names the venue order the piece settled. It also names the event id
+of each tranche the fill spent and of each tranche it opened.
+
+A scrum, a manual sale and a DIST sale open fold tranches. A buy that opens a
+stack ladder opens stack tranches. A fold, a cartridge buy, a Manual Fire, a
+detonation, a self-destruct and a stack sale spend them.
+
+`src/core/emit_contracts.py, in SettledFill`
+
+```python
+    venue_order_id: str = ""
+    spent_event_ids: tuple[str, ...] = ()
+    opened_event_ids: tuple[str, ...] = ()
+    fee_usd: Optional[float] = None
+    fee_refusal: Optional[str] = None
+    target_growth: Optional[TargetGrowth] = None
+```
+
+A line written before these fields existed holds none of them, and it still
+loads. `src/trading/live_log_reader.py, in _validate_trade_entry` requires only
+the old fields, and checks the type of a new field where a line holds one.
+
+### The figures of a target increase
+
+A fold that runs the growth step writes its figures on the line of the fill
+that caused it, under `target_growth`. The figures are the units bought, the
+units at scrum, the fill price, the fee percent, the wire share, the gain, the
+quote rate, the surplus, the standing pool, the cycle cap, the cap already used,
+the cap room, the growth applied, the pool after and the new target. The wire
+share is the one a Manual Fire reads, and 0 where a fold reads none.
+
+The bot log line of the same step names the same order. So a target increase
+joins the fill that caused it by the order id.
+
+`src/trading/scrumming_bot.py, in ScrummingBot._apply_fold_target_growth`
+
+```python
+        cap_room = fold_cap_remaining_usd(cycle_cap, consumed)
+        applied, standing_after = target_growth_applied(surplus_usd, standing, cap_room)
+```
+
+The engine holds no copy of this arithmetic: `target_growth_applied` is the one
+rule. A surplus or a pool that is not a finite number counts as zero. A cap room
+that is not a finite number counts as used. When the surplus and the pool are
+both within one billionth of a dollar, nothing moves.
+
+`src/trading/scrumming/sizing.py, in target_growth_applied`
+
+```python
+    surplus = max(0.0, finite_reading(surplus_usd))
+    standing = max(0.0, finite_reading(standing_usd))
+    if surplus <= GROWTH_DUST_USD and standing <= GROWTH_DUST_USD:
+        return 0.0, standing
+```
+
 ## Filtering, paging, export
 
 Eight methods carry the controls under the table.
