@@ -133,6 +133,7 @@ PRESS_ENDS_START_FORMAT = "{command} was pressed"
 FLEET_LOCK_ENDS_START = "the fleet was locked"
 VENUE_RELEASE_ENDS_START = "the venue was disconnected"
 WINDOW_CLOSE_ENDS_START = "the window closed"
+NO_BOT_CREATED = "No bot was created."
 
 #: The branches ``_on_bot_command`` and ``run_fleet_sequence`` pass for a bot
 #: whose exchange ``api_access_required`` names.
@@ -2401,6 +2402,7 @@ if _HAS_QT:
                         exchange_id="",
                         defaults_override={"default_target_balance": target_usd},
                     )
+                    self._wait_for_preflight()
                 except Exception as _cb_exc:
                     logger.exception("Topology adopt: _create_bot raised: %s", _cb_exc)
                     self._status_log.log(
@@ -3095,8 +3097,9 @@ if _HAS_QT:
             return locks[eid]
 
         def closeEvent(self, event) -> None:
-            """Run ``_end_venue_starts`` and ``_end_reads``, then close the window."""
+            """Run ``_end_venue_starts``, ``_end_preflight`` and ``_end_reads``, then close the window."""
             self._end_venue_starts(WINDOW_CLOSE_ENDS_START)
+            self._end_preflight(WINDOW_CLOSE_ENDS_START)
             self._end_reads()
             super().closeEvent(event)
 
@@ -5182,6 +5185,10 @@ if _HAS_QT:
             """Open the Bot Creation Wizard; ``defaults_override`` merges in."""
             if self._refuse_while_sealed(exchange_id):
                 return
+            waiting = self._held_preflight()
+            if waiting is not None:
+                self._status_log.log(waiting.on_way_line(), "warning")
+                return
             self._status_log.log(f"Creating new bot for {exchange_id}...")
             from ..exchange.api_logger import get_api_log
 
@@ -5239,233 +5246,7 @@ if _HAS_QT:
                     data_usage="Bot will be registered with BotManager in IDLE state. Must be started manually.",
                 )
 
-                try:
-                    from ..trading.bot_container import BotMode
-
-                    try:
-                        from .preflight_check import (
-                            check_symbol,
-                            format_result_for_user,
-                        )
-
-                        # Bound early: the Extractor path skips the else binding them.
-                        _pf_symbol = "(no single symbol)"
-                        _pf_exchange = str(exchange_id or "the exchange")
-                        if config.get("mode") == "extractor":
-                            self._status_log.log(
-                                "Pre-flight skipped (Extractor mode is "
-                                "multi-pair; symbol validation deferred "
-                                "to runtime watch-list refresh)",
-                                "info",
-                            )
-                            _pf = None
-                            _pf_text = ""
-                        else:
-                            # The wizard's own recorded symbol first: a contract
-                            # cannot be rebuilt from its two legs.
-                            _pf_symbol = str(config.get("symbol") or "") or (
-                                config.get("target_asset", "BTC")
-                                + "/"
-                                + config.get("base_currency", "USDT")
-                            )
-                            _pf_exchange = config.get("exchange_id", exchange_id)
-                            _pf_target = config.get("target_balance", 200.0)
-                            _pf = check_symbol(
-                                exchange_id=_pf_exchange,
-                                symbol=_pf_symbol,
-                                target_balance=_pf_target,
-                            )
-                            _pf_text = format_result_for_user(_pf)
-                        if _pf is not None:
-                            if not _pf.success:
-                                # Plain text: a symbol carrying tags is words, not markup.
-                                _pf_box = QMessageBox(
-                                    QMessageBox.Critical,
-                                    "Pre-flight check failed",
-                                    f"{_pf_text}\n\nBot creation aborted.",
-                                    QMessageBox.Ok,
-                                    self,
-                                )
-                                _pf_box.setTextFormat(Qt.PlainText)
-                                _pf_box.exec()
-                                self._status_log.log(
-                                    f"Pre-flight FAILED for {_pf_symbol} on "
-                                    f"{_pf_exchange}: {_pf.message}",
-                                    "error",
-                                )
-                                return
-                            if _pf.warnings:
-                                _pf_ask = QMessageBox(
-                                    QMessageBox.Question,
-                                    "Pre-flight check — warnings",
-                                    f"{_pf_text}\n\nProceed with bot creation?",
-                                    QMessageBox.Yes | QMessageBox.No,
-                                    self,
-                                )
-                                _pf_ask.setTextFormat(Qt.PlainText)
-                                _pf_ask.setDefaultButton(QMessageBox.No)
-                                _pf_reply = _pf_ask.exec()
-                                if _pf_reply != QMessageBox.Yes:
-                                    self._status_log.log(
-                                        f"Bot creation declined at pre-flight "
-                                        f"({len(_pf.warnings)} warning(s))",
-                                        "warning",
-                                    )
-                                    return
-                            self._status_log.log(
-                                f"Pre-flight OK for {_pf_symbol} on "
-                                f"{_pf_exchange} ({_pf.elapsed_ms:.0f} ms)",
-                                "info",
-                            )
-                    except ImportError:
-                        self._status_log.log(
-                            "Pre-flight check skipped (module unavailable)", "warning"
-                        )
-                    except Exception as _pf_exc:
-                        self._status_log.log(
-                            f"Pre-flight check errored: {type(_pf_exc).__name__}: "
-                            f"{_pf_exc} — continuing anyway",
-                            "warning",
-                        )
-
-                    _mode_str = config.get("mode", "scrumming")
-                    if _mode_str == "extractor":
-                        _mode = BotMode.EXTRACTOR
-                    else:
-                        _mode = BotMode.SCRUMMING
-                    from ..trading.bot_container import (
-                        bot_config_kwargs,
-                        make_bot_config,
-                        phantom_init_kwargs,
-                    )
-
-                    _wizard_kwargs = bot_config_kwargs(
-                        _mode, config, exchange_id=exchange_id
-                    )
-
-                    try:
-                        bot_config = make_bot_config(_mode, **_wizard_kwargs)
-                    except (ValueError, TypeError) as _bc_err:
-                        msg = (
-                            f"Bot creation REJECTED — mode-shape "
-                            f"violation: {_bc_err}"
-                        )
-                        self._status_log.log(msg, "error")
-                        self._spool.notify(msg, "error")
-                        logger.error("Bot creation rejected: %s", _bc_err)
-                        return
-
-                    _mode_violations = bot_config.validate_mode_shape()
-                    if _mode_violations:
-                        for _v in _mode_violations:
-                            logger.warning(
-                                "Mode-shape violation on bot config " "(mode=%s): %s",
-                                bot_config.mode.value,
-                                _v,
-                            )
-                            self._status_log.log(
-                                f"⚠ Bot config mode-shape " f"violation: {_v}",
-                                "warning",
-                            )
-
-                    # Checked after the config is shaped and before the bot is built.
-                    if (
-                        bot_config.mode == BotMode.EXTRACTOR
-                        and self._refuse_extractor_without_parent(
-                            bot_config.base_currency, bot_config.exchange_id
-                        )
-                    ):
-                        return
-
-                    from ..trading.scrumming_bot import ScrummingBot
-
-                    if bot_config.mode == BotMode.EXTRACTOR:
-                        from ..trading.extractor_bot import ExtractorBot
-
-                        bot = ExtractorBot(
-                            bot_config,
-                            _PlaceholderExchange(bot_config.exchange_id),
-                            enable_phantoms=False,
-                        )
-                    else:
-                        bot = ScrummingBot(
-                            bot_config,
-                            _PlaceholderExchange(bot_config.exchange_id),
-                            **phantom_init_kwargs(config),
-                            ta_weights=self._stored_ta_weights(),
-                        )
-
-                    if self._bot_manager:
-                        # `register` may return a bool or a (granted, reason) tuple.
-                        _reg_result = self._bot_manager.register(bot)
-                        if isinstance(_reg_result, tuple):
-                            _granted, _refuse_reason = _reg_result
-                        else:
-                            _granted, _refuse_reason = True, None
-                        if not _granted:
-                            _msg = (
-                                f"Bot creation refused by CapitalRegistry: "
-                                f"{_refuse_reason or 'over-allocation'}"
-                            )
-                            try:
-                                self._status_log.log(_msg, "error")
-                            except Exception as refusal_log_exc:
-                                logger.debug(
-                                    "bot refusal message not shown in status log: %s",
-                                    refusal_log_exc,
-                                )
-                            return
-
-                    if bot_config.mode == BotMode.SCRUMMING:
-                        try:
-                            self._indicator_panel.update_bot_list(
-                                self._bot_manager.list_bots()
-                            )
-                            self._indicator_panel.force_refresh(
-                                bot_id=bot.bot_id,
-                                symbol=bot_config.symbol,
-                                ta_timeframe=bot_config.ta_timeframe,
-                            )
-                            self._publish_votes()
-                        except Exception as panel_seed_exc:
-                            logger.debug(
-                                "indicator panel seed for the new bot failed: %s",
-                                panel_seed_exc,
-                            )
-
-                    msg = (
-                        f"Bot {bot.bot_id} created: {bot_config.symbol} "
-                        f"({bot_config.mode.value}) - IDLE"
-                    )
-                    self._status_log.log(msg, "success")
-                    self._spool.notify(msg, "success")
-                    self.statusBar().showMessage(msg, 5000)
-
-                    _log.record(
-                        exchange=bot_config.exchange_id,
-                        action="BOT_CREATED",
-                        reason="Bot instantiated and registered with BotManager",
-                        result=f"ID={bot.bot_id}, State=IDLE, Symbol={bot_config.symbol}",
-                        level="success",
-                        data_usage="Bot is IDLE. Click Start to connect to exchange and begin trading. "
-                        "Starting will authenticate API, load markets, fetch balances, and enter the trading loop.",
-                    )
-
-                    from ..core.sound_engine import get_sound_engine
-
-                    get_sound_engine().play_state_change()
-
-                except Exception as exc:
-                    self._status_log.log(f"Failed to create bot: {exc}", "error")
-                    logger.error("Bot creation failed: %s", exc)
-                    _log.record(
-                        exchange=exchange_id,
-                        action="BOT_CREATE_FAILED",
-                        reason=str(exc),
-                        result=f"ERROR: {type(exc).__name__}",
-                        level="error",
-                        data_usage="Bot was not created. Check error details above.",
-                    )
+                self._preflight_then_create(config, exchange_id, _log)
             else:
                 self._status_log.log("Bot creation cancelled.", "warning")
                 _log.record(
@@ -5475,6 +5256,306 @@ if _HAS_QT:
                     result="No bot created",
                     level="warning",
                     data_usage="No action taken",
+                )
+
+        def _held_preflight(self):
+            """The pre-flight ``VenueWait`` on its way, or None."""
+            held = getattr(self, "_preflight_wait", None)
+            return held if held is not None and held.on_way else None
+
+        def _wait_for_preflight(self) -> None:
+            """Run a local event loop until ``_held_preflight`` answers None, so the bot it builds exists."""
+            if self._held_preflight() is None:
+                return
+            from PySide6.QtCore import QEventLoop
+
+            from .venue_wait import WAIT_LOOK_MS
+
+            loop = QEventLoop(self)
+            look = QTimer(self)
+            look.setInterval(WAIT_LOOK_MS)
+
+            def look_again() -> None:
+                if self._held_preflight() is None:
+                    loop.quit()
+
+            look.timeout.connect(look_again)
+            look.start()
+            loop.exec()
+            look.stop()
+            look.deleteLater()
+
+        def _end_preflight(self, reason: str) -> None:
+            """End the pre-flight check on its way, logging ``ended_line`` and ``NO_BOT_CREATED``."""
+            held = self._held_preflight()
+            if held is None:
+                return
+            held.end()
+            self._status_log.log(
+                f"{held.ended_line(reason)} {NO_BOT_CREATED}", "warning"
+            )
+
+        def _preflight_then_create(self, config: dict, exchange_id: str, _log) -> None:
+            """Run ``check_symbol`` for *config* off the window's thread, then ``_preflight_landed``."""
+            if config.get("mode") == "extractor":
+                self._status_log.log(
+                    "Pre-flight skipped (Extractor mode is "
+                    "multi-pair; symbol validation deferred "
+                    "to runtime watch-list refresh)",
+                    "info",
+                )
+                self._create_from_config(config, exchange_id, _log)
+                return
+            try:
+                from .preflight_check import PreflightResult, check_symbol
+            except ImportError:
+                self._status_log.log(
+                    "Pre-flight check skipped (module unavailable)", "warning"
+                )
+                self._create_from_config(config, exchange_id, _log)
+                return
+            from .venue_wait import VenueWait
+
+            # The wizard's own recorded symbol first: a contract
+            # cannot be rebuilt from its two legs.
+            symbol = str(config.get("symbol") or "") or (
+                config.get("target_asset", "BTC")
+                + "/"
+                + config.get("base_currency", "USDT")
+            )
+            venue = config.get("exchange_id", exchange_id)
+            target = config.get("target_balance", 200.0)
+
+            def landed(result) -> None:
+                self._preflight_landed(result, symbol, venue, config, exchange_id, _log)
+
+            def failed(exc: BaseException) -> None:
+                if isinstance(exc, TimeoutError):
+                    landed(
+                        PreflightResult(
+                            success=False,
+                            exchange_id=venue,
+                            symbol=symbol,
+                            message=f"Pre-flight check failed: {type(exc).__name__}: {exc}",
+                        )
+                    )
+                    return
+                self._status_log.log(
+                    f"Pre-flight check errored: {type(exc).__name__}: "
+                    f"{exc} — continuing anyway",
+                    "warning",
+                )
+                self._create_from_config(config, exchange_id, _log)
+
+            wait = VenueWait(
+                self,
+                str(venue).capitalize(),
+                f"Pre-flight check of {symbol}",
+                lambda: check_symbol(
+                    exchange_id=venue, symbol=symbol, target_balance=target
+                ),
+                landed,
+                failed,
+                self.statusBar().showMessage,
+            )
+            self._preflight_wait = wait
+            wait.start()
+
+        def _preflight_landed(
+            self, result, symbol: str, venue: str, config: dict, exchange_id: str, _log
+        ) -> None:
+            """Show the landed pre-flight *result* as before; a pass goes on to ``_create_from_config``."""
+            try:
+                from .preflight_check import format_result_for_user
+
+                _pf_text = format_result_for_user(result)
+                if not result.success:
+                    # Plain text: a symbol carrying tags is words, not markup.
+                    _pf_box = QMessageBox(
+                        QMessageBox.Critical,
+                        "Pre-flight check failed",
+                        f"{_pf_text}\n\nBot creation aborted.",
+                        QMessageBox.Ok,
+                        self,
+                    )
+                    _pf_box.setTextFormat(Qt.PlainText)
+                    _pf_box.exec()
+                    self._status_log.log(
+                        f"Pre-flight FAILED for {symbol} on "
+                        f"{venue}: {result.message}",
+                        "error",
+                    )
+                    return
+                if result.warnings:
+                    _pf_ask = QMessageBox(
+                        QMessageBox.Question,
+                        "Pre-flight check — warnings",
+                        f"{_pf_text}\n\nProceed with bot creation?",
+                        QMessageBox.Yes | QMessageBox.No,
+                        self,
+                    )
+                    _pf_ask.setTextFormat(Qt.PlainText)
+                    _pf_ask.setDefaultButton(QMessageBox.No)
+                    _pf_reply = _pf_ask.exec()
+                    if _pf_reply != QMessageBox.Yes:
+                        self._status_log.log(
+                            f"Bot creation declined at pre-flight "
+                            f"({len(result.warnings)} warning(s))",
+                            "warning",
+                        )
+                        return
+                self._status_log.log(
+                    f"Pre-flight OK for {symbol} on "
+                    f"{venue} ({result.elapsed_ms:.0f} ms)",
+                    "info",
+                )
+            except Exception as _pf_exc:
+                self._status_log.log(
+                    f"Pre-flight check errored: {type(_pf_exc).__name__}: "
+                    f"{_pf_exc} — continuing anyway",
+                    "warning",
+                )
+            self._create_from_config(config, exchange_id, _log)
+
+        def _create_from_config(self, config: dict, exchange_id: str, _log) -> None:
+            """Build and register the bot the wizard's *config* names."""
+            try:
+                from ..trading.bot_container import BotMode
+
+                _mode_str = config.get("mode", "scrumming")
+                if _mode_str == "extractor":
+                    _mode = BotMode.EXTRACTOR
+                else:
+                    _mode = BotMode.SCRUMMING
+                from ..trading.bot_container import (
+                    bot_config_kwargs,
+                    make_bot_config,
+                    phantom_init_kwargs,
+                )
+
+                _wizard_kwargs = bot_config_kwargs(
+                    _mode, config, exchange_id=exchange_id
+                )
+
+                try:
+                    bot_config = make_bot_config(_mode, **_wizard_kwargs)
+                except (ValueError, TypeError) as _bc_err:
+                    msg = f"Bot creation REJECTED — mode-shape " f"violation: {_bc_err}"
+                    self._status_log.log(msg, "error")
+                    self._spool.notify(msg, "error")
+                    logger.error("Bot creation rejected: %s", _bc_err)
+                    return
+
+                _mode_violations = bot_config.validate_mode_shape()
+                if _mode_violations:
+                    for _v in _mode_violations:
+                        logger.warning(
+                            "Mode-shape violation on bot config " "(mode=%s): %s",
+                            bot_config.mode.value,
+                            _v,
+                        )
+                        self._status_log.log(
+                            f"⚠ Bot config mode-shape " f"violation: {_v}",
+                            "warning",
+                        )
+
+                # Checked after the config is shaped and before the bot is built.
+                if (
+                    bot_config.mode == BotMode.EXTRACTOR
+                    and self._refuse_extractor_without_parent(
+                        bot_config.base_currency, bot_config.exchange_id
+                    )
+                ):
+                    return
+
+                from ..trading.scrumming_bot import ScrummingBot
+
+                if bot_config.mode == BotMode.EXTRACTOR:
+                    from ..trading.extractor_bot import ExtractorBot
+
+                    bot = ExtractorBot(
+                        bot_config,
+                        _PlaceholderExchange(bot_config.exchange_id),
+                        enable_phantoms=False,
+                    )
+                else:
+                    bot = ScrummingBot(
+                        bot_config,
+                        _PlaceholderExchange(bot_config.exchange_id),
+                        **phantom_init_kwargs(config),
+                        ta_weights=self._stored_ta_weights(),
+                    )
+
+                if self._bot_manager:
+                    # `register` may return a bool or a (granted, reason) tuple.
+                    _reg_result = self._bot_manager.register(bot)
+                    if isinstance(_reg_result, tuple):
+                        _granted, _refuse_reason = _reg_result
+                    else:
+                        _granted, _refuse_reason = True, None
+                    if not _granted:
+                        _msg = (
+                            f"Bot creation refused by CapitalRegistry: "
+                            f"{_refuse_reason or 'over-allocation'}"
+                        )
+                        try:
+                            self._status_log.log(_msg, "error")
+                        except Exception as refusal_log_exc:
+                            logger.debug(
+                                "bot refusal message not shown in status log: %s",
+                                refusal_log_exc,
+                            )
+                        return
+
+                if bot_config.mode == BotMode.SCRUMMING:
+                    try:
+                        self._indicator_panel.update_bot_list(
+                            self._bot_manager.list_bots()
+                        )
+                        self._indicator_panel.force_refresh(
+                            bot_id=bot.bot_id,
+                            symbol=bot_config.symbol,
+                            ta_timeframe=bot_config.ta_timeframe,
+                        )
+                        self._publish_votes()
+                    except Exception as panel_seed_exc:
+                        logger.debug(
+                            "indicator panel seed for the new bot failed: %s",
+                            panel_seed_exc,
+                        )
+
+                msg = (
+                    f"Bot {bot.bot_id} created: {bot_config.symbol} "
+                    f"({bot_config.mode.value}) - IDLE"
+                )
+                self._status_log.log(msg, "success")
+                self._spool.notify(msg, "success")
+                self.statusBar().showMessage(msg, 5000)
+
+                _log.record(
+                    exchange=bot_config.exchange_id,
+                    action="BOT_CREATED",
+                    reason="Bot instantiated and registered with BotManager",
+                    result=f"ID={bot.bot_id}, State=IDLE, Symbol={bot_config.symbol}",
+                    level="success",
+                    data_usage="Bot is IDLE. Click Start to connect to exchange and begin trading. "
+                    "Starting will authenticate API, load markets, fetch balances, and enter the trading loop.",
+                )
+
+                from ..core.sound_engine import get_sound_engine
+
+                get_sound_engine().play_state_change()
+
+            except Exception as exc:
+                self._status_log.log(f"Failed to create bot: {exc}", "error")
+                logger.error("Bot creation failed: %s", exc)
+                _log.record(
+                    exchange=exchange_id,
+                    action="BOT_CREATE_FAILED",
+                    reason=str(exc),
+                    result=f"ERROR: {type(exc).__name__}",
+                    level="error",
+                    data_usage="Bot was not created. Check error details above.",
                 )
 
         def _stored_accent(self) -> object:

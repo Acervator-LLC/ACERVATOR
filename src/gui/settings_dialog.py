@@ -277,6 +277,8 @@ if _HAS_QT:
             # token between the press that opens the page and the press that
             # sends the code back.
             self._authorizing: dict = {}
+            self._venue_waits: dict = {}
+            self.finished.connect(self._end_venue_waits)
             # _sync_credential_kind hides each row's label beside its row, and
             # only _create_exchange_tab holds one. The React build draws no Qt
             # form and reaches that method through the Add press, so the three
@@ -863,8 +865,9 @@ if _HAS_QT:
             self._add_btn.setText(str(form["add_text"]))
             set_description(self._test_btn, str(form["test_tip"]))
             set_description(self._add_btn, str(form["add_tip"]))
-            self._add_btn.setEnabled(bool(form["add_enabled"]))
-            self._test_btn.setEnabled(bool(form["test_enabled"]))
+            waiting = any(wait.on_way for wait in self._venue_waits.values())
+            self._add_btn.setEnabled(bool(form["add_enabled"]) and not waiting)
+            self._test_btn.setEnabled(bool(form["test_enabled"]) and not waiting)
 
         def _sync_passphrase_row(self) -> None:
             """Draw ``_new_passphrase`` while ``_pp_check`` is ticked.
@@ -887,11 +890,54 @@ if _HAS_QT:
                 return unescape_pem_newlines(typed)
             return typed
 
+        def _venue_wait_on_way(self) -> bool:
+            """Write ``on_way_line`` and answer True while a wait in ``_venue_waits`` is on its way."""
+            for wait in self._venue_waits.values():
+                if wait.on_way:
+                    self._set_feedback(wait.on_way_line(), "warning")
+                    return True
+            return False
+
+        def _ask_venue(self, eid: str, doing: str, call, done, failed) -> None:
+            """Start one ``VenueWait`` for *eid*, writing its words in the feedback line."""
+            from .venue_wait import VenueWait
+
+            wait = VenueWait(
+                self,
+                eid.capitalize(),
+                doing,
+                call,
+                done,
+                failed,
+                lambda words: self._set_feedback(words, "info"),
+            )
+            self._venue_waits[eid] = wait
+            wait.start()
+
+        def _end_venue_waits(self, code: int = 0) -> None:
+            """End every wait in ``_venue_waits`` once the dialog closes with *code*."""
+            del code
+            from .venue_wait import WINDOW_CLOSED_ENDS_WAIT
+
+            for wait in self._venue_waits.values():
+                if not wait.on_way:
+                    continue
+                wait.end()
+                ended = wait.ended_line(WINDOW_CLOSED_ENDS_WAIT)
+                logger.warning(ended)
+                if self._status_log:
+                    self._status_log.log(ended, "warning")
+
         def _test_api_connection(self):
+            """Start the Test Connection press's credential check."""
+            self._start_test(None)
+
+        def _start_test(self, then) -> None:
+            """Start ``validate_credentials`` for the bound venue off the window's thread; a pass runs *then*."""
             eid = self._bound_venue()
             if not eid:
                 self._set_feedback(sds.NO_VENUE_FEEDBACK, "error")
-                return None
+                return
             key = self._new_api_key.text().strip()
             secret = self._typed_secret()
             pp = (
@@ -902,17 +948,35 @@ if _HAS_QT:
 
             if not key or not secret:
                 self._set_feedback("Enter API key and secret first.", "error")
-                return None
+                return
+            if self._venue_wait_on_way():
+                return
 
             self._set_feedback(f"Testing connection to {eid.capitalize()}...", "info")
             self._test_btn.setEnabled(False)
             self._add_btn.setEnabled(False)
             safe_process_events("legacy processEvents site")
 
-            try:
-                from src.exchange.api_validator import validate_credentials
+            from src.exchange.api_validator import validate_credentials
 
-                result = validate_credentials(eid, key, secret, pp)
+            self._ask_venue(
+                eid,
+                f"Testing connection to {eid.capitalize()}",
+                lambda: validate_credentials(eid, key, secret, pp),
+                lambda result: self._tested(eid, result, then),
+                self._test_failed,
+            )
+
+        def _test_failed(self, exc: BaseException) -> None:
+            """Write a check that raised or gave no answer in time, as ``Test failed``."""
+            self._set_feedback(f"Test failed: {exc}", "error")
+            self._last_validation = None
+            self._refresh_exchange_status()
+            self._sync_credential_kind(self._bound_venue())
+
+        def _tested(self, eid: str, result, then) -> None:
+            """Write the landed ``validate_credentials`` answer for *eid*; a pass then runs *then*."""
+            try:
                 if result.success:
                     msg = result.message
                     if result.details:
@@ -923,7 +987,6 @@ if _HAS_QT:
                         if result.details:
                             self._status_log.log(f"Balances: {result.details}", "info")
                     self._last_validation = result
-                    return result
                 else:
                     msg = result.message
                     if result.details:
@@ -934,14 +997,16 @@ if _HAS_QT:
                             f"API failed ({eid}): {result.message}", "error"
                         )
                     self._last_validation = None
-                    return None
+                    return
             except Exception as exc:
                 self._set_feedback(f"Test failed: {exc}", "error")
                 self._last_validation = None
-                return None
+                return
             finally:
                 self._refresh_exchange_status()
                 self._sync_credential_kind(self._bound_venue())
+            if then is not None:
+                then()
 
         def _set_feedback(self, message: str, level: str = "info") -> None:
             colors = {
@@ -954,6 +1019,8 @@ if _HAS_QT:
             self._api_feedback.setStyleSheet(f"color: {colors.get(level, '#e0e0f0')};")
 
         def _add_exchange(self) -> None:
+            if self._venue_wait_on_way():
+                return
             # Prevent duplicate clicks
             self._add_btn.setEnabled(False)
             self._test_btn.setEnabled(False)
@@ -978,19 +1045,27 @@ if _HAS_QT:
                     else ""
                 )
 
+                def store() -> None:
+                    self._store_exchange(eid, key, secret, pp)
+
                 if sds.takes_verification_code(eid):
                     # The code leg is this venue's own credential test, so the
                     # key and secret are not tested a second time.
                     if not (key and secret):
                         self._set_feedback(sds.MISSING_CREDENTIALS_FEEDBACK, "error")
                         return
-                    if not self._connect_verification_code_venue(eid, key, secret):
-                        return
-                elif key and secret and sds.credential_route_held(eid):
-                    result = self._test_api_connection()
-                    if result is None or not result.success:
-                        return
+                    self._connect_verification_code_venue(eid, key, secret, store)
+                    return
+                if key and secret and sds.credential_route_held(eid):
+                    self._start_test(store)
+                    return
+                store()
+            finally:
+                self._sync_credential_kind(self._bound_venue())
 
+        def _store_exchange(self, eid: str, key: str, secret: str, pp: str) -> None:
+            """Store *eid* with its typed credentials, once any test of them has passed."""
+            try:
                 from src.core.settings import ExchangeConfig
 
                 config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
@@ -1041,10 +1116,10 @@ if _HAS_QT:
                 self._sync_credential_kind(self._bound_venue())
 
         def _connect_verification_code_venue(
-            self, eid: str, key: str, secret: str
-        ) -> bool:
-            """Walk one leg of this venue's verification-code sign-in and answer
-            whether it granted a session.
+            self, eid: str, key: str, secret: str, then
+        ) -> None:
+            """Walk one leg of this venue's verification-code sign-in off the
+            window's thread, and run *then* once it grants a session.
 
             The connector is held per venue, because the request token leg one
             takes must outlive the press that walked it — the operator opens the
@@ -1059,24 +1134,37 @@ if _HAS_QT:
             built = broker_connector_class(eid)
             if built is None:
                 self._set_feedback(sds.NO_VENUE_FEEDBACK, "error")
-                return False
+                return
             held = self._authorizing.get(eid)
             if held is None:
                 held = built()
                 self._authorizing[eid] = held
-            try:
-                answered = sds.connect_verification_code_venue(
+            code = self._new_verification_code.text()
+            self._ask_venue(
+                eid,
+                f"Signing in to {eid.capitalize()}",
+                lambda: sds.connect_verification_code_venue(
                     eid,
-                    self._new_verification_code.text(),
+                    code,
                     lambda: asyncio.run(held.begin_authorization(key, secret)),
                     lambda given: asyncio.run(held.complete_authorization(given)),
-                )
-            except (OSError, ValueError, KeyError) as exc:
-                self._set_feedback(f"{eid.capitalize()} not authorized: {exc}", "error")
-                return False
+                ),
+                lambda answered: self._signed_in(answered, then),
+                lambda exc: self._not_signed_in(eid, exc),
+            )
+
+        def _signed_in(self, answered: dict, then) -> None:
+            """Write the venue's answer to the code leg; a granted session runs *then*."""
             self._new_verification_code.clear()
             self._set_feedback(str(answered["words"]), str(answered["level"]))
-            return bool(answered["granted"])
+            self._sync_credential_kind(self._bound_venue())
+            if answered["granted"]:
+                then()
+
+        def _not_signed_in(self, eid: str, exc: BaseException) -> None:
+            """Write a code leg that raised or gave no answer in time."""
+            self._set_feedback(f"{eid.capitalize()} not authorized: {exc}", "error")
+            self._sync_credential_kind(self._bound_venue())
 
         def _connect_browser_venue(self, eid: str) -> None:
             """Sign one browser-authorization venue in, store what it issued and
