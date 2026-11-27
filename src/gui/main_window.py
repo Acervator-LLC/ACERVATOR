@@ -4032,7 +4032,6 @@ if _HAS_QT:
                     mode = cfg.mode.value.upper()
 
                     pf = "ON" if cfg.profit_folding_active else "OFF"
-                    mg = "ON" if cfg.bb_midline_gate else "OFF"
                     be = "ON" if cfg.bb_bullseye_check else "OFF"
                     hr = "ON" if cfg.hedge_rebalance_active else "OFF"
                     detail = (
@@ -4041,9 +4040,8 @@ if _HAS_QT:
                         f"Interval: {cfg.scrumming_interval_pct}% | "
                         f"TA TF: {cfg.ta_timeframe} | "
                         f"BB tol: {cfg.bb_tolerance_pct}%, strip: {cfg.bb_landing_strip_candles} | "
-                        f"Advanced: detect={cfg.scrum_detect_pct}%, fire={cfg.scrum_fire_pct}%, "
-                        f"midline={mg}, bullseye={be}, travel={cfg.band_travel_pct}%, "
-                        f"read={cfg.scrum_read_rate_min}min | "
+                        f"Advanced: bullseye={be}, travel={cfg.band_travel_pct}%, "
+                        f"read={cfg.scrum_read_timeframe} | "
                         f"Hedge: {hr} (${cfg.hedge_balance:.2f}) | "
                         f"Fold: {pf}"
                     )

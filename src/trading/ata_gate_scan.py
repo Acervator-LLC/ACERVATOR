@@ -105,6 +105,7 @@ MIDLINE_POSITION = 0.5
 PERCENT_PER_RATIO_UNIT = 100.0
 NO_BAND_VALUE = 0.0
 DEFAULT_DETECT_PCT = 75.0
+DEFAULT_FIRE_PCT = 0.5
 
 #: The reading a scan publishes for the hard breaker, which no gate of either
 #: chain carries. ``NO_SIDE`` keeps it out of every chain verdict.
@@ -354,8 +355,14 @@ def ramp_step(mode: Any, price: Any, band: dict, settings: Any) -> str:
     The distance from ``BAND_MIDDLE_KEY`` against the band span decides
     it; the delta test ``_tick_target_ramp`` adds is dropped.
     """
-    detect_frac = float(settings.scrum_detect_pct) / PERCENT_PER_RATIO_UNIT
-    fire_frac = float(settings.scrum_fire_pct) / PERCENT_PER_RATIO_UNIT
+    detect_frac = (
+        float(getattr(settings, "scrum_detect_pct", DEFAULT_DETECT_PCT))
+        / PERCENT_PER_RATIO_UNIT
+    )
+    fire_frac = (
+        float(getattr(settings, "scrum_fire_pct", DEFAULT_FIRE_PCT))
+        / PERCENT_PER_RATIO_UNIT
+    )
     middle = band[BAND_MIDDLE_KEY]
     edge = band[BAND_UPPER_KEY] if price > middle else band[BAND_LOWER_KEY]
     span = max(abs(edge - middle), BAND_SPAN_FLOOR)

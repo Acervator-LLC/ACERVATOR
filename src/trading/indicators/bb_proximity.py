@@ -51,6 +51,8 @@ class BBProximityResult:
     landing_strip_candles: int  # How many candles in the pattern
     ha_body_avg: float  # Average HA body % for recent candles
     consolidation_strength: float  # 0..1, how tight the consolidation is
+    upper_line: float = 1.0  # bb_position at which near_upper starts
+    lower_line: float = 0.0  # bb_position at which near_lower ends
 
 
 def detect_bb_proximity(
@@ -115,6 +117,8 @@ def detect_bb_proximity(
     tol_val = tol_base * (tolerance_pct / 100.0)
     near_upper = price >= (upper - tol_val)
     near_lower = price <= (lower + tol_val)
+    upper_line = (upper - tol_val - lower) / bb_range
+    lower_line = tol_val / bb_range
 
     ha = compute_heikin_ashi(candles)
     if len(ha) < 3:
@@ -131,6 +135,8 @@ def detect_bb_proximity(
             0,
             100.0,
             0.0,
+            upper_line,
+            lower_line,
         )
 
     # `body_pct` and `consolidation_threshold` are both percentage points of
@@ -186,6 +192,8 @@ def detect_bb_proximity(
         landing_strip_candles=tight_count,
         ha_body_avg=ha_body_avg,
         consolidation_strength=consolidation_strength,
+        upper_line=upper_line,
+        lower_line=lower_line,
     )
 
 

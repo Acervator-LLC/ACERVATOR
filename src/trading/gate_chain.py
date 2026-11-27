@@ -3,7 +3,8 @@
 Each Gate returns a GateResult from ``evaluate(ctx)``, and GateContext
 carries every input a gate reads. GateChain evaluates every gate with no
 short-circuit; ChainResult.blocked names each gate that failed, and an
-override gate force-passes the gates listed in its ``overrides``.
+override gate force-passes the gates listed in its ``overrides``, as a rule
+``GateChain.releases`` names force-passes its own.
 ScrummingBot.tick calls evaluate on ``self._scrum_chain`` and
 ``self._fold_chain``, and ChainResult.should_fire decides whether that
 tick's trade executes.
@@ -117,6 +118,9 @@ class GateContext:
     # Price inside BB Tolerance of the band the delta points to, as band_zone answers.
     bb_upper_zone: bool = False
     bb_lower_zone: bool = False
+
+    # The Target Delta at or past Max Cartridge Size, as cartridge_reached answers.
+    cartridge_reached: bool = False
 
 
 @dataclass(frozen=True)
@@ -605,11 +609,36 @@ class ZScoreExtremityGate(Gate):
         return GateResult(passed=True)
 
 
+BAND_ZONE_RELEASE = "band_zone"
+"""The rule ``GateChain.releases`` names while price sits inside BB Tolerance on the Target Delta's side."""
+
+ZONE_RELEASED_GATES: dict[str, tuple[str, ...]] = {
+    "scrum": (
+        TrendHoldGate.name,
+        MidlineGate("scrum").name,
+        HTFDeferGate("scrum").name,
+        ADXTrendSuppressionGate.name,
+        EfficiencyRatioRegimeGate.name,
+    ),
+    "fold": (MidlineGate("fold").name, HTFDeferGate("fold").name),
+}
+"""The gates ``BAND_ZONE_RELEASE`` passes on each side."""
+
+CALIBRATING_TRADE = "calibrating_trade"
+"""The rule ``GateChain.releases`` names inside the zone with ``cartridge_reached`` set."""
+
+CALIBRATING_RELEASED_GATES: dict[str, tuple[str, ...]] = {
+    "scrum": (),
+    "fold": (TranchesQueuedGate.name,),
+}
+"""The gates ``CALIBRATING_TRADE`` passes on each side."""
+
+
 class GateChain:
     """Evaluates every Gate for one side and returns a ChainResult.
 
-    A Gate declaring ``overrides`` is held back to a second pass, where
-    passing it moves each named gate from ``blocked`` into ``overrides_applied``.
+    A rule ``releases`` puts in force, then a Gate declaring ``overrides``,
+    moves each gate it names from ``blocked`` into ``overrides_applied``.
     """
 
     def __init__(self, gates: list[Gate], side: Literal["scrum", "fold"]) -> None:
@@ -628,6 +657,16 @@ class GateChain:
         """Return the override gates whose ``overrides`` names ``gate_name``."""
         return self._covered_by.get(gate_name, ())
 
+    def releases(self, ctx: GateContext) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        """Each rule ``ctx`` puts in force on this side, with the gate names it passes."""
+        in_zone = ctx.bb_upper_zone if self._side == "scrum" else ctx.bb_lower_zone
+        if not in_zone:
+            return ()
+        held = ((BAND_ZONE_RELEASE, ZONE_RELEASED_GATES[self._side]),)
+        if ctx.cartridge_reached:
+            held += ((CALIBRATING_TRADE, CALIBRATING_RELEASED_GATES[self._side]),)
+        return held
+
     def evaluate(self, ctx: GateContext) -> ChainResult:
         passed: list[str] = []
         blocked: list[tuple[str, str]] = []
@@ -640,22 +679,31 @@ class GateChain:
                 blocked_index[gate.name] = len(blocked)
                 blocked.append((gate.name, result.blocker_message))
 
-        # An override gate's own verdict never reaches passed or blocked.
         overrides_applied: list[str] = []
+
+        def replace(target_name: str, by: str) -> None:
+            if target_name not in blocked_index:
+                return
+            idx = blocked_index.pop(target_name)
+            _name, _msg = blocked[idx]
+            blocked[idx] = (_name, f"OVERRIDDEN_BY:{by}({_msg})")
+            overrides_applied.append(
+                OVERRIDE_APPLIED_FORMAT.format(
+                    gate=target_name, override=by, refusal=_msg
+                )
+            )
+
+        for rule, names in self.releases(ctx):
+            for target_name in names:
+                replace(target_name, rule)
+
+        # An override gate's own verdict never reaches passed or blocked.
         for gate in self._override_gates:
             result = gate.evaluate(ctx)
             if not result.passed:
                 continue
             for target_name in result.override_gates:
-                if target_name in blocked_index:
-                    idx = blocked_index.pop(target_name)
-                    _name, _msg = blocked[idx]
-                    blocked[idx] = (_name, f"OVERRIDDEN_BY:{gate.name}({_msg})")
-                    overrides_applied.append(
-                        OVERRIDE_APPLIED_FORMAT.format(
-                            gate=target_name, override=gate.name, refusal=_msg
-                        )
-                    )
+                replace(target_name, gate.name)
 
         final_blocked: list[tuple[str, str]] = []
         for name, msg in blocked:

@@ -577,6 +577,8 @@ BUTTON = "button"
 BOOL_READING = "bool"
 TEXT_READING = "text"
 TIMEFRAME_READING = "timeframe"
+#: A ``COMBO_TEXT`` box listing ``read_timeframes`` of the bot's TA timeframe.
+READ_TIMEFRAME_READING = "read_timeframe"
 
 MODE_GROUP = "mode"
 SCRUM_GROUP = "scrum"
@@ -797,52 +799,14 @@ CONTROL_SPECS = (
         "default": True,
     },
     {
-        "name": "detect_pct",
-        "kind": SPIN,
-        "group": ADVANCED_GROUP,
-        "row_label": "Detect Threshold:",
-        "field": "scrum_detect_pct",
-        "reading": INT_READING,
-        "default": None,
-        "no_default": True,
-        "range": (10, 90),
-        "suffix": " %",
-    },
-    {
-        "name": "fire_pct",
-        "kind": DOUBLE_SPIN,
-        "group": ADVANCED_GROUP,
-        "row_label": "Fire Threshold:",
-        "field": "scrum_fire_pct",
-        "reading": FLOAT_READING,
-        "default": None,
-        "no_default": True,
-        "range": (0.1, 10.0),
-        "decimals": 2,
-        "suffix": " %",
-    },
-    {
-        "name": "midline_gate",
-        "kind": CHECK,
-        "group": ADVANCED_GROUP,
-        "row_label": NO_ROW_LABEL,
-        "text": "BB Midline Gate",
-        "field": "bb_midline_gate",
-        "reading": BOOL_READING,
-        "default": None,
-        "no_default": True,
-    },
-    {
-        "name": "scrum_read_rate_min",
-        "kind": SPIN,
+        "name": "scrum_read_timeframe",
+        "kind": COMBO_TEXT,
         "group": ADVANCED_GROUP,
         "row_label": "Read Rate:",
-        "field": "scrum_read_rate_min",
-        "reading": INT_READING,
+        "field": "scrum_read_timeframe",
+        "reading": READ_TIMEFRAME_READING,
         "default": None,
         "no_default": True,
-        "range": (1, 60),
-        "suffix": " min",
     },
     {
         "name": "band_travel",
@@ -1317,8 +1281,13 @@ def admitted_edit(name: str, raw: Any, drawn: Any = None) -> tuple:
     if kind == CHECK:
         return (True, raw) if type(raw) is bool else (False, None)
     if kind in (COMBO_DATA, COMBO_TEXT):
-        timeframes = drawn.get("timeframe_items") if isinstance(drawn, dict) else None
-        return _admitted_choice(spec, raw, timeframes)
+        bag = drawn if isinstance(drawn, dict) else {}
+        listed = (
+            "read_timeframe_items"
+            if spec["reading"] == READ_TIMEFRAME_READING
+            else "timeframe_items"
+        )
+        return _admitted_choice(spec, raw, bag.get(listed))
     if kind in (SPIN, DOUBLE_SPIN):
         return _admitted_number(spec, raw)
     if kind == LINE and isinstance(raw, str):
@@ -1614,6 +1583,7 @@ class LiveSettingsTabModel:
         self.refused: dict = {}
         self.forms_expected = FORM_COUNT_BASE
         self.timeframe_items: list = []
+        self.read_timeframe_items: list = []
         self.compound_row: list = []
         self.surplus_row: list = []
         self.budget_row: list = []
@@ -1681,6 +1651,10 @@ class LiveSettingsTabModel:
             return hunger_switched_on(config)
         if reading == SHADOW_SWITCH_READING:
             return shadow_switched_on(config)
+        if reading == READ_TIMEFRAME_READING:
+            from ...trading.container.config import bot_read_timeframe
+
+            return bot_read_timeframe(config)
         if kind in (DOUBLE_SPIN, SPIN):
             return read_number(config, field, default, reading, no_default)
         raw = read_config_field(config, field, default, no_default)
@@ -1723,6 +1697,10 @@ class LiveSettingsTabModel:
             self.combo_index[name] = combo_index(spec["items"], value)
         elif spec["reading"] == TIMEFRAME_READING:
             self.combo_index[name] = timeframe_index(self.timeframe_items, value)
+        elif spec["reading"] == READ_TIMEFRAME_READING:
+            self.combo_index[name] = max(
+                index_of_text(self.read_timeframe_items, value), FIRST_INDEX
+            )
         elif spec["kind"] == COMBO_TEXT:
             at = index_of_text(spec["items"], value)
             self.combo_index[name] = at if at >= FIRST_INDEX else FIRST_INDEX
@@ -1757,6 +1735,11 @@ class LiveSettingsTabModel:
             self._add_control(config, spec)
 
         self.timeframe_items = self._timeframe_list(config)
+        from ...exchange.timeframes import read_timeframes
+
+        self.read_timeframe_items = list(
+            read_timeframes(str(getattr(config, "ta_timeframe", "") or ""))
+        )
         scrum_title = SCRUM_GROUP_TITLE if is_scrumming else SHARED_GROUP_TITLE
         self._add_group(SCRUM_GROUP, scrum_title)
         self._add_form()
@@ -2079,13 +2062,24 @@ def build_view_model(
         "rows": [list(one) for one in model.rows],
         "row_count": len(model.rows),
         "control_names": list(CONTROL_NAMES),
-        "control_specs": [refused_spec(spec, model.refused) for spec in CONTROL_SPECS],
+        "control_specs": [
+            refused_spec(
+                (
+                    {**spec, "items": list(model.read_timeframe_items)}
+                    if spec["reading"] == READ_TIMEFRAME_READING
+                    else spec
+                ),
+                model.refused,
+            )
+            for spec in CONTROL_SPECS
+        ],
         "refused": dict(model.refused),
         "refused_text": REFUSED_FIGURE_TEXT,
         "refused_color": REFUSED_FIGURE_COLOR,
         "values": dict(model.values),
         "combo_index": dict(model.combo_index),
         "timeframe_items": list(model.timeframe_items),
+        "read_timeframe_items": list(model.read_timeframe_items),
         "timeframe_fallback": list(FALLBACK_TIMEFRAMES),
         "timeframe_fallback_choice": TIMEFRAME_FALLBACK_CHOICE,
         "tooltips": dict(TOOLTIPS),

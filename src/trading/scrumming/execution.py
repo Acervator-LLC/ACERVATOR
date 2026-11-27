@@ -94,8 +94,8 @@ LADDER_OPENING_BUYS = (
     "manual_tranche_fire",
     "zero_balance_initial_entry",
     "hedge_replenish",
+    "calibrating_fold",
     "MANUAL_FOLD",
-    "CARTRIDGE_FOLD",
     "FOLD",
 )
 
@@ -105,7 +105,7 @@ BUY_BACK_SALE_BOOKERS = ("_book_scrum_fill", "_book_dist_fill", "_book_manual_sa
 
 #: The buy paths held to the venue's coin count, which refuse an omitted coin and
 #: answer ``_unbooked_coin_refusal``.
-BOOK_COMPARED_PATHS = ("zero_balance_initial_entry",)
+BOOK_COMPARED_PATHS = ("zero_balance_initial_entry", "calibrating_fold")
 
 #: The booker of an order a repeated decision got back that no plan sized.
 EARLIER_ORDER_BOOKER = "_book_earlier_order"
@@ -3409,6 +3409,8 @@ class ExecutionEngineMixin:
         _slippage_tol_pct = SLIPPAGE_TOLERANCE_PCT
         if _path == "zero_balance_initial_entry":
             _path_budget = float(self._target_balance)
+        elif _path == "calibrating_fold":
+            _path_budget = max(0.0, _target_delta_usd)
         elif _path in ("fold_rebuy", "manual_tranche_fire"):
             _path_budget = float(cost)
         elif _path == "hedge_replenish":

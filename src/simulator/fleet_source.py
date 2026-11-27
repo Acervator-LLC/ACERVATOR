@@ -186,10 +186,8 @@ class SimBot:
     ta_timeframe: str = ""
     scrumming_interval_pct: float = 0.0
     trading_fee_pct: float = 0.0
-    bb_midline_gate: bool = True
     bb_tolerance_pct: float = 1.0
     bb_landing_strip_candles: int = 2
-    scrum_detect_pct: float = 75.0
     scrum_require_ta_bullish: bool = True
     scrum_hold_in_uptrend: bool = True
     scrum_defer_to_htf: bool = True
@@ -351,7 +349,6 @@ def _sim_bot_from_record(
     fee_pct = as_finite_float(config.get("trading_fee_pct"))
     tolerance_pct = as_finite_float(config.get("bb_tolerance_pct"))
     landing_candles = as_finite_float(config.get("bb_landing_strip_candles"))
-    detect_pct = as_finite_float(config.get("scrum_detect_pct"))
     price = as_finite_float(stats.get("current_price"))
     position_value = as_finite_float(stats.get("position_value"))
     quote_rate = as_finite_float(saved.get("quote_to_usd"))
@@ -400,10 +397,8 @@ def _sim_bot_from_record(
             REFUSED_FIGURE if interval_pct is None else interval_pct
         ),
         trading_fee_pct=REFUSED_FIGURE if fee_pct is None else fee_pct,
-        bb_midline_gate=bool(config.get("bb_midline_gate", True)),
         bb_tolerance_pct=1.0 if tolerance_pct is None else tolerance_pct,
         bb_landing_strip_candles=int(2 if landing_candles is None else landing_candles),
-        scrum_detect_pct=75.0 if detect_pct is None else detect_pct,
         scrum_require_ta_bullish=bool(config.get("scrum_require_ta_bullish", True)),
         scrum_hold_in_uptrend=bool(config.get("scrum_hold_in_uptrend", True)),
         scrum_defer_to_htf=bool(config.get("scrum_defer_to_htf", True)),

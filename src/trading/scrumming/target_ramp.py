@@ -3,8 +3,8 @@
 ``RAMP_SEARCH`` waits, ``RAMP_TRACK`` follows a price out towards a band and
 ``RAMP_FIRE`` is the only mode that lets a target scrum arm.
 ``retreat_line`` answers the travel below which ``RAMP_SEARCH`` returns.
-Both the live tick and the ATA-SPM scan call ``next_ramp_mode`` for the
-transition and keep their own reading of ``travel`` and ``edge_gap``.
+The ATA-SPM scan calls ``next_ramp_mode`` for the transition and keeps its own
+reading of ``travel`` and ``edge_gap``. The live tick calls ``zone_ramp_mode``.
 """
 
 from __future__ import annotations
@@ -14,6 +14,13 @@ RAMP_TRACK = "track"
 RAMP_FIRE = "fire"
 RAMP_MODES = (RAMP_SEARCH, RAMP_TRACK, RAMP_FIRE)
 RETREAT_DIVISOR = 2.0
+
+
+def zone_ramp_mode(in_zone: bool, cartridge_reached: bool) -> str:
+    """``RAMP_FIRE`` ``in_zone``, else ``RAMP_TRACK`` while ``cartridge_reached``, else ``RAMP_SEARCH``."""
+    if in_zone:
+        return RAMP_FIRE
+    return RAMP_TRACK if cartridge_reached else RAMP_SEARCH
 
 
 def retreat_line(detect_limit: float) -> float:

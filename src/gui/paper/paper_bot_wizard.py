@@ -576,41 +576,23 @@ if _HAS_QT:
             af = _mkform()
             self._adv_group.setLayout(af)
 
-            self._scrum_detect_pct = QSpinBox()
-            self._scrum_detect_pct.setRange(10, 90)
-            self._scrum_detect_pct.setSuffix(" %")
-            self._scrum_detect_pct.setValue(75)
-            set_description(
-                self._scrum_detect_pct, BOT_WIZARD_DESCRIPTIONS["scrum_detect_pct"]
-            )
-            af.addRow("Detect Threshold:", self._scrum_detect_pct)
+            from ..read_timeframe_combo import fill_read_combo
 
-            self._scrum_fire_pct = QDoubleSpinBox()
-            self._scrum_fire_pct.setRange(0.1, 10.0)
-            self._scrum_fire_pct.setDecimals(2)
-            self._scrum_fire_pct.setSuffix(" %")
-            self._scrum_fire_pct.setValue(0.5)
-            set_description(
-                self._scrum_fire_pct, BOT_WIZARD_DESCRIPTIONS["scrum_fire_pct"]
+            self._scrum_read_tf = QComboBox()
+            fill_read_combo(
+                self._scrum_read_tf, str(self._ta_timeframe.currentData() or ""), ""
             )
-            af.addRow("Fire Threshold:", self._scrum_fire_pct)
-
-            self._bb_midline_gate = QCheckBox("BB Midline Gate")
-            self._bb_midline_gate.setChecked(True)
             set_description(
-                self._bb_midline_gate, BOT_WIZARD_DESCRIPTIONS["bb_midline_gate"]
+                self._scrum_read_tf, BOT_WIZARD_DESCRIPTIONS["scrum_read_timeframe"]
             )
-            af.addRow(self._bb_midline_gate)
-
-            self._scrum_read_rate_min = QSpinBox()
-            self._scrum_read_rate_min.setRange(1, 60)
-            self._scrum_read_rate_min.setSuffix(" min")
-            self._scrum_read_rate_min.setValue(5)
-            set_description(
-                self._scrum_read_rate_min,
-                BOT_WIZARD_DESCRIPTIONS["scrum_read_rate_min"],
+            self._ta_timeframe.currentIndexChanged.connect(
+                lambda _at: fill_read_combo(
+                    self._scrum_read_tf,
+                    str(self._ta_timeframe.currentData() or ""),
+                    str(self._scrum_read_tf.currentData() or ""),
+                )
             )
-            af.addRow("Read Rate:", self._scrum_read_rate_min)
+            af.addRow("Read Rate:", self._scrum_read_tf)
 
             self._band_travel_pct = QSpinBox()
             self._band_travel_pct.setRange(0, 100)
@@ -982,10 +964,9 @@ if _HAS_QT:
                     "min_entry_price": (float(_min_ep) if _min_ep > 0 else None),
                     "trading_fee_pct": self._trading_fee.value(),
                     "max_target_growth_pct": self._max_target_growth_pct.value(),
-                    "scrum_detect_pct": self._scrum_detect_pct.value(),
-                    "scrum_fire_pct": self._scrum_fire_pct.value(),
-                    "bb_midline_gate": self._bb_midline_gate.isChecked(),
-                    "scrum_read_rate_min": self._scrum_read_rate_min.value(),
+                    "scrum_read_timeframe": str(
+                        self._scrum_read_tf.currentData() or ""
+                    ),
                     "band_travel_pct": self._band_travel_pct.value(),
                     "bb_bullseye_check": self._bb_bullseye_check.isChecked(),
                     "hedge_rebalance_active": self._hedge_rebalance.isChecked(),
