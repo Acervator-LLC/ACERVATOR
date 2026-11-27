@@ -583,6 +583,24 @@ LIVE_COMMAND_BAR_ROUTE = "the Live tab command bar"
 FLEET_SEQUENCE_ROUTE = "the fleet sequence"
 ```
 
+### A start that waits for its venue
+
+A Start, a Restart, Start All, Restart All and the start at launch ask the venue off the window's thread. The window, its heartbeat and every running bot go on while the venue answers.
+
+The connect loads the market list on the venue's own worker, and all its tries end inside 307.2 seconds. The account read comes from the shared balance read where that read holds the bot's coins, or from one read of its own. Each of these calls ends inside its own time limit, and a venue that does not answer in time ends the start in the same failure line as before, with the reason. Start All counts its 8 seconds for a bot from the moment the venue answers. While a bot waits, the progress window shows it as starting, and the sequence starts no other bot.
+
+A second Start of a bot that waits writes one line and starts nothing. Pause, Stop, Restart, Delete, a fleet lock, a venue removal and a window close each end a start that waits. The line names the reason, nothing starts, and the next Start asks the venue again.
+
+`src/gui/main_window.py` — the two lines a start that waits can write
+
+```python
+START_ON_WAY_FORMAT = "Bot {bot_id} is already starting: it waits for {venue}."
+START_ENDED_FORMAT = (
+    "Bot {bot_id}: its start waited for {venue} and ended: {reason}. "
+    "Nothing was started."
+)
+```
+
 ### A bot whose exchange has no keys
 
 A bot waits when Settings holds no API keys for its exchange. The check reads the same stored fields that a Start reads (`src/exchange/api_access.py, in api_access_required`). A bot whose exchange has keys starts as before.
@@ -668,7 +686,7 @@ The wizard's title reads Create Auto Trader. The Qt build draws `BotCreationWiza
 | Back, Next, Cancel | Back returns one page and keeps your entries. Cancel closes the wizard and makes no bot. `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel.go_back` |
 | Finish | Closes the wizard and builds the bot, which waits IDLE until Start. `src/gui/main_window.py, in MainWindow._create_bot` |
 | A market no bot can trade | Finish keeps the wizard open and names why no built variant trades that market. `src/gui/bot_wizard.py, in BotCreationWizard.accept` |
-| Pre-flight check | Scrumming only, after Finish. A missing venue, a missing symbol or a failed market read stops creation, and a failed price read does not. An inactive market, or a target under 3x the minimum cost, asks Yes or No. `src/gui/preflight_check.py, in check_symbol` |
+| Pre-flight check | Scrumming only, after Finish. A missing venue, a missing symbol or a failed market read stops creation, and a failed price read does not. An inactive market, or a target under 3x the minimum cost, asks Yes or No. The check runs off the window's thread, and the status bar says what it waits for. No answer in 332.2 seconds stops creation as a failed market read. A second New Bot while it waits writes one line, and closing the window while it waits creates no bot. `src/gui/preflight_check.py, in check_symbol` |
 | Parent check | Extractor only, after Finish. It stops creation unless exactly one Scrumming Bot holds the base currency. `src/gui/main_window.py, in MainWindow._refuse_extractor_without_parent` |
 
 ### Trading Mode page
@@ -682,7 +700,7 @@ The wizard's title reads Create Auto Trader. The Qt build draws `BotCreationWiza
 
 | Row | What it does and what it reads |
 | --- | --- |
-| Exchange | Lists the stored venues that serve the class. Picking one loads its markets. `src/gui/bot_wizard.py, in AssetSelectionPage._fetch_markets` |
+| Exchange | Lists the stored venues that serve the class. Picking one loads its markets. The load runs off the window's thread, the status line says what it waits for, and Next waits until the markets land. `src/gui/bot_wizard.py, in AssetSelectionPage._fetch_markets` |
 | Base Currency | Seven declared money legs, then any other leg the venue quotes. It opens on a leg the venue quotes. `src/gui/main_tabs/bot_wizard_surface.py, in opening_base_index` |
 | Target Asset | Markets quoted in that base, highest volume first. A market no bot can trade says so and says why. `src/gui/bot_wizard.py, in AssetSelectionPage._filter_assets` |
 | Information button | The Qt build opens the asset's description. The React build always answers that no description is available. `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel.show_info` |
@@ -847,9 +865,11 @@ These sit on the Settings tab beside the wizard's rows.
 | --- | --- |
 | Status | Read-only at open: realised profit and loss, trades, open orders, price, uptime and last error. `src/gui/live_settings/status_tab.py, in StatusTabMixin._create_status_tab` |
 | Fold Tranches | The queued buy-backs and their counters. Fire buys one tranche with its own sale dollars, skipping the vote and Target Delta gates. While the hard breaker holds it refuses and leaves the tranche as it is, so press it again after the reset. On a paused bot it still buys, and its Stack rungs do not open. Each Clear button asks first and places no order. `src/trading/scrumming_bot.py, in ScrummingBot.manual_fire_tranche`. On a price past its age limit Fire refuses and leaves the tranche as it is, so press it again once a fresh price is in. `src/trading/scrumming_bot.py, in ScrummingBot._refuse_tranche_fire` |
+| Fold Tranches: Projected Accumulation | The tokens a tranche's buy-back gains at the Minimum Opposing Trade Distance after the buy fee, held to Max Growth Per Cycle. It stands where Original cost stood. A row with no figure shows a dash, and its mouse-over says why. `src/gui/main_tabs/fold_tranches_tab_surface.py, in fold_projected_accumulation` |
 | Fold Tranches: Order, Filter | Order sets the row order, and Filter hides rows that do not match. `src/gui/live_settings/fold_chrome.py, in build_fold_row_controls` |
 | Fold Tranches: Arbiter button | Flips one label on an Extractor tranche and moves no money. `src/gui/live_settings/fold_tranches_tab.py, in FoldTranchesTabMixin._on_arbiter_toggle_clicked` |
 | Stack Tranches | The rising sell levels and their counters. Clear keeps a tranche that holds a resting order, and Clear Lifetime Counters asks first. `src/trading/scrumming_bot.py, in ScrummingBot.clear_stack_tranches` |
+| Stack Tranches: Projected Accumulation | The tokens a level's sale gains when its dollars buy back at its price less the Minimum Opposing Trade Distance, after both fees, held to Max Growth Per Cycle. It follows Age. A cancelled level and a Shadow Tranche show a dash, and the mouse-over says why. `src/gui/main_tabs/stack_tranches_tab_surface.py, in stack_projected_accumulation` |
 | Stack Tranches: Shadow Tranches | A summary row and one detail row for each Shadow Tranche the bot holds. `src/gui/main_tabs/stack_tranches_tab_surface.py, in compose_shadow_rows` |
 | Bot Swarm | Read-only: wires, lifetime totals, pending credits and recent transfers. Wires change on the main Swarm tab. `src/gui/live_settings/bot_swarm_tab.py, in BotSwarmTabMixin._create_bot_swarm_tab` |
 | Market Inspector | Read-only: this bot's card from the Inspector's last scan. `src/gui/main_tabs/market_inspector_tab_surface.py, in per_bot_view` |

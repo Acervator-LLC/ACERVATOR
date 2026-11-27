@@ -176,6 +176,47 @@ def _get_coin_icon(symbol: str, size: int = 20) -> Optional["QIcon"]:
     return QIcon(px)
 
 
+def _markets_on_way(page, exchange_id) -> bool:
+    """True while *page* waits for *exchange_id*'s market rows."""
+    wait = page._market_waits.get(exchange_id)
+    return wait is not None and wait.on_way
+
+
+def _load_markets(page, exchange_id: str, doing: str) -> None:
+    """Run ``page._fetch_markets`` off the window's thread; ``page._draw_markets`` draws the landed rows."""
+    from .venue_wait import VenueWait
+
+    def landed(rows) -> None:
+        page._markets_cache[exchange_id] = rows
+        _draw_landed(page, exchange_id)
+
+    def failed(exc: BaseException) -> None:
+        page._markets_cache[exchange_id] = []
+        _draw_landed(page, exchange_id)
+        if page._exchange.currentData() == exchange_id:
+            page._status.setText(f"Failed to load markets: {str(exc)[:50]}")
+
+    wait = VenueWait(
+        page,
+        exchange_id.capitalize(),
+        doing,
+        lambda: page._fetch_markets(exchange_id),
+        landed,
+        failed,
+        page._status.setText,
+    )
+    page._market_waits[exchange_id] = wait
+    wait.start()
+    page.completeChanged.emit()
+
+
+def _draw_landed(page, exchange_id: str) -> None:
+    """Draw *exchange_id*'s rows on *page* while it is still chosen, and let Next weigh the page."""
+    if page._exchange.currentData() == exchange_id:
+        page._draw_markets(exchange_id)
+    page.completeChanged.emit()
+
+
 if _HAS_QT:
 
     PAGE_ASSET = 0
@@ -232,6 +273,7 @@ if _HAS_QT:
             self._status.setWordWrap(True)
             form.addRow(self._status)
             self._markets_cache: dict = {}
+            self._market_waits: dict = {}
             self._target_symbols: list = []
             self._target_reasons: list = []
             self._descriptions_cache: dict = {}
@@ -258,17 +300,31 @@ if _HAS_QT:
             eid = self._exchange.currentData()
             if not eid:
                 return
+            if _markets_on_way(self, eid):
+                self._status.setText(self._market_waits[eid].on_way_line())
+                return
             self._status.setText(f"Loading from {eid.capitalize()}...")
             self._status.repaint()
             safe_process_events("legacy processEvents site")
             if eid not in self._markets_cache:
-                try:
-                    self._markets_cache[eid] = self._fetch_markets(eid)
-                except Exception as exc:
-                    self._status.setText(f"Failed to load markets: {str(exc)[:50]}")
-                    self._markets_cache[eid] = []
-            self._refill_base(eid)
+                _load_markets(self, eid, f"Loading from {eid.capitalize()}")
+                return
+            self._draw_markets(eid)
+
+        def _draw_markets(self, exchange_id) -> None:
+            """Fill Base Currency and Target Asset from *exchange_id*'s cached rows."""
+            self._refill_base(exchange_id)
             self._filter_assets()
+
+        def isComplete(self) -> bool:
+            """False while the chosen venue's market rows are on their way."""
+            waiting = _markets_on_way(self, self._exchange.currentData())
+            return super().isComplete() and not waiting
+
+        def end_market_waits(self) -> None:
+            """End every market load on its way, so a late answer draws nothing."""
+            for wait in self._market_waits.values():
+                wait.end()
 
         def _refill_base(self, exchange_id):
             """Refill the Base Currency drop-down from the venue's market rows,
@@ -676,6 +732,7 @@ if _HAS_QT:
             )
             self._exchanges = exchanges
             self._markets_cache: dict = {}
+            self._market_waits: dict = {}
 
             outer = QVBoxLayout(self)
             form = QFormLayout()
@@ -717,16 +774,31 @@ if _HAS_QT:
             eid = self._exchange.currentData()
             if not eid:
                 return
+            if _markets_on_way(self, eid):
+                self._status.setText(self._market_waits[eid].on_way_line())
+                return
             self._status.setText(f"Loading {eid.capitalize()} markets...")
             self._status.repaint()
             safe_process_events("legacy processEvents site")
             if eid not in self._markets_cache:
-                try:
-                    self._markets_cache[eid] = self._fetch_markets(eid)
-                except Exception as exc:
-                    self._status.setText(f"Failed to load markets: {str(exc)[:50]}")
-                    self._markets_cache[eid] = []
+                _load_markets(self, eid, f"Loading {eid.capitalize()} markets")
+                return
             self._refresh_alt_list()
+
+        def _draw_markets(self, exchange_id) -> None:
+            """Refill the alt list from the chosen venue's cached rows."""
+            del exchange_id
+            self._refresh_alt_list()
+
+        def isComplete(self) -> bool:
+            """False while the chosen venue's market rows are on their way."""
+            waiting = _markets_on_way(self, self._exchange.currentData())
+            return super().isComplete() and not waiting
+
+        def end_market_waits(self) -> None:
+            """End every market load on its way, so a late answer draws nothing."""
+            for wait in self._market_waits.values():
+                wait.end()
 
         def _fetch_markets(self, exchange_id: str) -> list[dict]:
             """Reuse the same ccxt-based market scan AssetSelectionPage
@@ -1864,6 +1936,13 @@ if _HAS_QT:
             self.setPage(PAGE_PHANTOM, self._phantom_page)
             self.setStartId(PAGE_MODE)
             self.currentIdChanged.connect(self._on_page_changed)
+            self.finished.connect(self._end_market_waits)
+
+        def _end_market_waits(self, code: int = 0) -> None:
+            """End both pages' market loads once the wizard closes with *code*."""
+            del code
+            self._asset_page.end_market_waits()
+            self._extractor_pool_page.end_market_waits()
 
         def _on_page_changed(self, page_id):
             if page_id == PAGE_PARAMS:

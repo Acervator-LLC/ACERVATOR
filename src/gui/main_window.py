@@ -116,9 +116,24 @@ PAIRS_READ_CALLS = 2
 BROKER_SESSION_PAPER = True
 
 #: Why ``_open_broker_session`` refused before reaching the venue.
-#: ``_connect_broker_for_bot`` matches on this to open the configuration window.
 NO_BROKER_CREDENTIAL = "no API credentials are stored"
 VENUE_NOT_STORED = "Settings no longer holds this venue, so the bot stays stopped"
+#: The refusal a broker call past ``CONNECT_LIMIT_SEC`` gives ``_connect_broker_for_bot``.
+BROKER_CALL_UNANSWERED_FORMAT = "no answer in {limit:g}s"
+
+#: The status line a Start writes while ``_venue_start_on_way`` holds that bot's start.
+START_ON_WAY_FORMAT = "Bot {bot_id} is already starting: it waits for {venue}."
+#: The status line ``_end_venue_starts`` writes for each start it ends.
+START_ENDED_FORMAT = (
+    "Bot {bot_id}: its start waited for {venue} and ended: {reason}. "
+    "Nothing was started."
+)
+#: The reasons ``_end_venue_starts`` names: a press, a lock, a venue removal, a close.
+PRESS_ENDS_START_FORMAT = "{command} was pressed"
+FLEET_LOCK_ENDS_START = "the fleet was locked"
+VENUE_RELEASE_ENDS_START = "the venue was disconnected"
+WINDOW_CLOSE_ENDS_START = "the window closed"
+NO_BOT_CREATED = "No bot was created."
 
 #: The branches ``_on_bot_command`` and ``run_fleet_sequence`` pass for a bot
 #: whose exchange ``api_access_required`` names.
@@ -219,7 +234,6 @@ try:
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
-from src.gui.qt_safe_events import safe_process_events
 
 __all__ = [
     "APITesterTab",
@@ -2388,6 +2402,7 @@ if _HAS_QT:
                         exchange_id="",
                         defaults_override={"default_target_balance": target_usd},
                     )
+                    self._wait_for_preflight()
                 except Exception as _cb_exc:
                     logger.exception("Topology adopt: _create_bot raised: %s", _cb_exc)
                     self._status_log.log(
@@ -3013,17 +3028,6 @@ if _HAS_QT:
                 pool.submit(asyncio.run, coro)
             return None
 
-        def _await_async(self, coro):
-            """Run ``coro`` to completion and answer its result.
-
-            ``_async_loop`` is advanced by ``pump_once`` from a timer and is not
-            running between pumps, so ``run_until_complete`` drives it here.
-            """
-            loop = getattr(self, "_async_loop", None)
-            if loop is None:
-                return asyncio.run(coro)
-            return loop.run_until_complete(coro)
-
         def _schedule_coalesced(
             self, slot: str, coro, calls: int, venue: str = "", mark=None
         ) -> None:
@@ -3046,8 +3050,56 @@ if _HAS_QT:
                 if not eid or held.may_ask(eid):
                     slots.pop(name).end()
 
+        def _venue_start_on_way(self, bot_id: str) -> bool:
+            """True while ``_venue_starts`` holds an unfinished start for *bot_id*."""
+            held = getattr(self, "_venue_starts", {}).get(bot_id)
+            return held is not None and not held.done()
+
+        def _begin_venue_start(self, bot, command: str, sound) -> None:
+            """Schedule ``_run_venue_start`` unless ``_venue_start_on_way`` reads True, and keep its Future."""
+            from concurrent.futures import Future
+
+            if self._venue_start_on_way(bot.bot_id):
+                return
+            future = self._schedule_async(self._run_venue_start(bot, command, sound))
+            if future is not None:
+                starts = getattr(self, "_venue_starts", None)
+                if starts is None:
+                    starts = self._venue_starts = dict[str, Future]()
+                starts[bot.bot_id] = future
+
+        def _end_venue_starts(
+            self, reason: str, eid: str = "", bot_id: str = ""
+        ) -> None:
+            """Cancel each start ``_venue_start_on_way`` reads, on *eid* or of *bot_id* where given, and log ``START_ENDED_FORMAT``."""
+            for held_id in list(getattr(self, "_venue_starts", {})):
+                held = self._bot_manager.get_bot(held_id) if self._bot_manager else None
+                venue = held.config.exchange_id if held is not None else ""
+                if not self._venue_start_on_way(held_id):
+                    continue
+                if (eid and venue != eid) or (bot_id and held_id != bot_id):
+                    continue
+                self._venue_starts[held_id].cancel()
+                self._status_log.log(
+                    START_ENDED_FORMAT.format(
+                        bot_id=held_id, venue=venue.capitalize(), reason=reason
+                    ),
+                    "warning",
+                )
+
+        def _venue_lock(self, eid: str) -> asyncio.Lock:
+            """The ``asyncio.Lock`` that runs one ``_connect_exchange_for_bot`` of *eid* at a time."""
+            locks = getattr(self, "_venue_locks", None)
+            if locks is None:
+                locks = self._venue_locks = dict[str, asyncio.Lock]()
+            if eid not in locks:
+                locks[eid] = asyncio.Lock()
+            return locks[eid]
+
         def closeEvent(self, event) -> None:
-            """Run ``_end_reads``, then close the window."""
+            """Run ``_end_venue_starts``, ``_end_preflight`` and ``_end_reads``, then close the window."""
+            self._end_venue_starts(WINDOW_CLOSE_ENDS_START)
+            self._end_preflight(WINDOW_CLOSE_ENDS_START)
             self._end_reads()
             super().closeEvent(event)
 
@@ -3210,7 +3262,7 @@ if _HAS_QT:
             )
             self._run_settings_window(wing_showing_venue(eid, sector), START_ROUTE, eid)
 
-        def _open_broker_session(
+        async def _open_broker_session(
             self, connector, eid: str, sector: str = ""
         ) -> tuple[bool, str]:
             """Open *connector*'s session with the stored credential for *eid* on
@@ -3224,6 +3276,7 @@ if _HAS_QT:
             opens live, because asking for a host the venue does not serve
             refuses every session.
             """
+            from ..exchange.ccxt_connector import CONNECT_LIMIT_SEC
             from ..stocks.broker_base import broker_paper_route
 
             if getattr(connector, "is_connected", False):
@@ -3239,10 +3292,17 @@ if _HAS_QT:
             paper = BROKER_SESSION_PAPER and broker_paper_route(connector)
             try:
                 opened = bool(
-                    self._await_async(
-                        connector.open_session(api_key, api_secret, paper)
+                    await asyncio.wait_for(
+                        connector.open_session(api_key, api_secret, paper),
+                        CONNECT_LIMIT_SEC,
                     )
                 )
+            except asyncio.TimeoutError as exc:
+                refusal = str(exc) or BROKER_CALL_UNANSWERED_FORMAT.format(
+                    limit=CONNECT_LIMIT_SEC
+                )
+                logger.warning("broker session for %s not opened: %s", eid, refusal)
+                return False, refusal
             except Exception as exc:
                 refusal = f"{type(exc).__name__}: {exc}"
                 logger.warning("broker session for %s not opened: %s", eid, refusal)
@@ -3251,23 +3311,31 @@ if _HAS_QT:
                 return True, ""
             return False, getattr(connector, "session_refusal", "") or "refused"
 
-        def _read_broker_markets(self, connector, eid: str) -> tuple[int, str]:
+        async def _read_broker_markets(self, connector, eid: str) -> tuple[int, str]:
             """Read *connector*'s asset list over its open session and record it,
             answering the row count written with the failure that stopped it.
 
             ``list_assets`` needs the session ``_open_broker_session`` opened, and
             runs once a session: a second bot records what the first read.
             """
+            from ..exchange.ccxt_connector import CONNECT_LIMIT_SEC
+
             if not connector.held_assets():
                 try:
-                    self._await_async(connector.list_assets())
+                    await asyncio.wait_for(connector.list_assets(), CONNECT_LIMIT_SEC)
+                except asyncio.TimeoutError as exc:
+                    failure = str(exc) or BROKER_CALL_UNANSWERED_FORMAT.format(
+                        limit=CONNECT_LIMIT_SEC
+                    )
+                    logger.warning("broker assets for %s not read: %s", eid, failure)
+                    return 0, failure
                 except Exception as exc:
                     failure = f"{type(exc).__name__}: {exc}"
                     logger.warning("broker assets for %s not read: %s", eid, failure)
                     return 0, failure
             return self._record_broker_markets(connector)
 
-        def _connect_broker_for_bot(self, bot) -> tuple[bool, str]:
+        async def _connect_broker_for_bot(self, bot) -> tuple[bool, str]:
             """Build or reuse the broker's connector, open its session, record its
             markets and hand it to *bot* as a ``BrokerExchange``; returns
             (ok, message).
@@ -3350,11 +3418,7 @@ if _HAS_QT:
 
             venue = eid.capitalize()
             sector = str(getattr(bot, "sector", "") or "")
-            opened, refusal = self._open_broker_session(connector, eid, sector)
-
-            if not opened and refusal == NO_BROKER_CREDENTIAL:
-                self._ask_for_venue_connection(eid, sector)
-                opened, refusal = self._open_broker_session(connector, eid, sector)
+            opened, refusal = await self._open_broker_session(connector, eid, sector)
 
             if not opened:
                 msg = (
@@ -3385,7 +3449,7 @@ if _HAS_QT:
                 data_usage="Recorded market rules size every later order",
             )
 
-            recorded, failure = self._read_broker_markets(connector, eid)
+            recorded, failure = await self._read_broker_markets(connector, eid)
 
             if failure:
                 msg = (
@@ -3418,7 +3482,7 @@ if _HAS_QT:
             )
             return True, msg
 
-        def _connect_written_crypto_for_bot(self, bot) -> tuple[bool, str]:
+        async def _connect_written_crypto_for_bot(self, bot) -> tuple[bool, str]:
             """Build or reuse the hand-written crypto connector for *bot*'s venue,
             hold the stored credential on it and hand it to *bot*; returns
             (ok, message).
@@ -3461,13 +3525,6 @@ if _HAS_QT:
 
             api_key, signing_key, account_number = self._written_crypto_credential(eid)
             if not api_key or not signing_key:
-                self._ask_for_venue_connection(
-                    eid, str(getattr(bot, "sector", "") or "")
-                )
-                api_key, signing_key, account_number = self._written_crypto_credential(
-                    eid
-                )
-            if not api_key or not signing_key:
                 msg = (
                     f"No API credentials for {venue}. Add them in Settings. "
                     f"No connector was built."
@@ -3491,9 +3548,7 @@ if _HAS_QT:
 
             if not getattr(connector, "is_connected", False):
                 try:
-                    self._await_async(
-                        connector.connect(api_key, signing_key, account_number)
-                    )
+                    await connector.connect(api_key, signing_key, account_number)
                 except Exception as exc:
                     msg = (
                         f"{venue} connector would not hold the credential: "
@@ -3572,7 +3627,7 @@ if _HAS_QT:
                 str(getattr(bot, "sector", "") or ""),
             )
 
-        def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
+        async def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
             """Reuse the exchange's connector, or build one; returns (ok, message).
 
             ``BotContainer.sector`` picks the transport ``start_transport``
@@ -3591,10 +3646,10 @@ if _HAS_QT:
             transport = start_transport(eid, sector)
 
             if transport == BROKER_TRANSPORT:
-                return self._connect_broker_for_bot(bot)
+                return await self._connect_broker_for_bot(bot)
 
             if transport == WRITTEN_TRANSPORT:
-                return self._connect_written_crypto_for_bot(bot)
+                return await self._connect_written_crypto_for_bot(bot)
 
             _log.record(
                 exchange=eid,
@@ -3638,6 +3693,8 @@ if _HAS_QT:
                 )
                 return False, msg
 
+            connect_call: Optional["asyncio.Future[None]"] = None
+            connector = None
             try:
                 connector = self._live_connector(eid)
 
@@ -3678,7 +3735,10 @@ if _HAS_QT:
                     # Registered before `sync_connect`, which starts the scan thread.
                     self._wire_connector_for_bot(connector, bot)
 
-                    connector.sync_connect(api_key, api_secret, passphrase or "")
+                    connect_call = asyncio.ensure_future(
+                        connector.connect(api_key, api_secret, passphrase or "")
+                    )
+                    await asyncio.shield(connect_call)
 
                     _log.record(
                         exchange=eid,
@@ -3689,21 +3749,10 @@ if _HAS_QT:
                         data_usage="Bot now has a live exchange connection for trading",
                     )
 
-                from ..exchange.ccxt_connector import note_venue_answered
+                from ..exchange.data_pool import get_data_pool
 
-                balances_raw = {}
-                if hasattr(connector, "_ccxt_sync"):
-                    balances_raw = connector._ccxt_sync.fetch_balance()
-                    note_venue_answered(eid)
-
+                pool = get_data_pool()
                 base = bot.config.base_currency
-
-                free_bals = (
-                    balances_raw.get("free", {})
-                    if isinstance(balances_raw, dict)
-                    else {}
-                )
-                base_free = float(free_bals.get(base, 0) or 0)
                 # Extractor mode passes no target asset to `check_start_balance`.
                 from ..trading.bot_container import BotMode as _BM
                 from src.trading.start_balance_check import check_start_balance
@@ -3716,8 +3765,15 @@ if _HAS_QT:
                 else:
                     _target_for_helper = bot.config.target_asset
                     _target_free_for_helper = float(
-                        free_bals.get(_target_for_helper, 0) or 0
+                        (
+                            await pool.get_or_fetch_balance(
+                                connector, eid, _target_for_helper
+                            )
+                        ).free
                     )
+                base_free = float(
+                    (await pool.get_or_fetch_balance(connector, eid, base)).free
+                )
 
                 _base_usd_price = None
                 if _is_extractor_mode and base.upper() not in {
@@ -3730,13 +3786,12 @@ if _HAS_QT:
                     "FDUSD",
                 }:
                     try:
-                        if hasattr(connector, "_ccxt_sync"):
-                            _t = connector._ccxt_sync.fetch_ticker(f"{base}/USD")
-                            _base_usd_price = float(
-                                _t.get("last") or _t.get("close") or 0 or 0
-                            )
-                            if _base_usd_price <= 0:
-                                _base_usd_price = None
+                        _t = await pool.get_or_fetch_ticker(
+                            connector, eid, f"{base}/USD"
+                        )
+                        _base_usd_price = float(_t.last or 0)
+                        if _base_usd_price <= 0:
+                            _base_usd_price = None
                     except Exception as _exc:
                         logger.warning(
                             "could not fetch %s/USD price "
@@ -3839,6 +3894,26 @@ if _HAS_QT:
                     data_usage="See DIAGNOSIS above for specific troubleshooting steps",
                 )
                 return False, msg
+            finally:
+                if (
+                    connect_call is not None
+                    and self._exchange_connectors.get(eid) is not connector
+                ):
+                    self._release_when_done(connector, connect_call)
+
+        @staticmethod
+        def _release_when_done(connector, connect_call) -> None:
+            """Call ``connector.release`` now, or once *connect_call* ends where it still runs."""
+
+            def release(ended) -> None:
+                if not ended.cancelled():
+                    ended.exception()
+                connector.release()
+
+            if connect_call.done():
+                connector.release()
+                return
+            connect_call.add_done_callback(release)
 
         async def _restart_bot(self, bot, sound) -> None:
             """``bot.restart``, then the restarted line once ``bot`` reads RUNNING."""
@@ -3962,6 +4037,126 @@ if _HAS_QT:
             finally:
                 bot.start_pending = False
 
+        async def _run_venue_start(self, bot, command: str, sound) -> None:
+            """Await ``_connect_exchange_for_bot`` under ``_venue_lock``, then finish the Start or Restart *command* names."""
+            success, msg, raised = False, "", None
+            try:
+                async with self._venue_lock(bot.config.exchange_id):
+                    success, msg = await self._connect_exchange_for_bot(bot)
+            except Exception as exc:
+                raised = exc
+                msg = f"{type(exc).__name__}: {exc}"
+            finally:
+                if command == START_COMMAND:
+                    bot.start_pending = success
+            if command == START_COMMAND:
+                self._finish_start(bot, success, msg, sound)
+            else:
+                self._finish_restart(bot, success, msg, raised, sound)
+
+        def _finish_start(self, bot, success: bool, msg: str, sound) -> None:
+            """Write the Start words for *bot*'s connect answer and, on *success*, schedule ``_start_marked_bot``."""
+            bot_id = bot.bot_id
+            if not success:
+                self._status_log.log(f"Cannot start bot {bot_id}: {msg}", "error")
+                self._spool.notify(f"Bot {bot_id} FAILED: {msg}", "error")
+                sound.play_error()
+                return
+
+            self._status_log.log(f"✓ Bot {bot_id}: {msg}", "success")
+
+            if not getattr(bot, "_user_verified", False):
+                cfg = bot.config
+                sym = cfg.symbol
+                vis = "Invisible" if cfg.visibility == "internal" else "Order Book"
+                mode = cfg.mode.value.upper()
+
+                pf = "ON" if cfg.profit_folding_active else "OFF"
+                be = "ON" if cfg.bb_bullseye_check else "OFF"
+                hr = "ON" if cfg.hedge_rebalance_active else "OFF"
+                detail = (
+                    f"Mode: {mode} — {vis} | "
+                    f"Target: ${cfg.target_balance:.2f} | "
+                    f"Interval: {cfg.scrumming_interval_pct}% | "
+                    f"TA TF: {cfg.ta_timeframe} | "
+                    f"BB tol: {cfg.bb_tolerance_pct}%, strip: {cfg.bb_landing_strip_candles} | "
+                    f"Advanced: bullseye={be}, travel={cfg.band_travel_pct}%, "
+                    f"read={cfg.scrum_read_timeframe} | "
+                    f"Hedge: {hr} (${cfg.hedge_balance:.2f}) | "
+                    f"Fold: {pf}"
+                )
+
+                self._status_log.log(
+                    f"⚠ REAL MONEY: Bot {bot_id[:8]} on "
+                    f"{cfg.exchange_id.capitalize()} — {sym} — {detail}",
+                    "warning",
+                )
+                self._spool.notify(
+                    f"⚠ Bot {bot_id[:8]} starting on REAL — {sym}", "warning"
+                )
+                bot._user_verified = True
+
+            try:
+                self._schedule_async(self._start_marked_bot(bot))
+                if bot.order_hold_reason():
+                    return
+                self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
+                self._spool.notify(f"Bot {bot_id} RUNNING", "success")
+                sound.play_state_change()
+            except Exception as exc:
+                bot.start_pending = False
+                self._status_log.log(f"Failed to start bot {bot_id}: {exc}", "error")
+                sound.play_error()
+
+        def _finish_restart(self, bot, success: bool, msg: str, raised, sound) -> None:
+            """Schedule ``_restart_bot`` after *bot*'s connect, or ``bot.stop`` with the words of a failed one."""
+            bot_id = bot.bot_id
+            if raised is not None:
+                self._status_log.log(
+                    f"Failed to restart bot {bot_id}: {raised}", "error"
+                )
+                sound.play_error()
+                return
+            if success:
+                self._schedule_async(self._restart_bot(bot, sound))
+                return
+            self._schedule_async(bot.stop())
+            self._status_log.log(f"Cannot restart bot {bot_id}: {msg}", "error")
+            sound.play_error()
+
+        def _ask_for_missing_credential(self, bot) -> None:
+            """Run ``_ask_for_venue_connection`` before a start whose broker or written venue stores no credential."""
+            from ..exchange.api_access import (
+                BROKER_TRANSPORT,
+                WRITTEN_TRANSPORT,
+                start_transport,
+            )
+            from ..exchange.robinhood_connector import crypto_connector_class
+            from ..stocks.alpaca_connector import broker_connector_class
+
+            eid = bot.config.exchange_id
+            sector = str(getattr(bot, "sector", "") or "")
+            transport = start_transport(eid, sector)
+            try:
+                if transport == BROKER_TRANSPORT:
+                    held = self._held_broker(eid)
+                    if getattr(held, "is_connected", False):
+                        return
+                    if held is None and broker_connector_class(eid) is None:
+                        return
+                    stored = all(self._broker_credential(eid, sector))
+                elif transport == WRITTEN_TRANSPORT:
+                    if crypto_connector_class(eid) is None:
+                        return
+                    stored = all(self._written_crypto_credential(eid)[:2])
+                else:
+                    return
+            except Exception as exc:
+                logger.warning("stored credential for %s not read: %s", eid, exc)
+                return
+            if not stored:
+                self._ask_for_venue_connection(eid, sector)
+
         def _on_bot_command(self, bot_id: str, command: str, route: str) -> None:
             """Log ``bot_command_line`` for *command* from *route*, then run the branch ``bot_command_branch`` names."""
             if not self._bot_manager:
@@ -3996,73 +4191,32 @@ if _HAS_QT:
 
             sound = get_sound_engine()
 
+            if branch in (PAUSE_COMMAND, STOP_COMMAND, RESTART_COMMAND):
+                self._end_venue_starts(
+                    PRESS_ENDS_START_FORMAT.format(command=branch.capitalize()),
+                    bot_id=bot_id,
+                )
+
             if branch == START_COMMAND:
-                bot.start_pending = True
-                # Synchronous connect on the GUI thread: the window freezes until done.
                 eid_display = bot.config.exchange_id.capitalize()
+                if self._venue_start_on_way(bot_id):
+                    self._status_log.log(
+                        START_ON_WAY_FORMAT.format(bot_id=bot_id, venue=eid_display),
+                        "info",
+                    )
+                    return
+                bot.start_pending = True
                 self._status_log.log(
                     f"⏳ Starting bot {bot_id}... Connecting to {eid_display} "
-                    f"(this can take 5-15 seconds, app may appear frozen)",
+                    f"(this can take 5-15 seconds)",
                     "info",
                 )
                 self._spool.notify(
                     f"⏳ Bot {bot_id}: connecting to {eid_display}...", "info"
                 )
-
-                safe_process_events("legacy processEvents site")
-
-                success, msg = False, ""
+                self._ask_for_missing_credential(bot)
                 try:
-                    success, msg = self._connect_exchange_for_bot(bot)
-                finally:
-                    bot.start_pending = success
-                if not success:
-                    self._status_log.log(f"Cannot start bot {bot_id}: {msg}", "error")
-                    self._spool.notify(f"Bot {bot_id} FAILED: {msg}", "error")
-                    sound.play_error()
-                    return
-
-                self._status_log.log(f"✓ Bot {bot_id}: {msg}", "success")
-                safe_process_events("legacy processEvents site")
-
-                if not getattr(bot, "_user_verified", False):
-                    cfg = bot.config
-                    sym = cfg.symbol
-                    vis = "Invisible" if cfg.visibility == "internal" else "Order Book"
-                    mode = cfg.mode.value.upper()
-
-                    pf = "ON" if cfg.profit_folding_active else "OFF"
-                    be = "ON" if cfg.bb_bullseye_check else "OFF"
-                    hr = "ON" if cfg.hedge_rebalance_active else "OFF"
-                    detail = (
-                        f"Mode: {mode} — {vis} | "
-                        f"Target: ${cfg.target_balance:.2f} | "
-                        f"Interval: {cfg.scrumming_interval_pct}% | "
-                        f"TA TF: {cfg.ta_timeframe} | "
-                        f"BB tol: {cfg.bb_tolerance_pct}%, strip: {cfg.bb_landing_strip_candles} | "
-                        f"Advanced: bullseye={be}, travel={cfg.band_travel_pct}%, "
-                        f"read={cfg.scrum_read_timeframe} | "
-                        f"Hedge: {hr} (${cfg.hedge_balance:.2f}) | "
-                        f"Fold: {pf}"
-                    )
-
-                    self._status_log.log(
-                        f"⚠ REAL MONEY: Bot {bot_id[:8]} on "
-                        f"{cfg.exchange_id.capitalize()} — {sym} — {detail}",
-                        "warning",
-                    )
-                    self._spool.notify(
-                        f"⚠ Bot {bot_id[:8]} starting on REAL — {sym}", "warning"
-                    )
-                    bot._user_verified = True
-
-                try:
-                    self._schedule_async(self._start_marked_bot(bot))
-                    if bot.order_hold_reason():
-                        return
-                    self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
-                    self._spool.notify(f"Bot {bot_id} RUNNING", "success")
-                    sound.play_state_change()
+                    self._begin_venue_start(bot, START_COMMAND, sound)
                 except Exception as exc:
                     bot.start_pending = False
                     self._status_log.log(
@@ -4096,21 +4250,12 @@ if _HAS_QT:
                 eid_display = bot.config.exchange_id.capitalize()
                 self._status_log.log(
                     f"⏳ Restarting bot {bot_id}... Reconnecting to "
-                    f"{eid_display} (5-15 seconds, app may appear frozen)",
+                    f"{eid_display} (5-15 seconds)",
                     "info",
                 )
-
-                safe_process_events("legacy processEvents site")
+                self._ask_for_missing_credential(bot)
                 try:
-                    success, msg = self._connect_exchange_for_bot(bot)
-                    if success:
-                        self._schedule_async(self._restart_bot(bot, sound))
-                    else:
-                        self._schedule_async(bot.stop())
-                        self._status_log.log(
-                            f"Cannot restart bot {bot_id}: {msg}", "error"
-                        )
-                        sound.play_error()
+                    self._begin_venue_start(bot, RESTART_COMMAND, sound)
                 except Exception as exc:
                     self._status_log.log(
                         f"Failed to restart bot {bot_id}: {exc}", "error"
@@ -4125,6 +4270,10 @@ if _HAS_QT:
                     QMessageBox.Yes | QMessageBox.No,
                 )
                 if confirm == QMessageBox.Yes:
+                    self._end_venue_starts(
+                        PRESS_ENDS_START_FORMAT.format(command="Delete"),
+                        bot_id=bot_id,
+                    )
                     # Scheduled before `unregister` so the bot is told to stop first.
                     try:
                         self._schedule_async(bot.stop())
@@ -4186,6 +4335,7 @@ if _HAS_QT:
             ``_end_reads`` ends the reads the fleet's connectors were asked for.
             """
             self._fleet_locked = True
+            self._end_venue_starts(FLEET_LOCK_ENDS_START)
             self._end_reads()
             self._status_log.log(FLEET_LOCKED_TEXT, "warning")
             logger.info("%s (%s)", FLEET_LOCKED_TEXT, reason or "sealed")
@@ -4295,7 +4445,9 @@ if _HAS_QT:
                         started=total,
                     )
                     return
-                if getattr(self._bot_manager, "_start_all_cancel", False):
+                if self.fleet_locked() or getattr(
+                    self._bot_manager, "_start_all_cancel", False
+                ):
                     bus.emit(
                         FLEET_SEQUENCE_TOPIC,
                         phase="cancelled",
@@ -4334,10 +4486,16 @@ if _HAS_QT:
                     QTimer.singleShot(0, lambda: _move_one(idx + 1))
                     return
 
-                started_at = time.monotonic()
+                started_at = [time.monotonic()]
 
                 def _verify_or_next() -> None:
-                    elapsed = time.monotonic() - started_at
+                    if self._venue_start_on_way(bot.bot_id):
+                        started_at[0] = time.monotonic()
+                        QTimer.singleShot(
+                            FLEET_SEQUENCE_POLL_INTERVAL_MS, _verify_or_next
+                        )
+                        return
+                    elapsed = time.monotonic() - started_at[0]
                     if getattr(self._bot_manager, "_start_all_cancel", False):
                         bus.emit(
                             FLEET_SEQUENCE_TOPIC,
@@ -4535,6 +4693,7 @@ if _HAS_QT:
                         KEY_WAITS_FORMAT.format(venue=eid.capitalize()), "warning"
                     )
                     continue
+                self._end_venue_starts(VENUE_RELEASE_ENDS_START, eid=eid)
                 self._broker_exchanges.pop(eid, None)
                 self._release_connector(eid)
 
@@ -4772,7 +4931,8 @@ if _HAS_QT:
             self._release_venue_link(eid)
 
         def _release_venue_link(self, eid: str) -> None:
-            """Take *eid* out of ``_broker_exchanges`` and ``_exchange_connectors``."""
+            """Run ``_end_venue_starts`` on *eid*, then take it out of ``_broker_exchanges`` and ``_exchange_connectors``."""
+            self._end_venue_starts(VENUE_RELEASE_ENDS_START, eid=eid)
             self._broker_exchanges.pop(eid, None)
             self._release_connector(eid)
 
@@ -5023,6 +5183,10 @@ if _HAS_QT:
             """Open the Bot Creation Wizard; ``defaults_override`` merges in."""
             if self._refuse_while_sealed(exchange_id):
                 return
+            waiting = self._held_preflight()
+            if waiting is not None:
+                self._status_log.log(waiting.on_way_line(), "warning")
+                return
             self._status_log.log(f"Creating new bot for {exchange_id}...")
             from ..exchange.api_logger import get_api_log
 
@@ -5080,233 +5244,7 @@ if _HAS_QT:
                     data_usage="Bot will be registered with BotManager in IDLE state. Must be started manually.",
                 )
 
-                try:
-                    from ..trading.bot_container import BotMode
-
-                    try:
-                        from .preflight_check import (
-                            check_symbol,
-                            format_result_for_user,
-                        )
-
-                        # Bound early: the Extractor path skips the else binding them.
-                        _pf_symbol = "(no single symbol)"
-                        _pf_exchange = str(exchange_id or "the exchange")
-                        if config.get("mode") == "extractor":
-                            self._status_log.log(
-                                "Pre-flight skipped (Extractor mode is "
-                                "multi-pair; symbol validation deferred "
-                                "to runtime watch-list refresh)",
-                                "info",
-                            )
-                            _pf = None
-                            _pf_text = ""
-                        else:
-                            # The wizard's own recorded symbol first: a contract
-                            # cannot be rebuilt from its two legs.
-                            _pf_symbol = str(config.get("symbol") or "") or (
-                                config.get("target_asset", "BTC")
-                                + "/"
-                                + config.get("base_currency", "USDT")
-                            )
-                            _pf_exchange = config.get("exchange_id", exchange_id)
-                            _pf_target = config.get("target_balance", 200.0)
-                            _pf = check_symbol(
-                                exchange_id=_pf_exchange,
-                                symbol=_pf_symbol,
-                                target_balance=_pf_target,
-                            )
-                            _pf_text = format_result_for_user(_pf)
-                        if _pf is not None:
-                            if not _pf.success:
-                                # Plain text: a symbol carrying tags is words, not markup.
-                                _pf_box = QMessageBox(
-                                    QMessageBox.Critical,
-                                    "Pre-flight check failed",
-                                    f"{_pf_text}\n\nBot creation aborted.",
-                                    QMessageBox.Ok,
-                                    self,
-                                )
-                                _pf_box.setTextFormat(Qt.PlainText)
-                                _pf_box.exec()
-                                self._status_log.log(
-                                    f"Pre-flight FAILED for {_pf_symbol} on "
-                                    f"{_pf_exchange}: {_pf.message}",
-                                    "error",
-                                )
-                                return
-                            if _pf.warnings:
-                                _pf_ask = QMessageBox(
-                                    QMessageBox.Question,
-                                    "Pre-flight check — warnings",
-                                    f"{_pf_text}\n\nProceed with bot creation?",
-                                    QMessageBox.Yes | QMessageBox.No,
-                                    self,
-                                )
-                                _pf_ask.setTextFormat(Qt.PlainText)
-                                _pf_ask.setDefaultButton(QMessageBox.No)
-                                _pf_reply = _pf_ask.exec()
-                                if _pf_reply != QMessageBox.Yes:
-                                    self._status_log.log(
-                                        f"Bot creation declined at pre-flight "
-                                        f"({len(_pf.warnings)} warning(s))",
-                                        "warning",
-                                    )
-                                    return
-                            self._status_log.log(
-                                f"Pre-flight OK for {_pf_symbol} on "
-                                f"{_pf_exchange} ({_pf.elapsed_ms:.0f} ms)",
-                                "info",
-                            )
-                    except ImportError:
-                        self._status_log.log(
-                            "Pre-flight check skipped (module unavailable)", "warning"
-                        )
-                    except Exception as _pf_exc:
-                        self._status_log.log(
-                            f"Pre-flight check errored: {type(_pf_exc).__name__}: "
-                            f"{_pf_exc} — continuing anyway",
-                            "warning",
-                        )
-
-                    _mode_str = config.get("mode", "scrumming")
-                    if _mode_str == "extractor":
-                        _mode = BotMode.EXTRACTOR
-                    else:
-                        _mode = BotMode.SCRUMMING
-                    from ..trading.bot_container import (
-                        bot_config_kwargs,
-                        make_bot_config,
-                        phantom_init_kwargs,
-                    )
-
-                    _wizard_kwargs = bot_config_kwargs(
-                        _mode, config, exchange_id=exchange_id
-                    )
-
-                    try:
-                        bot_config = make_bot_config(_mode, **_wizard_kwargs)
-                    except (ValueError, TypeError) as _bc_err:
-                        msg = (
-                            f"Bot creation REJECTED — mode-shape "
-                            f"violation: {_bc_err}"
-                        )
-                        self._status_log.log(msg, "error")
-                        self._spool.notify(msg, "error")
-                        logger.error("Bot creation rejected: %s", _bc_err)
-                        return
-
-                    _mode_violations = bot_config.validate_mode_shape()
-                    if _mode_violations:
-                        for _v in _mode_violations:
-                            logger.warning(
-                                "Mode-shape violation on bot config " "(mode=%s): %s",
-                                bot_config.mode.value,
-                                _v,
-                            )
-                            self._status_log.log(
-                                f"⚠ Bot config mode-shape " f"violation: {_v}",
-                                "warning",
-                            )
-
-                    # Checked after the config is shaped and before the bot is built.
-                    if (
-                        bot_config.mode == BotMode.EXTRACTOR
-                        and self._refuse_extractor_without_parent(
-                            bot_config.base_currency, bot_config.exchange_id
-                        )
-                    ):
-                        return
-
-                    from ..trading.scrumming_bot import ScrummingBot
-
-                    if bot_config.mode == BotMode.EXTRACTOR:
-                        from ..trading.extractor_bot import ExtractorBot
-
-                        bot = ExtractorBot(
-                            bot_config,
-                            _PlaceholderExchange(bot_config.exchange_id),
-                            enable_phantoms=False,
-                        )
-                    else:
-                        bot = ScrummingBot(
-                            bot_config,
-                            _PlaceholderExchange(bot_config.exchange_id),
-                            **phantom_init_kwargs(config),
-                            ta_weights=self._stored_ta_weights(),
-                        )
-
-                    if self._bot_manager:
-                        # `register` may return a bool or a (granted, reason) tuple.
-                        _reg_result = self._bot_manager.register(bot)
-                        if isinstance(_reg_result, tuple):
-                            _granted, _refuse_reason = _reg_result
-                        else:
-                            _granted, _refuse_reason = True, None
-                        if not _granted:
-                            _msg = (
-                                f"Bot creation refused by CapitalRegistry: "
-                                f"{_refuse_reason or 'over-allocation'}"
-                            )
-                            try:
-                                self._status_log.log(_msg, "error")
-                            except Exception as refusal_log_exc:
-                                logger.debug(
-                                    "bot refusal message not shown in status log: %s",
-                                    refusal_log_exc,
-                                )
-                            return
-
-                    if bot_config.mode == BotMode.SCRUMMING:
-                        try:
-                            self._indicator_panel.update_bot_list(
-                                self._bot_manager.list_bots()
-                            )
-                            self._indicator_panel.force_refresh(
-                                bot_id=bot.bot_id,
-                                symbol=bot_config.symbol,
-                                ta_timeframe=bot_config.ta_timeframe,
-                            )
-                            self._publish_votes()
-                        except Exception as panel_seed_exc:
-                            logger.debug(
-                                "indicator panel seed for the new bot failed: %s",
-                                panel_seed_exc,
-                            )
-
-                    msg = (
-                        f"Bot {bot.bot_id} created: {bot_config.symbol} "
-                        f"({bot_config.mode.value}) - IDLE"
-                    )
-                    self._status_log.log(msg, "success")
-                    self._spool.notify(msg, "success")
-                    self.statusBar().showMessage(msg, 5000)
-
-                    _log.record(
-                        exchange=bot_config.exchange_id,
-                        action="BOT_CREATED",
-                        reason="Bot instantiated and registered with BotManager",
-                        result=f"ID={bot.bot_id}, State=IDLE, Symbol={bot_config.symbol}",
-                        level="success",
-                        data_usage="Bot is IDLE. Click Start to connect to exchange and begin trading. "
-                        "Starting will authenticate API, load markets, fetch balances, and enter the trading loop.",
-                    )
-
-                    from ..core.sound_engine import get_sound_engine
-
-                    get_sound_engine().play_state_change()
-
-                except Exception as exc:
-                    self._status_log.log(f"Failed to create bot: {exc}", "error")
-                    logger.error("Bot creation failed: %s", exc)
-                    _log.record(
-                        exchange=exchange_id,
-                        action="BOT_CREATE_FAILED",
-                        reason=str(exc),
-                        result=f"ERROR: {type(exc).__name__}",
-                        level="error",
-                        data_usage="Bot was not created. Check error details above.",
-                    )
+                self._preflight_then_create(config, exchange_id, _log)
             else:
                 self._status_log.log("Bot creation cancelled.", "warning")
                 _log.record(
@@ -5316,6 +5254,307 @@ if _HAS_QT:
                     result="No bot created",
                     level="warning",
                     data_usage="No action taken",
+                )
+
+        def _held_preflight(self):
+            """The pre-flight ``VenueWait`` on its way, or None."""
+            held = getattr(self, "_preflight_wait", None)
+            return held if held is not None and held.on_way else None
+
+        def _wait_for_preflight(self) -> None:
+            """Run a local event loop until ``_held_preflight`` answers None, so the bot it builds exists."""
+            if self._held_preflight() is None:
+                return
+            from PySide6.QtCore import QEventLoop
+
+            from .venue_wait import WAIT_LOOK_MS
+
+            loop = QEventLoop(self)
+            look = QTimer(self)
+            look.setInterval(WAIT_LOOK_MS)
+
+            def look_again() -> None:
+                if self._held_preflight() is None:
+                    loop.quit()
+
+            look.timeout.connect(look_again)
+            look.start()
+            loop.exec()
+            look.stop()
+            look.deleteLater()
+
+        def _end_preflight(self, reason: str) -> None:
+            """End the pre-flight check on its way, logging ``ended_line`` and ``NO_BOT_CREATED``."""
+            held = self._held_preflight()
+            if held is None:
+                return
+            held.end()
+            self._status_log.log(
+                f"{held.ended_line(reason)} {NO_BOT_CREATED}", "warning"
+            )
+
+        def _preflight_then_create(self, config: dict, exchange_id: str, _log) -> None:
+            """Run ``check_symbol`` for *config* off the window's thread, then ``_preflight_landed``."""
+            if config.get("mode") == "extractor":
+                self._status_log.log(
+                    "Pre-flight skipped (Extractor mode is "
+                    "multi-pair; symbol validation deferred "
+                    "to runtime watch-list refresh)",
+                    "info",
+                )
+                self._create_from_config(config, exchange_id, _log)
+                return
+            try:
+                from .preflight_check import PreflightResult, check_symbol
+            except ImportError:
+                self._status_log.log(
+                    "Pre-flight check skipped (module unavailable)", "warning"
+                )
+                self._create_from_config(config, exchange_id, _log)
+                return
+            from .venue_wait import VENUE_ASK_LIMIT_SEC, VenueWait
+
+            # The wizard's own recorded symbol first: a contract
+            # cannot be rebuilt from its two legs.
+            symbol = str(config.get("symbol") or "") or (
+                config.get("target_asset", "BTC")
+                + "/"
+                + config.get("base_currency", "USDT")
+            )
+            venue = config.get("exchange_id", exchange_id)
+            target = config.get("target_balance", 200.0)
+
+            def landed(result) -> None:
+                self._preflight_landed(result, symbol, venue, config, exchange_id, _log)
+
+            def failed(exc: BaseException) -> None:
+                if isinstance(exc, TimeoutError):
+                    landed(
+                        PreflightResult(
+                            success=False,
+                            exchange_id=venue,
+                            symbol=symbol,
+                            message=f"Pre-flight check failed: {type(exc).__name__}: {exc}",
+                            elapsed_ms=VENUE_ASK_LIMIT_SEC * 1000.0,
+                        )
+                    )
+                    return
+                self._status_log.log(
+                    f"Pre-flight check errored: {type(exc).__name__}: "
+                    f"{exc} — continuing anyway",
+                    "warning",
+                )
+                self._create_from_config(config, exchange_id, _log)
+
+            wait = VenueWait(
+                self,
+                str(venue).capitalize(),
+                f"Pre-flight check of {symbol}",
+                lambda: check_symbol(
+                    exchange_id=venue, symbol=symbol, target_balance=target
+                ),
+                landed,
+                failed,
+                self.statusBar().showMessage,
+            )
+            self._preflight_wait = wait
+            wait.start()
+
+        def _preflight_landed(
+            self, result, symbol: str, venue: str, config: dict, exchange_id: str, _log
+        ) -> None:
+            """Show the landed pre-flight *result* as before; a pass goes on to ``_create_from_config``."""
+            try:
+                from .preflight_check import format_result_for_user
+
+                _pf_text = format_result_for_user(result)
+                if not result.success:
+                    # Plain text: a symbol carrying tags is words, not markup.
+                    _pf_box = QMessageBox(
+                        QMessageBox.Critical,
+                        "Pre-flight check failed",
+                        f"{_pf_text}\n\nBot creation aborted.",
+                        QMessageBox.Ok,
+                        self,
+                    )
+                    _pf_box.setTextFormat(Qt.PlainText)
+                    _pf_box.exec()
+                    self._status_log.log(
+                        f"Pre-flight FAILED for {symbol} on "
+                        f"{venue}: {result.message}",
+                        "error",
+                    )
+                    return
+                if result.warnings:
+                    _pf_ask = QMessageBox(
+                        QMessageBox.Question,
+                        "Pre-flight check — warnings",
+                        f"{_pf_text}\n\nProceed with bot creation?",
+                        QMessageBox.Yes | QMessageBox.No,
+                        self,
+                    )
+                    _pf_ask.setTextFormat(Qt.PlainText)
+                    _pf_ask.setDefaultButton(QMessageBox.No)
+                    _pf_reply = _pf_ask.exec()
+                    if _pf_reply != QMessageBox.Yes:
+                        self._status_log.log(
+                            f"Bot creation declined at pre-flight "
+                            f"({len(result.warnings)} warning(s))",
+                            "warning",
+                        )
+                        return
+                self._status_log.log(
+                    f"Pre-flight OK for {symbol} on "
+                    f"{venue} ({result.elapsed_ms:.0f} ms)",
+                    "info",
+                )
+            except Exception as _pf_exc:
+                self._status_log.log(
+                    f"Pre-flight check errored: {type(_pf_exc).__name__}: "
+                    f"{_pf_exc} — continuing anyway",
+                    "warning",
+                )
+            self._create_from_config(config, exchange_id, _log)
+
+        def _create_from_config(self, config: dict, exchange_id: str, _log) -> None:
+            """Build and register the bot the wizard's *config* names."""
+            try:
+                from ..trading.bot_container import BotMode
+
+                _mode_str = config.get("mode", "scrumming")
+                if _mode_str == "extractor":
+                    _mode = BotMode.EXTRACTOR
+                else:
+                    _mode = BotMode.SCRUMMING
+                from ..trading.bot_container import (
+                    bot_config_kwargs,
+                    make_bot_config,
+                    phantom_init_kwargs,
+                )
+
+                _wizard_kwargs = bot_config_kwargs(
+                    _mode, config, exchange_id=exchange_id
+                )
+
+                try:
+                    bot_config = make_bot_config(_mode, **_wizard_kwargs)
+                except (ValueError, TypeError) as _bc_err:
+                    msg = f"Bot creation REJECTED — mode-shape " f"violation: {_bc_err}"
+                    self._status_log.log(msg, "error")
+                    self._spool.notify(msg, "error")
+                    logger.error("Bot creation rejected: %s", _bc_err)
+                    return
+
+                _mode_violations = bot_config.validate_mode_shape()
+                if _mode_violations:
+                    for _v in _mode_violations:
+                        logger.warning(
+                            "Mode-shape violation on bot config " "(mode=%s): %s",
+                            bot_config.mode.value,
+                            _v,
+                        )
+                        self._status_log.log(
+                            f"⚠ Bot config mode-shape " f"violation: {_v}",
+                            "warning",
+                        )
+
+                # Checked after the config is shaped and before the bot is built.
+                if (
+                    bot_config.mode == BotMode.EXTRACTOR
+                    and self._refuse_extractor_without_parent(
+                        bot_config.base_currency, bot_config.exchange_id
+                    )
+                ):
+                    return
+
+                from ..trading.scrumming_bot import ScrummingBot
+
+                if bot_config.mode == BotMode.EXTRACTOR:
+                    from ..trading.extractor_bot import ExtractorBot
+
+                    bot = ExtractorBot(
+                        bot_config,
+                        _PlaceholderExchange(bot_config.exchange_id),
+                        enable_phantoms=False,
+                    )
+                else:
+                    bot = ScrummingBot(
+                        bot_config,
+                        _PlaceholderExchange(bot_config.exchange_id),
+                        **phantom_init_kwargs(config),
+                        ta_weights=self._stored_ta_weights(),
+                    )
+
+                if self._bot_manager:
+                    # `register` may return a bool or a (granted, reason) tuple.
+                    _reg_result = self._bot_manager.register(bot)
+                    if isinstance(_reg_result, tuple):
+                        _granted, _refuse_reason = _reg_result
+                    else:
+                        _granted, _refuse_reason = True, None
+                    if not _granted:
+                        _msg = (
+                            f"Bot creation refused by CapitalRegistry: "
+                            f"{_refuse_reason or 'over-allocation'}"
+                        )
+                        try:
+                            self._status_log.log(_msg, "error")
+                        except Exception as refusal_log_exc:
+                            logger.debug(
+                                "bot refusal message not shown in status log: %s",
+                                refusal_log_exc,
+                            )
+                        return
+
+                if bot_config.mode == BotMode.SCRUMMING:
+                    try:
+                        self._indicator_panel.update_bot_list(
+                            self._bot_manager.list_bots()
+                        )
+                        self._indicator_panel.force_refresh(
+                            bot_id=bot.bot_id,
+                            symbol=bot_config.symbol,
+                            ta_timeframe=bot_config.ta_timeframe,
+                        )
+                        self._publish_votes()
+                    except Exception as panel_seed_exc:
+                        logger.debug(
+                            "indicator panel seed for the new bot failed: %s",
+                            panel_seed_exc,
+                        )
+
+                msg = (
+                    f"Bot {bot.bot_id} created: {bot_config.symbol} "
+                    f"({bot_config.mode.value}) - IDLE"
+                )
+                self._status_log.log(msg, "success")
+                self._spool.notify(msg, "success")
+                self.statusBar().showMessage(msg, 5000)
+
+                _log.record(
+                    exchange=bot_config.exchange_id,
+                    action="BOT_CREATED",
+                    reason="Bot instantiated and registered with BotManager",
+                    result=f"ID={bot.bot_id}, State=IDLE, Symbol={bot_config.symbol}",
+                    level="success",
+                    data_usage="Bot is IDLE. Click Start to connect to exchange and begin trading. "
+                    "Starting will authenticate API, load markets, fetch balances, and enter the trading loop.",
+                )
+
+                from ..core.sound_engine import get_sound_engine
+
+                get_sound_engine().play_state_change()
+
+            except Exception as exc:
+                self._status_log.log(f"Failed to create bot: {exc}", "error")
+                logger.error("Bot creation failed: %s", exc)
+                _log.record(
+                    exchange=exchange_id,
+                    action="BOT_CREATE_FAILED",
+                    reason=str(exc),
+                    result=f"ERROR: {type(exc).__name__}",
+                    level="error",
+                    data_usage="Bot was not created. Check error details above.",
                 )
 
         def _stored_accent(self) -> object:
