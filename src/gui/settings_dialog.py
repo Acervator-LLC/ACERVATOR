@@ -25,14 +25,20 @@ class _StoredWriter:
     """Puts one stored figure into a numeric control, admitting it first.
 
     ``as_box_figure`` is the admission, read against the control's own span
-    divided by ``scale``; a refused figure raises ``ValueError`` for
-    ``SettingsDialog._show_stored``, which reads ``box`` off this writer to mark
-    the control.
+    divided by ``scale``, and ``admits`` where given; a refused figure raises
+    ``ValueError`` for ``SettingsDialog._show_stored``, which reads ``box`` off
+    this writer to mark the control.
     """
 
-    def __init__(self, box: object, scale: float = 1.0) -> None:
+    def __init__(
+        self,
+        box: object,
+        scale: float = 1.0,
+        admits: Callable[[object], bool] | None = None,
+    ) -> None:
         self.box = box
         self.scale = scale
+        self.admits = admits
 
     def __call__(self, value: object) -> None:
         from src.trading.container.config import as_box_figure
@@ -43,7 +49,7 @@ class _StoredWriter:
         low = box.minimum() / self.scale
         high = box.maximum() / self.scale
         read = as_box_figure(value, low, high)
-        if read is None:
+        if read is None or (self.admits is not None and not self.admits(value)):
             raise ValueError(REFUSED_SPAN.format(found=value, low=low, high=high))
         decimals = getattr(box, "decimals", None)
         if callable(decimals):
@@ -103,6 +109,7 @@ try:
         QMessageBox,
     )
     from PySide6.QtCore import Qt, Signal
+    from PySide6.QtGui import QValidator
 
     from .tooltips import set_description
 
@@ -116,6 +123,64 @@ if _HAS_QT:
 
     from .main_tabs import asset_class_surface as acs
     from .main_tabs import settings_dialog_surface as sds
+
+    #: The dynamic property a dashed number box keeps the operator's last typed text in.
+    TYPED_TEXT_PROPERTY = "typed_text"
+
+    def _accepts(box: object, text: str) -> bool:
+        """Whether ``box.validate`` reads ``text`` as a figure the box takes."""
+        answer = box.validate(text, 0)
+        state = answer[0] if isinstance(answer, tuple) else answer
+        return bool(state == QValidator.State.Acceptable)
+
+    class SpanSpinBox(QSpinBox):
+        """A ``QSpinBox`` holding a typed whole number outside its span until left.
+
+        Leaving the box puts the old figure back, and ``refused`` carries the
+        typed figure, for each control ``sds.SHOWS_TYPED_REFUSAL`` names;
+        ``taken`` says a typed figure was kept.
+        """
+
+        refused = Signal(object)
+        taken = Signal()
+
+        def __init__(self, name: str) -> None:
+            super().__init__()
+            self.setAccessibleName(name)
+            self._typed: str | None = None
+            self.lineEdit().textEdited.connect(self._hold_typed)
+            self.editingFinished.connect(self._judge_typed)
+
+        def _hold_typed(self, text: str) -> None:
+            """Keep ``text``, the box's text as the operator last typed it."""
+            self._typed = text
+
+        def _judge_typed(self) -> None:
+            """Emit ``taken`` when the text typed since the last leave is a figure the box takes."""
+            typed, self._typed = self._typed, None
+            if typed is not None and _accepts(self, typed):
+                self.taken.emit()
+
+        def outside(self, text: str) -> int | None:
+            """The whole number in ``text`` where it lies outside this box's span."""
+            figure = text.removesuffix(self.suffix()).strip()
+            if not figure.removeprefix("-").isdigit():
+                return None
+            number = int(figure)
+            return None if self.minimum() <= number <= self.maximum() else number
+
+        def validate(self, text: str, pos: int) -> tuple[QValidator.State, str, int]:
+            """``QSpinBox.validate``, with a whole number outside the span intermediate."""
+            if self.outside(text) is not None:
+                return QValidator.State.Intermediate, text, pos
+            return super().validate(text, pos)
+
+        def fixup(self, text: str) -> str:
+            """Emit ``refused`` for a whole number outside the span, and keep ``text``."""
+            number = self.outside(text)
+            if number is not None:
+                self.refused.emit(number)
+            return text
 
     class VenueArrayPanel(QWidget):
         """The Exchange Status array, one segment per venue of one sector.
@@ -1169,7 +1234,36 @@ if _HAS_QT:
             form.addRow("Bot Visibility:", self._visibility)
             self._aggressive = QCheckBox("Enable aggressive trading mode")
             form.addRow(self._aggressive)
+            spec = sds.spec_for("price_age_limit")
+            fleet = QGroupBox(spec["group"])
+            fleet_form = QFormLayout(fleet)
+            self._price_age_limit = SpanSpinBox(spec["label"].rstrip(":"))
+            self._price_age_limit.setKeyboardTracking(False)
+            self._price_age_limit.setRange(*spec["range"])
+            self._price_age_limit.setSuffix(spec["suffix"])
+            self._price_age_limit.setValue(spec["value"])
+            self._price_age_limit.refused.connect(
+                lambda typed: self._show_typed_refusal(spec["name"], typed)
+            )
+            self._price_age_limit.valueChanged.connect(
+                lambda _v: self._show_description(spec["name"])
+            )
+            self._price_age_limit.taken.connect(
+                lambda: self._show_description(spec["name"])
+            )
+            fleet_form.addRow(spec["label"], self._price_age_limit)
+            form.addRow(fleet)
             return w
+
+        def _show_typed_refusal(self, name: str, typed: object) -> None:
+            """Name the refused ``typed`` figure in the mouse-over of the control ``name``."""
+            set_description(getattr(self, "_" + name), sds.typed_refusal(name, typed))
+
+        def _show_description(self, name: str) -> None:
+            """Put the spec's own mouse-over back where a typed refusal hangs on ``name``."""
+            held = getattr(self, "_" + name)
+            if sds.is_typed_refusal(name, held.toolTip()):
+                set_description(held, sds.spec_for(name)["tooltip"])
 
         def _create_ta_tab(self) -> QWidget:
             w = QWidget()
@@ -1701,11 +1795,13 @@ if _HAS_QT:
             key. ``_save`` and ``_load_current`` walk these same rows, so no row
             can be written without also being loaded.
             """
+            from src.core.price_age import PRICE_AGE_SETTING, is_usable_limit
             from src.gui.main_tabs.settings_dialog_surface import (
                 ACCENT_DEFAULT,
                 LOCK_CANDLE_DEFAULT,
                 PHANTOM_ENABLE_DEFAULT,
                 PHANTOM_TIMEFRAME_DEFAULT,
+                PRICE_AGE_LIMIT_DEFAULT,
                 THEME_DEFAULT,
             )
 
@@ -1733,6 +1829,12 @@ if _HAS_QT:
                     self._aggressive.isChecked,
                     lambda value: self._aggressive.setChecked(bool(value)),
                     False,
+                ),
+                (
+                    PRICE_AGE_SETTING,
+                    self._price_age_limit.value,
+                    self._put_stored(self._price_age_limit, admits=is_usable_limit),
+                    PRICE_AGE_LIMIT_DEFAULT,
                 ),
                 (
                     "default_enable_phantoms",
@@ -1962,17 +2064,21 @@ if _HAS_QT:
             )
 
         def _put_stored(
-            self, box: object, scale: float = 1.0
+            self,
+            box: object,
+            scale: float = 1.0,
+            admits: Callable[[object], bool] | None = None,
         ) -> Callable[[object], None]:
             """A writer that puts one stored figure into ``box``, admitted first.
 
             ``as_box_figure`` is the admission, read against ``box``'s own span
             divided by ``scale``, so a slider holding whole percent admits the
-            fraction the engine stores. A refused figure raises for
-            ``_show_stored`` to catch, and the returned writer carries ``box``
-            so ``_show_stored`` can mark the control it left behind.
+            fraction the engine stores, and ``admits`` refuses more where given.
+            A refused figure raises for ``_show_stored`` to catch, and the
+            returned writer carries ``box`` so ``_show_stored`` can mark the
+            control it left behind.
             """
-            return _StoredWriter(box, scale)
+            return _StoredWriter(box, scale, admits)
 
         def _show_stored(
             self,
@@ -2025,17 +2131,33 @@ if _HAS_QT:
             if callable(getattr(box, "setSpecialValueText", None)):
                 box.setSpecialValueText(REFUSED_FIGURE_TEXT)
                 box.setValue(box.minimum())
-                box.valueChanged.connect(lambda _v, _b=box: self._clear_refused(_b))
+                box.valueChanged.connect(
+                    lambda _v, _b=box, _k=key: self._clear_refused(_b, _k)
+                )
+                box.lineEdit().textEdited.connect(
+                    lambda typed, _b=box: _b.setProperty(TYPED_TEXT_PROPERTY, typed)
+                )
+                box.editingFinished.connect(
+                    lambda _b=box, _k=key: self._clear_typed(_b, _k)
+                )
             if callable(getattr(box, "setStyleSheet", None)):
                 box.setStyleSheet(f"color: {REFUSED_FIGURE_COLOR};")
             if callable(getattr(box, "setToolTip", None)):
                 set_description(box, said())
 
-        @staticmethod
-        def _clear_refused(box: object) -> None:
-            """Take the dash off ``box`` so a figure the operator set draws as one."""
+        def _clear_refused(self, box: object, key: str) -> None:
+            """Take the dash off ``box`` and drop ``key`` from ``_refused``, so Save
+            writes the figure the operator set, its lowest one included."""
             box.setSpecialValueText("")
             box.setStyleSheet("")
+            self._refused.pop(key, None)
+
+        def _clear_typed(self, box: object, key: str) -> None:
+            """Take the dash off ``box`` when the text typed into it is a figure it takes."""
+            typed = box.property(TYPED_TEXT_PROPERTY)
+            box.setProperty(TYPED_TEXT_PROPERTY, None)
+            if isinstance(typed, str) and _accepts(box, typed):
+                self._clear_refused(box, key)
 
         def _untouched_since_refusal(
             self, key: str, read: Callable[[], object]
