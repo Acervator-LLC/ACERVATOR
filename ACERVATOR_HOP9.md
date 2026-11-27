@@ -354,9 +354,9 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   a window as long as the one in comment 7050551568.
 - **#1785, a venue that answers slowly. Row 1 is built.** One call's 25 s starts
   when the worker starts it, a read waits up to `READ_TURN_WAIT_SEC` for its turn,
-  and a stuck call's worker is replaced at that limit: the reads behind it move to
-  the fresh worker and an order is dropped unsent
-  (`src/exchange/ccxt_connector.py, in CCXTConnector._replace_stuck_worker`). Row 8
+  and a stuck call's worker is replaced at that limit: every call behind it moves to
+  the fresh worker, the first line first, and an order still goes only inside its own
+  25 s (`src/exchange/ccxt_connector.py, in CCXTConnector._replace_stuck_worker`). Row 8
   is built: the shared price read asks Coinbase for the markets the slots hold, and
   for every market once 15 minutes have passed, for the 24 hour volumes
   (`src/exchange/ccxt_connector.py, in CCXTConnector._named_ticker_params`). Row 10
@@ -386,8 +386,12 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   window when the answer lands (`src/gui/main_window.py, in
   MainWindow._run_venue_start`). Settings' Test, Add and browser sign-in, the
   new-bot wizard's market list and the pre-flight check ask through
-  `src/gui/venue_wait.py, in VenueWait`, inside `VENUE_ASK_LIMIT_SEC`. The
-  body's build order names the rest: rows 5 and 6.
+  `src/gui/venue_wait.py, in VenueWait`, inside `VENUE_ASK_LIMIT_SEC`. Row 5
+  is built: once the venue answers at its normal speed, the line drains, each good
+  answer takes back one step of the shared reads' backoff, and every bot's stored
+  price and balance are new at the next shared reads, with no restart
+  (`src/exchange/data_pool.py, in SharedReads.note_good`). The body's build order
+  names the rest: row 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before
