@@ -533,10 +533,9 @@ class StackTranchesTabMixin:
         layout.addLayout(stack_btn_row)
 
         if not tranches and not shadow_lines:
-            empty_lbl = QLabel(
-                "No stack tranches yet. When Stack Mode is enabled "
-                "and a SCRUM fires, tranches will appear here."
-            )
+            from ..main_tabs.stack_tranches_tab_surface import EMPTY_TEXT
+
+            empty_lbl = QLabel(EMPTY_TEXT)
             empty_lbl.setStyleSheet(f"color: {ds.CARD_METRIC_LABEL}; padding: 12px;")
             empty_lbl.setWordWrap(True)
             layout.addWidget(empty_lbl)
