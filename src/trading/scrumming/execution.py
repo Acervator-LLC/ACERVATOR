@@ -88,6 +88,17 @@ REFUSAL_HOLD_MOVE_FRACTION: float = 0.001
 #: The ``_execute_buy`` paths spending the dollars their own tranche holds.
 OWN_TRANCHE_PATHS = ("fold_rebuy", "manual_tranche_fire")
 
+#: The ``_execute_buy`` paths and ``_book_manual_purchase`` labels whose filled units open a Stack ladder.
+LADDER_OPENING_BUYS = (
+    "fold_rebuy",
+    "manual_tranche_fire",
+    "zero_balance_initial_entry",
+    "hedge_replenish",
+    "MANUAL_FOLD",
+    "CARTRIDGE_FOLD",
+    "FOLD",
+)
+
 #: The sale bookers that queue fold tranches, named by a resting record's ``booker``
 #: or its context's ``path_booker``.
 BUY_BACK_SALE_BOOKERS = ("_book_scrum_fill", "_book_dist_fill", "_book_manual_sale")
@@ -124,6 +135,19 @@ class SettledFillFee:
     fee_amount: float
     currency: str
     reported: bool
+
+
+@dataclass(frozen=True)
+class QueuePayment:
+    """What one ``_pay_queue_by_units`` call paid: the tranche ``event_ids``, their ``units_at_scrum`` and the ``fee_pct``."""
+
+    event_ids: tuple[str, ...]
+    units_at_scrum: float
+    fee_pct: Optional[float]
+
+
+NO_QUEUE_PAYMENT = QueuePayment((), 0.0, None)
+"""The ``QueuePayment`` ``_report_fold_by_units`` reads where no ``_pay_queue_by_units`` call preceded it."""
 
 
 def venue_fee_record(order: Any, units: Any, price: Any) -> Optional[SettledFillFee]:
@@ -278,6 +302,7 @@ class ExecutionEngineMixin:
     _shadow_held_units: Callable[..., float]
     _shadow_take: Callable[..., float]
     _spawn_stack_from_fold: Callable[..., Any]
+    _stack_tranches: list[dict]
     _standing_surplus_usd: float
     _target_balance: Any
     _top_up_remnant_fold_tranches: Callable[..., Any]
@@ -299,6 +324,10 @@ class ExecutionEngineMixin:
     # Class-level defaults; every write lands on the instance, never on the class.
     _last_sell_venue_fee: Optional["SettledFillFee"] = None
     _last_fill_venue_fee: Optional["SettledFillFee"] = None
+    # _pay_queue_by_units writes it and _report_fold_by_units reads it.
+    _queue_payment: QueuePayment = NO_QUEUE_PAYMENT
+    # _book_purchase writes the stack event ids a piece opened; _take_opened_stack_events reads them.
+    _opened_stack_events: tuple[str, ...] = ()
 
     # The highest venue_fee_pct any of this bot's fills reported; _note_venue_fee_pct writes it.
     highest_venue_fee_pct: float = 0.0
@@ -591,13 +620,33 @@ class ExecutionEngineMixin:
             "FOLD", "FILLED", f"{units:.6f} @ ${fill_price:.8f}"
         )
 
-        await self._spawn_stack_from_fold(
+        await self._spawn_stack_noting_events(
             fold_price=fill_price,
-            fold_size=units - shadow_units,
+            fold_size=units,
             summary=summary,
             path=path,
+            shadow_units=shadow_units,
         )
         return fill_price
+
+    async def _spawn_stack_noting_events(self, **spawn: Any) -> None:
+        """Run ``_spawn_stack_from_fold`` with ``spawn``, and keep the stack event ids it
+        opened on ``_opened_stack_events``."""
+        from .sizing import record_event_ids
+
+        standing = set(record_event_ids(self._stack_tranches))
+        await self._spawn_stack_from_fold(**spawn)
+        self._opened_stack_events = tuple(
+            name
+            for name in record_event_ids(self._stack_tranches)
+            if name not in standing
+        )
+
+    def _take_opened_stack_events(self) -> tuple[str, ...]:
+        """The stack event ids ``_spawn_stack_noting_events`` saw its last spawn open, emptied once read."""
+        opened = self._opened_stack_events
+        self._opened_stack_events = ()
+        return opened
 
     async def _book_purchase_fill(
         self,
@@ -757,16 +806,20 @@ class ExecutionEngineMixin:
         charged = self._charged_fee_pct(self._last_fill_venue_fee, fill_price)
         return fee_pct if charged is None else charged
 
+    def _fold_fee_pct(self, fill_price: float) -> Optional[float]:
+        """``_buy_fee_pct`` of ``_fee_pct_read`` at ``fill_price``, the fee ``_fold_gain_usd`` prices a restore at."""
+        return self._buy_fee_pct(fill_price, self._fee_pct_read())
+
     def _fold_gain_usd(
         self, bought_usd: float, units: float, fill_price: float
     ) -> float:
         """``discharge_gain_usd`` of ``units`` restored by ``bought_usd`` at
-        ``fill_price``, at ``_buy_fee_pct`` of ``_fee_pct_read``."""
+        ``fill_price``, at ``_fold_fee_pct``."""
         return discharge_gain_usd(
             {"units": units, "usd": bought_usd},
             units,
             fill_price,
-            self._buy_fee_pct(fill_price, self._fee_pct_read()),
+            self._fold_fee_pct(fill_price),
         )
 
     def _note_venue_fee_pct(
@@ -1984,6 +2037,8 @@ class ExecutionEngineMixin:
         self._last_trade_side = "SCRUM"
         self._last_trade_price = fill_price
         self._reset_opposing_hysteresis_after_fill()
+        from .sizing import record_event_ids
+
         self._announce_fill(
             kind=label,
             side=FILL_SELL,
@@ -1993,6 +2048,8 @@ class ExecutionEngineMixin:
             profit=0.0,
             operator_initiated=operator_initiated,
             fee=self._fill_fee_fields(fill_price),
+            spent_event_ids=(),
+            opened_event_ids=record_event_ids(_manual_records),
         )
 
     async def _book_manual_purchase(
@@ -2012,7 +2069,8 @@ class ExecutionEngineMixin:
         paid_events: Optional[list] = None,
     ) -> None:
         """Book one settled piece of a Manual Fire or cartridge buy against the
-        queued tranches, and announce it.
+        queued tranches, offer its ``units`` to ``_spawn_stack_from_fold`` under
+        ``label`` through ``_spawn_stack_noting_events``, and announce it.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``. With
@@ -2070,6 +2128,9 @@ class ExecutionEngineMixin:
         else:
             self._record_venue_units_after_fill(fill_amount)
         self._count_trade_volume(fill_amount, fill_price)
+        await self._spawn_stack_noting_events(
+            fold_price=fill_price, fold_size=fill_amount, path=label
+        )
         self._report_fold_by_units(
             fill_amount, fill_price, price, label, operator_initiated, _gain_usd, msg
         )
@@ -2139,9 +2200,13 @@ class ExecutionEngineMixin:
         ends returns its wire credit to the pool. A tranche ``queued_by`` refuses at
         ``queued_before`` stays unpaid, and ``paid_events`` holds the pay to the tranches
         naming them, whose credit the units take a share of where ``order_spent_credit``
-        reads it spent.
+        reads it spent. ``_queue_payment`` keeps the event ids paid, their units and the fee.
         """
+        from .sizing import record_event_ids
+
+        buy_fee_pct = self._buy_fee_pct(fill_price, fee_pct)
         if not self._fold_tranches:
+            self._queue_payment = QueuePayment((), 0.0, buy_fee_pct)
             self._main_lots.append(
                 {
                     "units": fill_amount,
@@ -2151,9 +2216,10 @@ class ExecutionEngineMixin:
             )
             return 0.0, 0
         gain_usd = 0.0
-        buy_fee_pct = self._buy_fee_pct(fill_price, fee_pct)
         remaining = fill_amount
         consumed = []
+        paid: list[dict] = []
+        restored_units = 0.0
         named = set(paid_events or ())
         credit_spent = order_spent_credit(
             fill_amount * fill_price,
@@ -2174,6 +2240,8 @@ class ExecutionEngineMixin:
             if take <= 1e-12:
                 continue
             gain_usd += discharge_gain_usd(t, take, fill_price, buy_fee_pct)
+            paid.append(t)
+            restored_units += take
             self._main_lots.append(
                 {
                     "units": take,
@@ -2218,6 +2286,9 @@ class ExecutionEngineMixin:
             )
 
         self._fold_queue_usd = sum(t["usd"] for t in self._fold_tranches)
+        self._queue_payment = QueuePayment(
+            record_event_ids(paid), restored_units, buy_fee_pct
+        )
         return gain_usd, len(consumed)
 
     def _report_fold_by_units(
@@ -2231,8 +2302,18 @@ class ExecutionEngineMixin:
         msg: str,
     ) -> None:
         """Apply ``gain_usd`` as target growth, log ``msg``, and report and announce one
-        settled piece of a buy ``_pay_queue_by_units`` paid."""
-        _growth_applied = self._apply_fold_target_growth(gain_usd, source=str(label))
+        settled piece of a buy ``_pay_queue_by_units`` paid, by its ``_queue_payment``.
+        """
+        payment = self._queue_payment
+        self._queue_payment = NO_QUEUE_PAYMENT
+        _growth_applied = self._apply_fold_target_growth(
+            gain_usd,
+            source=str(label),
+            units_bought=fill_amount,
+            units_at_scrum=payment.units_at_scrum,
+            fill_price=fill_price,
+            fee_pct=payment.fee_pct,
+        )
 
         self._bus.emit(
             "bot.log",
@@ -2288,6 +2369,9 @@ class ExecutionEngineMixin:
             profit=_growth_applied,
             operator_initiated=operator_initiated,
             fee=self._fill_fee_fields(fill_price),
+            spent_event_ids=payment.event_ids,
+            opened_event_ids=self._take_opened_stack_events(),
+            growth=_growth_applied.record,
         )
 
     def _route_unfoldable_proceeds(
@@ -2607,6 +2691,8 @@ class ExecutionEngineMixin:
             side="SELL", trade_action="AUTO_DETONATION"
         )
         self._emit_gate_decision_at_fire(side="SELL", trade_action="AUTO_DETONATION")
+        from .sizing import record_event_ids
+
         self._announce_fill(
             kind="AUTO_DETONATION",
             side=FILL_SELL,
@@ -2616,6 +2702,8 @@ class ExecutionEngineMixin:
             profit=excess_usd,
             operator_initiated=False,
             fee=self._fill_fee_fields(fill_price),
+            spent_event_ids=record_event_ids(_discarded),
+            opened_event_ids=(),
         )
 
     @order_turn

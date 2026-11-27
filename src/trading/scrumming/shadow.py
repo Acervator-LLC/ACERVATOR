@@ -131,7 +131,7 @@ class ShadowTrancheMixin:
     _shadow_opened: int = 0
 
     # ScrummingBot supplies these at runtime; the annotations create no attributes.
-    _apply_fold_target_growth: Callable[..., float]
+    _apply_fold_target_growth: Callable[..., Any]
     _announce_fill: Callable[..., None]
     _bus: Any
     _count_trade_volume: Callable[..., Any]
@@ -320,10 +320,12 @@ class ShadowTrancheMixin:
         share = min(1.0, float(units) / asked) if asked > 0 else 1.0
         standing = {row[EVENT_ID_KEY]: row for row in self._shadow_tranches}
         kept_units = 0.0
+        spent: list[dict] = []
         for entry in rows:
             row = standing.get(entry[EXIT_EVENT_KEY])
             if row is None:
                 continue
+            spent.append(row)
             row[SHADOW_UNITS_KEY] = (
                 float(row[SHADOW_UNITS_KEY]) - float(entry[EXIT_UNITS_KEY]) * share
             )
@@ -342,6 +344,7 @@ class ShadowTrancheMixin:
         )
         self._count_trade_volume(units, fill_price)
         growth = 0.0
+        record = None
         if kept_units > UNITS_DUST:
             self._main_lots.append(
                 {
@@ -352,9 +355,15 @@ class ShadowTrancheMixin:
             )
             self._current_holdings += kept_units
             self._record_venue_units_after_fill(kept_units)
-            growth = self._apply_fold_target_growth(
-                kept_units * fill_price, source=SHADOW_EVENT_LABEL
+            applied = self._apply_fold_target_growth(
+                kept_units * fill_price,
+                source=SHADOW_EVENT_LABEL,
+                units_bought=kept_units,
+                fill_price=fill_price,
+                fee_pct=0.0,
             )
+            growth = float(applied)
+            record = applied.record
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
@@ -370,6 +379,8 @@ class ShadowTrancheMixin:
             side="SELL", trade_action=SHADOW_FILL_KIND
         )
         self._emit_gate_decision_at_fire(side="SELL", trade_action=SHADOW_FILL_KIND)
+        from .sizing import record_event_ids
+
         self._announce_fill(
             kind=SHADOW_FILL_KIND,
             side=FILL_SELL,
@@ -379,6 +390,9 @@ class ShadowTrancheMixin:
             profit=fill_usd,
             operator_initiated=False,
             fee=self._fill_fee_fields(fill_price),
+            spent_event_ids=record_event_ids(spent),
+            opened_event_ids=(),
+            growth=record,
         )
 
     def _return_shadows_to_lots(self, reason: str) -> float:
