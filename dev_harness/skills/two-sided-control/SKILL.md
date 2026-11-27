@@ -360,8 +360,8 @@ found it in a file the unit had already edited and reported as repaired.
 MEASURED 2026-09-19. Four units read the Market Inspector's Scan Now green in
 both variants and on both bundles. Every reading ran with sockets refused and a
 loopback stand-in for the candle source. The stand-in answered candles on every
-timeframe the scan asked for, including weekly. Coinbase serves granularities of
-60, 300, 900, 3600, 21600 and 86400 seconds and no weekly one. The operator's own
+timeframe the scan asked for, including weekly. Coinbase serves eight candle
+sizes, 1m, 5m, 15m, 30m, 1h, 2h, 6h and 1d, and no weekly one. The operator's own
 press (his `system.log`, 07:36:51 to 07:38:18) read 120 markets, got no candles
 on 1wk for all 120, found 0 hits after 87 seconds with nothing drawn while it
 ran, and read `no ticker list` for stocks because no list source exists. He
@@ -384,6 +384,8 @@ log and never to him.
    and limits with their figures (granularities, list endpoints, page sizes, rate
    limits), and the operator's own recorded responses where his logs hold them.
    The hook `block_stand_in_without_source.py` refuses a brief without it.
+   A brief takes a venue's candle sizes from the platform's own reading of them,
+   `src/exchange/timeframes.py, in available_timeframes`.
 2. **An empty end state is a non-reading.** A bundle that ends at `no candle`,
    `no post`, `no tablet` or `0 of 0` did not exercise the feature. Report it as
    not read, and require the end state the operator will see: hits, or a refusal
