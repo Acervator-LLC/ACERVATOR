@@ -475,7 +475,7 @@ On the Scrumming table, a press on a row draws that bot on the Indicator Voting 
 | --- | --- |
 | Asset | The asset's kept logo, else its name. A press opens the asset's organisation site over https, and an asset with no address opens nothing. `src/gui/main_tabs/bot_status_table_surface.py, in organisation_address` |
 | Symbol | The pair, coloured by bot state. A press opens the pair's chart on the exchange's site. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._symbol_cell` |
-| Current Position Value | Held units at a fresh exchange price. Blank when the price is missing or over 20 seconds old. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.position_value_cell`. The 20 is the stored limit an order reads too. `src/core/price_age.py, in price_age_limit_s` |
+| Current Position Value | Held units at a fresh exchange price. Blank when the price is missing or over 20 seconds old. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.position_value_cell`. The 20 is the stored limit an order reads too. `src/core/price_age.py, in price_age_limit_s`. The Price Age Limit row of [Settings > Trading](08-tabs/settings.md#settings--trading) sets it. |
 | Trades | The bot's trade count. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel._write_row` |
 | Target | The balance the bot returns to: the grown target, else the Target Balance. `src/gui/main_tabs/bot_status_table_surface.py, in target_value` |
 | Target A15, Target A14 | The target restated in that asset, with its 24-hour drift. Blank when the asset is that market, a dash when the pair is unlisted, and pending until the rate arrives. `src/gui/main_tabs/table_cells_surface.py, in TableCellsModel.target_denom_cell` |
@@ -521,7 +521,7 @@ Fire and Ammo use their colours differently. Ammo is green above target, and Fir
 
 ### An order and the age of its price
 
-An order starts on a price at most 20 seconds old. The age counts from the moment the venue answered, whichever read brought the price. The bot's own read, the shared read and a price kept after a refused read all keep that moment (`src/exchange/data_pool.py, in TickerEntry.take`). On Robinhood and on a broker it is the moment the program read the answer (`src/exchange/base.py, in Ticker`).
+An order starts on a price at most 20 seconds old, the start figure of the Price Age Limit row. The age counts from the moment the venue answered, whichever read brought the price. The bot's own read, the shared read and a price kept after a refused read all keep that moment (`src/exchange/data_pool.py, in TickerEntry.take`). On Robinhood and on a broker it is the moment the program read the answer (`src/exchange/base.py, in Ticker`).
 
 Two clocks count the age, and the larger figure stands. A wall clock that steps back cannot make a price young (`src/core/price_age.py, in ReadMoment.age_s`).
 
@@ -531,7 +531,7 @@ Past the limit the order does not start. Nothing is booked, spent or queued, and
 
 A bot whose quote is not a dollar sizes its orders with the quote's dollar rate. The rate keeps the moment it was read, and the same limit holds the order (`src/trading/scrumming_bot.py, in ScrummingBot.price_reads`).
 
-The limit is one stored figure, 20 at the start, and the Current Position Value cell reads it too. No row sets it. A stored value that is not a number above zero reads as 20 (`src/core/price_age.py, in price_age_limit_s`).
+The limit is one stored figure, 20 at the start, and the Current Position Value cell reads it too. The Price Age Limit row of [Settings > Trading](08-tabs/settings.md#settings--trading) sets it, from 10 to 60 whole seconds, and Save hands it to every running bot. A stored value that is not a whole number from 10 to 60 reads as 20 (`src/core/price_age.py, in price_age_limit_s`).
 
 | Path | On a price past the limit |
 | --- | --- |

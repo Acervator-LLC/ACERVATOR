@@ -39,6 +39,7 @@ from functools import partial
 from typing import Any, Optional
 
 from ...core.encryption import looks_like_pem, unescape_pem_newlines, vault_phrase
+from ...core.price_age import PRICE_AGE_SETTING, limit_range_s
 from ...exchange.timeframes import ALL_TIMEFRAMES
 from ...core.settings import (
     CREDENTIAL_FIELDS,
@@ -59,6 +60,12 @@ from ...trading.ta_engine import DEFAULT_WEIGHTS
 from ..color_alpha import ALPHA_HIGHEST, rgba
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 from .init_wizard_surface import PHRASE_FIELD_PROMPT
+
+#: The price age box's span, the one ``price_age.usable_limit_s`` takes.
+PRICE_AGE_RANGE = limit_range_s()
+
+#: The price age box's opening figure and its fallback, declared once by the store.
+PRICE_AGE_LIMIT_DEFAULT = int(getattr(AppSettings(), PRICE_AGE_SETTING))
 
 METHOD = "settings_dialog.state"
 
@@ -137,7 +144,7 @@ TAB_TOOLTIPS = {
     EXCHANGE_TAB: "Add, test and remove exchange keys, and see each venue's state.",
     TRADING_TAB: (
         "Starting choices for each new bot: target, order visibility and "
-        "aggressive mode."
+        "aggressive mode; and every running bot's price age limit."
     ),
     TA_TAB: "How much each indicator's vote counts in the voting engine.",
     PHANTOM_TAB: "Phantom bot choices each new bot starts with.",
@@ -326,6 +333,7 @@ VENUE_PAGES_FORMAT = "Page {page} of {pages} ▸"
 VENUE_PAGES_TOOLTIP = "Press for page {next} of {pages}."
 
 LOCK_GROUP_TITLE = "Higher-TF Lock Settings"
+PRICE_AGE_GROUP_TITLE = "Acts on the Running Fleet at Save"
 SMS_PROVIDER_GROUP_TITLE = "SMS Provider"
 SMS_EVENTS_GROUP_TITLE = "Notification Events"
 SMS_RATE_GROUP_TITLE = "Rate Limiting"
@@ -902,6 +910,7 @@ PERSISTED_ROWS = (
     ("default_target_balance", "default_balance", 200.0),
     ("bot_visibility", "visibility", "orderbook"),
     ("aggressive_trading", "aggressive", False),
+    (PRICE_AGE_SETTING, "price_age_limit", PRICE_AGE_LIMIT_DEFAULT),
     ("default_enable_phantoms", "phantoms_enabled", PHANTOM_ENABLE_DEFAULT),
     ("default_phantom_timeframe", "phantom_timeframe", PHANTOM_TIMEFRAME_DEFAULT),
     ("default_lock_candle_count", "lock_candles", LOCK_CANDLE_DEFAULT),
@@ -1183,6 +1192,20 @@ CONTROL_SPECS: tuple[dict, ...] = (
         "kind": CHECK,
         "text": "Enable aggressive trading mode",
         "checked": False,
+    },
+    {
+        "tab": TRADING_TAB,
+        "group": PRICE_AGE_GROUP_TITLE,
+        "label": "Price Age Limit:",
+        "name": "price_age_limit",
+        "tooltip": (
+            "The oldest price, in seconds, an order starts on or a cell draws. Save "
+            "applies it to every bot."
+        ),
+        "kind": SPIN,
+        "range": PRICE_AGE_RANGE,
+        "value": PRICE_AGE_LIMIT_DEFAULT,
+        "suffix": " sec",
     },
     {
         "tab": PHANTOM_TAB,
@@ -1686,6 +1709,7 @@ CONTROL_SPECS: tuple[dict, ...] = (
 GROUPS = (
     (USER_TAB, FLEET_LOCK_GROUP_TITLE),
     (EXCHANGE_TAB, CRYPTO_ADD_GROUP),
+    (TRADING_TAB, PRICE_AGE_GROUP_TITLE),
     (PHANTOM_TAB, LOCK_GROUP_TITLE),
     (SMS_TAB, SMS_PROVIDER_GROUP_TITLE),
     (SMS_TAB, SMS_EVENTS_GROUP_TITLE),
@@ -1927,6 +1951,11 @@ LAYOUT = {
             (CONTROL, "default_balance"),
             (CONTROL, "visibility"),
             (CONTROL, "aggressive"),
+            (
+                GROUP,
+                PRICE_AGE_GROUP_TITLE,
+                (FORM, ((CONTROL, "price_age_limit"),)),
+            ),
         ),
     ),
     TA_TAB: (COLUMN, ((LABEL, TA_HEADING), (TA_ROWS,), (STRETCH,))),
@@ -3317,6 +3346,23 @@ def spec_for(name: str) -> dict:
         if spec["name"] == name:
             return spec
     raise KeyError(name)
+
+
+#: Number boxes that keep their figure on a typed one outside their span, and name it.
+SHOWS_TYPED_REFUSAL = ("price_age_limit",)
+
+
+def typed_refusal(name: str, typed: Any) -> str:
+    """The mouse-over naming a typed `typed` that the control `name` refuses."""
+    low, high = spec_for(name)["range"]
+    found = int(typed) if type(typed) is float and typed.is_integer() else typed
+    return REFUSED_SPAN.format(found=found, low=low, high=high)
+
+
+def is_typed_refusal(name: str, words: str) -> bool:
+    """Whether `words` is a `typed_refusal` of the control `name`."""
+    low, high = spec_for(name)["range"]
+    return words.endswith(REFUSED_SPAN.format(found="", low=low, high=high))
 
 
 def specs_on(tab: str) -> tuple:

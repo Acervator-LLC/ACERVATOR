@@ -786,8 +786,9 @@ if _HAS_QT and _HAS_WEBENGINE:
             name = str(asked.get("name") or "")
             if name not in self._holders:
                 return
+            typed = asked.get("value")
             try:
-                self._holders[name].admit(asked.get("value"))
+                self._holders[name].admit(typed)
             except Exception as exc:  # noqa: BLE001
                 # A cleared number box reports null, which admit refuses; redraw
                 # puts the held figure back instead of leaving the box empty.
@@ -796,8 +797,12 @@ if _HAS_QT and _HAS_WEBENGINE:
                     name,
                     exc,
                 )
+                if name in surface.SHOWS_TYPED_REFUSAL and type(typed) in (int, float):
+                    self._show_typed_refusal(name, typed)
                 self.redraw()
                 return
+            if name in surface.SHOWS_TYPED_REFUSAL:
+                self._show_description(name)
             if name == "pp_check":
                 self._sync_passphrase_row()
             if name == "sound_volume":
