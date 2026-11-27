@@ -434,6 +434,13 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   lives in `src/trading/order_pairing.py`, and the manual builder imports it.
   Next, row 9: his retained record read through the window, which the body
   records he agreed to on 2026-11-26.
+- **#1843, the currency rate strip. Rows 1 and 2 are built.** The shared rate
+  feed is built again only when no read is on its way and the reads asked since
+  the last answer have had none for one refresh
+  (`src/exchange/currency_rate_monitor.py, in CurrencyRateMonitor.has_stopped`).
+  A carried reading sets `held`, the strip names the venue alone in both builds,
+  and a Target cell marks a held figure (`in _carry_rates`). He reads the strip
+  after the next build.
 - The rest of the queue: read each body.
 
 ---
