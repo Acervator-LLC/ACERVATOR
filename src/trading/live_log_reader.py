@@ -71,6 +71,12 @@ TRADE_LOG_REQUIRED_DATA_FIELDS = (
     "usd",
     "operator_initiated",
 )
+TRADE_LOG_OPTIONAL_DATA_FIELDS: dict[str, type] = {
+    "venue_order_id": str,
+    "spent_event_ids": list,
+    "opened_event_ids": list,
+    "target_growth": dict,
+}
 
 
 class SchemaDriftError(RuntimeError):
@@ -113,7 +119,8 @@ def _validate_gate_entry(entry: dict) -> None:
 
 
 def _validate_trade_entry(entry: dict) -> None:
-    """Validate one parsed trade.log entry against the pinned field lists."""
+    """Validate one parsed trade.log entry against the pinned field lists, and each
+    ``TRADE_LOG_OPTIONAL_DATA_FIELDS`` field it holds against its type."""
     for f in TRADE_LOG_REQUIRED_TOP_FIELDS:
         if f not in entry:
             raise SchemaDriftError(
@@ -130,6 +137,12 @@ def _validate_trade_entry(entry: dict) -> None:
             raise SchemaDriftError(
                 f"trade.log entry data missing required field {f!r}: "
                 f"{list(data.keys())}"
+            )
+    for f, shape in TRADE_LOG_OPTIONAL_DATA_FIELDS.items():
+        if f in data and not isinstance(data[f], shape):
+            raise SchemaDriftError(
+                f"trade.log entry data field {f!r} must be a {shape.__name__}, "
+                f"got {type(data[f]).__name__}"
             )
 
 

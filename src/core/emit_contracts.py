@@ -104,15 +104,52 @@ FILL_FEE_FIELDS: tuple[str, ...] = ("fee_usd", "fee_refusal")
 """The two fee fields of a ``SettledFill``, of which a payload carries exactly one."""
 
 FILL_NUMBER_FIELDS: tuple[str, ...] = ("amount", "price", "usd", "profit")
-FILL_TEXT_FIELDS: tuple[str, ...] = ("bot_id", "type", "symbol", "exchange")
+FILL_TEXT_FIELDS: tuple[str, ...] = (
+    "bot_id",
+    "type",
+    "symbol",
+    "exchange",
+    "venue_order_id",
+)
+FILL_EVENT_FIELDS: tuple[str, ...] = ("spent_event_ids", "opened_event_ids")
+"""The two ``SettledFill`` lists of tranche event ids: those the fill spent and those it opened."""
+
+FILL_GROWTH_FIELD = "target_growth"
+"""The ``SettledFill`` field a fill whose fold ran ``_apply_fold_target_growth`` carries."""
+
+
+@dataclass(frozen=True)
+class TargetGrowth:
+    """One ``_apply_fold_target_growth`` step: the figures its fill gave and what ``target_growth_applied`` answered."""
+
+    source: str
+    units_bought: float
+    units_at_scrum: float
+    fill_price: float
+    fee_pct: Optional[float]
+    wire_share_pct: float
+    gain: float
+    quote_to_usd: float
+    surplus_usd: float
+    standing_usd: float
+    cycle_cap_usd: float
+    consumed_usd: float
+    cap_room_usd: float
+    applied_usd: float
+    standing_after_usd: float
+    target_usd: float
+
+
+TARGET_GROWTH_FIELDS: tuple[str, ...] = tuple(one.name for one in fields(TargetGrowth))
 
 
 @dataclass(frozen=True)
 class SettledFill:
     """One verified fill, in the shape every ``FILL_TOPIC`` announcement carries.
 
-    ``amount`` is the units one booking settled at ``price``, and exactly one of
-    ``fee_usd`` and ``fee_refusal`` is set.
+    ``amount`` is the units one booking settled at ``price``, exactly one of
+    ``fee_usd`` and ``fee_refusal`` is set, ``venue_order_id`` names the venue order
+    settled, and ``target_growth`` is set on a fold that ran ``_apply_fold_target_growth``.
     """
 
     bot_id: str
@@ -125,23 +162,48 @@ class SettledFill:
     operator_initiated: bool
     symbol: str
     exchange: str
+    venue_order_id: str = ""
+    spent_event_ids: tuple[str, ...] = ()
+    opened_event_ids: tuple[str, ...] = ()
     fee_usd: Optional[float] = None
     fee_refusal: Optional[str] = None
+    target_growth: Optional[TargetGrowth] = None
 
     def payload(self) -> dict:
-        """The field map ``FILL_TOPIC`` carries: each of ``SETTLED_FILL_FIELDS``
-        and the fee field of ``FILL_FEE_FIELDS`` that is set.
+        """The field map ``FILL_TOPIC`` carries: each of ``SETTLED_FILL_FIELDS``, the
+        fee field of ``FILL_FEE_FIELDS`` that is set, and ``FILL_GROWTH_FIELD`` when set.
         """
         out = {name: getattr(self, name) for name in SETTLED_FILL_FIELDS}
+        for name in FILL_EVENT_FIELDS:
+            out[name] = list(out[name])
         for name in FILL_FEE_FIELDS:
             value = getattr(self, name)
             if value is not None:
                 out[name] = value
+        if self.target_growth is not None:
+            out[FILL_GROWTH_FIELD] = {
+                name: getattr(self.target_growth, name) for name in TARGET_GROWTH_FIELDS
+            }
         return out
+
+    def record_fields(self) -> dict:
+        """The ``FILL_RECORD_FIELDS`` of ``payload`` that it holds, the fields a trade log line adds to its own."""
+        held = self.payload()
+        return {name: held[name] for name in FILL_RECORD_FIELDS if name in held}
+
+
+FILL_RECORD_FIELDS: tuple[str, ...] = (
+    "venue_order_id",
+    *FILL_EVENT_FIELDS,
+    FILL_GROWTH_FIELD,
+)
+"""The ``SettledFill`` fields ``LogManager._on_trade_filled_bus`` adds to a trade log line."""
 
 
 SETTLED_FILL_FIELDS: tuple[str, ...] = tuple(
-    one.name for one in fields(SettledFill) if one.name not in FILL_FEE_FIELDS
+    one.name
+    for one in fields(SettledFill)
+    if one.name not in FILL_FEE_FIELDS and one.name != FILL_GROWTH_FIELD
 )
 
 
@@ -178,6 +240,48 @@ def _fill_faults(event_data: dict) -> list[str]:
         event_data["operator_initiated"], bool
     ):
         faults.append("operator_initiated is not True or False")
+    faults += [
+        f"{name} is not a list of text"
+        for name in FILL_EVENT_FIELDS
+        if name in event_data and not _is_text_list(event_data[name])
+    ]
+    if FILL_GROWTH_FIELD in event_data:
+        faults += _growth_faults(event_data[FILL_GROWTH_FIELD])
+    return faults
+
+
+def _is_text_list(value: Any) -> bool:
+    """True for a list or tuple whose every item is text."""
+    return isinstance(value, (list, tuple)) and all(
+        isinstance(one, str) for one in value
+    )
+
+
+def _growth_faults(growth: Any) -> list[str]:
+    """Each way ``growth`` departs from ``TargetGrowth``, named by its field."""
+    if not isinstance(growth, dict):
+        return [f"{FILL_GROWTH_FIELD} is not a field map"]
+    faults = [
+        f"{FILL_GROWTH_FIELD}.{name} absent"
+        for name in TARGET_GROWTH_FIELDS
+        if name not in growth
+    ]
+    faults += [
+        f"{FILL_GROWTH_FIELD}.{name} is not a field of TargetGrowth"
+        for name in growth
+        if name not in TARGET_GROWTH_FIELDS
+    ]
+    if "source" in growth and not isinstance(growth["source"], str):
+        faults.append(f"{FILL_GROWTH_FIELD}.source is not text")
+    faults += [
+        f"{FILL_GROWTH_FIELD}.{name} is not a number"
+        for name in TARGET_GROWTH_FIELDS
+        if name not in ("source", "fee_pct")
+        and name in growth
+        and not _is_number(growth[name])
+    ]
+    if growth.get("fee_pct") is not None and not _is_number(growth["fee_pct"]):
+        faults.append(f"{FILL_GROWTH_FIELD}.fee_pct is not a number or None")
     return faults
 
 
@@ -194,13 +298,17 @@ def read_settled_fill(event_data: Any) -> SettledFill:
     faults = _fill_faults(event_data)
     if faults:
         raise FillShapeError("; ".join(faults))
-    return SettledFill(
-        **{
-            name: event_data[name]
-            for name in (*SETTLED_FILL_FIELDS, *FILL_FEE_FIELDS)
-            if name in event_data
-        }
-    )
+    held = {
+        name: event_data[name]
+        for name in (*SETTLED_FILL_FIELDS, *FILL_FEE_FIELDS)
+        if name in event_data
+    }
+    for name in FILL_EVENT_FIELDS:
+        held[name] = tuple(held[name])
+    growth = event_data.get(FILL_GROWTH_FIELD)
+    if growth is not None:
+        held[FILL_GROWTH_FIELD] = TargetGrowth(**growth)
+    return SettledFill(**held)
 
 
 TRADE_TYPES: tuple[str, ...] = (
@@ -231,7 +339,7 @@ CONTRACTS: tuple[EmitContract, ...] = (
     EmitContract(
         topic=FILL_TOPIC,
         required=SETTLED_FILL_FIELDS,
-        optional=FILL_FEE_FIELDS,
+        optional=(*FILL_FEE_FIELDS, FILL_GROWTH_FIELD),
         exclusive=FILL_FEE_FIELDS,
         vocab={"side": FILL_SIDES, "type": TRADE_TYPES},
         nested_key=None,
@@ -239,7 +347,8 @@ CONTRACTS: tuple[EmitContract, ...] = (
         "declares. NOTE: the trade kind is `type` here, not `action` — the "
         "log schema uses `action`. `fee_usd` is the venue's own fee for this "
         "fill; `fee_refusal` replaces it when the venue reported none, and "
-        "exactly one of the two is present.",
+        "exactly one of the two is present. `target_growth` is present on a "
+        "fold whose booking ran the growth step.",
     ),
     EmitContract(
         topic="bot.gate_decision",
