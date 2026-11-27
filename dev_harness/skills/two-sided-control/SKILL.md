@@ -485,4 +485,8 @@ This skill is wrong if:
 - `O(checks)` turns out not to hold, and control count grows with cases
 
 Related: `harness-law`, `unit-decomposition`, `branch-discipline`.
-Research: `docs/audits/2026-08-11_happy_path_avoidance_research.md`.
+Research: `git show c932a06e~1:docs/audits/2026-08-11_happy_path_avoidance_research.md`.
+
+## CITED AS ABSENT
+
+- `docs/audits/2026-08-11_happy_path_avoidance_research.md` was removed by commit `c932a06e`, and the command above returns it.
