@@ -80,7 +80,7 @@ same tuple.
 **The current reading, 2026-10-29.** The message prints the `usd` field of the
 fill that `read_settled_fill` returns, and the two names above are current. Every
 place in the bot that books a fill sends it in one shape, and the contract for
-the fill event requires every field of that shape, the dollars among them. A
+the fill event requires every field of that shape but the target growth map, the dollars among them. A
 fill that is not in that shape raises no alert, and the refusal is written to
 the log.
 
