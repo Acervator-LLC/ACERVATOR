@@ -2769,7 +2769,7 @@ def evaluate(self, ctx: GateContext) -> GateResult:
 | ---- | ----------- | ----- | ------------- |
 | `delta_positive` | the holdings sit above target | the target delta | none |
 | `interval` | the delta clears the scrumming interval | the delta | none |
-| `ta_bullish` | `is_bullish`; inside the zone, three indicators agree | Net, Conf and the floor | none on a running bot |
+| `ta_bullish` | `is_bullish`; inside the zone, the vote tops what two indicators reach | Net, Conf and the floor | none on a running bot |
 | `trend_hold` | no sustained uptrend | more than 13 of the last 20 candles closing above their open | `band_zone` |
 | `midline_scrum` | no phantom lock | the coordinator's locks | `band_zone` |
 | `target_fires` | the ramp is in FIRE, price inside the upper zone | the target ramp | none |
@@ -2865,7 +2865,7 @@ worth knowing before anyone assumes the asymmetry is deliberate.
 | Gate | Passes when | Overridden by |
 | ---- | ----------- | ------------- |
 | `tranches_queued` | at least one fold tranche is waiting | `calibrating_trade` |
-| `ta_bearish` | `is_bearish`; inside the zone, three indicators agree | none on a running bot |
+| `ta_bearish` | `is_bearish`; inside the zone, the vote tops what two indicators reach | none on a running bot |
 | `midline_fold` | no phantom lock | `band_zone` |
 | `smart_ceiling` | the position sits under the smart ceiling | none |
 | `bb_proximity_fold` | price inside BB Tolerance of the lower band on a deficit | none |

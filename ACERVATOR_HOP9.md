@@ -433,10 +433,11 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
 - **#1440, the trade engine. Rows 7 to 10 are built.** Inside BB Tolerance of
   the band the Target Delta points to, the gate chain passes trend hold, ADX, the
   efficiency ratio, the higher-timeframe defer and the phantom lock, and it still
-  holds on fewer than three agreeing indicators, the opposing distance, a
-  tranche's rebuy price, the breakers and the price age
+  holds on a vote that does not top what two indicators reach on it, the
+  opposing distance, a tranche's rebuy price, the breakers and the price age
   (`src/trading/gate_chain.py, in GateChain.releases`). Past Max Cartridge Size
-  the bot reads ten times as often, and inside the lower zone with no tranche
+  the bot waits a tenth as many ticks between reads, never under one, and inside
+  the lower zone with no tranche
   queued a fold buys the whole Target Delta
   (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_calibrating_fold`).
   Read Rate is a timeframe below the TA Timeframe, and Detect Threshold, Fire

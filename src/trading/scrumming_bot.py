@@ -3958,7 +3958,7 @@ class ScrummingBot(
         _bullish_no_hunger, _ = vote_sides(
             eff_direction, eff_confidence, _floor_no_hunger, bb_result, summary.signals
         )
-        # Inside the zone the vote needs three of the indicators, the floor's own line.
+        # Inside the zone the vote clears three_indicator_floor with no skew.
         _zone_floor = _skewed_confidence_floor(0.0, summary.signals, floor=0.0)
         _zone_bullish, _zone_bearish = vote_sides(
             eff_direction, eff_confidence, _zone_floor, bb_result, summary.signals

@@ -162,7 +162,7 @@ BB Tolerance - Determines the minimum distance of the Bollinger Band extent pric
 
 Now: BB Tolerance sets how close to a band, as a percent of price, price must sit to count as at that band. It counts only on the side the Target Delta points to, and it also sets the Landing Strip (`src/trading/indicators/bb_proximity.py, in band_zone`).
 
-Now: inside that zone the gate chain passes trend hold, ADX, the efficiency ratio, the higher-timeframe defer and the phantom lock, and each of their lights reads overridden by band_zone. The bot still holds a trade on a vote where fewer than three indicators agree, on the Minimum Opposing Trade Distance and its two-fee floor, on a queued tranche's rebuy price, on a circuit breaker, and on a price past the Price Age Limit (`src/trading/gate_chain.py, in GateChain.releases`).
+Now: inside that zone the gate chain passes trend hold, ADX, the efficiency ratio, the higher-timeframe defer and the phantom lock, and each of their lights reads overridden by band_zone. The bot still holds a trade on a vote that does not top what two indicators reach on it, on the Minimum Opposing Trade Distance and its two-fee floor, on a queued tranche's rebuy price, on a circuit breaker, and on a price past the Price Age Limit (`src/trading/gate_chain.py, in GateChain.releases`).
 
 `src/trading/gate_chain.py, in ZONE_RELEASED_GATES`
 
@@ -837,14 +837,14 @@ Past the Detect line a ripe harvest passes the bullish TA and uptrend flags, and
 
 **The sentence above is overtaken.** It is not edited and not removed.
 
-Now: the Detect line is retired, so no running bot, Simulator or Paper bot sets the ripe-harvest or deep-fold override. Inside the BB Tolerance zone the trend and higher-timeframe flags pass, and the two TA flags ask for three indicators to agree (`src/trading/gate_chain.py, in GateChain.releases`).
+Now: the Detect line is retired, so no running bot, Simulator or Paper bot sets the ripe-harvest or deep-fold override. Inside the BB Tolerance zone the trend and higher-timeframe flags pass, and the two TA flags ask the vote to top what two indicators reach on it (`src/trading/gate_chain.py, in GateChain.releases`).
 
 | Row | What it does and what it reads |
 | --- | --- |
-| SCRUM requires bullish TA (on) | Asks for a bullish vote; inside the BB Tolerance zone it asks for three indicators to agree. Reads `scrum_require_ta_bullish`. `src/trading/gate_chain.py, in effective_gate_flags` |
+| SCRUM requires bullish TA (on) | Asks for a bullish vote; inside the BB Tolerance zone the vote must top what two indicators reach on it. Reads `scrum_require_ta_bullish`. `src/trading/gate_chain.py, in effective_gate_flags` |
 | SCRUM holds in sustained uptrend (on) | Holds past 13 of 20 up candles, outside the BB Tolerance zone. Reads `scrum_hold_in_uptrend`. `src/trading/gate_chain.py, in TrendHoldGate` |
 | SCRUM defers to higher-TF bullish (on) | Refuses a scrum while the phantom bias reads bullish, outside the BB Tolerance zone. Reads `scrum_defer_to_htf`. `src/trading/gate_chain.py, in HTFDeferGate` |
-| FOLD requires bearish TA (on) | Asks for a bearish vote; inside the BB Tolerance zone it asks for three indicators to agree. Reads `fold_require_ta_bearish`. `src/trading/gate_chain.py, in effective_gate_flags` |
+| FOLD requires bearish TA (on) | Asks for a bearish vote; inside the BB Tolerance zone the vote must top what two indicators reach on it. Reads `fold_require_ta_bearish`. `src/trading/gate_chain.py, in effective_gate_flags` |
 | FOLD defers to higher-TF bearish (on) | Refuses a fold while the phantom bias reads bearish, outside the BB Tolerance zone. Reads `fold_defer_to_htf`. `src/trading/gate_chain.py, in HTFDeferGate` |
 
 ### Phantom Bots rows

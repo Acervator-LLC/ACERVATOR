@@ -260,7 +260,7 @@ Now: the Detect line and the BB Midline Gate are retired, so no running bot, no
 Simulator walk and no Paper run sets the ripe-harvest override. Inside the BB
 Tolerance zone on the Target Delta's side the chain passes the phantom lock,
 trend hold, ADX, the efficiency ratio and the higher-timeframe defer, and it
-still asks for three agreeing indicators (`src/trading/gate_chain.py, in GateChain.releases`).
+still asks the vote to top what two indicators reach on it (`src/trading/gate_chain.py, in GateChain.releases`).
 
 #### The first buy reads three agreeing indicators
 
