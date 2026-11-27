@@ -430,6 +430,19 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   the target through `src/trading/scrumming/sizing.py, in target_growth_applied`
   alone. Next, in the body's build order: row 4, then row 5, then rows 6 to 8.
   Row 9 waits on his yes to a read of his logs.
+- **#1440, the trade engine. Rows 7 to 10 are built.** Inside BB Tolerance of
+  the band the Target Delta points to, the gate chain passes trend hold, ADX, the
+  efficiency ratio, the higher-timeframe defer and the phantom lock, and it still
+  holds on fewer than three agreeing indicators, the opposing distance, a
+  tranche's rebuy price, the breakers and the price age
+  (`src/trading/gate_chain.py, in GateChain.releases`). Past Max Cartridge Size
+  the bot reads ten times as often, and inside the lower zone with no tranche
+  queued a fold buys the whole Target Delta
+  (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_calibrating_fold`).
+  Read Rate is a timeframe below the TA Timeframe, and Detect Threshold, Fire
+  Threshold and BB Midline Gate are retired
+  (`src/trading/container/config.py, in _DEPRECATED_KWARGS`). Rows 2 to 6 stay
+  readings over the retained gate record.
 - The rest of the queue: read each body.
 
 ---

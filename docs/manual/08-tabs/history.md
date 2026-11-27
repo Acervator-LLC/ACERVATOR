@@ -524,6 +524,12 @@ A scrum, a manual sale and a DIST sale open fold tranches. A buy that opens a
 stack ladder opens stack tranches. A fold, a cartridge buy, a Manual Fire, a
 detonation, a self-destruct and a stack sale spend them.
 
+**The sentence above that names a cartridge buy is overtaken.** It is not edited
+and not removed.
+
+Now: no order goes out on a cartridge path, and a calibrating fold buys with no
+tranche queued, so it spends none (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._book_calibrating_fill`).
+
 `src/core/emit_contracts.py, in SettledFill`
 
 ```python

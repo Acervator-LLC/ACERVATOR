@@ -2449,7 +2449,7 @@ flowchart TD
     FLOOR["_skewed_confidence_floor: 0.25 relaxed by the skew"] --> EFF
     CANDLES --> BBP[detect_bb_proximity]
     BBP --> BBPOS[bb_position]
-    BBPOS --> DT{"bb_pos against _bb_detect_thresholds"}
+    BBPOS --> DT{"band_zone: within BB Tolerance on the Target Delta's side"}
     EFF --> CHAIN[build_scrumming_scrum_chain]
     DT --> CHAIN
     ADXD["adx signal detail 'adx'"] --> CHAIN
@@ -2693,6 +2693,22 @@ instead of being turned back into 75.
 _raw = getattr(self.config, "scrum_detect_pct", None)
 ```
 
+**The detect threshold passages above are overtaken.** None is edited and none
+is removed.
+
+Now: Detect Threshold is retired, and its method went with it. The band gate,
+the FIRE ramp, the first buy and the BB priority skew each read BB Tolerance,
+in percent of price, on the side the Target Delta points to. The zone's own
+line in band-position terms comes off the same reading (`src/trading/indicators/bb_proximity.py, in detect_bb_proximity`).
+
+`src/trading/indicators/bb_proximity.py, in band_zone`
+
+```python
+if band is None:
+    return (False, False)
+return (bool(delta > 0 and band.near_upper), bool(delta < 0 and band.near_lower))
+```
+
 ### The scrum chain gates
 
 `src/trading/gate_chain.py` — `build_scrumming_scrum_chain`
@@ -2753,16 +2769,16 @@ def evaluate(self, ctx: GateContext) -> GateResult:
 | ---- | ----------- | ----- | ------------- |
 | `delta_positive` | the holdings sit above target | the target delta | none |
 | `interval` | the delta clears the scrumming interval | the delta | none |
-| `ta_bullish` | `is_bullish` | Net, Conf and the floor | `ripe_harvest_override` |
-| `trend_hold` | no sustained uptrend | more than 13 of the last 20 candles closing above their open | `ripe_harvest_override` |
-| `midline_scrum` | `bb_pos` above 0.50 and no phantom lock | `bb_position` | `ripe_harvest_override` |
-| `target_fires` | the detect and fire ramp is in FIRE | the target ramp | `ripe_harvest_override` |
-| `bb_proximity_scrum` | `bb_pos >= upper_detect` | `bb_position` | none |
+| `ta_bullish` | `is_bullish`; inside the zone, three indicators agree | Net, Conf and the floor | none on a running bot |
+| `trend_hold` | no sustained uptrend | more than 13 of the last 20 candles closing above their open | `band_zone` |
+| `midline_scrum` | no phantom lock | the coordinator's locks | `band_zone` |
+| `target_fires` | the ramp is in FIRE, price inside the upper zone | the target ramp | none |
+| `bb_proximity_scrum` | price inside BB Tolerance of the upper band on a surplus | `band_zone` | none |
 | `circuit_breaker_scrum` | no soft trip on the scrum side | the breaker state | none |
-| `htf_defer_scrum` | the higher timeframe is not bullish | the coordinator | none |
+| `htf_defer_scrum` | the higher timeframe is not bullish | the coordinator | `band_zone` |
 | `hysteresis_scrum` | the price cleared the last pivot plus fees | the pivot | none |
-| `adx_trend_suppression` | ADX under 30.0 | the `adx` signal detail | none |
-| `efficiency_ratio_regime` | ER between 0.05 and 0.70 | the `er` signal detail | none |
+| `adx_trend_suppression` | ADX under 30.0 | the `adx` signal detail | `band_zone` |
+| `efficiency_ratio_regime` | ER between 0.05 and 0.70 | the `er` signal detail | `band_zone` |
 | `zscore_extremity` | Z above -2.0 | the `z` signal detail | none |
 
 **Functional.** Three of those gates skip the collated vote and read one
@@ -2848,11 +2864,11 @@ worth knowing before anyone assumes the asymmetry is deliberate.
 
 | Gate | Passes when | Overridden by |
 | ---- | ----------- | ------------- |
-| `tranches_queued` | at least one fold tranche is waiting | none |
-| `ta_bearish` | `is_bearish` | `deep_fold_override` |
-| `midline_fold` | `bb_pos` below 0.50 | `deep_fold_override` |
+| `tranches_queued` | at least one fold tranche is waiting | `calibrating_trade` |
+| `ta_bearish` | `is_bearish`; inside the zone, three indicators agree | none on a running bot |
+| `midline_fold` | no phantom lock | `band_zone` |
 | `smart_ceiling` | the position sits under the smart ceiling | none |
-| `bb_proximity_fold` | `bb_pos <= lower_detect` | none |
+| `bb_proximity_fold` | price inside BB Tolerance of the lower band on a deficit | none |
 | `circuit_breaker_fold` | no soft trip on the fold side | none |
 | `htf_defer_fold` | the higher timeframe is not bearish | none |
 | `hysteresis_fold` | the price cleared the last pivot plus fees | none |
@@ -2902,8 +2918,10 @@ OVERRIDE_NOT_APPLIED_FORMAT = "{message} [override not applied: {overrides}]"
 
 | Override | Arms on | Force-passes |
 | -------- | ------- | ------------ |
-| `ripe_harvest_override` | positive delta, interval cleared, `bb_pos >= upper_detect` | `midline_scrum`, `target_fires`, `trend_hold`, `ta_bullish` |
-| `deep_fold_override` | negative delta, interval cleared, `bb_pos <= lower_detect` | `midline_fold`, `ta_bearish` |
+| `ripe_harvest_override` | nothing on a running bot, a Simulator walk or a Paper run | `midline_scrum`, `target_fires`, `trend_hold`, `ta_bullish` |
+| `deep_fold_override` | nothing on a running bot, a Simulator walk or a Paper run | `midline_fold`, `ta_bearish` |
+| `band_zone`, a rule of `GateChain.releases` | price inside BB Tolerance on the Target Delta's side | trend hold, ADX, efficiency ratio, the higher-timeframe defer and the phantom lock |
+| `calibrating_trade`, a rule of `GateChain.releases` | the same zone, with the Target Delta at or past Max Cartridge Size | `tranches_queued` |
 
 **Design intention.** At the band extreme, the band position outranks the vote.
 That comes straight from the operator's own reading of the Bollinger Bands:

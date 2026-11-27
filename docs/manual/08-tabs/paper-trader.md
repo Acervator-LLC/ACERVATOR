@@ -1612,6 +1612,22 @@ def tick_skip(scrum_read_rate_min: int, scrum_target_mode: Optional[str]) -> int
     return base
 ```
 
+**The paragraph above and its skip are overtaken.** Neither is edited and
+neither is removed.
+
+Now: a running bot is worked every `read_tick_skip` ticks: one candle of its
+Read Rate timeframe over the 5 s tick, a tenth of that in track or fire. The
+record's saved minutes load as the timeframe one step below its TA timeframe (`src/paper/fleet_source.py, in PaperBot`).
+
+`src/paper/paper_run.py, in read_tick_skip`
+
+```python
+base = max(1, int(TIMEFRAME_SECONDS[read_timeframe] / max(TICK_INTERVAL_S, 0.1)))
+if str(scrum_target_mode or "") in TRACK_MODES:
+    return max(1, base // 10)
+return base
+```
+
 A worked tick reads `ticker` and `candles` on the runner's thread, never on
 the GUI thread. The ticker is cached 5 s and the candle window one bar, the
 two windows `src/exchange/data_pool.py` gives Live, so a 5m bot's gates read
