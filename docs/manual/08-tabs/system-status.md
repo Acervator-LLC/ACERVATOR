@@ -1015,7 +1015,7 @@ run stamped it.
 heartbeat_timer.start(2000)
 ```
 
-The timer runs on the window's thread, so anything that holds that thread also holds the line. A start, a restart and the start at launch call no venue there. The connect and the account read run on the venue's worker, and the start goes on in the window when the answer lands. A slow venue therefore leaves the two-second beat in place.
+The timer runs on the window's thread, so anything that holds that thread also holds the line. A start, a restart and the start at launch call no venue there. Nor do Settings' Test, Add and browser sign-in, the new-bot wizard's market list or the pre-flight check, which each ask through `VenueWait` on a thread of its own. The connect and the account read run on the venue's worker, and the start goes on in the window when the answer lands. A slow venue therefore leaves the two-second beat in place.
 
 `src/gui/main_window.py` — the venue work a start hands to the app's loop
 

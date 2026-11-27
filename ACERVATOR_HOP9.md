@@ -378,8 +378,10 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   window's thread, the connect on the venue's worker inside `CONNECT_LIMIT_SEC`
   and the account read through the shared pool, and the start goes on in the
   window when the answer lands (`src/gui/main_window.py, in
-  MainWindow._run_venue_start`). The body's build order names the rest: row 2,
-  then 5 and 6.
+  MainWindow._run_venue_start`). Settings' Test, Add and browser sign-in, the
+  new-bot wizard's market list and the pre-flight check ask through
+  `src/gui/venue_wait.py, in VenueWait`, inside `VENUE_ASK_LIMIT_SEC`. The
+  body's build order names the rest: row 2, then 5 and 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before

@@ -684,7 +684,7 @@ The wizard's title reads Create Auto Trader. The Qt build draws `BotCreationWiza
 | Back, Next, Cancel | Back returns one page and keeps your entries. Cancel closes the wizard and makes no bot. `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel.go_back` |
 | Finish | Closes the wizard and builds the bot, which waits IDLE until Start. `src/gui/main_window.py, in MainWindow._create_bot` |
 | A market no bot can trade | Finish keeps the wizard open and names why no built variant trades that market. `src/gui/bot_wizard.py, in BotCreationWizard.accept` |
-| Pre-flight check | Scrumming only, after Finish. A missing venue, a missing symbol or a failed market read stops creation, and a failed price read does not. An inactive market, or a target under 3x the minimum cost, asks Yes or No. `src/gui/preflight_check.py, in check_symbol` |
+| Pre-flight check | Scrumming only, after Finish. A missing venue, a missing symbol or a failed market read stops creation, and a failed price read does not. An inactive market, or a target under 3x the minimum cost, asks Yes or No. The check runs off the window's thread, and the status bar says what it waits for. No answer in 332.2 seconds stops creation as a failed market read. A second New Bot while it waits writes one line, and closing the window while it waits creates no bot. `src/gui/preflight_check.py, in check_symbol` |
 | Parent check | Extractor only, after Finish. It stops creation unless exactly one Scrumming Bot holds the base currency. `src/gui/main_window.py, in MainWindow._refuse_extractor_without_parent` |
 
 ### Trading Mode page
@@ -698,7 +698,7 @@ The wizard's title reads Create Auto Trader. The Qt build draws `BotCreationWiza
 
 | Row | What it does and what it reads |
 | --- | --- |
-| Exchange | Lists the stored venues that serve the class. Picking one loads its markets. `src/gui/bot_wizard.py, in AssetSelectionPage._fetch_markets` |
+| Exchange | Lists the stored venues that serve the class. Picking one loads its markets. The load runs off the window's thread, the status line says what it waits for, and Next waits until the markets land. `src/gui/bot_wizard.py, in AssetSelectionPage._fetch_markets` |
 | Base Currency | Seven declared money legs, then any other leg the venue quotes. It opens on a leg the venue quotes. `src/gui/main_tabs/bot_wizard_surface.py, in opening_base_index` |
 | Target Asset | Markets quoted in that base, highest volume first. A market no bot can trade says so and says why. `src/gui/bot_wizard.py, in AssetSelectionPage._filter_assets` |
 | Information button | The Qt build opens the asset's description. The React build always answers that no description is available. `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel.show_info` |
