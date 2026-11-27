@@ -54,16 +54,19 @@ class BotMode(str, Enum):
 STACK_MODE_DEFAULT: bool = True
 
 #: Default ``BotConfig.cartridge_boost_pct``: % the bar for waiting rises per Max Cartridge Size past it.
-CARTRIDGE_BOOST_PCT_DEFAULT: float = 82.11
+CARTRIDGE_BOOST_PCT_DEFAULT: float = 0.39
 
 #: Default ``BotConfig.proximity_boost_pct``: % the bar for waiting rises with price at the band edge.
-PROXIMITY_BOOST_PCT_DEFAULT: float = 14.75
+PROXIMITY_BOOST_PCT_DEFAULT: float = 0.0
 
 #: Default ``BotConfig.landing_strip_boost_pct``: % the bar for waiting rises per tapering Landing Strip candle.
-LANDING_STRIP_BOOST_PCT_DEFAULT: float = 0.0
+LANDING_STRIP_BOOST_PCT_DEFAULT: float = 0.13
 
-#: The largest percent a Settings or wizard box takes for any of the three boost figures.
-BOOST_PCT_MAX: float = 500.0
+#: Indicators the TA panel votes with; ``three_indicator_floor`` never answers under two of them, 2 / 12.
+PANEL_INDICATOR_COUNT: int = 12
+
+#: The largest boost percent: past it the bar, line times one plus share, tops confidence 1.0 at that lowest line.
+BOOST_PCT_MAX: float = 100.0 * (PANEL_INDICATOR_COUNT / 2 - 1)
 
 #: ``BotConfig.expiry_close_action``: stop buying and let the sell ladder run.
 EXPIRY_CLOSE_FINISH_LADDER: str = "finish_ladder"

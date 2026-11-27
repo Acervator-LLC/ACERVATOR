@@ -189,7 +189,7 @@ Now: a visit opens when price enters the zone on the Target Delta's side with th
 
 BB Proximity Boost - Raises the bar for waiting inside the zone as price nears the band edge.
 
-Now: the bar for waiting is the vote's three-indicator line times one plus the boost share. This figure adds its percent times how close price sits to the band edge, from 0 at the zone's far side to 1 at the edge or on a BB Bullseye touch, and the box opens at 14.75% (`src/trading/vote_boost.py, in proximity_scale`).
+Now: the bar for waiting is the vote's three-indicator line times one plus the boost share. This figure adds its percent times how close price sits to the band edge, from 0 at the zone's far side to 1 at the edge or on a BB Bullseye touch, and the box opens at 0% (`src/trading/vote_boost.py, in proximity_scale`).
 
 Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
 
@@ -197,7 +197,7 @@ Now: the box runs 2 to 10 and opens at 3; the band check reads it, and the shrin
 
 Landing Strip Boost - Raises the bar for waiting inside the zone for each tapering candle of the Landing Strip.
 
-Now: a run of tapering candles at least Landing Strip Candles long adds this percent once per candle, up to 12 candles, and the box opens at 0% (`src/trading/vote_boost.py, in landing_strip_steps`).
+Now: a run of tapering candles at least Landing Strip Candles long adds this percent once per candle, up to 12 candles, and the box opens at 0.13% (`src/trading/vote_boost.py, in landing_strip_steps`).
 
 TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
 
@@ -328,7 +328,7 @@ Now: inside BB Tolerance of the lower band with no tranche queued, the fold chai
 
 Cartridge Boost - Raises the bar for waiting inside the zone once the Target Delta passes Max Cartridge Size.
 
-Now: this figure adds its percent for each Max Cartridge Size the Target Delta sits past the threshold, so a Target Delta at twice the threshold adds it once, and the box opens at 82.11% (`src/trading/vote_boost.py, in cartridge_scale`).
+Now: this figure adds its percent for each Max Cartridge Size the Target Delta sits past the threshold, so a Target Delta at twice the threshold adds it once, and the box opens at 0.39% (`src/trading/vote_boost.py, in cartridge_scale`).
 
 Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
 
@@ -796,9 +796,9 @@ The first column gives each row's range and factory opening value. Order Visibil
 | --- | --- |
 | Opposing Trade Interval (0.1 to 20%, 1%) | Sets the Target Delta a scrum needs, and the base of the opposing trade distance. Reads `scrumming_interval_pct`. `src/trading/otd_math.py, in minimum_opposing_trade_distance_pct` |
 | BB Tolerance (0.25 to 5%, 1%) | Sets how close to a band, in percent of price, price counts as at that band on the Target Delta's side, for the band gate, FIRE and the Landing Strip. Reads `bb_tolerance_pct`. `src/trading/indicators/bb_proximity.py, in band_zone` |
-| BB Proximity Boost (0 to 500%, 14.75%) | Inside the zone, raises the bar for waiting by up to this share as price nears the band edge. Reads `proximity_boost_pct`. `src/trading/vote_boost.py, in proximity_scale` |
+| BB Proximity Boost (0 to 500%, 0%) | Inside the zone, raises the bar for waiting by up to this share as price nears the band edge. Reads `proximity_boost_pct`. `src/trading/vote_boost.py, in proximity_scale` |
 | Landing Strip Candles (2 to 10, 3) | Sets the tight Heikin Ashi candles the band check needs. Reads `bb_landing_strip_candles`. `src/trading/indicators/bb_proximity.py, in detect_bb_proximity` |
-| Landing Strip Boost (0 to 500%, 0%) | Inside the zone, raises the bar for waiting by this share per tapering candle of a run at least Landing Strip Candles long. Reads `landing_strip_boost_pct`. `src/trading/vote_boost.py, in landing_strip_steps` |
+| Landing Strip Boost (0 to 500%, 0.13%) | Inside the zone, raises the bar for waiting by this share per tapering candle of a run at least Landing Strip Candles long. Reads `landing_strip_boost_pct`. `src/trading/vote_boost.py, in landing_strip_steps` |
 | TA Timeframe (the venue's list, 1h) | Sets the candle length for votes, bands and breakers. Reads `ta_timeframe`. `src/trading/scrumming_bot.py, in ScrummingBot.tick` |
 | Target Balance ($1 to $1,000,000, $200) | Sets the value the bot trades toward. On Apply, a figure above the anchor keeps accrued growth, and one at or below moves both. Reads `target_balance`. `src/trading/scrumming_bot.py, in ScrummingBot.set_target_balance_live` |
 | Max Entry Price (0 to 10,000,000, 0 off) | Refuses fold, hedge, entry and tranche Fire buys above this price. Reads `max_entry_price`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy` |
@@ -833,7 +833,7 @@ The first column gives each row's range and factory opening value. Order Visibil
 | Hard CB Threshold (0 to 100%, 35%, 0 off) | Trips the hard breaker at this range, and every order stops until a reset. The bot reads HELD and sends one alert. Each candle is read once, when the shared candles first show it, so a move after that does not count. Reads `circuit_breaker_hard_pct`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers` |
 | Soft CB Cooldown (1 to 100, 3) | Sets how many new candles the shared candles must show before the shut side opens again. Reopening the app reads the newest candle as new, so it spends one. Reads `circuit_breaker_cooldown_candles`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._read_breaker_candle` |
 | Max Cartridge Size (0 to 200%, 10%, 0 off) | At this share of target the bot reads ten times as often and Cartridge Boost starts. A bot that has made no first buy holds a fold until the band and its own vote clear: `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_clears`. Reads `max_cartridge_size_pct`. `src/trading/scrumming/sizing.py, in cartridge_reached` |
-| Cartridge Boost (0 to 500%, 82.11%) | Inside the zone, raises the bar for waiting by this share per Max Cartridge Size the Target Delta sits past the threshold. Reads `cartridge_boost_pct`. `src/trading/vote_boost.py, in cartridge_scale` |
+| Cartridge Boost (0 to 500%, 0.39%) | Inside the zone, raises the bar for waiting by this share per Max Cartridge Size the Target Delta sits past the threshold. Reads `cartridge_boost_pct`. `src/trading/vote_boost.py, in cartridge_scale` |
 | Smart Cartridge (off) | Replaces that percent with the Bollinger range, floored at the interval. Reads `max_cartridge_smart`. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_smart_cartridge_pct` |
 | Smart Ceiling (1 to 100%, 30%) | Caps the Smart Cartridge figure. Reads `max_cartridge_smart_ceiling_pct`. `src/trading/container/config.py, in smart_cartridge_ceiling_pct` |
 
