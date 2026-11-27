@@ -14,8 +14,88 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from ...trading.otd_math import fold_rebuy_price
+from ...trading.scrumming.sizing import (
+    estimated_fee_usd,
+    priced_usd,
+    sale_proceeds_usd,
+    sale_surplus_usd,
+)
 from .. import design_system as ds
 from ..descriptions import STACK_TRANCHES_TAB_DESCRIPTIONS
+from .fold_tranches_tab_surface import (
+    PROJECTED_BAND_UNREAD,
+    PROJECTED_COLUMN_HEADER,
+    PROJECTED_NO_SETTINGS,
+    Projection,
+    ProjectionReading,
+    held_projection,
+    projected_cell,
+    projection_reading,
+)
+
+PROJECTED_HEADER_TAIL = "     |  " + PROJECTED_COLUMN_HEADER
+PROJECTED_HEADER_TOOLTIP = (
+    "Projected Accumulation: tokens each sale gains, rebought at Minimum Opposing "
+    "Trade Distance after fees, capped by Max Growth Per Cycle."
+)
+PROJECTED_STACK_TOOLTIP_FORMAT = (
+    "Sold at ${sale:.8f} it nets ${dollars:,.4f}, which rebuys {bought:,.8f} at "
+    "${price:.8f} against {sold:,.8f}: gain {gain:,.8f}. Growth room left buys "
+    "{room:,.8f}."
+)
+PROJECTED_CANCELLED = "No figure: this rung is cancelled and sells nothing."
+PROJECTED_NO_SIZE = "No figure: this rung holds no readable size."
+PROJECTED_NO_RUNG_PRICE = "No figure: this rung holds no readable price."
+PROJECTED_SHADOW_ROW_TOOLTIP = (
+    "No figure: a Shadow Tranche holds its units, and no sale may sell them."
+)
+
+
+def rung_sale_price(rung: dict) -> Optional[float]:
+    """A filled ``rung``'s readable ``FILL_PRICE_KEY``, else its ``PRICE_KEY``, read by ``as_finite_float``."""
+    if str(rung.get(STATUS_KEY)) == STATUS_FILLED:
+        fill = as_finite_float(rung.get(FILL_PRICE_KEY))
+        if fill is not None and fill > 0.0:
+            return fill
+    return as_finite_float(rung.get(PRICE_KEY))
+
+
+def stack_projected_accumulation(rung: dict, reading: ProjectionReading) -> Projection:
+    """``held_projection`` of ``sale_surplus_usd`` of ``rung``'s sale, bought back at ``fold_rebuy_price``."""
+    if reading.distance is None:
+        return Projection(reason=reading.reason or PROJECTED_NO_SETTINGS)
+    if str(rung.get(STATUS_KEY)) == STATUS_CANCELLED:
+        return Projection(reason=PROJECTED_CANCELLED)
+    size = as_finite_float(rung.get(SIZE_KEY))
+    if size is None or size <= 0.0:
+        return Projection(reason=PROJECTED_NO_SIZE)
+    sale = rung_sale_price(rung)
+    if sale is None or sale <= 0.0:
+        return Projection(reason=PROJECTED_NO_RUNG_PRICE)
+    try:
+        distance_pct = reading.distance.distance_at_band(reading.band)
+    except (TypeError, ValueError):
+        return Projection(reason=PROJECTED_BAND_UNREAD)
+    fee = reading.distance.fee_pct
+    gross = priced_usd(size, sale)
+    dollars = sale_proceeds_usd(gross, estimated_fee_usd(gross, fee))
+    price = fold_rebuy_price(sale, distance_pct)
+    gain_usd = sale_surplus_usd(dollars, size, price, fee)
+    return held_projection(reading, [dollars, size, sale], price, gain_usd)
+
+
+def stack_projected_cells(bot: Any, tranches: list) -> list:
+    """``projected_cell`` of ``stack_projected_accumulation`` for each rung, at one ``projection_reading`` of ``bot``."""
+    reading = projection_reading(bot)
+    return [
+        projected_cell(
+            stack_projected_accumulation(rung, reading),
+            PROJECTED_STACK_TOOLTIP_FORMAT,
+        )
+        for rung in tranches
+    ]
+
 
 METHOD = "stack_tranches_tab.state"
 
@@ -122,7 +202,7 @@ EMPTY_WORD_WRAP = True
 DETAIL_GROUP_TITLE_FORMAT = "Tranches ({count})"
 HEADER_TEXT = (
     "  #  |  Target Price  |    Size      |  Mode     |  "
-    "Status     |  Fill Price   |  Age"
+    "Status     |  Fill Price   |  Age" + PROJECTED_HEADER_TAIL
 )
 HEADER_STYLE = (
     "font-family: monospace; font-weight: bold; "
@@ -131,7 +211,7 @@ HEADER_STYLE = (
 
 ROW_FORMAT = (
     "  {index} |  {price}  |  {size}  |  {mode:<9}|  "
-    "{status:<10} |  {fill:<12} |  {age}"
+    "{status:<10} |  {fill:<12} |  {age:<8}|  {projected}"
 )
 ROW_BASE_STYLE = "font-family: monospace; padding: 1px;"
 ROW_FILLED_STYLE = f" color: {ds.SUCCESS};"
@@ -591,6 +671,7 @@ class TabState:
         self.counters_button_enabled = False
         self.detail_rows: list = []
         self.detail_styles: list = []
+        self.detail_tooltips: list = []
         self.detail_title = DETAIL_GROUP_TITLE_FORMAT.format(count=0)
         self.empty_shown = False
         self.detail_shown = False
@@ -743,12 +824,14 @@ class StackTranchesTabModel:
         self.state.detail_title = DETAIL_GROUP_TITLE_FORMAT.format(
             count=len(tranches) + len(shadow_lines)
         )
-        for row in tranches:
-            self.state.detail_rows.append(self._detail_line(row, now_ts))
+        for row, cell in zip(tranches, stack_projected_cells(self.bot, tranches)):
+            self.state.detail_rows.append(self._detail_line(row, now_ts, cell[0]))
             self.state.detail_styles.append(self._detail_style(row))
+            self.state.detail_tooltips.append(cell[1])
         for line in shadow_lines:
             self.state.detail_rows.append(line)
             self.state.detail_styles.append(ROW_BASE_STYLE + ROW_PLAIN_STYLE)
+            self.state.detail_tooltips.append(PROJECTED_SHADOW_ROW_TOOLTIP)
         return self
 
     def _add_row(self, label: str, value: str, style: str = RATIO_NO_STYLE) -> None:
@@ -780,7 +863,7 @@ class StackTranchesTabModel:
             return RATIO_STYLE_FORMAT.format(colour=RATIO_AMBER)
         return RATIO_STYLE_FORMAT.format(colour=RATIO_GREEN)
 
-    def _detail_line(self, row: dict, now_ts: float) -> str:
+    def _detail_line(self, row: dict, now_ts: float, projected: str) -> str:
         index = as_finite_float(row.get(INDEX_KEY, 0))
         index_text = (
             INDEX_FORMAT.format(value=int(index))
@@ -818,6 +901,7 @@ class StackTranchesTabModel:
             status=status,
             fill=fill_text,
             age=age_text,
+            projected=projected,
         )
 
     def _detail_style(self, row: dict) -> str:
@@ -1080,6 +1164,7 @@ def compose_shadow_rows(bot: Any, now_ts: float) -> tuple:
                     if created is not None and created > 0
                     else NO_VALUE
                 ),
+                projected=NO_VALUE,
             )
         )
     return SHADOW_SUMMARY_FORMAT.format(count=len(rows), units=total), lines
@@ -1346,8 +1431,10 @@ def build_view_model(model: StackTranchesTabModel) -> dict:
             "shown": model.state.detail_shown,
             "title": model.state.detail_title,
             "header_text": HEADER_TEXT,
+            "header_tooltip": PROJECTED_HEADER_TOOLTIP,
             "header_style": HEADER_STYLE,
             "rows": list(model.state.detail_rows),
+            "row_tooltips": list(model.state.detail_tooltips),
             "row_styles": list(model.state.detail_styles),
             "row_count": len(model.state.detail_rows),
         },

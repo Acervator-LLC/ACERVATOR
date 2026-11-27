@@ -542,13 +542,19 @@ class StackTranchesTabMixin:
             layout.addStretch()
             return w
 
+        from ..main_tabs.stack_tranches_tab_surface import (
+            HEADER_TEXT,
+            PROJECTED_HEADER_TOOLTIP,
+            PROJECTED_SHADOW_ROW_TOOLTIP,
+            ROW_FORMAT,
+            stack_projected_cells,
+        )
+
         detail_group = QGroupBox(f"Tranches ({len(tranches) + len(shadow_lines)})")
         dg = QVBoxLayout(detail_group)
 
-        header = QLabel(
-            "  #  |  Target Price  |    Size      |  Mode     |  "
-            "Status     |  Fill Price   |  Age"
-        )
+        header = QLabel(HEADER_TEXT)
+        set_description(header, PROJECTED_HEADER_TOOLTIP)
         header.setStyleSheet(
             "font-family: monospace; font-weight: bold; "
             f"color: {ds.TEXT_INFO_SOFT}; padding: 2px;"
@@ -558,7 +564,7 @@ class StackTranchesTabMixin:
         # A value `as_finite_float` refuses renders `no_value`,
         # padded to the width its valid rendering occupies.
         no_value = "—"
-        for t in tranches:
+        for t, projected in zip(tranches, stack_projected_cells(self._bot, tranches)):
             _idx = _as_finite_float(t.get("index", 0))
             idx_str = f"{int(_idx):>2}" if _idx is not None else f"{no_value:>2}"
             _price = _as_finite_float(t.get("price", 0))
@@ -576,9 +582,18 @@ class StackTranchesTabMixin:
                 self._format_age(now_ts - ots) if ots is not None and ots > 0 else "—"
             )
             row = QLabel(
-                f"  {idx_str} |  {price_str}  |  {size_str}  |  "
-                f"{mode:<9}|  {status:<10} |  {fill_str:<12} |  {age_str}"
+                ROW_FORMAT.format(
+                    index=idx_str,
+                    price=price_str,
+                    size=size_str,
+                    mode=mode,
+                    status=status,
+                    fill=fill_str,
+                    age=age_str,
+                    projected=projected[0],
+                )
             )
+            set_description(row, projected[1])
             row.setStyleSheet(
                 "font-family: monospace; padding: 1px;"
                 + (
@@ -590,6 +605,7 @@ class StackTranchesTabMixin:
             dg.addWidget(row)
         for line in shadow_lines:
             row = QLabel(line)
+            set_description(row, PROJECTED_SHADOW_ROW_TOOLTIP)
             row.setStyleSheet("font-family: monospace; padding: 1px;")
             dg.addWidget(row)
 

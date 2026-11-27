@@ -153,8 +153,10 @@
   var WORD_WRAP = "word_wrap";
   var TITLE_FIELD = "title";
   var HEADER_TEXT = "header_text";
+  var HEADER_TOOLTIP = "header_tooltip";
   var HEADER_STYLE = "header_style";
   var ROWS = "rows";
+  var ROW_TOOLTIPS = "row_tooltips";
   var ROW_STYLES = "row_styles";
   var ROW_COUNT = "row_count";
   var SPACING_PX = "spacing_px";
@@ -846,7 +848,7 @@
   function DetailRow(props) {
     var style = styleOf(props.sheet);
     style.whiteSpace = PRE;
-    var rowProps = { className: TAB_CLASS, style: style };
+    var rowProps = { className: TAB_CLASS, style: style, title: label(props.tip) };
     rowProps[PART_ATTR] = DETAIL_ROW_PART;
     rowProps[INDEX_ATTR] = text(props.at);
     rowProps[NAME_ATTR] = text(props.name);
@@ -868,7 +870,11 @@
     titleProps[PART_ATTR] = DETAIL_TITLE_PART;
     var headerStyle = styleOf(detail[HEADER_STYLE]);
     headerStyle.whiteSpace = PRE;
-    var headerProps = { className: TAB_CLASS, style: headerStyle };
+    var headerProps = {
+      className: TAB_CLASS,
+      style: headerStyle,
+      title: label(detail[HEADER_TOOLTIP])
+    };
     headerProps[PART_ATTR] = DETAIL_HEADER_PART;
     var drawn = [
       element(SPAN_TAG, titleProps, text(detail[TITLE_FIELD])),
@@ -879,6 +885,7 @@
         element(DetailRow, {
           key: DETAIL_ROW_PART + String(one.at),
           line: detailRows()[one.at],
+          tip: listField(detail, ROW_TOOLTIPS)[one.at],
           sheet: detailStyle(one.at),
           name: one.name,
           at: one.at

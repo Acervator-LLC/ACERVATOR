@@ -1986,6 +1986,33 @@ tables, so a tranche carries one number on all three screens. Both forks also
 draw the standing-against-sells row from `compose_scrum_sells_row`, the function
 named in the section above, rather than composing a row of their own.
 
+### The Projected Accumulation column
+
+Each Fold Tranche row and each Stack Tranche row shows Projected Accumulation:
+the tokens its opposing trade gains at the Minimum Opposing Trade Distance, held
+to the room Max Growth Per Cycle leaves this cycle. A Fold Tranche's dollars buy
+back at its rebuy price after the buy fee. A Stack rung's sale dollars, after the
+sale fee, buy back at its price less the distance after the buy fee. The gain and
+the room left under the growth cap each become the units they buy at that price,
+and the cell shows the smaller. A row with no figure shows a dash, and its
+mouse-over names the reason. Both windows, and the Paper and Simulator windows,
+draw the same call's answer.
+
+`src/gui/main_tabs/fold_tranches_tab_surface.py` — `fold_projected_accumulation` and `held_projection`
+
+```python
+    restored = units_at_scrum(tranche)
+    gain_usd = gain_after_fees_usd(dollars, restored, price, reading.distance.fee_pct)
+    return held_projection(reading, [dollars, restored, ref], price, gain_usd)
+```
+
+```python
+    gain = units_bought_after_fee(gain_usd, price, fee)
+    room = units_bought_after_fee(reading.room_usd, price, fee, reading.quote_to_usd)
+    return Projection(
+        figure=min(gain, room),
+```
+
 ### What sets the Details window's opening width
 
 The Fold Tranches tab is the widest tab, and the Fold-Tranche Cycle Health box
@@ -2630,6 +2657,20 @@ the stored row, and never from the price first paid. A row shows both: the Sell
 ref column holds the first and the Original cost column holds the second. A
 guide above the cost basis is normal, because a bot that sold high can buy back
 above its own cost and still gain units.
+
+**Current reading.** No Original cost column stands. Projected Accumulation
+stands in its place, and the price first paid stays on the stored row and in the
+Fire confirmation.
+
+`src/gui/main_tabs/fold_tranches_tab_surface.py` — `FIRE_CONFIRM_TEXT_FORMAT`
+
+```python
+FIRE_CONFIRM_TEXT_FORMAT = (
+    "Fire tranche #{number}?\n\n"
+    "  USD parked:    ${usd:.4f}\n"
+    "  Sell ref:      ${ref:.8f}\n"
+    "  Original cost: ${cost:.8f}\n\n"
+```
 
 `src/trading/otd_math.py` — the guide, from the sell reference
 

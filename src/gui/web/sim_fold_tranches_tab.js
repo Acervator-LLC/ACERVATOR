@@ -200,6 +200,7 @@
   var FOLD_ROW_COUNT = "fold_row_count";
   var EXTRACTOR_ROW_COUNT = "extractor_row_count";
   var ROWS = "rows";
+  var CELL_TOOLTIPS = "cell_tooltips";
   var ROW_COLORS = "row_colors";
   var ROW_BACKGROUNDS = "row_backgrounds";
   var ROW_BORDERS = "row_borders";
@@ -923,8 +924,13 @@
     return owns(tips, String(words)) ? tips[String(words)] : undefined;
   }
 
+  // A cell the payload gives its own mouse-over carries it ahead of any label's.
   function cellTooltip(at, column) {
     var words = rowCells(at)[column];
+    var own = listField(tableBag(), CELL_TOOLTIPS)[at];
+    if (Array.isArray(own) && label(own[column]) !== undefined) {
+      return own[column];
+    }
     if (column === tableBag()[ARBITER_COLUMN]) {
       return arbiterTooltipFor(words);
     }
