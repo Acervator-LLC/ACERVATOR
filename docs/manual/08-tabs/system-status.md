@@ -1015,6 +1015,14 @@ run stamped it.
 heartbeat_timer.start(2000)
 ```
 
+The timer runs on the window's thread, so anything that holds that thread also holds the line. A start, a restart and the start at launch call no venue there. The connect and the account read run on the venue's worker, and the start goes on in the window when the answer lands. A slow venue therefore leaves the two-second beat in place.
+
+`src/gui/main_window.py` — the venue work a start hands to the app's loop
+
+```python
+future = self._schedule_async(self._run_venue_start(bot, command, sound))
+```
+
 The directory is `~/.acervator_logs/`, the same root that holds the crash log,
 the fault-handler log and the stale-binary marker. One environment variable
 moves all four. Set `ACERVATOR_CRASH_LOG_ROOT` to a directory and every one of

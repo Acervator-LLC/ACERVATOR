@@ -581,6 +581,24 @@ LIVE_COMMAND_BAR_ROUTE = "the Live tab command bar"
 FLEET_SEQUENCE_ROUTE = "the fleet sequence"
 ```
 
+### A start that waits for its venue
+
+A Start, a Restart, Start All, Restart All and the start at launch ask the venue off the window's thread. The window, its heartbeat and every running bot go on while the venue answers.
+
+The connect loads the market list on the venue's own worker, and all its tries end inside 307.2 seconds. The account read comes from the shared balance read where that read holds the bot's coins, or from one read of its own. Each of these calls ends inside its own time limit, and a venue that does not answer in time ends the start in the same failure line as before, with the reason. Start All counts its 8 seconds for a bot from the moment the venue answers. While a bot waits, the progress window shows it as starting, and the sequence starts no other bot.
+
+A second Start of a bot that waits writes one line and starts nothing. Pause, Stop, Restart, Delete, a fleet lock, a venue removal and a window close each end a start that waits. The line names the reason, nothing starts, and the next Start asks the venue again.
+
+`src/gui/main_window.py` — the two lines a start that waits can write
+
+```python
+START_ON_WAY_FORMAT = "Bot {bot_id} is already starting: it waits for {venue}."
+START_ENDED_FORMAT = (
+    "Bot {bot_id}: its start waited for {venue} and ended: {reason}. "
+    "Nothing was started."
+)
+```
+
 ### A bot whose exchange has no keys
 
 A bot waits when Settings holds no API keys for its exchange. The check reads the same stored fields that a Start reads (`src/exchange/api_access.py, in api_access_required`). A bot whose exchange has keys starts as before.

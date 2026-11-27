@@ -371,8 +371,13 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   built, row 7 in its price, balance and candle parts: each exchange has its own
   refresher, whose rest follows the seconds its reads held the worker and doubles
   behind a throttled or lost answer (`src/exchange/data_pool.py, in SharedReads.rest_s`),
-  and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). The
-  body's build order names the rest: row 2, then 5 and 6.
+  and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). Row 11
+  is built: a start, a restart and the launch start ask the venue off the
+  window's thread, the connect on the venue's worker inside `CONNECT_LIMIT_SEC`
+  and the account read through the shared pool, and the start goes on in the
+  window when the answer lands (`src/gui/main_window.py, in
+  MainWindow._run_venue_start`). The body's build order names the rest: row 2,
+  then 5 and 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before
