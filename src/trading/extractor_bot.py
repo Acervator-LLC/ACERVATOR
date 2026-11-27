@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL
-from ..exchange.base import OrderType
+from ..exchange.base import OrderType, order_turn
 from ..exchange.market_rules_store import quote_currency
 from .bot_container import (
     DOLLAR_PEGGED_CURRENCIES,
@@ -829,6 +829,7 @@ class ExtractorBot(BotContainer):
                 pos.state = state_before
             return
 
+    @order_turn
     async def manual_fire_position(self, pair: str) -> dict:
         """Close one open position at the current market price on
         operator request, from the position's Manual Fire button.
@@ -1198,6 +1199,7 @@ class ExtractorBot(BotContainer):
                 _exc,
             )
 
+    @order_turn
     async def _fire_artillery(
         self,
         pair: str,

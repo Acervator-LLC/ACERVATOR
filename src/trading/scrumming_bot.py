@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
 from ..core.price_age import PriceRead, ReadMoment
-from ..exchange.base import OrderSide, OrderType
+from ..exchange.base import OrderSide, OrderType, order_turn
 from ..exchange.ccxt_connector import order_stayed_home
 from ..exchange.data_pool import TICKER_TTL_SECONDS
 from ..exchange.idempotency import decision_purpose
@@ -1805,6 +1805,7 @@ class ScrummingBot(
             "atomic": _atomic_ok,
         }
 
+    @order_turn
     async def manual_fire_tranche(self, tranche_index: int) -> dict:
         """Operator-initiated fold-back of a specific tranche, on a price inside the age
         limit.
@@ -2412,6 +2413,7 @@ class ScrummingBot(
         except (TypeError, ValueError, ZeroDivisionError):
             return 0.0
 
+    @order_turn
     async def self_destruct(
         self,
         confirmation_token: str = "",
@@ -5516,6 +5518,7 @@ class ScrummingBot(
         # the caller must not fall through to an undivided market sell.
         return len(_opened_rungs) + _combined_n
 
+    @order_turn
     async def _reconcile_stack_tranches_visible(self) -> int:
         """Visible-mode Stack reconciliation, once per tick.
 

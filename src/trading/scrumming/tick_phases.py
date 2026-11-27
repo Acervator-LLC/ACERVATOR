@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
-from ...exchange.base import OrderSide, OrderType
+from ...exchange.base import OrderSide, OrderType, order_turn
 from ...exchange.ccxt_connector import order_stayed_home
 from ..container.config import (
     CEILING_MULTIPLE_MAX,
@@ -724,30 +724,8 @@ class TickPhaseMixin:
                 )
         return _cartridge_pct
 
+    @order_turn
     async def _tick_cartridge_fire(
-        self,
-        ticker: Any,
-        _direction: str,
-        _cartridge_delta: float,
-        _cartridge_threshold: float,
-        _cartridge_pct: float,
-    ) -> str:
-        """Answer ``_fire_cartridge``, inside ``queue_cap_waived`` for a ``FOLD``."""
-        from contextlib import nullcontext
-
-        from ...exchange.ccxt_connector import queue_cap_waived
-
-        scope = queue_cap_waived() if _direction == "FOLD" else nullcontext()
-        with scope:
-            return await self._fire_cartridge(
-                ticker,
-                _direction,
-                _cartridge_delta,
-                _cartridge_threshold,
-                _cartridge_pct,
-            )
-
-    async def _fire_cartridge(
         self,
         ticker: Any,
         _direction: str,
@@ -2821,6 +2799,7 @@ class TickPhaseMixin:
             ),
         )
 
+    @order_turn
     async def _dist_balance_cap(self, units: float) -> float:
         """``units`` held to the venue's free balance of the base asset, unchanged
         where that balance cannot be read."""
