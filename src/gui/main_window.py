@@ -116,9 +116,23 @@ PAIRS_READ_CALLS = 2
 BROKER_SESSION_PAPER = True
 
 #: Why ``_open_broker_session`` refused before reaching the venue.
-#: ``_connect_broker_for_bot`` matches on this to open the configuration window.
 NO_BROKER_CREDENTIAL = "no API credentials are stored"
 VENUE_NOT_STORED = "Settings no longer holds this venue, so the bot stays stopped"
+#: The refusal a broker call past ``CONNECT_LIMIT_SEC`` gives ``_connect_broker_for_bot``.
+BROKER_CALL_UNANSWERED_FORMAT = "no answer in {limit:g}s"
+
+#: The status line a Start writes while ``_venue_start_on_way`` holds that bot's start.
+START_ON_WAY_FORMAT = "Bot {bot_id} is already starting: it waits for {venue}."
+#: The status line ``_end_venue_starts`` writes for each start it ends.
+START_ENDED_FORMAT = (
+    "Bot {bot_id}: its start waited for {venue} and ended: {reason}. "
+    "Nothing was started."
+)
+#: The reasons ``_end_venue_starts`` names: a press, a lock, a venue removal, a close.
+PRESS_ENDS_START_FORMAT = "{command} was pressed"
+FLEET_LOCK_ENDS_START = "the fleet was locked"
+VENUE_RELEASE_ENDS_START = "the venue was disconnected"
+WINDOW_CLOSE_ENDS_START = "the window closed"
 
 #: The branches ``_on_bot_command`` and ``run_fleet_sequence`` pass for a bot
 #: whose exchange ``api_access_required`` names.
@@ -219,7 +233,6 @@ try:
     _HAS_QT = True
 except ImportError:
     _HAS_QT = False
-from src.gui.qt_safe_events import safe_process_events
 
 __all__ = [
     "APITesterTab",
@@ -3013,17 +3026,6 @@ if _HAS_QT:
                 pool.submit(asyncio.run, coro)
             return None
 
-        def _await_async(self, coro):
-            """Run ``coro`` to completion and answer its result.
-
-            ``_async_loop`` is advanced by ``pump_once`` from a timer and is not
-            running between pumps, so ``run_until_complete`` drives it here.
-            """
-            loop = getattr(self, "_async_loop", None)
-            if loop is None:
-                return asyncio.run(coro)
-            return loop.run_until_complete(coro)
-
         def _schedule_coalesced(
             self, slot: str, coro, calls: int, venue: str = "", mark=None
         ) -> None:
@@ -3046,8 +3048,55 @@ if _HAS_QT:
                 if not eid or held.may_ask(eid):
                     slots.pop(name).end()
 
+        def _venue_start_on_way(self, bot_id: str) -> bool:
+            """True while ``_venue_starts`` holds an unfinished start for *bot_id*."""
+            held = getattr(self, "_venue_starts", {}).get(bot_id)
+            return held is not None and not held.done()
+
+        def _begin_venue_start(self, bot, command: str, sound) -> None:
+            """Schedule ``_run_venue_start`` unless ``_venue_start_on_way`` reads True, and keep its Future."""
+            from concurrent.futures import Future
+
+            if self._venue_start_on_way(bot.bot_id):
+                return
+            future = self._schedule_async(self._run_venue_start(bot, command, sound))
+            if future is not None:
+                starts = getattr(self, "_venue_starts", None)
+                if starts is None:
+                    starts = self._venue_starts = dict[str, Future]()
+                starts[bot.bot_id] = future
+
+        def _end_venue_starts(
+            self, reason: str, eid: str = "", bot_id: str = ""
+        ) -> None:
+            """Cancel each start ``_venue_start_on_way`` reads, on *eid* or of *bot_id* where given, and log ``START_ENDED_FORMAT``."""
+            for held_id in list(getattr(self, "_venue_starts", {})):
+                held = self._bot_manager.get_bot(held_id) if self._bot_manager else None
+                venue = held.config.exchange_id if held is not None else ""
+                if not self._venue_start_on_way(held_id):
+                    continue
+                if (eid and venue != eid) or (bot_id and held_id != bot_id):
+                    continue
+                self._venue_starts[held_id].cancel()
+                self._status_log.log(
+                    START_ENDED_FORMAT.format(
+                        bot_id=held_id, venue=venue.capitalize(), reason=reason
+                    ),
+                    "warning",
+                )
+
+        def _venue_lock(self, eid: str) -> asyncio.Lock:
+            """The ``asyncio.Lock`` that runs one ``_connect_exchange_for_bot`` of *eid* at a time."""
+            locks = getattr(self, "_venue_locks", None)
+            if locks is None:
+                locks = self._venue_locks = dict[str, asyncio.Lock]()
+            if eid not in locks:
+                locks[eid] = asyncio.Lock()
+            return locks[eid]
+
         def closeEvent(self, event) -> None:
-            """Run ``_end_reads``, then close the window."""
+            """Run ``_end_venue_starts`` and ``_end_reads``, then close the window."""
+            self._end_venue_starts(WINDOW_CLOSE_ENDS_START)
             self._end_reads()
             super().closeEvent(event)
 
@@ -3210,7 +3259,7 @@ if _HAS_QT:
             )
             self._run_settings_window(wing_showing_venue(eid, sector), START_ROUTE, eid)
 
-        def _open_broker_session(
+        async def _open_broker_session(
             self, connector, eid: str, sector: str = ""
         ) -> tuple[bool, str]:
             """Open *connector*'s session with the stored credential for *eid* on
@@ -3224,6 +3273,7 @@ if _HAS_QT:
             opens live, because asking for a host the venue does not serve
             refuses every session.
             """
+            from ..exchange.ccxt_connector import CONNECT_LIMIT_SEC
             from ..stocks.broker_base import broker_paper_route
 
             if getattr(connector, "is_connected", False):
@@ -3239,10 +3289,17 @@ if _HAS_QT:
             paper = BROKER_SESSION_PAPER and broker_paper_route(connector)
             try:
                 opened = bool(
-                    self._await_async(
-                        connector.open_session(api_key, api_secret, paper)
+                    await asyncio.wait_for(
+                        connector.open_session(api_key, api_secret, paper),
+                        CONNECT_LIMIT_SEC,
                     )
                 )
+            except asyncio.TimeoutError as exc:
+                refusal = str(exc) or BROKER_CALL_UNANSWERED_FORMAT.format(
+                    limit=CONNECT_LIMIT_SEC
+                )
+                logger.warning("broker session for %s not opened: %s", eid, refusal)
+                return False, refusal
             except Exception as exc:
                 refusal = f"{type(exc).__name__}: {exc}"
                 logger.warning("broker session for %s not opened: %s", eid, refusal)
@@ -3251,23 +3308,31 @@ if _HAS_QT:
                 return True, ""
             return False, getattr(connector, "session_refusal", "") or "refused"
 
-        def _read_broker_markets(self, connector, eid: str) -> tuple[int, str]:
+        async def _read_broker_markets(self, connector, eid: str) -> tuple[int, str]:
             """Read *connector*'s asset list over its open session and record it,
             answering the row count written with the failure that stopped it.
 
             ``list_assets`` needs the session ``_open_broker_session`` opened, and
             runs once a session: a second bot records what the first read.
             """
+            from ..exchange.ccxt_connector import CONNECT_LIMIT_SEC
+
             if not connector.held_assets():
                 try:
-                    self._await_async(connector.list_assets())
+                    await asyncio.wait_for(connector.list_assets(), CONNECT_LIMIT_SEC)
+                except asyncio.TimeoutError as exc:
+                    failure = str(exc) or BROKER_CALL_UNANSWERED_FORMAT.format(
+                        limit=CONNECT_LIMIT_SEC
+                    )
+                    logger.warning("broker assets for %s not read: %s", eid, failure)
+                    return 0, failure
                 except Exception as exc:
                     failure = f"{type(exc).__name__}: {exc}"
                     logger.warning("broker assets for %s not read: %s", eid, failure)
                     return 0, failure
             return self._record_broker_markets(connector)
 
-        def _connect_broker_for_bot(self, bot) -> tuple[bool, str]:
+        async def _connect_broker_for_bot(self, bot) -> tuple[bool, str]:
             """Build or reuse the broker's connector, open its session, record its
             markets and hand it to *bot* as a ``BrokerExchange``; returns
             (ok, message).
@@ -3350,11 +3415,7 @@ if _HAS_QT:
 
             venue = eid.capitalize()
             sector = str(getattr(bot, "sector", "") or "")
-            opened, refusal = self._open_broker_session(connector, eid, sector)
-
-            if not opened and refusal == NO_BROKER_CREDENTIAL:
-                self._ask_for_venue_connection(eid, sector)
-                opened, refusal = self._open_broker_session(connector, eid, sector)
+            opened, refusal = await self._open_broker_session(connector, eid, sector)
 
             if not opened:
                 msg = (
@@ -3385,7 +3446,7 @@ if _HAS_QT:
                 data_usage="Recorded market rules size every later order",
             )
 
-            recorded, failure = self._read_broker_markets(connector, eid)
+            recorded, failure = await self._read_broker_markets(connector, eid)
 
             if failure:
                 msg = (
@@ -3418,7 +3479,7 @@ if _HAS_QT:
             )
             return True, msg
 
-        def _connect_written_crypto_for_bot(self, bot) -> tuple[bool, str]:
+        async def _connect_written_crypto_for_bot(self, bot) -> tuple[bool, str]:
             """Build or reuse the hand-written crypto connector for *bot*'s venue,
             hold the stored credential on it and hand it to *bot*; returns
             (ok, message).
@@ -3461,13 +3522,6 @@ if _HAS_QT:
 
             api_key, signing_key, account_number = self._written_crypto_credential(eid)
             if not api_key or not signing_key:
-                self._ask_for_venue_connection(
-                    eid, str(getattr(bot, "sector", "") or "")
-                )
-                api_key, signing_key, account_number = self._written_crypto_credential(
-                    eid
-                )
-            if not api_key or not signing_key:
                 msg = (
                     f"No API credentials for {venue}. Add them in Settings. "
                     f"No connector was built."
@@ -3491,9 +3545,7 @@ if _HAS_QT:
 
             if not getattr(connector, "is_connected", False):
                 try:
-                    self._await_async(
-                        connector.connect(api_key, signing_key, account_number)
-                    )
+                    await connector.connect(api_key, signing_key, account_number)
                 except Exception as exc:
                     msg = (
                         f"{venue} connector would not hold the credential: "
@@ -3572,7 +3624,7 @@ if _HAS_QT:
                 str(getattr(bot, "sector", "") or ""),
             )
 
-        def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
+        async def _connect_exchange_for_bot(self, bot) -> tuple[bool, str]:
             """Reuse the exchange's connector, or build one; returns (ok, message).
 
             ``BotContainer.sector`` picks the transport ``start_transport``
@@ -3591,10 +3643,10 @@ if _HAS_QT:
             transport = start_transport(eid, sector)
 
             if transport == BROKER_TRANSPORT:
-                return self._connect_broker_for_bot(bot)
+                return await self._connect_broker_for_bot(bot)
 
             if transport == WRITTEN_TRANSPORT:
-                return self._connect_written_crypto_for_bot(bot)
+                return await self._connect_written_crypto_for_bot(bot)
 
             _log.record(
                 exchange=eid,
@@ -3638,6 +3690,8 @@ if _HAS_QT:
                 )
                 return False, msg
 
+            connect_call: Optional["asyncio.Future[None]"] = None
+            connector = None
             try:
                 connector = self._live_connector(eid)
 
@@ -3678,7 +3732,10 @@ if _HAS_QT:
                     # Registered before `sync_connect`, which starts the scan thread.
                     self._wire_connector_for_bot(connector, bot)
 
-                    connector.sync_connect(api_key, api_secret, passphrase or "")
+                    connect_call = asyncio.ensure_future(
+                        connector.connect(api_key, api_secret, passphrase or "")
+                    )
+                    await asyncio.shield(connect_call)
 
                     _log.record(
                         exchange=eid,
@@ -3689,21 +3746,10 @@ if _HAS_QT:
                         data_usage="Bot now has a live exchange connection for trading",
                     )
 
-                from ..exchange.ccxt_connector import note_venue_answered
+                from ..exchange.data_pool import get_data_pool
 
-                balances_raw = {}
-                if hasattr(connector, "_ccxt_sync"):
-                    balances_raw = connector._ccxt_sync.fetch_balance()
-                    note_venue_answered(eid)
-
+                pool = get_data_pool()
                 base = bot.config.base_currency
-
-                free_bals = (
-                    balances_raw.get("free", {})
-                    if isinstance(balances_raw, dict)
-                    else {}
-                )
-                base_free = float(free_bals.get(base, 0) or 0)
                 # Extractor mode passes no target asset to `check_start_balance`.
                 from ..trading.bot_container import BotMode as _BM
                 from src.trading.start_balance_check import check_start_balance
@@ -3716,8 +3762,15 @@ if _HAS_QT:
                 else:
                     _target_for_helper = bot.config.target_asset
                     _target_free_for_helper = float(
-                        free_bals.get(_target_for_helper, 0) or 0
+                        (
+                            await pool.get_or_fetch_balance(
+                                connector, eid, _target_for_helper
+                            )
+                        ).free
                     )
+                base_free = float(
+                    (await pool.get_or_fetch_balance(connector, eid, base)).free
+                )
 
                 _base_usd_price = None
                 if _is_extractor_mode and base.upper() not in {
@@ -3730,13 +3783,12 @@ if _HAS_QT:
                     "FDUSD",
                 }:
                     try:
-                        if hasattr(connector, "_ccxt_sync"):
-                            _t = connector._ccxt_sync.fetch_ticker(f"{base}/USD")
-                            _base_usd_price = float(
-                                _t.get("last") or _t.get("close") or 0 or 0
-                            )
-                            if _base_usd_price <= 0:
-                                _base_usd_price = None
+                        _t = await pool.get_or_fetch_ticker(
+                            connector, eid, f"{base}/USD"
+                        )
+                        _base_usd_price = float(_t.last or 0)
+                        if _base_usd_price <= 0:
+                            _base_usd_price = None
                     except Exception as _exc:
                         logger.warning(
                             "could not fetch %s/USD price "
@@ -3839,6 +3891,26 @@ if _HAS_QT:
                     data_usage="See DIAGNOSIS above for specific troubleshooting steps",
                 )
                 return False, msg
+            finally:
+                if (
+                    connect_call is not None
+                    and self._exchange_connectors.get(eid) is not connector
+                ):
+                    self._release_when_done(connector, connect_call)
+
+        @staticmethod
+        def _release_when_done(connector, connect_call) -> None:
+            """Call ``connector.release`` now, or once *connect_call* ends where it still runs."""
+
+            def release(ended) -> None:
+                if not ended.cancelled():
+                    ended.exception()
+                connector.release()
+
+            if connect_call.done():
+                connector.release()
+                return
+            connect_call.add_done_callback(release)
 
         async def _restart_bot(self, bot, sound) -> None:
             """``bot.restart``, then the restarted line once ``bot`` reads RUNNING."""
@@ -3962,6 +4034,128 @@ if _HAS_QT:
             finally:
                 bot.start_pending = False
 
+        async def _run_venue_start(self, bot, command: str, sound) -> None:
+            """Await ``_connect_exchange_for_bot`` under ``_venue_lock``, then finish the Start or Restart *command* names."""
+            success, msg, raised = False, "", None
+            try:
+                async with self._venue_lock(bot.config.exchange_id):
+                    success, msg = await self._connect_exchange_for_bot(bot)
+            except Exception as exc:
+                raised = exc
+                msg = f"{type(exc).__name__}: {exc}"
+            finally:
+                if command == START_COMMAND:
+                    bot.start_pending = success
+            if command == START_COMMAND:
+                self._finish_start(bot, success, msg, sound)
+            else:
+                self._finish_restart(bot, success, msg, raised, sound)
+
+        def _finish_start(self, bot, success: bool, msg: str, sound) -> None:
+            """Write the Start words for *bot*'s connect answer and, on *success*, schedule ``_start_marked_bot``."""
+            bot_id = bot.bot_id
+            if not success:
+                self._status_log.log(f"Cannot start bot {bot_id}: {msg}", "error")
+                self._spool.notify(f"Bot {bot_id} FAILED: {msg}", "error")
+                sound.play_error()
+                return
+
+            self._status_log.log(f"✓ Bot {bot_id}: {msg}", "success")
+
+            if not getattr(bot, "_user_verified", False):
+                cfg = bot.config
+                sym = cfg.symbol
+                vis = "Invisible" if cfg.visibility == "internal" else "Order Book"
+                mode = cfg.mode.value.upper()
+
+                pf = "ON" if cfg.profit_folding_active else "OFF"
+                mg = "ON" if cfg.bb_midline_gate else "OFF"
+                be = "ON" if cfg.bb_bullseye_check else "OFF"
+                hr = "ON" if cfg.hedge_rebalance_active else "OFF"
+                detail = (
+                    f"Mode: {mode} — {vis} | "
+                    f"Target: ${cfg.target_balance:.2f} | "
+                    f"Interval: {cfg.scrumming_interval_pct}% | "
+                    f"TA TF: {cfg.ta_timeframe} | "
+                    f"BB tol: {cfg.bb_tolerance_pct}%, strip: {cfg.bb_landing_strip_candles} | "
+                    f"Advanced: detect={cfg.scrum_detect_pct}%, fire={cfg.scrum_fire_pct}%, "
+                    f"midline={mg}, bullseye={be}, travel={cfg.band_travel_pct}%, "
+                    f"read={cfg.scrum_read_rate_min}min | "
+                    f"Hedge: {hr} (${cfg.hedge_balance:.2f}) | "
+                    f"Fold: {pf}"
+                )
+
+                self._status_log.log(
+                    f"⚠ REAL MONEY: Bot {bot_id[:8]} on "
+                    f"{cfg.exchange_id.capitalize()} — {sym} — {detail}",
+                    "warning",
+                )
+                self._spool.notify(
+                    f"⚠ Bot {bot_id[:8]} starting on REAL — {sym}", "warning"
+                )
+                bot._user_verified = True
+
+            try:
+                self._schedule_async(self._start_marked_bot(bot))
+                if bot.order_hold_reason():
+                    return
+                self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
+                self._spool.notify(f"Bot {bot_id} RUNNING", "success")
+                sound.play_state_change()
+            except Exception as exc:
+                bot.start_pending = False
+                self._status_log.log(f"Failed to start bot {bot_id}: {exc}", "error")
+                sound.play_error()
+
+        def _finish_restart(self, bot, success: bool, msg: str, raised, sound) -> None:
+            """Schedule ``_restart_bot`` after *bot*'s connect, or ``bot.stop`` with the words of a failed one."""
+            bot_id = bot.bot_id
+            if raised is not None:
+                self._status_log.log(
+                    f"Failed to restart bot {bot_id}: {raised}", "error"
+                )
+                sound.play_error()
+                return
+            if success:
+                self._schedule_async(self._restart_bot(bot, sound))
+                return
+            self._schedule_async(bot.stop())
+            self._status_log.log(f"Cannot restart bot {bot_id}: {msg}", "error")
+            sound.play_error()
+
+        def _ask_for_missing_credential(self, bot) -> None:
+            """Run ``_ask_for_venue_connection`` before a start whose broker or written venue stores no credential."""
+            from ..exchange.api_access import (
+                BROKER_TRANSPORT,
+                WRITTEN_TRANSPORT,
+                start_transport,
+            )
+            from ..exchange.robinhood_connector import crypto_connector_class
+            from ..stocks.alpaca_connector import broker_connector_class
+
+            eid = bot.config.exchange_id
+            sector = str(getattr(bot, "sector", "") or "")
+            transport = start_transport(eid, sector)
+            try:
+                if transport == BROKER_TRANSPORT:
+                    held = self._held_broker(eid)
+                    if getattr(held, "is_connected", False):
+                        return
+                    if held is None and broker_connector_class(eid) is None:
+                        return
+                    stored = all(self._broker_credential(eid, sector))
+                elif transport == WRITTEN_TRANSPORT:
+                    if crypto_connector_class(eid) is None:
+                        return
+                    stored = all(self._written_crypto_credential(eid)[:2])
+                else:
+                    return
+            except Exception as exc:
+                logger.warning("stored credential for %s not read: %s", eid, exc)
+                return
+            if not stored:
+                self._ask_for_venue_connection(eid, sector)
+
         def _on_bot_command(self, bot_id: str, command: str, route: str) -> None:
             """Log ``bot_command_line`` for *command* from *route*, then run the branch ``bot_command_branch`` names."""
             if not self._bot_manager:
@@ -3996,75 +4190,32 @@ if _HAS_QT:
 
             sound = get_sound_engine()
 
+            if branch in (PAUSE_COMMAND, STOP_COMMAND, RESTART_COMMAND):
+                self._end_venue_starts(
+                    PRESS_ENDS_START_FORMAT.format(command=branch.capitalize()),
+                    bot_id=bot_id,
+                )
+
             if branch == START_COMMAND:
-                bot.start_pending = True
-                # Synchronous connect on the GUI thread: the window freezes until done.
                 eid_display = bot.config.exchange_id.capitalize()
+                if self._venue_start_on_way(bot_id):
+                    self._status_log.log(
+                        START_ON_WAY_FORMAT.format(bot_id=bot_id, venue=eid_display),
+                        "info",
+                    )
+                    return
+                bot.start_pending = True
                 self._status_log.log(
                     f"⏳ Starting bot {bot_id}... Connecting to {eid_display} "
-                    f"(this can take 5-15 seconds, app may appear frozen)",
+                    f"(this can take 5-15 seconds)",
                     "info",
                 )
                 self._spool.notify(
                     f"⏳ Bot {bot_id}: connecting to {eid_display}...", "info"
                 )
-
-                safe_process_events("legacy processEvents site")
-
-                success, msg = False, ""
+                self._ask_for_missing_credential(bot)
                 try:
-                    success, msg = self._connect_exchange_for_bot(bot)
-                finally:
-                    bot.start_pending = success
-                if not success:
-                    self._status_log.log(f"Cannot start bot {bot_id}: {msg}", "error")
-                    self._spool.notify(f"Bot {bot_id} FAILED: {msg}", "error")
-                    sound.play_error()
-                    return
-
-                self._status_log.log(f"✓ Bot {bot_id}: {msg}", "success")
-                safe_process_events("legacy processEvents site")
-
-                if not getattr(bot, "_user_verified", False):
-                    cfg = bot.config
-                    sym = cfg.symbol
-                    vis = "Invisible" if cfg.visibility == "internal" else "Order Book"
-                    mode = cfg.mode.value.upper()
-
-                    pf = "ON" if cfg.profit_folding_active else "OFF"
-                    mg = "ON" if cfg.bb_midline_gate else "OFF"
-                    be = "ON" if cfg.bb_bullseye_check else "OFF"
-                    hr = "ON" if cfg.hedge_rebalance_active else "OFF"
-                    detail = (
-                        f"Mode: {mode} — {vis} | "
-                        f"Target: ${cfg.target_balance:.2f} | "
-                        f"Interval: {cfg.scrumming_interval_pct}% | "
-                        f"TA TF: {cfg.ta_timeframe} | "
-                        f"BB tol: {cfg.bb_tolerance_pct}%, strip: {cfg.bb_landing_strip_candles} | "
-                        f"Advanced: detect={cfg.scrum_detect_pct}%, fire={cfg.scrum_fire_pct}%, "
-                        f"midline={mg}, bullseye={be}, travel={cfg.band_travel_pct}%, "
-                        f"read={cfg.scrum_read_rate_min}min | "
-                        f"Hedge: {hr} (${cfg.hedge_balance:.2f}) | "
-                        f"Fold: {pf}"
-                    )
-
-                    self._status_log.log(
-                        f"⚠ REAL MONEY: Bot {bot_id[:8]} on "
-                        f"{cfg.exchange_id.capitalize()} — {sym} — {detail}",
-                        "warning",
-                    )
-                    self._spool.notify(
-                        f"⚠ Bot {bot_id[:8]} starting on REAL — {sym}", "warning"
-                    )
-                    bot._user_verified = True
-
-                try:
-                    self._schedule_async(self._start_marked_bot(bot))
-                    if bot.order_hold_reason():
-                        return
-                    self._status_log.log(f"✓ Bot {bot_id} RUNNING.", "success")
-                    self._spool.notify(f"Bot {bot_id} RUNNING", "success")
-                    sound.play_state_change()
+                    self._begin_venue_start(bot, START_COMMAND, sound)
                 except Exception as exc:
                     bot.start_pending = False
                     self._status_log.log(
@@ -4098,21 +4249,12 @@ if _HAS_QT:
                 eid_display = bot.config.exchange_id.capitalize()
                 self._status_log.log(
                     f"⏳ Restarting bot {bot_id}... Reconnecting to "
-                    f"{eid_display} (5-15 seconds, app may appear frozen)",
+                    f"{eid_display} (5-15 seconds)",
                     "info",
                 )
-
-                safe_process_events("legacy processEvents site")
+                self._ask_for_missing_credential(bot)
                 try:
-                    success, msg = self._connect_exchange_for_bot(bot)
-                    if success:
-                        self._schedule_async(self._restart_bot(bot, sound))
-                    else:
-                        self._schedule_async(bot.stop())
-                        self._status_log.log(
-                            f"Cannot restart bot {bot_id}: {msg}", "error"
-                        )
-                        sound.play_error()
+                    self._begin_venue_start(bot, RESTART_COMMAND, sound)
                 except Exception as exc:
                     self._status_log.log(
                         f"Failed to restart bot {bot_id}: {exc}", "error"
@@ -4127,6 +4269,10 @@ if _HAS_QT:
                     QMessageBox.Yes | QMessageBox.No,
                 )
                 if confirm == QMessageBox.Yes:
+                    self._end_venue_starts(
+                        PRESS_ENDS_START_FORMAT.format(command="Delete"),
+                        bot_id=bot_id,
+                    )
                     # Scheduled before `unregister` so the bot is told to stop first.
                     try:
                         self._schedule_async(bot.stop())
@@ -4188,6 +4334,7 @@ if _HAS_QT:
             ``_end_reads`` ends the reads the fleet's connectors were asked for.
             """
             self._fleet_locked = True
+            self._end_venue_starts(FLEET_LOCK_ENDS_START)
             self._end_reads()
             self._status_log.log(FLEET_LOCKED_TEXT, "warning")
             logger.info("%s (%s)", FLEET_LOCKED_TEXT, reason or "sealed")
@@ -4297,7 +4444,9 @@ if _HAS_QT:
                         started=total,
                     )
                     return
-                if getattr(self._bot_manager, "_start_all_cancel", False):
+                if self.fleet_locked() or getattr(
+                    self._bot_manager, "_start_all_cancel", False
+                ):
                     bus.emit(
                         FLEET_SEQUENCE_TOPIC,
                         phase="cancelled",
@@ -4336,10 +4485,16 @@ if _HAS_QT:
                     QTimer.singleShot(0, lambda: _move_one(idx + 1))
                     return
 
-                started_at = time.monotonic()
+                started_at = [time.monotonic()]
 
                 def _verify_or_next() -> None:
-                    elapsed = time.monotonic() - started_at
+                    if self._venue_start_on_way(bot.bot_id):
+                        started_at[0] = time.monotonic()
+                        QTimer.singleShot(
+                            FLEET_SEQUENCE_POLL_INTERVAL_MS, _verify_or_next
+                        )
+                        return
+                    elapsed = time.monotonic() - started_at[0]
                     if getattr(self._bot_manager, "_start_all_cancel", False):
                         bus.emit(
                             FLEET_SEQUENCE_TOPIC,
@@ -4537,6 +4692,7 @@ if _HAS_QT:
                         KEY_WAITS_FORMAT.format(venue=eid.capitalize()), "warning"
                     )
                     continue
+                self._end_venue_starts(VENUE_RELEASE_ENDS_START, eid=eid)
                 self._broker_exchanges.pop(eid, None)
                 self._release_connector(eid)
 
@@ -4774,7 +4930,8 @@ if _HAS_QT:
             self._release_venue_link(eid)
 
         def _release_venue_link(self, eid: str) -> None:
-            """Take *eid* out of ``_broker_exchanges`` and ``_exchange_connectors``."""
+            """Run ``_end_venue_starts`` on *eid*, then take it out of ``_broker_exchanges`` and ``_exchange_connectors``."""
+            self._end_venue_starts(VENUE_RELEASE_ENDS_START, eid=eid)
             self._broker_exchanges.pop(eid, None)
             self._release_connector(eid)
 
