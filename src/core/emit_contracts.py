@@ -252,7 +252,9 @@ def _fill_faults(event_data: dict) -> list[str]:
 
 def _is_text_list(value: Any) -> bool:
     """True for a list or tuple whose every item is text."""
-    return isinstance(value, (list, tuple)) and all(isinstance(one, str) for one in value)
+    return isinstance(value, (list, tuple)) and all(
+        isinstance(one, str) for one in value
+    )
 
 
 def _growth_faults(growth: Any) -> list[str]:

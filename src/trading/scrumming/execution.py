@@ -2308,7 +2308,8 @@ class ExecutionEngineMixin:
         msg: str,
     ) -> None:
         """Apply ``gain_usd`` as target growth, log ``msg``, and report and announce one
-        settled piece of a buy ``_pay_queue_by_units`` paid, by its ``_queue_payment``."""
+        settled piece of a buy ``_pay_queue_by_units`` paid, by its ``_queue_payment``.
+        """
         payment = self._queue_payment
         self._queue_payment = NO_QUEUE_PAYMENT
         _growth_applied = self._apply_fold_target_growth(

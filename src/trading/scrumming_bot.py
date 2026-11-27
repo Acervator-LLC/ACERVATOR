@@ -194,6 +194,7 @@ def target_growth_line(growth: TargetGrowth, order_id: str, consumed_usd: float)
         f"eaten by fees.)"
     )
 
+
 #: The gate log key carrying each refusal an override replaced on one side.
 OVERRIDES_APPLIED_KEY = "overrides_applied"
 
