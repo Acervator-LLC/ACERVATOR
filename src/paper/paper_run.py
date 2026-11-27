@@ -289,7 +289,7 @@ def paper_tape_context(
     ``mem253_current_pos``, and leaves ``reading``, ``summary`` and ``window``
     to drive ``bb_pos``, every indicator and ``trend_reading``.
     """
-    from ..trading.indicators.bb_proximity import band_zone
+    from ..trading.vote_boost import boost_figures, read_zone
 
     last = float(ticker_last)
     bb_pos = float(reading.bb_position) if reading is not None else 0.0
@@ -298,13 +298,23 @@ def paper_tape_context(
     target_usd = float(getattr(balance, "target_usd", 0.0) or bot.target_usd or 0.0)
     position_usd = balance.value_usd(last)
     delta = target_delta_usd(position_usd, target_usd)
-    upper_zone, lower_zone = band_zone(reading, delta)
+    zone = read_zone(
+        summary.signals if summary is not None else [],
+        summary.consensus_direction if summary is not None else None,
+        float(summary.consensus_confidence) if summary is not None else 0.0,
+        delta,
+        window,
+        tolerance_pct=float(bot.bb_tolerance_pct),
+        taper_minimum=int(bot.bb_landing_strip_candles),
+        figures=boost_figures(bot),
+    )
+    upper_zone, lower_zone = zone.upper, zone.lower
     htf_blocks_scrum = htf_bias_name == BULLISH
     htf_blocks_fold = htf_bias_name == BEARISH
     interval_usd = scrumming_interval_usd(target_usd, float(bot.scrumming_interval_pct))
     below_interval = delta_below_interval(delta, interval_usd)
     is_bullish, is_bearish, direction_name, _confidence = ta_direction(
-        summary, reading, upper_zone, lower_zone
+        summary, upper_zone, lower_zone
     )
     trend_hold, trend_strength = trend_reading(window)
     effective = effective_gate_flags(
@@ -367,6 +377,8 @@ def paper_tape_context(
         z_score=signal_detail(summary, "zscore", "z"),
         bb_upper_zone=upper_zone,
         bb_lower_zone=lower_zone,
+        zone_deeper=zone.scrum_deeper or zone.fold_deeper,
+        zone_bar=zone.scrum.bar if upper_zone else zone.fold.bar,
     )
 
 

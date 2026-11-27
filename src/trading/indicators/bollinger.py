@@ -64,7 +64,7 @@ class BollingerBands:
         """Vote on where the last close sits inside the bands.
 
         Abstains below ``period`` closes and on a window with no range.
-        ``details`` carries the three bands, %B, BandWidth and the
+        ``details`` carries the three bands, the close, %B, BandWidth and the
         squeeze flag, which ``VotingEngine.compute_all`` records per
         candle and ``detect_volume_confirmed_spring`` reads.
         """
@@ -147,6 +147,7 @@ class BollingerBands:
                 "upper": upper,
                 "middle": mid,
                 "lower": lower,
+                "close": price,
                 "bb_position": bb_pos,
                 "band_width": band_width,
                 "squeeze": squeeze,

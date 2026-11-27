@@ -119,8 +119,9 @@ class GateContext:
     bb_upper_zone: bool = False
     bb_lower_zone: bool = False
 
-    # The Target Delta at or past Max Cartridge Size, as cartridge_reached answers.
-    cartridge_reached: bool = False
+    # zone_timing read price going deeper into this side's zone, at zone_bar.
+    zone_deeper: bool = False
+    zone_bar: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -609,29 +610,44 @@ class ZScoreExtremityGate(Gate):
         return GateResult(passed=True)
 
 
+class ZoneTimingGate(Gate):
+    """Holds while ``ctx.zone_deeper`` inside its side's zone: the vote reads price going deeper, so the bot waits."""
+
+    def __init__(self, side: Literal["scrum", "fold"]):
+        self.side = side
+        self.name = f"zone_timing_{side}"
+
+    def evaluate(self, ctx: GateContext) -> GateResult:
+        in_zone = ctx.bb_upper_zone if self.side == "scrum" else ctx.bb_lower_zone
+        if not (ctx.zone_deeper and in_zone):
+            return GateResult(passed=True)
+        return GateResult(
+            passed=False,
+            blocker_message=(
+                f"zone-timing(deeper: dir={ctx.eff_direction_name},"
+                f"conf={ctx.eff_confidence:.4f}>={ctx.zone_bar:.4f}; the bot waits)"
+            ),
+        )
+
+
 BAND_ZONE_RELEASE = "band_zone"
 """The rule ``GateChain.releases`` names while price sits inside BB Tolerance on the Target Delta's side."""
 
 ZONE_RELEASED_GATES: dict[str, tuple[str, ...]] = {
     "scrum": (
+        TADirectionGate("scrum").name,
         TrendHoldGate.name,
-        MidlineGate("scrum").name,
-        HTFDeferGate("scrum").name,
         ADXTrendSuppressionGate.name,
         EfficiencyRatioRegimeGate.name,
+        ZScoreExtremityGate.name,
     ),
-    "fold": (MidlineGate("fold").name, HTFDeferGate("fold").name),
+    "fold": (
+        TranchesQueuedGate.name,
+        TADirectionGate("fold").name,
+        ZScoreExtremityGate.name,
+    ),
 }
-"""The gates ``BAND_ZONE_RELEASE`` passes on each side."""
-
-CALIBRATING_TRADE = "calibrating_trade"
-"""The rule ``GateChain.releases`` names inside the zone with ``cartridge_reached`` set."""
-
-CALIBRATING_RELEASED_GATES: dict[str, tuple[str, ...]] = {
-    "scrum": (),
-    "fold": (TranchesQueuedGate.name,),
-}
-"""The gates ``CALIBRATING_TRADE`` passes on each side."""
+"""The gates ``BAND_ZONE_RELEASE`` passes on each side; ``ZoneTimingGate`` sets the timing there."""
 
 
 class GateChain:
@@ -662,10 +678,7 @@ class GateChain:
         in_zone = ctx.bb_upper_zone if self._side == "scrum" else ctx.bb_lower_zone
         if not in_zone:
             return ()
-        held = ((BAND_ZONE_RELEASE, ZONE_RELEASED_GATES[self._side]),)
-        if ctx.cartridge_reached:
-            held += ((CALIBRATING_TRADE, CALIBRATING_RELEASED_GATES[self._side]),)
-        return held
+        return ((BAND_ZONE_RELEASE, ZONE_RELEASED_GATES[self._side]),)
 
     def evaluate(self, ctx: GateContext) -> ChainResult:
         passed: list[str] = []
@@ -753,6 +766,7 @@ def build_scrumming_scrum_chain() -> GateChain:
             ADXTrendSuppressionGate(),
             EfficiencyRatioRegimeGate(),
             ZScoreExtremityGate(side="scrum"),
+            ZoneTimingGate(side="scrum"),
             RipeHarvestScrumOverride(),  # runs in pass 2 regardless of list position
         ],
         side="scrum",
@@ -772,6 +786,7 @@ def build_scrumming_fold_chain() -> GateChain:
             HTFDeferGate(side="fold"),
             HysteresisGate(side="fold"),
             ZScoreExtremityGate(side="fold"),
+            ZoneTimingGate(side="fold"),
             DeepFoldOverride(),
         ],
         side="fold",

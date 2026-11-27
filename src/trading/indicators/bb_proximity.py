@@ -1,16 +1,19 @@
 """Bollinger Band proximity, with Heikin Ashi landing-strip detection.
 
-``detect_bb_proximity`` returns a ``BBProximityResult``.
+``detect_bb_proximity`` returns a ``BBProximityResult``, and ``band_zone`` reads
+the BB Tolerance zone off the Voting panel's ``PanelBand``.
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from .types import (
     HA_BODY_PCT_UNIT,
     Candle,
+    Signal,
 )
 from .helpers import (
     _sma_tail,
@@ -202,7 +205,7 @@ def detect_bb_proximity(
 def bb_tolerance_reading(
     candles: list[Candle], bb_tolerance_pct: float, landing_strip_candles: int
 ) -> BBProximityResult:
-    """``detect_bb_proximity`` with ``bb_tolerance_pct`` as a percent of price; every reader of BB Tolerance calls it."""
+    """``detect_bb_proximity`` with ``bb_tolerance_pct`` as a percent of price, for the band lines and the Landing Strip."""
     return detect_bb_proximity(
         candles,
         tolerance_pct=bb_tolerance_pct,
@@ -212,8 +215,46 @@ def bb_tolerance_reading(
     )
 
 
-def band_zone(band: BBProximityResult | None, delta: float) -> tuple[bool, bool]:
-    """``(upper, lower)``: ``band.near_upper`` on a positive ``delta``, ``band.near_lower`` on a negative one."""
+#: The Voting panel's Bollinger indicator; its reading decides the BB Tolerance zone.
+PANEL_BAND_INDICATOR: str = "bollinger_bands"
+
+
+@dataclass(frozen=True)
+class PanelBand:
+    """The panel's Bollinger reading: ``upper`` and ``lower`` bands and the ``close`` they were drawn at."""
+
+    upper: float
+    lower: float
+    close: float
+
+
+def panel_band(signals: Sequence[Signal]) -> PanelBand | None:
+    """The ``PANEL_BAND_INDICATOR`` signal's bands and close, or None when it abstained or holds no finite band."""
+    for signal in signals:
+        if signal.indicator != PANEL_BAND_INDICATOR or signal.abstained:
+            continue
+        details = signal.details or {}
+        try:
+            upper = float(details["upper"])
+            lower = float(details["lower"])
+            close = float(details["close"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        finite = all(math.isfinite(value) for value in (upper, lower, close))
+        if not finite or upper <= lower or close <= 0.0:
+            return None
+        return PanelBand(upper=upper, lower=lower, close=close)
+    return None
+
+
+def band_zone(
+    band: PanelBand | None, delta: float, tolerance_pct: float
+) -> tuple[bool, bool]:
+    """``(upper, lower)``: ``band.close`` within ``tolerance_pct`` of price of the upper band on a positive ``delta``, of the lower on a negative one."""
     if band is None:
         return (False, False)
-    return (bool(delta > 0 and band.near_upper), bool(delta < 0 and band.near_lower))
+    reach = band.close * tolerance_pct / 100.0
+    return (
+        bool(delta > 0 and band.close >= band.upper - reach),
+        bool(delta < 0 and band.close <= band.lower + reach),
+    )

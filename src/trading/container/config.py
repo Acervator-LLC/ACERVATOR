@@ -53,6 +53,15 @@ class BotMode(str, Enum):
 #: Default for ``BotConfig.stack_mode`` and the wizard's checkbox.
 STACK_MODE_DEFAULT: bool = True
 
+#: Default ``BotConfig.cartridge_boost_pct``: vote % per Max Cartridge Size the Target Delta sits past it.
+CARTRIDGE_BOOST_PCT_DEFAULT: float = 0.0
+
+#: Default ``BotConfig.proximity_boost_pct``: vote % with price at the band edge inside BB Tolerance.
+PROXIMITY_BOOST_PCT_DEFAULT: float = 0.0
+
+#: Default ``BotConfig.landing_strip_boost_pct``: vote % for each tapering candle of the Landing Strip.
+LANDING_STRIP_BOOST_PCT_DEFAULT: float = 0.0
+
 #: ``BotConfig.expiry_close_action``: stop buying and let the sell ladder run.
 EXPIRY_CLOSE_FINISH_LADDER: str = "finish_ladder"
 #: ``BotConfig.expiry_close_action``: one order for the whole remaining position.
@@ -168,9 +177,11 @@ class BotConfig:
     max_target_growth_pct: float = 1.0
 
     bb_tolerance_pct: float = 1.0  # 0.25% to 5% of price from either band edge
-    bb_landing_strip_candles: int = (
-        3  # Newest small-body HA candles the band-proximity check needs
-    )
+    proximity_boost_pct: float = PROXIMITY_BOOST_PCT_DEFAULT
+    # Small-body HA candles the band check needs, and the shortest tapering run
+    # the Landing Strip boost counts.
+    bb_landing_strip_candles: int = 3
+    landing_strip_boost_pct: float = LANDING_STRIP_BOOST_PCT_DEFAULT
     ta_timeframe: str = "1h"  # Timeframe for TA indicator calculations
     # The length exchange_id does not serve, which _snap_ta_timeframe replaced.
     ta_timeframe_unserved: str = ""
@@ -181,8 +192,8 @@ class BotConfig:
     scrum_read_timeframe: str = ""
     # % of BB band width price must travel since the last fold; 0 is off.
     band_travel_pct: int = 70
-    # A band touch inside 0.5%, or a wick inside 0.2%, lowers the TA
-    # confidence floor.
+    # A band touch inside 0.5%, or a wick inside 0.2%, reads as the band edge
+    # for the BB Proximity boost.
     bb_bullseye_check: bool = True
     # A separate USD reserve for buying sharp drawdowns.
     hedge_rebalance_active: bool = True
@@ -194,9 +205,10 @@ class BotConfig:
     circuit_breaker_hard_pct: float = 35.0
     circuit_breaker_cooldown_candles: int = 3
 
-    # 0 disables; otherwise triggers a rebalance once |delta| >= target_balance x
-    # pct/100.
+    # 0 disables; past target_balance x pct/100 the bot reads faster and the
+    # vote boost's cartridge term starts.
     max_cartridge_size_pct: float = 10.0
+    cartridge_boost_pct: float = CARTRIDGE_BOOST_PCT_DEFAULT
 
     # Derives the threshold from the BB range, clamped by
     # max_cartridge_smart_ceiling_pct.
@@ -436,7 +448,9 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         # ScrummingBot-only.
         "tranche_despawn_days",
         "bb_tolerance_pct",
+        "proximity_boost_pct",
         "bb_landing_strip_candles",
+        "landing_strip_boost_pct",
         "scrum_read_timeframe",
         "band_travel_pct",
         "bb_bullseye_check",
@@ -446,6 +460,7 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "circuit_breaker_hard_pct",
         "circuit_breaker_cooldown_candles",
         "max_cartridge_size_pct",
+        "cartridge_boost_pct",
         "max_cartridge_smart",
         "max_cartridge_smart_ceiling_pct",
         # strategy toggle fields

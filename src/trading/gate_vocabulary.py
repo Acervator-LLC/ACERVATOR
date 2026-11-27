@@ -71,6 +71,9 @@ _BLOCKER_PREFIXES: tuple[tuple[str, str], ...] = (
     # The exit TickPhaseMixin._first_buy_clears writes for a held fold.
     ("initial-entry", "TA"),
     # shared
+    # ZoneTimingGate: the vote reads price going deeper into the zone.
+    ("zone-timing", "TA"),
+    ("zone_timing", "TA"),
     ("CB-soft-trip", "CB"),
     ("CB-hard", "CB"),
     ("OTD-hyst", "OTD"),

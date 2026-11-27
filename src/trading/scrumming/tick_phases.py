@@ -25,7 +25,6 @@ from ..container.config import (
     target_growth_pct,
 )
 from ..container.order_watch import PRESS_AGAIN_FRESH
-from ..indicators.bb_proximity import bb_tolerance_reading
 from ..otd_math import (
     DistanceSettings,
     DistanceSettingUnreadable,
@@ -1052,11 +1051,6 @@ class TickPhaseMixin:
             summary = self._voting_engine.compute_all(
                 parsed, self.config.ta_timeframe, symbol=self.config.symbol
             )
-            _init_bb = bb_tolerance_reading(
-                parsed,
-                self.config.bb_tolerance_pct,
-                self.config.bb_landing_strip_candles,
-            )
         except Exception as exc:
             return FirstBuyRead(
                 f"INITIAL ENTRY BLOCKED: candles could not be read "
@@ -1065,13 +1059,10 @@ class TickPhaseMixin:
                 standing=True,
             )
         self._last_summary = summary
+        from ..indicators.bb_proximity import band_zone, panel_band
 
-        if (
-            _init_bb is None
-            or _init_bb.upper <= 0
-            or _init_bb.lower <= 0
-            or _init_bb.upper <= _init_bb.lower
-        ):
+        _init_bb = panel_band(summary.signals)
+        if _init_bb is None or _init_bb.lower <= 0:
             return FirstBuyRead(
                 f"INITIAL ENTRY BLOCKED: BB data not yet "
                 f"computable — need proper band formation "
@@ -1096,7 +1087,8 @@ class TickPhaseMixin:
         _lower_half = _bb_mid_init - _init_bb.lower
         _dist_down = (_bb_mid_init - _init_price) / max(_lower_half, 1e-12)
 
-        if not _init_bb.near_lower:
+        _, _at_lower = band_zone(_init_bb, -1.0, float(self.config.bb_tolerance_pct))
+        if not _at_lower:
             return FirstBuyRead(
                 f"INITIAL ENTRY BLOCKED: price is not within "
                 f"{float(self.config.bb_tolerance_pct):g}% of price of the "
@@ -1529,12 +1521,10 @@ class TickPhaseMixin:
             opened_event_ids=self._take_opened_stack_events(),
         )
 
-    def _tick_target_ramp(self, bb_result: Any, delta: float) -> bool:
-        """Set ``_scrum_target_mode`` to ``zone_ramp_mode`` and answer whether it reads ``RAMP_FIRE``."""
-        from ..indicators.bb_proximity import band_zone
+    def _tick_target_ramp(self, upper: bool, lower: bool) -> bool:
+        """Set ``_scrum_target_mode`` to ``zone_ramp_mode`` of the ``upper`` or ``lower`` zone; True when it reads ``RAMP_FIRE``."""
         from .target_ramp import zone_ramp_mode
 
-        upper, lower = band_zone(bb_result, delta)
         mode = zone_ramp_mode(upper or lower, self._cartridge_reached)
         if upper or lower:
             self._scrum_target_side = "upper" if upper else "lower"
@@ -1565,59 +1555,28 @@ class TickPhaseMixin:
         self._scrum_target_mode = mode
         return mode == RAMP_FIRE
 
-    def _tick_bullseye_notices(
-        self, bb_result: Any, candles: list, ticker: Any
-    ) -> None:
-        """Emit the band-touch notices for this tick's price."""
-        bullseye_upper = False
-        bullseye_upper_wick = False
-        bullseye_lower = False
-        bullseye_lower_wick = False
-        if (
-            self.config.bb_bullseye_check
-            and bb_result is not None
-            and bb_result.upper > 0
-            and bb_result.lower > 0
-        ):
-            _bp = ticker.last
-            _touch_tol = 0.005
-            _wick_tol = 0.002
-            bullseye_upper = abs(_bp - bb_result.upper) / bb_result.upper < _touch_tol
-            bullseye_lower = abs(_bp - bb_result.lower) / bb_result.lower < _touch_tol
-            if candles and not bullseye_upper:
-                _last_high = candles[-1].high
-                bullseye_upper_wick = _last_high >= bb_result.upper * (1.0 - _wick_tol)
-            if candles and not bullseye_lower:
-                _last_low = candles[-1].low
-                bullseye_lower_wick = _last_low <= bb_result.lower * (1.0 + _wick_tol)
+    def _tick_bullseye_notices(self, band: Any, candles: list, ticker: Any) -> None:
+        """Log each ``band_touch`` on the panel's ``band``, which ``zone_side_boost`` reads as the band edge."""
+        from ..vote_boost import FOLD_SIDE, SCRUM_SIDE, band_touch
 
-        if bullseye_upper or bullseye_upper_wick:
-            _upper_touch = "wick" if bullseye_upper_wick else "close"
-            if self._refusal_is_new(
-                f"state_bullseye_upper_{_upper_touch}", ticker.last
+        if not self.config.bb_bullseye_check or band is None or not candles:
+            return
+        for side, edge, name in (
+            (SCRUM_SIDE, band.upper, "UPPER"),
+            (FOLD_SIDE, band.lower, "LOWER"),
+        ):
+            touch = band_touch(band, side, candles[-1].high, candles[-1].low)
+            if touch and self._refusal_is_new(
+                f"state_bullseye_{name.lower()}_{touch}", ticker.last
             ):
-                _ramp = self._scrum_target_mode.upper()
-                _fire_gate = "passes" if _ramp == "FIRE" else "holds"
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
-                    message=f"BULLSEYE UPPER ({_upper_touch}): "
-                    f"price ${ticker.last:.8f} at BB upper ${bb_result.upper:.8f}. "
-                    f"Ramp at {_ramp}, so the FIRE gate {_fire_gate}.",
-                )
-        if bullseye_lower or bullseye_lower_wick:
-            _lower_touch = "wick" if bullseye_lower_wick else "close"
-            if self._refusal_is_new(
-                f"state_bullseye_lower_{_lower_touch}", ticker.last
-            ):
-                _queued = len(self._fold_tranches or [])
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"BULLSEYE LOWER ({_lower_touch}): "
-                    f"price ${ticker.last:.8f} at BB lower ${bb_result.lower:.8f}. "
-                    f"{_queued} tranche(s) queued; a fold needs one whose "
-                    f"reference price the market has fallen past.",
+                    message=(
+                        f"BULLSEYE {name} ({touch}): close ${band.close:.8f} at BB "
+                        f"{name.lower()} ${edge:.8f}. BB Proximity reads it as the "
+                        f"band edge."
+                    ),
                 )
 
     async def _tick_execute_scrum(
@@ -2336,11 +2295,11 @@ class TickPhaseMixin:
             "bot.log",
             bot_id=self.bot_id,
             message=(
-                f"CALIBRATING FOLD: Target Delta ${delta:+.2f} is at or past Max "
-                f"Cartridge Size, price is within "
+                f"CALIBRATING FOLD: Target Delta ${delta:+.2f}, price is within "
                 f"{float(self.config.bb_tolerance_pct):g}% of price of the lower "
-                f"band, and no tranche is queued. Buying the whole Target Delta, "
-                f"${buy_cost:.2f}, under every gate the fold chain keeps."
+                f"band and reads as slipping out, and no tranche is queued. Buying "
+                f"the Target Delta, ${buy_cost:.2f}, under every gate the fold "
+                f"chain keeps."
             ),
         )
         buy_fill = await self._execute_buy(

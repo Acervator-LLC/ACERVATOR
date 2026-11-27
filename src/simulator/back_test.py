@@ -1029,28 +1029,26 @@ def signal_detail(summary: Any, indicator: str, key: str) -> float:
 
 
 def ta_direction(
-    summary: Any, reading: Any, upper_zone: bool = False, lower_zone: bool = False
+    summary: Any, upper_zone: bool = False, lower_zone: bool = False
 ) -> tuple[bool, bool, str, float]:
     """``(is_bullish, is_bearish, direction_name, confidence)`` for one window,
-    ``vote_sides`` against ``three_indicator_floor`` of ``TA_CONFIDENCE_FLOOR``,
-    and of zero on the side ``upper_zone`` or ``lower_zone`` names."""
+    ``vote_sides`` against ``three_indicator_floor`` of ``TA_CONFIDENCE_FLOOR``;
+    True on the side ``upper_zone`` or ``lower_zone`` names, where ``zone_timing`` sets when.
+    """
     if summary is None:
         return False, False, NEUTRAL, 0.0
     direction = summary.consensus_direction
     confidence = float(summary.consensus_confidence)
     floor = three_indicator_floor(TA_CONFIDENCE_FLOOR, summary.signals)
     is_bullish, is_bearish = vote_sides(
-        direction, confidence, floor, reading, summary.signals
+        direction, confidence, floor, None, summary.signals
     )
-    line = three_indicator_floor(0.0, summary.signals)
-    zone_bullish, zone_bearish = vote_sides(
-        direction, confidence, line, reading, summary.signals
+    return (
+        is_bullish or upper_zone,
+        is_bearish or lower_zone,
+        direction.name,
+        confidence,
     )
-    if upper_zone:
-        is_bullish = zone_bullish
-    if lower_zone:
-        is_bearish = zone_bearish
-    return is_bullish, is_bearish, direction.name, confidence
 
 
 def tape_context(
@@ -1072,7 +1070,7 @@ def tape_context(
     ``BEARISH`` under the two defer flags; the circuit breaker and hysteresis
     fields read as not populated.
     """
-    from ..trading.indicators.bb_proximity import band_zone
+    from ..trading.vote_boost import boost_figures, read_zone
 
     close = float(window[-1].close)
     bb_pos = float(reading.bb_position) if reading is not None else 0.0
@@ -1080,13 +1078,23 @@ def tape_context(
     lower_dt = reading.lower_line if reading is not None else 0.0
     target_usd = float(getattr(position, "target_usd", 0.0) or bot.target_usd or 0.0)
     delta = target_delta_usd(position.value_usd(close), target_usd)
-    upper_zone, lower_zone = band_zone(reading, delta)
+    zone = read_zone(
+        summary.signals if summary is not None else [],
+        summary.consensus_direction if summary is not None else None,
+        float(summary.consensus_confidence) if summary is not None else 0.0,
+        delta,
+        window,
+        tolerance_pct=float(bot.bb_tolerance_pct),
+        taper_minimum=int(bot.bb_landing_strip_candles),
+        figures=boost_figures(bot),
+    )
+    upper_zone, lower_zone = zone.upper, zone.lower
     htf_blocks_scrum = htf_bias_name == BULLISH
     htf_blocks_fold = htf_bias_name == BEARISH
     interval_usd = scrumming_interval_usd(target_usd, float(bot.scrumming_interval_pct))
     below_interval = delta_below_interval(delta, interval_usd)
     is_bullish, is_bearish, direction_name, _confidence = ta_direction(
-        summary, reading, upper_zone, lower_zone
+        summary, upper_zone, lower_zone
     )
     trend_hold, trend_strength = trend_reading(window)
     effective = effective_gate_flags(
@@ -1149,6 +1157,8 @@ def tape_context(
         z_score=signal_detail(summary, "zscore", "z"),
         bb_upper_zone=upper_zone,
         bb_lower_zone=lower_zone,
+        zone_deeper=zone.scrum_deeper or zone.fold_deeper,
+        zone_bar=zone.scrum.bar if upper_zone else zone.fold.bar,
     )
 
 

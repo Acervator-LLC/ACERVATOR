@@ -442,9 +442,11 @@ def rerun_context(
     below_interval = bool(scrum.get("below_interval"))
 
     locked, locked_known = phantom_locked(bot, scrum)
-    from ..trading.indicators.bb_proximity import band_zone
+    from ..trading.indicators.bb_proximity import band_zone, panel_band
+    from ..trading.indicators.bollinger import BollingerBands
 
-    upper_zone, lower_zone = band_zone(reading, delta)
+    band = panel_band([BollingerBands().compute(list(candles))])
+    upper_zone, lower_zone = band_zone(band, delta, float(bot.bb_tolerance_pct))
 
     context = GateContext(
         symbol=row.symbol,
@@ -495,6 +497,7 @@ def rerun_context(
         trading_fee_pct=bot.trading_fee_pct,
         bb_upper_zone=upper_zone,
         bb_lower_zone=lower_zone,
+        zone_deeper=bool(scrum.get("zone_deeper")) or bool(fold.get("zone_deeper")),
     )
     return context, bb_pos, locked_known
 

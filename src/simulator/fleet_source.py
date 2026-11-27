@@ -52,7 +52,9 @@ from ..core.log_paths import FLEET_FILE_NAME, get_sim_dir, resolve_fleet_path
 from ..exchange.ytd_trade_store import SIDE_BUY, SIDE_SELL, YtdFileEntry, YtdTrade
 from ..trading.container.config import (
     DETONATION_CONFIDENCE_MIN_DEFAULT,
+    LANDING_STRIP_BOOST_PCT_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
+    PROXIMITY_BOOST_PCT_DEFAULT,
     TARGET_GROWTH_PCT_DEFAULT,
     BotMode,
     BotState,
@@ -187,7 +189,9 @@ class SimBot:
     scrumming_interval_pct: float = 0.0
     trading_fee_pct: float = 0.0
     bb_tolerance_pct: float = 1.0
+    proximity_boost_pct: float = PROXIMITY_BOOST_PCT_DEFAULT
     bb_landing_strip_candles: int = 2
+    landing_strip_boost_pct: float = LANDING_STRIP_BOOST_PCT_DEFAULT
     scrum_require_ta_bullish: bool = True
     scrum_hold_in_uptrend: bool = True
     scrum_defer_to_htf: bool = True
@@ -385,6 +389,8 @@ def _sim_bot_from_record(
                 scrum_mode,
             )
             scrum_mode = None
+    proximity_pct = as_finite_float(config.get("proximity_boost_pct"))
+    strip_pct = as_finite_float(config.get("landing_strip_boost_pct"))
     return SimBot(
         bot_id=str(bot_id),
         symbol=symbol,
@@ -398,7 +404,13 @@ def _sim_bot_from_record(
         ),
         trading_fee_pct=REFUSED_FIGURE if fee_pct is None else fee_pct,
         bb_tolerance_pct=1.0 if tolerance_pct is None else tolerance_pct,
+        proximity_boost_pct=(
+            PROXIMITY_BOOST_PCT_DEFAULT if proximity_pct is None else proximity_pct
+        ),
         bb_landing_strip_candles=int(2 if landing_candles is None else landing_candles),
+        landing_strip_boost_pct=(
+            LANDING_STRIP_BOOST_PCT_DEFAULT if strip_pct is None else strip_pct
+        ),
         scrum_require_ta_bullish=bool(config.get("scrum_require_ta_bullish", True)),
         scrum_hold_in_uptrend=bool(config.get("scrum_hold_in_uptrend", True)),
         scrum_defer_to_htf=bool(config.get("scrum_defer_to_htf", True)),
