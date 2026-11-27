@@ -457,6 +457,40 @@
     return onAct("apply");
   }
 
+  // -- the row double-click that opens the Trade Calculator ---------------
+
+  var CALCULATOR_ACTION = "calculator";
+  var ROW_SELECTOR = "tr.row";
+  var listened = null;
+
+  function openedRow(event) {
+    var target = event.target;
+    if (!target || typeof target.closest !== "function") {
+      return null;
+    }
+    return target.closest(ROW_SELECTOR);
+  }
+
+  function onRowOpen(event) {
+    var row = openedRow(event);
+    if (row === null) {
+      return null;
+    }
+    return global.acervatorHistoryTabHostAction(CALCULATOR_ACTION, {
+      row: Number(row.getAttribute("data-row-index")),
+      trade_id: row.getAttribute("data-trade-id") || ""
+    });
+  }
+
+  function listenForRowOpen(node) {
+    if (node === null || listened === node) {
+      return false;
+    }
+    node.addEventListener("dblclick", onRowOpen);
+    listened = node;
+    return true;
+  }
+
   function draw() {
     if (h === null || model === null || host === null) {
       return null;
@@ -480,6 +514,7 @@
     if (typeof global.acervatorHistoryTabDrawn === "function") {
       global.acervatorHistoryTabDrawn();
     }
+    listenForRowOpen(host);
     return root;
   }
 
@@ -539,6 +574,8 @@
     stampOf: stampOf,
     secondsOf: secondsOf,
     pushRows: pushRows,
+    calculatorAction: CALCULATOR_ACTION,
+    onRowOpen: onRowOpen,
     state: function () {
       return model;
     },

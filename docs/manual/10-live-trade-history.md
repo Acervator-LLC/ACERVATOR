@@ -1112,7 +1112,7 @@ for tranche in sorted(
 
 The replay applies today's rule and each bot's saved settings to every fill since 12 April. It does not see a rule or a setting that changed since then, a tranche cleared by hand, or a tranche retired when a bot loads. So the replay can hold a tranche open after the engine has settled it.
 
-Now: no tranche is replayed. The pairs come from the orders' times and each base's MOTD, set out under "Pairs by order time and MOTD" (`tools/build_product_manual.py, in motd_pairs`).
+Now: no tranche is replayed. The pairs come from the orders' times and each base's MOTD, set out under "Pairs by order time and MOTD" (`src/trading/order_pairing.py, in motd_pairs`).
 
 ### Pairs by order time and MOTD
 
@@ -1130,7 +1130,9 @@ Every pair is verified against a 5% MOTD, the fleet's current global setting. Th
 - A pair's units are the smaller of its two orders' quantities. Its extra units are the Fold's units past the Scrum's.
 - No pair passes over an order of its own side, so each pair spans only the gap between two neighbouring runs.
 
-`tools/build_product_manual.py, in motd_pairs`
+The rule lives in one module. The builder calls it, and so does the Trade Calculator on [the History tab](08-tabs/history.md#how-the-pair-is-found). Neither holds a copy.
+
+`src/trading/order_pairing.py, in motd_pairs`
 
 ```python
 runs = side_runs(orders)
@@ -1141,7 +1143,7 @@ return tuple(
 )
 ```
 
-`tools/build_product_manual.py, in run_pairs`
+`src/trading/order_pairing.py, in run_pairs`
 
 ```python
 for closer in later:
@@ -1218,7 +1220,7 @@ except (DistanceSettingUnreadable, TypeError, ValueError):
 
 The replay pays a tranche only at or under its level, so every pair's Fold sits on or below the dashed line its view draws.
 
-Now: no saved setting is read, and every base's level uses a 5% MOTD. The level is the MOTD level of the pair's first order. A Scrum-Fold pair's level is its Scrum's price less the MOTD, and a Fold-Scrum pair's level is its Fold's price plus the MOTD, so every pair's later order sits on or past its level (`tools/build_product_manual.py, in motd_level`).
+Now: no saved setting is read, and every base's level uses a 5% MOTD. The level is the MOTD level of the pair's first order. A Scrum-Fold pair's level is its Scrum's price less the MOTD, and a Fold-Scrum pair's level is its Fold's price plus the MOTD, so every pair's later order sits on or past its level (`src/trading/order_pairing.py, in motd_level`).
 
 ### The cycle views
 

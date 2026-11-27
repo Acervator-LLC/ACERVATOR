@@ -24,7 +24,6 @@ from collections import Counter
 from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from http import HTTPStatus
-from itertools import pairwise
 from statistics import median
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -72,12 +71,21 @@ from src.trading.ata_gate_scan import band_touch
 from src.trading.indicators.bollinger import BollingerBands
 from src.trading.indicators.helpers import _window_has_no_range
 from src.trading.indicators.types import candles_from_raw
-from src.trading.otd_math import (
-    OTD_MAX_PCT,
-    OTD_MIN_PCT,
-    fold_rebuy_price,
-    opposing_sale_price,
+from src.trading.order_pairing import (
+    DEFAULT_MOTD_PCT,
+    FOLD_SCRUM,
+    OPENING_SIDE,
+    SCRUM_FOLD,
+    UNPAIRED_CAUSES,
+    CyclePair,
+    Fill,
+    Order,
+    motd_pairs,
+    side_runs,
+    unpaired_cause,
+    venue_orders,
 )
+from src.trading.otd_math import OTD_MAX_PCT, OTD_MIN_PCT
 from src.trading.stone_tablets.ra_fetcher import (
     RA_CHUNK_DAYS,
     CoinbasePublicCandles,
@@ -109,7 +117,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCS_DIR = REPO_ROOT / "docs" / "manual"
 DEFAULT_FIGURES_DIR = REPO_ROOT / "docs" / "manual" / "figures"
 DEFAULT_OUTPUT = REPO_ROOT / "artifacts" / "manual" / "Acervator-Product-Manual.pdf"
-DEFAULT_MOTD_PCT = 5.0
 
 
 def motd_percent(text: str) -> float:
@@ -1813,18 +1820,6 @@ WORKED_BUYS = ((10.0, 1.0), (20.0, 3.0))
 
 
 @dataclass(frozen=True)
-class Fill:
-    """One venue fill: the base, the stamp, the side, the price, the quantity and the ``FEE_CELL`` dollars."""
-
-    asset: str
-    when: datetime
-    side: str
-    price: float
-    qty: float
-    fee: float = 0.0
-
-
-@dataclass(frozen=True)
 class HodlRow:
     """One base's accumulated units against the units the same money would hold."""
 
@@ -2392,44 +2387,6 @@ def uncovered_text(spans: Sequence[tuple[int, int]]) -> str:
 
 
 @dataclass(frozen=True)
-class Order:
-    """The fills of one base and side stamped in one second, at their quantity-weighted ``price``."""
-
-    asset: str
-    when: datetime
-    side: str
-    price: float
-    qty: float
-    fee: float
-
-
-@dataclass(frozen=True)
-class CyclePair:
-    """A ``scrum`` and a ``fold`` order, the ``units`` both trade, and the ``level``."""
-
-    scrum: Order
-    fold: Order
-    units: float
-    extra_units: float
-    level: float
-
-    @property
-    def direction(self) -> str:
-        """``SCRUM_FOLD`` where ``scrum`` came first, else ``FOLD_SCRUM``."""
-        return SCRUM_FOLD if self.scrum.when < self.fold.when else FOLD_SCRUM
-
-    @property
-    def opener(self) -> Order:
-        """The earlier of ``scrum`` and ``fold``."""
-        return self.scrum if self.direction == SCRUM_FOLD else self.fold
-
-    @property
-    def closer(self) -> Order:
-        """The later of ``scrum`` and ``fold``."""
-        return self.fold if self.direction == SCRUM_FOLD else self.scrum
-
-
-@dataclass(frozen=True)
 class BoundReading:
     """One ``direction``'s ``pairs`` against ``lower`` and its ``unpaired`` causes."""
 
@@ -2438,99 +2395,6 @@ class BoundReading:
     lower: int
     pairs: int
     unpaired: tuple[tuple[str, int], ...]
-
-
-def venue_orders(fills: Sequence[Fill]) -> list[Order]:
-    """Return ``fills`` merged into one ``Order`` per base, side and stamp, oldest first."""
-    merged: dict[tuple[str, str, datetime], list[Fill]] = {}
-    for fill in sorted(fills, key=lambda one: one.when):
-        merged.setdefault((fill.asset, fill.side, fill.when), []).append(fill)
-    return [
-        Order(
-            asset=asset,
-            when=when,
-            side=side,
-            price=math.fsum(f.price * f.qty for f in held)
-            / math.fsum(f.qty for f in held),
-            qty=math.fsum(f.qty for f in held),
-            fee=math.fsum(f.fee for f in held),
-        )
-        for (asset, side, when), held in merged.items()
-    ]
-
-
-SCRUM_FOLD = "Scrum-Fold"
-FOLD_SCRUM = "Fold-Scrum"
-OPENING_SIDE = {SCRUM_FOLD: "sell", FOLD_SCRUM: "buy"}
-NO_RUN_BESIDE = "no run of the other side next to its run"
-NONE_CLEARS = "no order of the run next to it clears the MOTD"
-LONGER_RUN = "its run is longer than the run next to it"
-OTHERS_PAIRED = "each order of the run next to it that clears the MOTD paired another"
-UNPAIRED_CAUSES = (NO_RUN_BESIDE, NONE_CLEARS, LONGER_RUN, OTHERS_PAIRED)
-
-
-def motd_level(opener: Order, motd_pct: float) -> float:
-    """Return a sell ``opener``'s ``fold_rebuy_price``, else ``opposing_sale_price``."""
-    if opener.side == "sell":
-        return fold_rebuy_price(opener.price, motd_pct)
-    return opposing_sale_price(opener.price, motd_pct)
-
-
-def clears_motd(opener: Order, closer: Order, motd_pct: float) -> bool:
-    """Return True where ``closer`` reaches ``motd_level`` of ``opener``."""
-    level = motd_level(opener, motd_pct)
-    if opener.side == "sell":
-        return closer.price <= level
-    return closer.price >= level
-
-
-def can_pair(opener: Order, closer: Order, motd_pct: float) -> bool:
-    """Return True where ``opener`` comes first and ``closer`` ``clears_motd``."""
-    return opener.when < closer.when and clears_motd(opener, closer, motd_pct)
-
-
-def cycle_pair(opener: Order, closer: Order, motd_pct: float) -> CyclePair:
-    """Return ``opener`` and ``closer`` as a ``CyclePair`` at their ``motd_level``."""
-    scrum, fold = (opener, closer) if opener.side == "sell" else (closer, opener)
-    units = min(scrum.qty, fold.qty)
-    return CyclePair(scrum, fold, units, fold.qty - units, motd_level(opener, motd_pct))
-
-
-def side_runs(orders: Sequence[Order]) -> list[list[Order]]:
-    """Return ``orders`` in time order, split into runs of one side."""
-    runs: list[list[Order]] = []
-    for order in sorted(orders, key=lambda one: one.when):
-        if runs and runs[-1][-1].side == order.side:
-            runs[-1].append(order)
-        else:
-            runs.append([order])
-    return runs
-
-
-def run_pairs(
-    earlier: Sequence[Order],
-    later: Sequence[Order],
-    motd_pct: float,
-) -> list[CyclePair]:
-    """Pair each later order with the latest open earlier order that ``can_pair``."""
-    waiting = list(earlier)
-    pairs: list[CyclePair] = []
-    for closer in later:
-        for index in range(len(waiting) - 1, -1, -1):
-            if can_pair(waiting[index], closer, motd_pct):
-                pairs.append(cycle_pair(waiting.pop(index), closer, motd_pct))
-                break
-    return pairs
-
-
-def motd_pairs(orders: Sequence[Order], motd_pct: float) -> tuple[CyclePair, ...]:
-    """Return ``run_pairs`` over each of ``side_runs`` and the run after it."""
-    runs = side_runs(orders)
-    return tuple(
-        pair
-        for earlier, later in pairwise(runs)
-        for pair in run_pairs(earlier, later, motd_pct)
-    )
 
 
 @dataclass(frozen=True)
@@ -2545,27 +2409,6 @@ class BasePairs:
 def base_pairs(orders: Sequence[Order], motd_pct: float) -> BasePairs:
     """Return ``orders``, ``motd_pct`` and their ``motd_pairs`` as one ``BasePairs``."""
     return BasePairs(tuple(orders), motd_pct, motd_pairs(orders, motd_pct))
-
-
-def unpaired_cause(
-    order: Order,
-    run: Sequence[Order],
-    beside: Sequence[Order],
-    motd_pct: float,
-    *,
-    opens: bool,
-) -> str:
-    """Return why ``order`` of ``run`` paired no order of ``beside``."""
-    if not beside:
-        return NO_RUN_BESIDE
-    if not any(
-        can_pair(order, other, motd_pct) if opens else can_pair(other, order, motd_pct)
-        for other in beside
-    ):
-        return NONE_CLEARS
-    if len(run) > len(beside):
-        return LONGER_RUN
-    return OTHERS_PAIRED
 
 
 def bound_reading(base: BasePairs, direction: str) -> BoundReading:

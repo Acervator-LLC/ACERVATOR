@@ -355,7 +355,7 @@ def view_steps(
 if _HAS_QT:
 
     class HistoryTab(QWidget):
-        """Fetches exchange trade history, filters it, pages it and exports CSV."""
+        """Fetches exchange trade history, filters, pages and exports it, and opens ``_open_trade_calculator`` on a row."""
 
         PAGE_SIZE = 100
 
@@ -393,6 +393,7 @@ if _HAS_QT:
             self._history_lock = threading.Lock()
             self._history_scanned: set[str] = set()
             self._history_refused: set[str] = set()
+            self._calculators: list = []
             self._build_ui()
 
         def set_bot_manager(self, bot_manager) -> None:
@@ -522,6 +523,9 @@ if _HAS_QT:
             from .history_table_variant import history_table_class
 
             self._table = history_table_class()(self)
+            opened = getattr(self._table, "row_opened", None)
+            if opened is not None:
+                opened.connect(self._open_trade_calculator)
             outer.addWidget(self._table, stretch=1)
 
             foot = QHBoxLayout()
@@ -1086,6 +1090,53 @@ if _HAS_QT:
             if self._join_due:
                 self._join_due = False
                 self._start_join_index_build()
+
+        def _open_trade_calculator(self, row_index: int, trade_id: str = "") -> None:
+            """Open a ``TradeCalculatorDialog`` on the drawn page's row ``row_index``, filled by ``calculation_steps``."""
+            from src.core.log_paths import get_trade_dir
+            from src.trading.trade_calculator import calculation_steps
+
+            from .trade_calculator_dialog import TradeCalculatorDialog
+
+            row = self._drawn_row(row_index, trade_id)
+            if row is None:
+                return
+            dialog = TradeCalculatorDialog(self)
+            dialog.finished.connect(
+                lambda result: self._close_calculator(dialog, result)
+            )
+            self._calculators.append(dialog)
+            dialog.show()
+            steps = calculation_steps(
+                row,
+                list(self._all_trades),
+                self._bot_manager,
+                get_trade_dir(),
+                JOIN_STEP_S,
+            )
+            self._run_steps(
+                steps, lambda: dialog in self._calculators, dialog.set_calculation
+            )
+
+        def _close_calculator(self, dialog, _result: int) -> None:
+            """Drop a closed ``TradeCalculatorDialog`` from ``_calculators`` and delete it."""
+            if dialog in self._calculators:
+                self._calculators.remove(dialog)
+            dialog.deleteLater()
+
+        def _drawn_row(self, row_index: int, trade_id: str) -> Optional[dict]:
+            """The row of the drawn page at ``row_index``, else the one whose ``id`` is ``trade_id``."""
+            held = self._page_cache
+            page = held[0][1] if held is not None else self._page
+            rows = hrc.page_slice(self._filtered, page)
+            if 0 <= row_index < len(rows):
+                row = rows[row_index]
+                if not trade_id or str(row.get("id", "")) == trade_id:
+                    return row
+            for row in rows:
+                if trade_id and str(row.get("id", "")) == trade_id:
+                    return row
+            return None
 
         def _grade_row(self, row_i: int, page_rows: list, r: dict) -> str:
             """Return the A-to-F grade for one row, delegating to grade_row."""
