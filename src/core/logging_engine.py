@@ -940,7 +940,8 @@ class LogManager:
         into ``log_trade``.
 
         ``usd`` falls back to ``amount`` times ``price``, the row carries the fee field
-        the fill holds, and a refused announcement reaches ``_note_internal_failure``.
+        the fill holds and its ``SettledFill.record_fields``, and a refused announcement
+        reaches ``_note_internal_failure``.
         """
         try:
             fill = read_settled_fill(getattr(event_obj, "data", None))
@@ -959,6 +960,7 @@ class LogManager:
                 extra["fee_usd"] = float(fill.fee_usd)
             else:
                 extra["fee_refusal"] = str(fill.fee_refusal)
+            extra.update(fill.record_fields())
 
             _symbol = fill.symbol
             if not _symbol and self._symbol_resolver and fill.bot_id:

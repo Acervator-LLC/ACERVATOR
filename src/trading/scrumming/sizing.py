@@ -3753,18 +3753,46 @@ def fold_surplus_usd(
     )
 
 
+GROWTH_DUST_USD = 1e-9
+"""The dollars at or under which ``target_growth_applied`` reads a surplus, a pool or a cap room as none."""
+
+
 def target_growth_applied(
     surplus_usd: float, standing_usd: float, cap_remaining_usd: float
 ) -> tuple[float, float]:
     """What ``_apply_fold_target_growth`` adds to the target and what it parks:
     ``(applied, standing_after)`` where the applied growth is the surplus plus
     the standing pool held to ``cap_remaining_usd``, and the rest stays
-    standing; nothing is applied when the cap is consumed."""
-    if cap_remaining_usd <= 1e-9:
-        return 0.0, max(0.0, float(standing_usd) + max(0.0, float(surplus_usd)))
-    available = max(0.0, float(surplus_usd)) + max(0.0, float(standing_usd))
-    applied = min(available, float(cap_remaining_usd))
+    standing; nothing is applied when the cap is consumed.
+
+    ``finite_reading`` reads each figure, so a surplus or pool that is not a finite
+    number counts as 0.0 and such a cap room as consumed; with surplus and pool
+    both within ``GROWTH_DUST_USD`` nothing moves.
+    """
+    from ..bot_container import finite_reading
+
+    surplus = max(0.0, finite_reading(surplus_usd))
+    standing = max(0.0, finite_reading(standing_usd))
+    if surplus <= GROWTH_DUST_USD and standing <= GROWTH_DUST_USD:
+        return 0.0, standing
+    room = finite_reading(cap_remaining_usd)
+    if room <= GROWTH_DUST_USD:
+        return 0.0, standing + surplus
+    available = surplus + standing
+    applied = min(available, room)
     return applied, max(0.0, available - applied)
+
+
+def record_event_ids(records: Sequence) -> tuple[str, ...]:
+    """Each name the ``EVENT_ID_KEY`` of ``records`` holds, once, in the order the names first appear."""
+    names: dict[str, None] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        for name in str(record.get(EVENT_ID_KEY, "") or "").split("+"):
+            if name:
+                names.setdefault(name, None)
+    return tuple(names)
 
 
 def growth_cycle_side(
@@ -3987,6 +4015,7 @@ __all__ = [
     "spend_less_unsettled_usd",
     "target_delta_pct",
     "target_delta_usd",
+    "record_event_ids",
     "target_growth_applied",
     "tradeable_answer",
     "tranche_sale_rate",

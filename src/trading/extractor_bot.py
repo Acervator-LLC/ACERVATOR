@@ -1158,6 +1158,8 @@ class ExtractorBot(BotContainer):
             profit=self._base_to_usd(gain_base),
             operator_initiated=operator_initiated,
             fee=self._fill_fee_fields_for(pair, fill_price),
+            spent_event_ids=(),
+            opened_event_ids=(),
             symbol=pair,
         )
 
@@ -1356,6 +1358,8 @@ class ExtractorBot(BotContainer):
             profit=0.0,
             operator_initiated=False,
             fee=self._fill_fee_fields_for(pair, fill_price),
+            spent_event_ids=(),
+            opened_event_ids=(),
             symbol=pair,
         )
 
