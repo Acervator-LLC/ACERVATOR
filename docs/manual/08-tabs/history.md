@@ -254,7 +254,8 @@ is then blank, and
 
 A throttled answer doubles the time between two turns of the loop, to 5, 10 and 20
 seconds, and a read with no answer does the same. A good answer halves it. The 20 is
-the age limit of a price, and a smaller stored limit ends the doubling there. Where a
+the age limit of a price, and a smaller stored limit ends the doubling there. The Price
+Age Limit row of [Settings > Trading](settings.md#settings--trading) sets that limit. Where a
 throttled answer names a wait, the loop keeps that wait, up to 300 seconds. After a
 read with no answer the loop rests 20 seconds at most. A shared read is sent once, and
 the next one is the next try. After the first good answer the loop is back at 2.5

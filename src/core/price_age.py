@@ -16,6 +16,9 @@ DEFAULT_PRICE_AGE_LIMIT_S = 20.0
 #: The ``AppSettings`` field ``price_age_limit_s`` reads.
 PRICE_AGE_SETTING = "price_age_limit_s"
 
+#: Lifetimes of a stored price in the least limit: one served, one for the calls after.
+LIFETIMES_IN_LEAST_LIMIT = 2
+
 #: Tenths of a second in one second, the grain ``shown_age`` rounds up to.
 TENTHS_PER_SECOND = 10.0
 
@@ -69,18 +72,28 @@ def read_limit_from(settings: Any) -> None:
     _LIMIT_SOURCE.settings = settings
 
 
+def limit_range_s() -> tuple[int, int]:
+    """The least and the most whole seconds a limit takes, off ``TICKER_TTL_SECONDS`` and
+    ``STALL_THRESHOLD_SECONDS``; the Settings row reads it too."""
+    from ..exchange.data_pool import TICKER_TTL_SECONDS
+    from ..exchange.fetch_stall import STALL_THRESHOLD_SECONDS
+
+    least = int(LIFETIMES_IN_LEAST_LIMIT * TICKER_TTL_SECONDS)
+    return least, int(STALL_THRESHOLD_SECONDS)
+
+
+def is_usable_limit(held: Any) -> bool:
+    """True where ``held`` is a whole number of seconds inside ``limit_range_s``."""
+    least, most = limit_range_s()
+    if type(held) not in (int, float) or not least <= held <= most:
+        return False
+    return float(held).is_integer()
+
+
 def usable_limit_s(held: Any) -> float:
-    """``held`` as a limit, ``DEFAULT_PRICE_AGE_LIMIT_S`` for anything but a finite number
-    above zero."""
-    if type(held) not in (int, float):
-        return DEFAULT_PRICE_AGE_LIMIT_S
-    try:
-        limit_s = float(held)
-    except OverflowError:
-        return DEFAULT_PRICE_AGE_LIMIT_S
-    if not math.isfinite(limit_s) or limit_s <= 0.0:
-        return DEFAULT_PRICE_AGE_LIMIT_S
-    return limit_s
+    """``held`` as a limit, ``DEFAULT_PRICE_AGE_LIMIT_S`` where ``is_usable_limit``
+    refuses it."""
+    return float(held) if is_usable_limit(held) else DEFAULT_PRICE_AGE_LIMIT_S
 
 
 def price_age_limit_s() -> float:

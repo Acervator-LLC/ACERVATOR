@@ -367,7 +367,9 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   (`src/gui/read_slot.py, in ReadSlot.ask`). Row 4 is
   built: no order starts on a price or a rate older than `price_age_limit_s`, counted
   from the venue's answer, and Self-Destruct and the expiry close alone go at any age
-  (`src/trading/bot_container.py, in BotContainer.order_refusal`). Rows 3 and 7 are
+  (`src/trading/bot_container.py, in BotContainer.order_refusal`). Its control is the
+  Price Age Limit row of Settings, Trading, 10 to 60 seconds, in force at Save
+  (`src/core/price_age.py, in limit_range_s`). Rows 3 and 7 are
   built, row 7 in its price, balance and candle parts: each exchange has its own
   refresher, whose rest follows the seconds its reads held the worker and doubles
   behind a throttled or lost answer (`src/exchange/data_pool.py, in SharedReads.rest_s`),
