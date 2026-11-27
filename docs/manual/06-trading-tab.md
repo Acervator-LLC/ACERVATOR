@@ -162,7 +162,7 @@ BB Tolerance - Determines the minimum distance of the Bollinger Band extent pric
 
 Now: BB Tolerance sets how close to a band, as a percent of price, price must sit to count as at that band. It counts only on the side the Target Delta points to, and it also sets the Landing Strip (`src/trading/indicators/bb_proximity.py, in band_zone`).
 
-Now: inside that zone the gate chain passes trend hold, ADX, the efficiency ratio, the higher-timeframe defer and the phantom lock, and each of their lights reads overridden by band_zone. The chain still holds a trade on a vote where fewer than three indicators agree, on the Minimum Opposing Trade Distance and its two-fee floor, on a queued tranche's rebuy price, on a circuit breaker, and on a price past the Price Age Limit (`src/trading/gate_chain.py, in GateChain.releases`).
+Now: inside that zone the gate chain passes trend hold, ADX, the efficiency ratio, the higher-timeframe defer and the phantom lock, and each of their lights reads overridden by band_zone. The bot still holds a trade on a vote where fewer than three indicators agree, on the Minimum Opposing Trade Distance and its two-fee floor, on a queued tranche's rebuy price, on a circuit breaker, and on a price past the Price Age Limit (`src/trading/gate_chain.py, in GateChain.releases`).
 
 `src/trading/gate_chain.py, in ZONE_RELEASED_GATES`
 
