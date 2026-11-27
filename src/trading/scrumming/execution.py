@@ -620,25 +620,30 @@ class ExecutionEngineMixin:
             "FOLD", "FILLED", f"{units:.6f} @ ${fill_price:.8f}"
         )
 
-        from .sizing import record_event_ids
-
-        _standing_events = set(record_event_ids(self._stack_tranches))
-        await self._spawn_stack_from_fold(
+        await self._spawn_stack_noting_events(
             fold_price=fill_price,
             fold_size=units,
             summary=summary,
             path=path,
             shadow_units=shadow_units,
         )
+        return fill_price
+
+    async def _spawn_stack_noting_events(self, **spawn: Any) -> None:
+        """Run ``_spawn_stack_from_fold`` with ``spawn``, and keep the stack event ids it
+        opened on ``_opened_stack_events``."""
+        from .sizing import record_event_ids
+
+        standing = set(record_event_ids(self._stack_tranches))
+        await self._spawn_stack_from_fold(**spawn)
         self._opened_stack_events = tuple(
             name
             for name in record_event_ids(self._stack_tranches)
-            if name not in _standing_events
+            if name not in standing
         )
-        return fill_price
 
     def _take_opened_stack_events(self) -> tuple[str, ...]:
-        """The stack event ids ``_book_purchase`` saw its last piece open, emptied once read."""
+        """The stack event ids ``_spawn_stack_noting_events`` saw its last spawn open, emptied once read."""
         opened = self._opened_stack_events
         self._opened_stack_events = ()
         return opened
@@ -2065,8 +2070,8 @@ class ExecutionEngineMixin:
         paid_events: Optional[list] = None,
     ) -> None:
         """Book one settled piece of a Manual Fire or cartridge buy against the
-        queued tranches, announce it, and offer its ``units`` to ``_spawn_stack_from_fold``
-        under ``label``.
+        queued tranches, offer its ``units`` to ``_spawn_stack_from_fold`` under
+        ``label`` through ``_spawn_stack_noting_events``, and announce it.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``. With
@@ -2124,11 +2129,11 @@ class ExecutionEngineMixin:
         else:
             self._record_venue_units_after_fill(fill_amount)
         self._count_trade_volume(fill_amount, fill_price)
+        await self._spawn_stack_noting_events(
+            fold_price=fill_price, fold_size=fill_amount, path=label
+        )
         self._report_fold_by_units(
             fill_amount, fill_price, price, label, operator_initiated, _gain_usd, msg
-        )
-        await self._spawn_stack_from_fold(
-            fold_price=fill_price, fold_size=fill_amount, path=label
         )
 
     async def _book_earlier_order(
