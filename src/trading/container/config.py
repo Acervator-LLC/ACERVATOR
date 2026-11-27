@@ -167,7 +167,7 @@ class BotConfig:
     # Caps per-cycle target_balance growth as a % of the cycle's anchor; 1-100.
     max_target_growth_pct: float = 1.0
 
-    bb_tolerance_pct: float = 1.0  # 0.25% to 5% tolerance for BB proximity
+    bb_tolerance_pct: float = 1.0  # 0.25% to 5% of price from either band edge
     bb_landing_strip_candles: int = (
         3  # Newest small-body HA candles the band-proximity check needs
     )

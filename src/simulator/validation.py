@@ -416,18 +416,12 @@ def phantom_locked(bot: SimBot, fixture: dict) -> tuple[bool, bool]:
 
 
 def bb_reading(candles: Sequence[Any], bot: SimBot):
-    """``detect_bb_proximity`` over ``candles``, called as ``ScrummingBot.tick``
+    """``bb_tolerance_reading`` over ``candles``, called as ``ScrummingBot.tick``
     calls it."""
-    from ..trading.indicators.bb_proximity import (
-        CONSOLIDATION_THRESHOLD_PCT,
-        detect_bb_proximity,
-    )
+    from ..trading.indicators.bb_proximity import bb_tolerance_reading
 
-    return detect_bb_proximity(
-        list(candles),
-        tolerance_pct=bot.bb_tolerance_pct,
-        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-        min_pattern_candles=bot.bb_landing_strip_candles,
+    return bb_tolerance_reading(
+        list(candles), bot.bb_tolerance_pct, bot.bb_landing_strip_candles
     )
 
 
@@ -472,6 +466,9 @@ def rerun_context(
 
     bb_above_upper_dt = bb_pos >= bb_upper_dt
     bb_below_lower_dt = bb_pos <= bb_lower_dt
+    from ..trading.indicators.bb_proximity import band_zone
+
+    upper_zone, lower_zone = band_zone(reading, delta)
     ripe_scrum = delta > 0 and not below_interval and bb_above_upper_dt
     deep_fold = delta < 0 and not below_interval and bb_below_lower_dt
 
@@ -524,6 +521,8 @@ def rerun_context(
         trading_fee_pct=bot.trading_fee_pct,
         ripe_scrum=ripe_scrum,
         deep_fold=deep_fold,
+        bb_upper_zone=upper_zone,
+        bb_lower_zone=lower_zone,
     )
     return context, bb_pos, locked_known
 

@@ -23,7 +23,6 @@ from .gate_chain import (
     effective_gate_flags,
 )
 from .gate_vocabulary import FOLD_BANK, SCRUM_BANK, LightReading, light_reading
-from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT, detect_bb_proximity
 from .indicators.bollinger import BollingerBands
 from .indicators.landing_strip import detect_landing_strip_v2
 from .indicators.types import SignalDirection
@@ -856,7 +855,7 @@ def scan_gates(
 
 
 def band_reading(candles: Any, settings: Any) -> Any:
-    """``detect_bb_proximity`` over ``candles`` at the two ``settings`` figures
+    """``bb_tolerance_reading`` over ``candles`` at the two ``settings`` figures
     ``ScrummingBot.tick`` passes.
 
     None under ``MIN_CANDLES_FOR_TA``.
@@ -864,11 +863,10 @@ def band_reading(candles: Any, settings: Any) -> Any:
     held = list(candles or [])
     if len(held) < MIN_CANDLES_FOR_TA:
         return None
-    return detect_bb_proximity(
-        held,
-        tolerance_pct=settings.bb_tolerance_pct,
-        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-        min_pattern_candles=settings.bb_landing_strip_candles,
+    from .indicators.bb_proximity import bb_tolerance_reading
+
+    return bb_tolerance_reading(
+        held, settings.bb_tolerance_pct, settings.bb_landing_strip_candles
     )
 
 

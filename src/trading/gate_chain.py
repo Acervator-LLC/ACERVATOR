@@ -114,6 +114,10 @@ class GateContext:
     eff_confidence: float = 0.0
     ta_conf_floor: float = 0.0
 
+    # Price inside BB Tolerance of the band the delta points to, as band_zone answers.
+    bb_upper_zone: bool = False
+    bb_lower_zone: bool = False
+
 
 @dataclass(frozen=True)
 class EffectiveGateFlags:
@@ -319,8 +323,8 @@ class TargetFiresGate(Gate):
 
 
 class BBProximityGate(Gate):
-    """Passes on ``ctx.bb_above_upper_dt`` for scrum, ``ctx.bb_below_lower_dt``
-    for fold.
+    """Passes on ``ctx.bb_above_upper_dt`` or ``ctx.bb_upper_zone`` for scrum,
+    ``ctx.bb_below_lower_dt`` or ``ctx.bb_lower_zone`` for fold.
 
     ``blocker_message`` compares ``ctx.bb_pos`` against ``ctx.bb_upper_dt`` or
     ``ctx.bb_lower_dt``, all three in bb_pos terms.
@@ -332,7 +336,7 @@ class BBProximityGate(Gate):
 
     def evaluate(self, ctx: GateContext) -> GateResult:
         if self.side == "scrum":
-            if ctx.bb_above_upper_dt:
+            if ctx.bb_above_upper_dt or ctx.bb_upper_zone:
                 return GateResult(passed=True)
             return GateResult(
                 passed=False,
@@ -342,7 +346,7 @@ class BBProximityGate(Gate):
                 ),
             )
         else:
-            if ctx.bb_below_lower_dt:
+            if ctx.bb_below_lower_dt or ctx.bb_lower_zone:
                 return GateResult(passed=True)
             return GateResult(
                 passed=False,

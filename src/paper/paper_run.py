@@ -315,6 +315,9 @@ def paper_tape_context(
 
     above_upper = bb_pos >= upper_dt
     below_lower = bb_pos <= lower_dt
+    from ..trading.indicators.bb_proximity import band_zone
+
+    upper_zone, lower_zone = band_zone(reading, delta)
     banded = reading is not None and reading.upper > 0 and reading.lower > 0
     effective = effective_gate_flags(
         bot,
@@ -376,6 +379,8 @@ def paper_tape_context(
         adx=signal_detail(summary, "adx", "adx"),
         efficiency_ratio=signal_detail(summary, "kaufman_er", "er"),
         z_score=signal_detail(summary, "zscore", "z"),
+        bb_upper_zone=upper_zone,
+        bb_lower_zone=lower_zone,
     )
 
 

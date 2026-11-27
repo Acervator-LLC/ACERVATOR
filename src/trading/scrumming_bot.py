@@ -48,7 +48,6 @@ from .ta_engine import (
     VotingSummary,
     SignalDirection,
     candles_from_raw,
-    detect_bb_proximity,
     BBProximityResult,
     detect_landing_strip_v2,
     three_agree,
@@ -72,7 +71,7 @@ from .otd_math import (
     opposing_sale_price,
 )
 from .stack_math import LADDER_STOPPED, rung_floor_ref
-from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
+from .indicators.bb_proximity import band_zone, bb_tolerance_reading
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
     TIMEFRAME_SECONDS,
@@ -125,9 +124,7 @@ from .scrumming.fold_tranches import (
 from .scrumming.sizing import (
     EVENT_ID_KEY,
     HEDGE_BUY,
-    REBALANCE_UNFUNDED,
     SIDE_BUY,
-    cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
     fold_decision,
@@ -612,6 +609,7 @@ class ScrummingBot(
         self._tick_counter: int = 0
         self._tick_skip: int = 1
         self._tick_skip_search: int = 1
+        self._cartridge_reached: bool = False
 
         self._fold_diag_tick: int = 0
         self._fold_diag_last_blocker_set: str = ""
@@ -964,7 +962,7 @@ class ScrummingBot(
           accum_profit: pre-quote-conversion USD-equivalent profit from the
                         caller's tranche match.
           source: short tag for the TARGET GROWN log line ("auto",
-                  "MANUAL_FOLD", "CARTRIDGE_FOLD").
+                  "MANUAL_FOLD").
 
         Returns:
           _growth_applied (USD). 0.0 if profit_folding_active is off,
@@ -2249,8 +2247,8 @@ class ScrummingBot(
         ``symbol``, and answer whether a summary was written.
 
         ``tick`` calls this above every early return, so a bot parked at
-        target, firing a cartridge or answering a manual fire still holds a
-        current reading for the Indicator Voting Panel to draw. The shared
+        target or answering a manual fire still holds a current reading for
+        the Indicator Voting Panel to draw. The shared
         ``MarketDataPool`` slot lives one timeframe, so a tick that finds the
         slot fresh makes no venue call. ``_tick_smart_cartridge_pct`` reads
         ``_last_bb`` earlier in the tick than ``_tick_main`` writes it, so the
@@ -2277,11 +2275,10 @@ class ScrummingBot(
         self._tick_candles = candles
         if len(candles) < MIN_CANDLES_FOR_TA:
             return False
-        self._last_bb = detect_bb_proximity(
+        self._last_bb = bb_tolerance_reading(
             candles,
-            tolerance_pct=self.config.bb_tolerance_pct,
-            consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-            min_pattern_candles=self.config.bb_landing_strip_candles,
+            self.config.bb_tolerance_pct,
+            self.config.bb_landing_strip_candles,
         )
         stamp = float(getattr(candles[-1], "timestamp", 0) or 0)
         if (
@@ -3246,9 +3243,8 @@ class ScrummingBot(
             _base_skip = max(1, int((self.config.scrum_read_rate_min * 60) / _tick_sec))
             self._tick_skip_search = _base_skip
             if (
-                self._scrum_target_mode in ("track", "fire")
-                and not self._cb_hard_tripped
-            ):
+                self._scrum_target_mode in ("track", "fire") or self._cartridge_reached
+            ) and not self._cb_hard_tripped:
                 self._tick_skip = max(1, _base_skip // 10)
             else:
                 self._tick_skip = _base_skip
@@ -3368,6 +3364,15 @@ class ScrummingBot(
             return
         self._last_price = self._last_price or ticker.last
 
+        try:
+            _cartridge_pct = float(
+                getattr(self.config, "max_cartridge_size_pct", 10.0) or 0.0
+            )
+        except (TypeError, ValueError):
+            _cartridge_pct = 0.0
+        _cartridge_pct = self._tick_smart_cartridge_pct(_cartridge_pct)
+        self._note_cartridge_reach(current_value, _cartridge_pct)
+
         if await self._tick_shadow(ticker):
             return
 
@@ -3419,106 +3424,6 @@ class ScrummingBot(
         if self._manual_fire_pending:
             await self._tick_manual_fire(ticker)
             return
-
-        try:
-            _cartridge_pct = float(
-                getattr(self.config, "max_cartridge_size_pct", 10.0) or 0.0
-            )
-        except (TypeError, ValueError):
-            _cartridge_pct = 0.0
-
-        _cartridge_pct = self._tick_smart_cartridge_pct(_cartridge_pct)
-
-        if _cartridge_pct > 0 and self._target_balance > 0:
-            _cartridge_threshold = cartridge_threshold_usd(
-                self._target_balance, _cartridge_pct
-            )
-            _cartridge_delta = target_delta_usd(current_value, self._target_balance)
-            if abs(_cartridge_delta) >= _cartridge_threshold:
-                _direction = "SCRUM" if _cartridge_delta > 0 else "FOLD"
-
-                _hyst_blocks = False
-                _hyst_reason = ""
-                _block_label = "hysteresis"
-                try:
-                    _eff_pct = self.opposing_trade_distance_pct()
-                except DistanceSettingUnreadable as _unread:
-                    _eff_pct = 0.0
-                    _hyst_blocks = True
-                    _block_label = "opposing distance unreadable"
-                    _hyst_reason = (
-                        f"{_unread}, so the opposing trade distance cannot be read"
-                    )
-                _eff_frac = _eff_pct / 100.0
-
-                if (
-                    not _hyst_blocks
-                    and _direction == "SCRUM"
-                    and getattr(self, "_hyst_armed_scrum_side", False)
-                    and float(getattr(self, "_hyst_ref_scrum_side", 0.0) or 0.0) > 0
-                ):
-                    _required_min = self._hyst_ref_scrum_side * (1.0 + _eff_frac)
-                    if ticker.last < _required_min:
-                        _hyst_blocks = True
-                        _hyst_reason = (
-                            f"price ${ticker.last:.8f} below "
-                            f"${_required_min:.8f} "
-                            f"(pivot ${self._hyst_ref_scrum_side:.8f} "
-                            f"+ {_eff_pct:.2f}%)"
-                        )
-                elif (
-                    not _hyst_blocks
-                    and _direction == "FOLD"
-                    and getattr(self, "_hyst_armed_fold_side", False)
-                    and float(getattr(self, "_hyst_ref_fold_side", 0.0) or 0.0) > 0
-                ):
-                    _required_max = self._hyst_ref_fold_side * (1.0 - _eff_frac)
-                    if ticker.last > _required_max:
-                        _hyst_blocks = True
-                        _hyst_reason = (
-                            f"price ${ticker.last:.8f} above "
-                            f"${_required_max:.8f} "
-                            f"(pivot ${self._hyst_ref_fold_side:.8f} "
-                            f"− {_eff_pct:.2f}%)"
-                        )
-
-                if _hyst_blocks:
-                    import time as _t_block
-
-                    _now_b = _t_block.time()
-                    _last_b = float(
-                        getattr(self, "_cartridge_blocked_last_log_ts", 0.0) or 0.0
-                    )
-                    if _now_b - _last_b >= 30.0:
-                        self._cartridge_blocked_last_log_ts = _now_b
-                        self._bus.emit(
-                            "bot.log",
-                            bot_id=self.bot_id,
-                            message=(
-                                f"MAX CARTRIDGE BLOCKED ({_block_label}): "
-                                f"would fire {_direction} on "
-                                f"|delta|=${abs(_cartridge_delta):.2f} "
-                                f"≥ ${_cartridge_threshold:.2f}, but "
-                                f"{_hyst_reason}. Refusing to prevent "
-                                f"fee-thrash round-trip with recent "
-                                f"opposite trade. Will re-evaluate "
-                                f"each tick as price moves."
-                            ),
-                        )
-                else:
-                    if _direction == "FOLD" and not await self._first_buy_clears(
-                        ticker, symbol, current_value, _cartridge_pct
-                    ):
-                        return
-                    _cartridge = await self._tick_cartridge_fire(
-                        ticker,
-                        _direction,
-                        _cartridge_delta,
-                        _cartridge_threshold,
-                        _cartridge_pct,
-                    )
-                    if _cartridge != REBALANCE_UNFUNDED:
-                        return
 
         if await self._tick_detonation(ticker):
             return
@@ -3573,11 +3478,10 @@ class ScrummingBot(
             )
             self._last_summary = summary
 
-            bb_result = detect_bb_proximity(
+            bb_result = bb_tolerance_reading(
                 candles,
-                tolerance_pct=self.config.bb_tolerance_pct,
-                consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-                min_pattern_candles=self.config.bb_landing_strip_candles,
+                self.config.bb_tolerance_pct,
+                self.config.bb_landing_strip_candles,
             )
             self._last_bb = bb_result
 
@@ -4174,6 +4078,7 @@ class ScrummingBot(
 
         _bb_above_upper_dt = bb_pos >= _bb_upper_dt
         _bb_below_lower_dt = bb_pos <= _bb_lower_dt
+        _bb_upper_zone, _bb_lower_zone = band_zone(bb_result, delta)
         _cb_blocks_scrum = self._cb_soft_active_side == "scrum"
         _htf_bias_dir = None
         _htf_bias_detail: dict = {}
@@ -4275,6 +4180,7 @@ class ScrummingBot(
             z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
             eff_confidence=float(eff_confidence),
             ta_conf_floor=float(_eff_conf_floor),
+            bb_upper_zone=bool(_bb_upper_zone),
         )
         _scrum_chain_result = self._scrum_chain.evaluate(_scrum_ctx)
         _scrum_blockers = [message for _name, message in _scrum_chain_result.blocked]
@@ -4319,6 +4225,7 @@ class ScrummingBot(
                 "scrum_ok": bool(scrum_ok),
                 "target_fires": bool(target_fires),
                 "bb_above_upper_dt": bool(_bb_above_upper_dt),
+                "bb_upper_zone": bool(_bb_upper_zone),
                 "cb_blocks_scrum": bool(_cb_blocks_scrum),
                 "htf_bias_dir": (
                     str(_htf_bias_dir.name) if _htf_bias_dir is not None else None
@@ -4606,6 +4513,8 @@ class ScrummingBot(
             z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
             eff_confidence=float(eff_confidence),
             ta_conf_floor=float(_eff_conf_floor),
+            bb_upper_zone=bool(_bb_upper_zone),
+            bb_lower_zone=bool(_bb_lower_zone),
         )
         _fold_chain_result = self._fold_chain.evaluate(_fold_ctx)
         _fold_blockers = [message for _name, message in _fold_chain_result.blocked]
@@ -4636,6 +4545,7 @@ class ScrummingBot(
                     _mem253_current_pos if _mem253_current_pos else 0.0
                 ),
                 "bb_below_lower_dt": bool(_bb_below_lower_dt),
+                "bb_lower_zone": bool(_bb_lower_zone),
                 "cb_blocks_fold": bool(_cb_blocks_fold),
                 "htf_blocks_fold": bool(_htf_blocks_fold),
                 "flag_fold_require_ta_bearish": bool(_flag_fold_require_ta_bearish),

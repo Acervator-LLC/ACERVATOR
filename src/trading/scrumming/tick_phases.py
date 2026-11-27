@@ -11,7 +11,6 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType, order_turn
-from ...exchange.ccxt_connector import order_stayed_home
 from ..container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
@@ -26,7 +25,7 @@ from ..container.config import (
     target_growth_pct,
 )
 from ..container.order_watch import PRESS_AGAIN_FRESH
-from ..indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
+from ..indicators.bb_proximity import bb_tolerance_reading
 from ..otd_math import (
     DistanceSettings,
     DistanceSettingUnreadable,
@@ -38,7 +37,6 @@ from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
     VotingEngine,
     candles_from_raw,
-    detect_bb_proximity,
     three_agree,
     two_indicator_ceiling,
 )
@@ -58,10 +56,10 @@ from .sizing import (
     EVENT_ID_KEY,
     EXCESS_SALE,
     FRACTIONAL_UNITS,
-    REBALANCE_REFUSED,
-    REBALANCE_SENT,
     SIDE_BUY,
     WHOLE_UNITS,
+    cartridge_reached,
+    cartridge_threshold_usd,
     fold_cap_remaining_usd,
     fold_decision,
     fold_spend_usd,
@@ -150,6 +148,7 @@ class TickPhaseMixin:
     _asset_class: Callable[..., str]
     _bus: Any
     _cartridge_last_smart_pct: float
+    _cartridge_reached: bool
     _cb_last_candle_ts: float
     _check_detonation_trigger: Callable[..., Any]
     _combine_fold_tranches_within_distance: Callable[..., Any]
@@ -724,72 +723,27 @@ class TickPhaseMixin:
                 )
         return _cartridge_pct
 
-    @order_turn
-    async def _tick_cartridge_fire(
-        self,
-        ticker: Any,
-        _direction: str,
-        _cartridge_delta: float,
-        _cartridge_threshold: float,
-        _cartridge_pct: float,
-    ) -> str:
-        """Fire the max-cartridge rebalance and answer what
-        ``_execute_manual_rebalance`` answers, and where it raised, ``REBALANCE_REFUSED``
-        on ``order_stayed_home`` proof and ``REBALANCE_SENT`` without it."""
-        if _direction == "FOLD":
-            _verified_units, _refuse_msg = await self._verify_buy_safe_or_refuse(
-                path="cartridge_fold", price=ticker.last
+    def _note_cartridge_reach(self, current_value: float, cartridge_pct: float) -> None:
+        """Set ``_cartridge_reached`` from ``cartridge_reached`` and write one log line each time it turns."""
+        reached = cartridge_reached(current_value, self._target_balance, cartridge_pct)
+        if reached == self._cartridge_reached:
+            return
+        self._cartridge_reached = reached
+        threshold = cartridge_threshold_usd(self._target_balance, cartridge_pct)
+        delta = target_delta_usd(current_value, self._target_balance)
+        if reached:
+            message = (
+                f"MAX CARTRIDGE REACHED: Target Delta ${delta:+.2f} is at or past "
+                f"${threshold:.2f} ({cartridge_pct:.2f}% of target). The bot reads at "
+                f"the TRACK rate, and the gate chain still decides every trade."
             )
-            if _refuse_msg:
-                return REBALANCE_REFUSED
-
-        def announce_fire() -> None:
-            """Write the fire line and the ``SENT`` line for the order in hand."""
-            try:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"MAX CARTRIDGE FIRE ({_direction}): "
-                        f"|delta|=${abs(_cartridge_delta):.2f} "
-                        f"≥ threshold ${_cartridge_threshold:.2f} "
-                        f"({_cartridge_pct:.1f}% of target "
-                        f"${self._target_balance:.2f}). "
-                        f"Hysteresis clear. Firing aggressive "
-                        f"rebalance — bypasses BB Detection / "
-                        f"soft CB / higher-TF bias gates. "
-                        f"It does NOT bypass "
-                        f"opposing-direction hysteresis."
-                    ),
-                )
-                self._emit_trade_notification(
-                    f"CARTRIDGE_{_direction}",
-                    "SENT",
-                    f"|delta|=${abs(_cartridge_delta):.2f} ≥ "
-                    f"${_cartridge_threshold:.2f}",
-                )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "tick",
-                    type(_sup).__name__,
-                    _sup,
-                )
-
-        try:
-            return await self._execute_manual_rebalance(
-                ticker, caller_intent="max_cartridge", on_order=announce_fire
+        else:
+            message = (
+                f"MAX CARTRIDGE CLEARED: Target Delta ${delta:+.2f} is under "
+                f"${threshold:.2f} ({cartridge_pct:.2f}% of target). The bot reads at "
+                f"the rate its ramp mode sets."
             )
-        except Exception as exc:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"MAX CARTRIDGE: rebalance raised " f"{type(exc).__name__}: {exc}"
-                ),
-            )
-            logger.exception("Max cartridge rebalance failed")
-            return REBALANCE_REFUSED if order_stayed_home(exc) else REBALANCE_SENT
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=message)
 
     async def _tick_detonation(self, ticker: Any) -> bool:
         """Return True when a detonation fired and the tick must stop.
@@ -1097,11 +1051,10 @@ class TickPhaseMixin:
             summary = self._voting_engine.compute_all(
                 parsed, self.config.ta_timeframe, symbol=self.config.symbol
             )
-            _init_bb = detect_bb_proximity(
+            _init_bb = bb_tolerance_reading(
                 parsed,
-                tolerance_pct=self.config.bb_tolerance_pct,
-                consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-                min_pattern_candles=self.config.bb_landing_strip_candles,
+                self.config.bb_tolerance_pct,
+                self.config.bb_landing_strip_candles,
             )
         except Exception as exc:
             return FirstBuyRead(

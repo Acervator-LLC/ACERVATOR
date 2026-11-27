@@ -77,8 +77,8 @@ def first_buy_restore_line(made: bool, from_save: bool) -> str:
     if made:
         return f"FIRST BUY MADE on restore: {ground}."
     return (
-        f"FIRST BUY OWED on restore: {ground}. Its Max Cartridge rebalance, hedge "
-        f"top-up and fold wait for one read."
+        f"FIRST BUY OWED on restore: {ground}. Its hedge top-up and fold wait "
+        f"for one read."
     )
 
 

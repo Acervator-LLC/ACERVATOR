@@ -26,6 +26,14 @@ from .heikin_ashi import compute_heikin_ashi
 #: under this is tight.
 CONSOLIDATION_THRESHOLD_PCT: float = 3.0
 
+#: ``detect_bb_proximity`` reads ``tolerance_pct`` as a percent of the band's width.
+TOLERANCE_OF_BAND_WIDTH: str = "band width"
+
+#: ``detect_bb_proximity`` reads ``tolerance_pct`` as a percent of price, the BB Tolerance unit.
+TOLERANCE_OF_PRICE: str = "price"
+
+TOLERANCE_UNITS: tuple[str, ...] = (TOLERANCE_OF_BAND_WIDTH, TOLERANCE_OF_PRICE)
+
 
 @dataclass
 class BBProximityResult:
@@ -53,13 +61,18 @@ def detect_bb_proximity(
     max_pattern_candles: int = 10,
     bb_period: int = 20,
     bb_std: float = 2.0,
+    tolerance_of: str = TOLERANCE_OF_BAND_WIDTH,
 ) -> BBProximityResult:
     """Place ``candles`` within the Bollinger channel and detect a landing strip.
 
     ``landing_strip`` is True when exactly one of ``near_upper`` and
     ``near_lower`` holds and at least ``min_pattern_candles`` trailing Heikin
-    Ashi bodies sit at or under ``consolidation_threshold``.
+    Ashi bodies sit at or under ``consolidation_threshold``. ``tolerance_pct``
+    is a percent of the band's width, or of price when ``tolerance_of`` is
+    ``TOLERANCE_OF_PRICE``; any other ``tolerance_of`` raises ``ValueError``.
     """
+    if tolerance_of not in TOLERANCE_UNITS:
+        raise ValueError(f"tolerance_of {tolerance_of!r} is not one of {TOLERANCE_UNITS}")
     closes = [c.close for c in candles]
     if len(closes) < bb_period:
         return BBProximityResult(
@@ -98,7 +111,8 @@ def detect_bb_proximity(
     # on `upper - lower <= 0`, so `bb_range` is strictly positive here.
     bb_pos = (price - lower) / bb_range
 
-    tol_val = bb_range * (tolerance_pct / 100.0)
+    tol_base = price if tolerance_of == TOLERANCE_OF_PRICE else bb_range
+    tol_val = tol_base * (tolerance_pct / 100.0)
     near_upper = price >= (upper - tol_val)
     near_lower = price <= (lower + tol_val)
 
@@ -173,3 +187,23 @@ def detect_bb_proximity(
         ha_body_avg=ha_body_avg,
         consolidation_strength=consolidation_strength,
     )
+
+
+def bb_tolerance_reading(
+    candles: list[Candle], bb_tolerance_pct: float, landing_strip_candles: int
+) -> BBProximityResult:
+    """``detect_bb_proximity`` with ``bb_tolerance_pct`` as a percent of price; every reader of BB Tolerance calls it."""
+    return detect_bb_proximity(
+        candles,
+        tolerance_pct=bb_tolerance_pct,
+        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
+        min_pattern_candles=landing_strip_candles,
+        tolerance_of=TOLERANCE_OF_PRICE,
+    )
+
+
+def band_zone(band: BBProximityResult | None, delta: float) -> tuple[bool, bool]:
+    """``(upper, lower)``: ``band.near_upper`` on a positive ``delta``, ``band.near_lower`` on a negative one."""
+    if band is None:
+        return (False, False)
+    return (bool(delta > 0 and band.near_upper), bool(delta < 0 and band.near_lower))

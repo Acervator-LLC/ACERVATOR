@@ -49,7 +49,8 @@ def detect_landing_strip_v2(
 
     ``min_consecutive`` and ``shrink_threshold`` bound the run, ``bb_period``
     and ``bb_std`` build the bands, and ``confidence_boost`` scales with
-    ``length`` and ``tightening_ratio``.
+    ``length`` and ``tightening_ratio``. ``bb_tolerance_pct`` is a percent of
+    the band's width, not of price.
     """
     empty = TighteningResult(False, "", 0, 0.0, 0.5, 0.0, 0)
 
