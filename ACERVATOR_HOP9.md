@@ -376,8 +376,15 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). Row 2
   is built: an order, a cancel and each read of an order's step go ahead of every
   other read on the worker, and the limit of eight counts the other reads alone
-  (`src/exchange/ccxt_connector.py, in SyncCall.to_venue`). The body's build order
-  names the rest: rows 5 and 6.
+  (`src/exchange/ccxt_connector.py, in SyncCall.to_venue`). Row 11
+  is built: a start, a restart and the launch start ask the venue off the
+  window's thread, the connect on the venue's worker inside `CONNECT_LIMIT_SEC`
+  and the account read through the shared pool, and the start goes on in the
+  window when the answer lands (`src/gui/main_window.py, in
+  MainWindow._run_venue_start`). Settings' Test, Add and browser sign-in, the
+  new-bot wizard's market list and the pre-flight check ask through
+  `src/gui/venue_wait.py, in VenueWait`, inside `VENUE_ASK_LIMIT_SEC`. The
+  body's build order names the rest: rows 5 and 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before
