@@ -373,8 +373,11 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   built, row 7 in its price, balance and candle parts: each exchange has its own
   refresher, whose rest follows the seconds its reads held the worker and doubles
   behind a throttled or lost answer (`src/exchange/data_pool.py, in SharedReads.rest_s`),
-  and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). The
-  body's build order names the rest: row 2, then 5 and 6.
+  and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). Row 2
+  is built: an order, a cancel and each read of an order's step go ahead of every
+  other read on the worker, and the limit of eight counts the other reads alone
+  (`src/exchange/ccxt_connector.py, in SyncCall.to_venue`). The body's build order
+  names the rest: rows 5 and 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before
@@ -471,7 +474,7 @@ Repaired in the build he runs; each waits on his logs to show it:
 
 ```
 a Max Cartridge fold, fold rebuy or hedge top-up refused on a full call queue
-    src/exchange/ccxt_connector.py, in queue_cap_waived; #1695 rows 1 and 3
+    src/exchange/ccxt_connector.py, in SyncCall.to_venue; #1695 rows 1 and 3, #1785 row 2
 a buy sent for quote the venue does not hold
     src/exchange/ccxt_connector.py, in CCXTConnector._refuse_unheld_quote; #1695 row 2
 a lost order booked twice when the venue answers after an audit took its units in

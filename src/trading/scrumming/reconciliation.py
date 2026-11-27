@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, SettledFill
-from ...exchange.base import OrderSide, Trade
+from ...exchange.base import OrderSide, Trade, order_turn, read_turn
 from ...exchange.idempotency import get_idempotency_layer
 from ..bot_container import FILL_DUST_UNITS
 from .sizing import (
@@ -1167,6 +1167,7 @@ class ReconciliationEngineMixin:
         )
         return _gain
 
+    @read_turn
     async def refresh_priced_figures_after_fill(self, reason: str = "fill") -> bool:
         """Re-read the venue once so the row's two priced figures rest on the fill.
 
@@ -1450,6 +1451,7 @@ class ReconciliationEngineMixin:
             self._warn_order(send.unmatched_line(sent, why))
         return False
 
+    @order_turn
     async def _lost_order_read(
         self, send: Any, side: str, units: float
     ) -> tuple[Optional[tuple[Any, float, float, float]], str]:
@@ -1614,6 +1616,7 @@ class ReconciliationEngineMixin:
             f"; lot book short: {_short_why}" if _short_why else "",
         )
 
+    @read_turn
     async def _reconcile_holdings(self, reason: str = "periodic") -> bool:
         """Compare ``_current_holdings`` and the ``_main_lots`` total against the
         venue, and on drift down ``_adopt_drift_down`` sets both to the venue.
