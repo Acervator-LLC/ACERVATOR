@@ -257,10 +257,23 @@ contract RegistryMintsTrophyTest {
         }
     }
 
+    struct FuzzSelector {
+        address addr;
+        bytes4[] selectors;
+    }
+
     /// @notice forge drives only the handler, which is operations and the recorder.
     function targetContracts() public view returns (address[] memory targets) {
         targets = new address[](1);
         targets[0] = address(handler);
+    }
+
+    /// @notice forge never calls parkTierAt, which writes a counter no award sequence reaches.
+    function excludeSelectors() public view returns (FuzzSelector[] memory excluded) {
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = RegistryAwardHandler.parkTierAt.selector;
+        excluded = new FuzzSelector[](1);
+        excluded[0] = FuzzSelector({addr: address(handler), selectors: selectors});
     }
 
     /// Each test gets its own set, because setUp drives every tier to its ceiling

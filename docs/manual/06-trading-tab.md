@@ -86,7 +86,7 @@ Scrum - To sell an amount from an investment position that allows it to return t
 
 Fold - To buy an amount for an investment position that allows it to return to its initial price level. This also drives Compounding Growth based on Local Volatility and is restricted by the Maximum Growth Per Cycle setting which has been set to a conservative 1% globally for Acervator’s live test and development run.
 
-Now: each fold spends queued tranche dollars whose rebuy price the market has reached, up to the growth room left this cycle, so the Target Delta does not size it (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`). A buy goes out only when the venue's free balance of its quote currency, read just before the send, covers the buy's price times its amount; otherwise nothing is sent and the log names both figures (`src/exchange/ccxt_connector.py, in CCXTConnector.place_order`). The fee is not counted, so a buy that fits only without its fee still reaches the venue, which refuses it. Every venue call of a fold's buy, from its open-orders read to its send, waits its turn in the venue's call queue, and a full queue does not refuse it; a balance the venue does not confirm still refuses the buy (`src/trading/scrumming/execution.py, in waives_queue_cap_by_path`).
+Now: each fold spends queued tranche dollars whose rebuy price the market has reached, up to the growth room left this cycle, so the Target Delta does not size it (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`). A buy goes out only when the venue's free balance of its quote currency, read just before the send, covers the buy's price times its amount; otherwise nothing is sent and the log names both figures (`src/exchange/ccxt_connector.py, in CCXTConnector.place_order`). The fee is not counted, so a buy that fits only without its fee still reaches the venue, which refuses it. Every venue call of a fold's buy, from its open-orders read to its send, waits its turn in the venue's call queue, and a full queue does not refuse it; a balance the venue does not confirm still refuses the buy (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy`).
 
 ![The wizard's first page: Trading Mode, with Scrumming selected.](p16-i0.png)
 
@@ -127,6 +127,8 @@ Aggressive Trading - Trades are priced so that they fill immediately. Trading li
 Now: only Stack tranches in Order Book mode change, each going out as an immediate-or-cancel limit at its ladder price, and every other order ignores this box (`src/trading/scrumming_bot.py, in ScrummingBot._open_stack_from_scrum`).
 
 Stack Mode - Stack Mode enables Stack Tranches which operate on the Sell or Scrum side. This forms the “upside” of the organic ladder structure whereas Fold Tranches form its “downside”.
+
+Now: a scrum sells through a rising ladder of Stack Tranches, and every filled buy ladders the units it bought above its fill, the first buy, a hedge, a Manual Fire and a cartridge buy among them. A buy that opens no ladder writes one bot log line that names why (`src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold`).
 
 Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
 
@@ -231,7 +233,7 @@ Now: while ticked, the reserve reads no entry price and buys from 1% under targe
 
 Hedge Balance - Sets a limit on the amount of additional liquidity a given bot is allowed to absorb when Current Price drifts below Initial Entry Price.
 
-Now: Hedge Balance caps a dollar reserve separate from Target Balance; each hedge buy spends up to half of it, and 8% of compound growth refills it (`src/trading/scrumming_bot.py, in ScrummingBot.tick`). A hedge or an entry holds its dollars on the in-flight ledger until its send ends, so a second buyer cannot pass on them (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy`). Every venue call of a hedge buy, from its open-orders read to its send, waits its turn in the venue's call queue, and a full queue does not refuse it (`src/trading/scrumming/execution.py, in waives_queue_cap_by_path`).
+Now: Hedge Balance caps a dollar reserve separate from Target Balance; each hedge buy spends up to half of it, and 8% of compound growth refills it (`src/trading/scrumming_bot.py, in ScrummingBot.tick`). A hedge or an entry holds its dollars on the in-flight ledger until its send ends, so a second buyer cannot pass on them (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy`). Every venue call of a hedge buy, from its open-orders read to its send, waits its turn in the venue's call queue, and a full queue does not refuse it (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy`).
 
 ![The Circuit Breakers group.](p21-i0.png)
 
@@ -712,7 +714,7 @@ The first column gives each row's range and factory opening value. Order Visibil
 | --- | --- |
 | Order Visibility (Order Book) | Order Book sends limit orders and rests tranches on the book. Internal sends market orders and tracks tranches in the app. Reads `visibility`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_sell` |
 | Aggressive Trading (off) | Sends Stack tranches in Order Book mode as immediate-or-cancel limits. A tranche above the market cancels unfilled. Reads `aggressive_trading`. `src/trading/scrumming_bot.py, in ScrummingBot._open_stack_from_scrum` |
-| Stack Mode (on) | Turns a scrum into a rising sell ladder, and ladders a fold's bought units too. Reads `stack_mode`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_sell` |
+| Stack Mode (on) | Turns a scrum into a rising sell ladder, and ladders a fold's bought units too. Every filled buy ladders its units, the first buy, a hedge, a Manual Fire and a cartridge buy among them, and a buy that opens no ladder writes why to the bot log. Reads `stack_mode`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_sell` and `src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold` |
 | Split Distance (0.1 to 20%, 1%) | Sets the percent gap between tranches. Reads `split_distance`. `src/trading/stack_math.py, in ladder_offsets_pct` |
 | Tranche Count (2 to 20, 3) | Sets the tranches a ladder aims for. Fewer appear under the venue minimum, or where two prices merge within 0.1%. Reads `stack_tranche_count_target`. `src/trading/stack_math.py, in split_scrum_into_tranches` |
 | Spacing (Linear) | Picks the multipliers: Linear, Quadratic or Exponential. Reads `stack_spacing_mode`. `src/trading/stack_math.py, in level_multipliers` |

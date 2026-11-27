@@ -26,9 +26,9 @@ if TYPE_CHECKING:
 
     from ..exchange.base import ExchangeInterface
 
-from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill
+from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill, TargetGrowth
 from ..core.price_age import PriceRead, ReadMoment
-from ..exchange.base import OrderSide, OrderType
+from ..exchange.base import OrderSide, OrderType, order_turn
 from ..exchange.ccxt_connector import order_stayed_home
 from ..exchange.data_pool import TICKER_TTL_SECONDS
 from ..exchange.idempotency import decision_purpose
@@ -124,6 +124,7 @@ from .scrumming.fold_tranches import (
 )
 from .scrumming.sizing import (
     EVENT_ID_KEY,
+    GROWTH_DUST_USD,
     HEDGE_BUY,
     REBALANCE_UNFUNDED,
     SIDE_BUY,
@@ -148,6 +149,51 @@ from .scrumming.sizing import (
 )
 
 logger = logging.getLogger("acervator.scrumming")
+
+
+class GrowthApplied(float):
+    """The USD one ``_apply_fold_target_growth`` call applied, holding its ``TargetGrowth`` as ``record``."""
+
+    record: Optional[TargetGrowth]
+
+    def __new__(cls, applied: float, record: Optional[TargetGrowth]) -> "GrowthApplied":
+        value = super().__new__(cls, applied)
+        value.record = record
+        return value
+
+
+def target_growth_line(growth: TargetGrowth, order_id: str, consumed_usd: float) -> str:
+    """The ``bot.log`` line one ``TargetGrowth`` writes, naming the venue ``order_id`` and
+    the cycle's ``consumed_usd`` after it."""
+    head = f"({growth.source}, order {order_id or 'unnamed'})"
+    if growth.applied_usd > 0.0:
+        drained = max(0.0, growth.standing_usd - growth.standing_after_usd)
+        pool = (
+            f" + ${growth.standing_usd:.4f} standing (${drained:.4f} drained)"
+            if growth.standing_usd > GROWTH_DUST_USD
+            else ""
+        )
+        return (
+            f"TARGET GROWN {head}: surplus ${growth.surplus_usd:.4f}{pool}, applied "
+            f"${growth.applied_usd:.4f} (cap remaining ${growth.cap_room_usd:.4f} of "
+            f"${growth.cycle_cap_usd:.4f}). New target ${growth.target_usd:.4f}, cycle "
+            f"consumed ${consumed_usd:.4f}. Standing pool now "
+            f"${growth.standing_after_usd:.4f}."
+        )
+    if growth.standing_after_usd > GROWTH_DUST_USD:
+        return (
+            f"TARGET-GROW HELD {head}: surplus ${growth.surplus_usd:.4f} accrues to "
+            f"standing pool (now ${growth.standing_after_usd:.4f}). Cap "
+            f"${growth.cycle_cap_usd:.4f} fully consumed this cycle."
+        )
+    return (
+        f"[COMPOUND SKIPPED] {head}: accum_profit ${growth.gain:.4f} × quote "
+        f"{growth.quote_to_usd:.4f} = ${growth.surplus_usd:.4f} — fold produced no "
+        f"surplus, and no standing surplus is parked. No target bump. (This is "
+        f"expected when a fold buys back at cost basis or when scrum→fold spread is "
+        f"eaten by fees.)"
+    )
+
 
 #: The gate log key carrying each refusal an override replaced on one side.
 OVERRIDES_APPLIED_KEY = "overrides_applied"
@@ -188,6 +234,33 @@ def ladder_held(watch: OrderWatch, hold: str, invisible: bool) -> bool:
     """True where ``hold`` stops a ladder before it opens: any hold for resting rungs, and
     an old price alone for rungs the book keeps."""
     return bool(hold) and (not invisible or hold == watch.aged)
+
+
+def buy_ladder_refusal(
+    buy: str,
+    stack_mode: bool,
+    fold_price: float,
+    bought_units: float,
+    shadow_units: float,
+) -> str:
+    """Why a filled ``buy`` opens no Stack ladder, empty where ``_spawn_stack_from_fold``
+    opens one."""
+    from .scrumming.execution import LADDER_OPENING_BUYS
+
+    if buy not in LADDER_OPENING_BUYS:
+        return f"the {buy or 'unnamed'} buy is not one that opens a Stack ladder"
+    if not stack_mode:
+        return "Stack Mode is off"
+    if not fold_price > 0:
+        return f"the fill reported no price (${fold_price})"
+    if not bought_units > 0:
+        return f"the fill reported no units ({bought_units})"
+    if not bought_units - shadow_units > 0:
+        return (
+            f"the Shadow Tranche took all {shadow_units:.8f} of the "
+            f"{bought_units:.8f} units this piece bought"
+        )
+    return ""
 
 
 _TA_CONFIDENCE_FLOOR = 0.25
@@ -957,141 +1030,68 @@ class ScrummingBot(
         # Never negative: consumption can exceed the target until the next reset.
         return cycle_growth_cap_usd(_target, _consumed, _pct)
 
-    def _apply_fold_target_growth(self, accum_profit: float, source: str) -> float:
-        """Drain fold surplus into ``_target_balance``, bounded by the per-cycle cap.
+    def _apply_fold_target_growth(
+        self,
+        accum_profit: float,
+        source: str,
+        *,
+        units_bought: float = 0.0,
+        units_at_scrum: float = 0.0,
+        fill_price: float = 0.0,
+        fee_pct: Optional[float] = None,
+        wire_share_pct: float = WIRE_ABSENT_PCT,
+    ) -> GrowthApplied:
+        """Grow ``_target_balance`` by ``target_growth_applied`` of ``accum_profit`` at
+        ``_quote_to_usd``, under ``fold_cap_remaining_usd`` of ``cycle_growth_cap_usd``.
 
-        Args:
-          accum_profit: pre-quote-conversion USD-equivalent profit from the
-                        caller's tranche match.
-          source: short tag for the TARGET GROWN log line ("auto",
-                  "MANUAL_FOLD", "CARTRIDGE_FOLD").
-
-        Returns:
-          _growth_applied (USD). 0.0 if profit_folding_active is off,
-          surplus is non-positive, or cap fully consumed.
-
+        Answers the USD applied as ``GrowthApplied``, whose ``record`` is the
+        ``TargetGrowth`` of ``source`` and the fill's figures, None while
+        ``profit_folding_active`` is off.
         """
+        from .scrumming.sizing import fold_cap_remaining_usd, target_growth_applied
+
+        order_id = self._settled_order_id()
         if not self.config.profit_folding_active:
-            try:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"[COMPOUND SKIPPED] ({source}): "
-                        f"profit_folding_active=False — the "
-                        f"compound-growth feature is off for "
-                        f"this bot. No target bump."
-                    ),
-                )
-            except Exception as _sup:  # noqa: BLE001
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "_apply_fold_target_growth",
-                    type(_sup).__name__,
-                    _sup,
-                )
-            return 0.0
-        _quote = float(self._quote_to_usd or 1.0)
-        _new_surplus_usd = max(0.0, float(accum_profit) * _quote)
-        if (
-            _new_surplus_usd <= 1e-9
-            and float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0) <= 1e-9
-        ):
-            try:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"[COMPOUND SKIPPED] ({source}): "
-                        f"accum_profit ${float(accum_profit):.4f} × "
-                        f"quote {_quote:.4f} = ${_new_surplus_usd:.4f} "
-                        f"— fold produced no surplus, and no standing "
-                        f"surplus is parked. No target bump. "
-                        f"(This is expected when a fold buys back at "
-                        f"cost basis or when scrum→fold spread is "
-                        f"eaten by fees.)"
-                    ),
-                )
-            except Exception as _sup:  # noqa: BLE001
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "_apply_fold_target_growth",
-                    type(_sup).__name__,
-                    _sup,
-                )
-            return 0.0
-        # The cap base is the cycle-open target, not the frozen anchor.
-        _cycle_cap_growth = self.cycle_growth_cap_usd
-        _cap_remaining = max(0.0, _cycle_cap_growth - self._fold_cycle_cap_consumed)
-        if _cap_remaining <= 1e-9:
-            self._standing_surplus_usd += _new_surplus_usd
-            try:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"TARGET-GROW HELD ({source}): surplus "
-                        f"${_new_surplus_usd:.4f} accrues to standing "
-                        f"pool (now ${self._standing_surplus_usd:.4f}). "
-                        f"Cap ${_cycle_cap_growth:.4f} fully consumed "
-                        f"this cycle."
-                    ),
-                )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "_apply_fold_target_growth",
-                    type(_sup).__name__,
-                    _sup,
-                )
-            try:
-                self.stats.standing_surplus_usd = self._standing_surplus_usd
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "_apply_fold_target_growth",
-                    type(_sup).__name__,
-                    _sup,
-                )
-            return 0.0
-        _prior_pool = float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
-        _available = _new_surplus_usd + _prior_pool
-        _growth_applied = min(_available, _cap_remaining)
-        self._target_balance = float(self._target_balance) + _growth_applied
-        self._fold_cycle_cap_consumed += _growth_applied
-        self._target_grow_last_side = "lower"
-        self._standing_surplus_usd = max(0.0, _available - _growth_applied)
-        _drained = max(0.0, _prior_pool - self._standing_surplus_usd)
-        _leftover = self._standing_surplus_usd
-        self._fold_accumulator += _growth_applied
-        try:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"TARGET GROWN ({source}): surplus "
-                    f"${_new_surplus_usd:.4f}"
-                    + (
-                        f" + ${_prior_pool:.4f} standing " f"(${_drained:.4f} drained)"
-                        if _prior_pool > 1e-9
-                        else ""
-                    )
-                    + f", applied "
-                    f"${_growth_applied:.4f} (cap remaining "
-                    f"${_cap_remaining:.4f} of "
-                    f"${_cycle_cap_growth:.4f}). New target "
-                    f"${self._target_balance:.4f}, cycle consumed "
-                    f"${self._fold_cycle_cap_consumed:.4f}. "
-                    f"Standing pool now ${_leftover:.4f}."
-                ),
+            self._emit_growth_line(
+                f"[COMPOUND SKIPPED] ({source}, order {order_id or 'unnamed'}): "
+                f"profit_folding_active=False — the compound-growth feature is off "
+                f"for this bot. No target bump."
             )
-        except Exception as _sup:
-            logger.debug(
-                "suppressed in %s: %s: %s",
-                "_apply_fold_target_growth",
-                type(_sup).__name__,
-                _sup,
-            )
+            return GrowthApplied(0.0, None)
+        quote = float(self._quote_to_usd or 1.0)
+        surplus_usd = float(accum_profit) * quote
+        standing = float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
+        consumed = float(self._fold_cycle_cap_consumed)
+        cycle_cap = self.cycle_growth_cap_usd
+        cap_room = fold_cap_remaining_usd(cycle_cap, consumed)
+        applied, standing_after = target_growth_applied(surplus_usd, standing, cap_room)
+        self._target_balance = float(self._target_balance) + applied
+        self._fold_cycle_cap_consumed += applied
+        self._fold_accumulator += applied
+        self._standing_surplus_usd = standing_after
+        if applied > 0.0:
+            self._target_grow_last_side = "lower"
+        growth = TargetGrowth(
+            source=str(source),
+            units_bought=float(units_bought),
+            units_at_scrum=float(units_at_scrum),
+            fill_price=float(fill_price),
+            fee_pct=fee_pct,
+            wire_share_pct=float(wire_share_pct),
+            gain=float(accum_profit),
+            quote_to_usd=quote,
+            surplus_usd=surplus_usd,
+            standing_usd=standing,
+            cycle_cap_usd=float(cycle_cap),
+            consumed_usd=consumed,
+            cap_room_usd=float(cap_room),
+            applied_usd=applied,
+            standing_after_usd=standing_after,
+            target_usd=float(self._target_balance),
+        )
+        self._emit_growth_line(
+            target_growth_line(growth, order_id, float(self._fold_cycle_cap_consumed))
+        )
         try:
             self.stats.standing_surplus_usd = self._standing_surplus_usd
         except Exception as _sup:
@@ -1101,7 +1101,19 @@ class ScrummingBot(
                 type(_sup).__name__,
                 _sup,
             )
-        return _growth_applied
+        return GrowthApplied(applied, growth)
+
+    def _emit_growth_line(self, message: str) -> None:
+        """Send ``message`` on ``bot.log`` for this bot, and log a bus that raises."""
+        try:
+            self._bus.emit("bot.log", bot_id=self.bot_id, message=message)
+        except Exception as _sup:
+            logger.debug(
+                "suppressed in %s: %s: %s",
+                "_apply_fold_target_growth",
+                type(_sup).__name__,
+                _sup,
+            )
 
     def _preview_fold_growth(
         self,
@@ -1162,17 +1174,16 @@ class ScrummingBot(
             _accum += discharge_gain_usd(t, take, price, fee_pct)
             _remaining -= take
         self._fold_preview_unreadable_units = _unreadable_units
-        _quote = float(self._quote_to_usd or 1.0)
-        _new_surplus_usd = max(0.0, _accum * _quote)
-        # The same property the applier reads, so the two cannot disagree.
-        _cycle_cap_growth = self.cycle_growth_cap_usd
-        _cap_remaining = max(0.0, _cycle_cap_growth - self._fold_cycle_cap_consumed)
-        if _cap_remaining <= 1e-9:
-            return 0.0
-        _available = _new_surplus_usd + float(
-            getattr(self, "_standing_surplus_usd", 0.0) or 0.0
+        from .scrumming.sizing import fold_cap_remaining_usd, target_growth_applied
+
+        _applied, _ = target_growth_applied(
+            _accum * float(self._quote_to_usd or 1.0),
+            float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0),
+            fold_cap_remaining_usd(
+                self.cycle_growth_cap_usd, self._fold_cycle_cap_consumed
+            ),
         )
-        return min(_available, _cap_remaining)
+        return _applied
 
     def set_visibility_live(self, new_visibility: str) -> dict:
         """Apply live visibility change (internal ↔ orderbook)."""
@@ -1778,6 +1789,7 @@ class ScrummingBot(
             "atomic": _atomic_ok,
         }
 
+    @order_turn
     async def manual_fire_tranche(self, tranche_index: int) -> dict:
         """Operator-initiated fold-back of a specific tranche, on a price inside the age
         limit.
@@ -1966,10 +1978,16 @@ class ScrummingBot(
         _mf_profit = self._fold_gain_usd(_mf_sale_usd, _mf_units, float(fill_price))
         try:
             _mf_growth = self._apply_fold_target_growth(
-                _mf_profit, source="MANUAL_TRANCHE_FOLD"
+                _mf_profit,
+                source="MANUAL_TRANCHE_FOLD",
+                units_bought=rebought_units,
+                units_at_scrum=_mf_units,
+                fill_price=float(fill_price),
+                fee_pct=self._fold_fee_pct(float(fill_price)),
+                wire_share_pct=wire_share_pct,
             )
         except Exception as _mf_exc:  # noqa: BLE001
-            _mf_growth = 0.0
+            _mf_growth = GrowthApplied(0.0, None)
             logger.error(
                 "manual tranche fold: target-growth booking FAILED after a "
                 "filled buy on %s (%s); the fill stands, the growth was "
@@ -2073,6 +2091,8 @@ class ScrummingBot(
             side="BUY", trade_action="MANUAL_TRANCHE_FOLD"
         )
         self._emit_gate_decision_at_fire(side="BUY", trade_action="MANUAL_TRANCHE_FOLD")
+        from .scrumming.sizing import record_event_ids
+
         self._announce_fill(
             kind="MANUAL_TRANCHE_FOLD",
             side=FILL_BUY,
@@ -2082,6 +2102,9 @@ class ScrummingBot(
             profit=_mf_growth,
             operator_initiated=True,
             fee=self._fill_fee_fields(fill_price),
+            spent_event_ids=record_event_ids([] if tranche is None else [tranche]),
+            opened_event_ids=self._take_opened_stack_events(),
+            growth=_mf_growth.record,
         )
 
     def update_phantom_config(
@@ -2385,6 +2408,7 @@ class ScrummingBot(
         except (TypeError, ValueError, ZeroDivisionError):
             return 0.0
 
+    @order_turn
     async def self_destruct(
         self,
         confirmation_token: str = "",
@@ -2743,6 +2767,9 @@ class ScrummingBot(
             logger.debug(
                 "suppressed in %s: %s: %s", "self_destruct", type(_sup).__name__, _sup
             )
+        from .scrumming.sizing import record_event_ids
+
+        _cleared_events = record_event_ids(self._fold_tranches)
         for _cleared in self._fold_tranches:
             self._return_wire_credits_to_pool(_cleared)
         self._fold_tranches = []
@@ -2793,6 +2820,8 @@ class ScrummingBot(
                 profit=0.0,
                 operator_initiated=True,
                 fee=self._fill_fee_fields(fill_price),
+                spent_event_ids=_cleared_events,
+                opened_event_ids=(),
             )
         except Exception as _sup:
             logger.debug(
@@ -4912,6 +4941,8 @@ class ScrummingBot(
             profit=0.0,
             operator_initiated=False,
             fee=self._fill_fee_fields(hedge_fill),
+            spent_event_ids=(),
+            opened_event_ids=self._take_opened_stack_events(),
         )
 
     async def _check_detonation_trigger(self, ticker) -> bool:
@@ -5284,6 +5315,15 @@ class ScrummingBot(
         _hold = self.order_refusal(_watch)
         if ladder_held(_watch, _hold, self._invisible):
             self._report_held_order(_watch, "SELL", self.config.symbol, _hold)
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK STOPPED: the ladder from {origin} for "
+                    f"{float(scrum_size):.6f} units sent no rung: {_hold}. Its units "
+                    f"stay in the position."
+                ),
+            )
             return LADDER_STOPPED
 
         from .scrumming.sizing import (
@@ -5480,6 +5520,7 @@ class ScrummingBot(
         # the caller must not fall through to an undivided market sell.
         return len(_opened_rungs) + _combined_n
 
+    @order_turn
     async def _reconcile_stack_tranches_visible(self) -> int:
         """Visible-mode Stack reconciliation, once per tick.
 
@@ -5567,6 +5608,8 @@ class ScrummingBot(
                     order, _filled, t["fill_price"]
                 )
                 self._last_settled_order = order
+                from .scrumming.sizing import record_event_ids
+
                 self._announce_fill(
                     kind="STACK_RUNG",
                     side=FILL_SELL,
@@ -5578,6 +5621,8 @@ class ScrummingBot(
                     profit=0.0,
                     operator_initiated=False,
                     fee=self._fill_fee_fields(t["fill_price"]),
+                    spent_event_ids=record_event_ids([t]),
+                    opened_event_ids=(),
                 )
             else:
                 t["status"] = "cancelled"
@@ -5775,20 +5820,21 @@ class ScrummingBot(
         rung_opened_ts: Any,
     ) -> None:
         """Mark the stack rung named by ``rung_index`` and ``rung_opened_ts`` filled at
-        its order's first settled piece, and announce each piece as a ``STACK_SPEND``.
+        its order's first settled piece, and announce each piece as a ``STACK_SPEND``
+        naming that rung's event ids.
         """
-        rung = None
-        if first:
-            rung = next(
-                (
-                    t
-                    for t in self._stack_tranches
-                    if t.get("index") == rung_index
-                    and t.get("opened_ts") == rung_opened_ts
-                ),
-                None,
-            )
-        if rung is not None:
+        from .scrumming.sizing import record_event_ids
+
+        rung = next(
+            (
+                t
+                for t in self._stack_tranches
+                if t.get("index") == rung_index and t.get("opened_ts") == rung_opened_ts
+            ),
+            None,
+        )
+        spent_events = record_event_ids([] if rung is None else [rung])
+        if first and rung is not None:
             rung["status"] = "filled"
             rung["fill_price"] = float(fill_price)
             self._bus.emit(
@@ -5811,6 +5857,8 @@ class ScrummingBot(
             profit=0.0,
             operator_initiated=False,
             fee=self._fill_fee_fields(fill_price),
+            spent_event_ids=spent_events,
+            opened_event_ids=(),
         )
 
     def _take_filled_units_off_lots(self, filled_units: float) -> int:
@@ -5895,29 +5943,45 @@ class ScrummingBot(
         fold_size: float,
         summary: Optional[VotingSummary] = None,
         path: str = "",
+        shadow_units: float = 0.0,
     ) -> int:
-        """A filled FOLD spawns the Stack ladder above it.
+        """A filled buy spawns the Stack ladder above it from the ``fold_size`` units it
+        bought less ``shadow_units``.
 
-        Every rung keeps ``fold_price`` as its floor reference, and
-        ``_fold_piece_laddered`` reads True only when this fill opened a ladder.
+        ``path`` is an ``_execute_buy`` path or a ``_book_manual_purchase`` label. Every
+        rung keeps ``fold_price`` as its floor reference, and ``_fold_piece_laddered``
+        reads True only when this fill opened a ladder. A ``buy_ladder_refusal`` writes
+        one ``FOLD STACK NOT OPENED`` line, and every other fill that opens none gets
+        its line from ``_open_stack_from_scrum``.
 
         Returns:
             How many Stack tranches were created, 0 when none were.
 
         """
         self._fold_piece_laddered = False
-        if path not in ("fold_rebuy", "manual_tranche_fire"):
-            return 0
-        if not getattr(self.config, "stack_mode", False):
-            return 0
-        if not (fold_price and fold_price > 0):
-            return 0
-        if not (fold_size and fold_size > 0):
+        ladder_size = float(fold_size) - float(shadow_units)
+        refusal = buy_ladder_refusal(
+            path,
+            bool(getattr(self.config, "stack_mode", False)),
+            float(fold_price),
+            float(fold_size),
+            float(shadow_units),
+        )
+        if refusal:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"FOLD STACK NOT OPENED: {refusal}. The fill at "
+                    f"${float(fold_price):.8f} (size {float(fold_size):.6f}, "
+                    f"path {path}) stands; no Stack tranches were opened above it."
+                ),
+            )
             return 0
         try:
             opened = await self._open_stack_from_scrum(
                 scrum_price=float(fold_price),
-                scrum_size=float(fold_size),
+                scrum_size=ladder_size,
                 summary=summary,
                 origin="fold",
                 floor_ref_price=float(fold_price),
@@ -5950,7 +6014,7 @@ class ScrummingBot(
                 message=(
                     f"FOLD SPAWNED STACK: {opened} tranche(s) above "
                     f"a fold filled at ${float(fold_price):.8f} "
-                    f"(size {float(fold_size):.6f}, path {path})."
+                    f"(size {ladder_size:.6f}, path {path})."
                 ),
             )
         return max(opened, 0)

@@ -18,6 +18,7 @@ from functools import partial
 from typing import Any, Callable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ..core.emit_contracts import TargetGrowth
     from ..exchange.base import (
         ExchangeInterface,
         MarketRules,
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
 from ..core.emit_contracts import FILL_BUY, FILL_TOPIC, TRADE_TYPES, SettledFill
 from ..core.event_bus import get_event_bus
 from ..core.price_age import PriceRead, ReadMoment
-from ..exchange.base import OrderRefused, OrderStatus
+from ..exchange.base import OrderRefused, OrderStatus, order_turn
 from ..exchange.data_pool import BALANCE_TTL_SECONDS, TICKER_TTL_SECONDS
 from ..exchange.timeframes import ALL_TIMEFRAMES
 from .container import (
@@ -365,6 +366,10 @@ class BotContainer:
         for leg in sorted(legs - {""}):
             self._invalidate_balance(leg)
 
+    def _settled_order_id(self) -> str:
+        """The venue id of ``_last_settled_order``, empty where it names none."""
+        return str(getattr(self._last_settled_order, "id", "") or "")
+
     def _announce_fill(
         self,
         *,
@@ -376,10 +381,14 @@ class BotContainer:
         profit: float,
         operator_initiated: bool,
         fee: dict,
+        spent_event_ids: tuple[str, ...],
+        opened_event_ids: tuple[str, ...],
+        growth: Optional[TargetGrowth] = None,
         symbol: str = "",
     ) -> None:
         """Write one booked piece's figures through ``_write_fill_figures``, then send it on
-        ``FILL_TOPIC`` as a ``SettledFill`` naming this bot and ``config.exchange_id``.
+        ``FILL_TOPIC`` as a ``SettledFill`` naming this bot, ``config.exchange_id`` and
+        ``_settled_order_id``.
 
         ``fee`` holds one of the two ``SettledFill`` fee fields, and a ``kind``
         outside ``TRADE_TYPES`` is logged and still sent.
@@ -401,6 +410,10 @@ class BotContainer:
             operator_initiated=bool(operator_initiated),
             symbol=str(symbol or self.config.symbol),
             exchange=str(self.config.exchange_id),
+            venue_order_id=self._settled_order_id(),
+            spent_event_ids=tuple(spent_event_ids),
+            opened_event_ids=tuple(opened_event_ids),
+            target_growth=growth,
             **fee,
         )
         try:
@@ -419,7 +432,8 @@ class BotContainer:
         """Count ``fill`` into the trade tally once per order, stamp ``last_trade_time``, then
         call ``_write_clock_figures`` and each sibling's ``_join_walk_readings``.
 
-        ``_last_settled_order`` is the order body that settled ``fill``.
+        ``_last_settled_order`` is the order body that settled ``fill``, and
+        ``fill.venue_order_id`` its id.
         """
         order = self._last_settled_order
         units = float(fill.amount)
@@ -436,7 +450,7 @@ class BotContainer:
             and order_status_text(order) not in CLOSED_ORDER_STATUSES
             and self._order_asked_units(order, filled) - filled > FILL_DUST_UNITS
         )
-        order_id = str(getattr(order, "id", "") or "")
+        order_id = fill.venue_order_id
         self._write_clock_figures(fill, order_id, filled, rests)
         for sibling in self._symbol_siblings(fill.symbol):
             sibling._join_walk_readings(fill, order_id, filled, rests)
@@ -497,6 +511,7 @@ class BotContainer:
             return amount
         return float(requested or 0.0)
 
+    @order_turn
     async def _read_settled_order(
         self, order: object, symbol: str
     ) -> tuple[float, float, object, object]:
@@ -611,6 +626,7 @@ class BotContainer:
                 return record
         return None
 
+    @order_turn
     async def _read_resting_orders(
         self, records: list[dict]
     ) -> list[tuple[dict, object]]:
@@ -1017,6 +1033,7 @@ class BotContainer:
         self._report_held_order(watch, side, symbol or self.config.symbol, watch.aged)
         return True
 
+    @order_turn
     async def _exit_limit_price(
         self, symbol: str, watch: OrderWatch, stored_px: float
     ) -> float:
@@ -1026,15 +1043,12 @@ class BotContainer:
         A read that fails leaves a press at ``stored_px``, with its age on the Console,
         and leaves a tick's sale unsent, with why on ``OrderWatch.refusal``.
         """
-        from ..exchange.ccxt_connector import queue_cap_waived
-
         wait = self.market_read().wait()
         if not wait:
             return stored_px
         cause = "the venue answered no price"
         try:
-            with queue_cap_waived():
-                ticker = await self.exchange.get_ticker(symbol)
+            ticker = await self.exchange.get_ticker(symbol)
             fresh_px = finite_reading(ticker.last)
             if fresh_px > 0.0:
                 self.note_price(ticker)
@@ -1079,6 +1093,7 @@ class BotContainer:
     # ``clearing_refusal`` runs before all of them and refuses a product the
     # venue clears somewhere this platform's order path does not reach, naming
     # the clearing venue.
+    @order_turn
     async def guarded_place_order(
         self,
         symbol: str,

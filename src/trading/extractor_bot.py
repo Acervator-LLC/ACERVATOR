@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import Optional, TYPE_CHECKING
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL
-from ..exchange.base import OrderType
+from ..exchange.base import OrderType, order_turn
 from ..exchange.market_rules_store import quote_currency
 from .bot_container import (
     DOLLAR_PEGGED_CURRENCIES,
@@ -829,6 +829,7 @@ class ExtractorBot(BotContainer):
                 pos.state = state_before
             return
 
+    @order_turn
     async def manual_fire_position(self, pair: str) -> dict:
         """Close one open position at the current market price on
         operator request, from the position's Manual Fire button.
@@ -1158,6 +1159,8 @@ class ExtractorBot(BotContainer):
             profit=self._base_to_usd(gain_base),
             operator_initiated=operator_initiated,
             fee=self._fill_fee_fields_for(pair, fill_price),
+            spent_event_ids=(),
+            opened_event_ids=(),
             symbol=pair,
         )
 
@@ -1198,6 +1201,7 @@ class ExtractorBot(BotContainer):
                 _exc,
             )
 
+    @order_turn
     async def _fire_artillery(
         self,
         pair: str,
@@ -1356,6 +1360,8 @@ class ExtractorBot(BotContainer):
             profit=0.0,
             operator_initiated=False,
             fee=self._fill_fee_fields_for(pair, fill_price),
+            spent_event_ids=(),
+            opened_event_ids=(),
             symbol=pair,
         )
 

@@ -21,7 +21,7 @@ from ..core.price_age import DEFAULT_PRICE_AGE_LIMIT_S, ReadMoment, price_age_li
 from ..core.tick_driver import PUMP_INTERVAL_MS
 from ..trading.ta_engine import MIN_CANDLES_FOR_TA
 from .api_load_monitor import DEFAULT_WINDOW_SECONDS
-from .base import Ticker
+from .base import Ticker, in_order_turn
 from .lazy_singleton import BACKOFF_FACTOR, DEFAULT_MAX_COOLOFF_S, ThrottledFault
 from .market_pairs_scout import row_quote_volume_24h
 
@@ -185,14 +185,12 @@ class LinePlaces:
 
     def take(self, connector, spare: int) -> bool:
         """True where more than ``spare`` places are left, one of them now taken; always
-        inside ``queue_cap_waived`` and without ``sync_queue_load``."""
-        from .ccxt_connector import queue_cap_is_waived
-
+        without ``sync_queue_load``."""
         reader = getattr(connector, "sync_queue_load", None)
         with self._guard:
             now = time.monotonic()
             self._asked = [at for at in self._asked if now - at < ASK_SETTLE_SECONDS]
-            if reader is not None and not queue_cap_is_waived():
+            if reader is not None:
                 load = reader()
                 free = float(load["cap"]) - float(load["depth"]) - len(self._asked)
                 if free <= spare:
@@ -729,11 +727,14 @@ class MarketDataPool:
         served: Callable[[], bool],
         awaits: Callable[[float], bool],
     ) -> Optional[object]:
-        """A token of ``turn`` once this caller has to ask alone, None once ``served``.
+        """A token of ``turn`` once this caller has to ask alone, None once ``served``;
+        in an order's step, one no turn holds at once where ``served`` is False.
 
         Raises:
             asyncio.TimeoutError: neither came inside ``SHARED_WAIT_SECONDS``.
         """
+        if in_order_turn():
+            return None if served() else object()
         ends_at = time.monotonic() + SHARED_WAIT_SECONDS
         while not served():
             now = time.monotonic()
@@ -878,7 +879,8 @@ class MarketDataPool:
             if not entry.is_fresh:
                 return False
             listed = bulk and not entry.left_out
-            return not (listed and reads.replaces(PRICES_CALL, entry.age_seconds))
+            replaced = listed and reads.replaces(PRICES_CALL, entry.age_seconds)
+            return in_order_turn() or not replaced
 
         def awaits(ends_at: float) -> bool:
             entry = slot()
@@ -1106,7 +1108,8 @@ class MarketDataPool:
             entry = slot()
             if not entry.is_fresh:
                 return False
-            return not (bulk and reads.replaces(ACCOUNT_CALL, entry.age_seconds))
+            replaced = bulk and reads.replaces(ACCOUNT_CALL, entry.age_seconds)
+            return in_order_turn() or not replaced
 
         def awaits(ends_at: float) -> bool:
             entry = slot()

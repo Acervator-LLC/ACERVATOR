@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
-from ...exchange.base import OrderSide, OrderType
+from ...exchange.base import OrderSide, OrderType, order_turn
 from ...exchange.ccxt_connector import order_stayed_home
 from ..container.config import (
     CEILING_MULTIPLE_MAX,
@@ -176,6 +176,7 @@ class TickPhaseMixin:
     _fold_diag_last_blocker_set: str
     _fold_diag_tick: int
     _fold_eligible_tranches: Callable[..., list[dict]]
+    _fold_fee_pct: Callable[..., Optional[float]]
     _fold_gain_usd: Callable[..., float]
     _fold_piece_laddered: bool
     _fold_queue_ref_price: float
@@ -232,6 +233,7 @@ class TickPhaseMixin:
     _sum_sibling_base_currency_claims: Callable[..., Optional[float]]
     _ta_weights: Any
     _take_filled_units_off_lots: Callable[..., int]
+    _take_opened_stack_events: Callable[..., tuple]
     _target_balance: Any
     _target_grow_last_side: Optional[str]
     _mark_shadow_rows: Callable[..., int]
@@ -724,30 +726,8 @@ class TickPhaseMixin:
                 )
         return _cartridge_pct
 
+    @order_turn
     async def _tick_cartridge_fire(
-        self,
-        ticker: Any,
-        _direction: str,
-        _cartridge_delta: float,
-        _cartridge_threshold: float,
-        _cartridge_pct: float,
-    ) -> str:
-        """Answer ``_fire_cartridge``, inside ``queue_cap_waived`` for a ``FOLD``."""
-        from contextlib import nullcontext
-
-        from ...exchange.ccxt_connector import queue_cap_waived
-
-        scope = queue_cap_waived() if _direction == "FOLD" else nullcontext()
-        with scope:
-            return await self._fire_cartridge(
-                ticker,
-                _direction,
-                _cartridge_delta,
-                _cartridge_threshold,
-                _cartridge_pct,
-            )
-
-    async def _fire_cartridge(
         self,
         ticker: Any,
         _direction: str,
@@ -1024,6 +1004,8 @@ class TickPhaseMixin:
             profit=0.0,
             operator_initiated=False,
             fee=self._fill_fee_fields(fill_price),
+            spent_event_ids=(),
+            opened_event_ids=(),
         )
 
     def _entry_buy_word(self) -> str:
@@ -1604,6 +1586,8 @@ class TickPhaseMixin:
             profit=0.0,
             operator_initiated=False,
             fee=self._fill_fee_fields(entry_fill),
+            spent_event_ids=(),
+            opened_event_ids=self._take_opened_stack_events(),
         )
 
     def _tick_target_ramp(
@@ -2042,6 +2026,8 @@ class TickPhaseMixin:
         self._scrum_target_mode = "search"
         self._scrum_target_side = None
         self._last_trade_price = sell_fill
+        from .sizing import record_event_ids
+
         self._announce_fill(
             kind="SCRUM",
             side=FILL_SELL,
@@ -2051,6 +2037,8 @@ class TickPhaseMixin:
             profit=0.0,
             operator_initiated=False,
             fee=self._fill_fee_fields(sell_fill),
+            spent_event_ids=(),
+            opened_event_ids=record_event_ids(_scrum_records),
         )
 
     def _tick_fold_diagnostics(
@@ -2543,6 +2531,9 @@ class TickPhaseMixin:
             if src is not None
         ]
         _left_queue = len(plan) - len(_fold_plan)
+        from .sizing import record_event_ids
+
+        _spent_events = record_event_ids([src for src, _usd, _units in _fold_plan])
         if _left_queue:
             self._bus.emit(
                 "bot.log",
@@ -2607,7 +2598,14 @@ class TickPhaseMixin:
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
 
-        _growth_applied = self._apply_fold_target_growth(accum_profit, source="auto")
+        _growth_applied = self._apply_fold_target_growth(
+            accum_profit,
+            source="auto",
+            units_bought=buy_asset,
+            units_at_scrum=asset_at_scrum,
+            fill_price=buy_fill,
+            fee_pct=self._fold_fee_pct(buy_fill),
+        )
 
         if (
             self.config.hedge_rebalance_active
@@ -2693,6 +2691,9 @@ class TickPhaseMixin:
             profit=_growth_applied,
             operator_initiated=False,
             fee=self._fill_fee_fields(buy_fill),
+            spent_event_ids=_spent_events,
+            opened_event_ids=self._take_opened_stack_events(),
+            growth=_growth_applied.record,
         )
 
     def _open_dist_set(self, extra_units: float, fold_price: float) -> None:
@@ -2821,6 +2822,7 @@ class TickPhaseMixin:
             ),
         )
 
+    @order_turn
     async def _dist_balance_cap(self, units: float) -> float:
         """``units`` held to the venue's free balance of the base asset, unchanged
         where that balance cannot be read."""
@@ -2881,6 +2883,9 @@ class TickPhaseMixin:
             float(_venue_rules.smallest_amount or 0.0),
         )
 
+        from .sizing import record_event_ids
+
+        _dist_opened: tuple[str, ...] = ()
         if self.config.profit_folding_active:
             self._main_lots.sort(key=lambda l: l["initial_buy_price"], reverse=True)
             _dist_tranche_count_before = len(self._fold_tranches)
@@ -2895,6 +2900,7 @@ class TickPhaseMixin:
             )
             self._fold_tranches.extend(_dist_records)
             self._tranches_created_lifetime += len(_dist_records)
+            _dist_opened = record_event_ids(_dist_records)
             if _dist_unqueued > 1e-12:
                 self._bus.emit(
                     "bot.log",
@@ -2933,4 +2939,6 @@ class TickPhaseMixin:
             profit=float(self._target_balance) - _target_before,
             operator_initiated=False,
             fee=self._fill_fee_fields(dist_fill),
+            spent_event_ids=(),
+            opened_event_ids=_dist_opened,
         )

@@ -43,19 +43,21 @@ if is_stale and not in_flight:
 ### The venue call queue a refresh shares
 
 One connector serves every bot on a venue and runs a single worker, so every
-caller on that venue shares one call queue eight deep. A refresh asks for one
-symbol at a time, and before each ask it waits for that queue to empty. The
+caller on that venue shares one call queue eight deep. The eight are the reads
+outside an order's step. An order's calls go ahead of them and are not counted, as
+[the next section](#a-call-that-waits-its-turn-and-a-call-that-never-answers)
+describes. A refresh asks for one symbol at a time, and before each ask it waits
+until six or fewer of those reads wait or run. The
 balance, ticker, portfolio and OHLCV reads the running platform polls therefore
-take the worker first. Past its budget the ask goes through behind two reserved
-slots instead, so a refresh is never the submission that fills the queue, and a
-busy venue changes when a refresh runs and never which rows it answers.
+take the worker first. Past its budget of 60 seconds the ask goes through at once,
+and a full queue can refuse it.
 
 `src/exchange/ccxt_connector.py` — `CCXTConnector.await_bulk_read_slot`
 
 ```python
-if depth <= BULK_READ_ADMIT_DEPTH:
+if free and self._sync_queue_depth <= BULK_READ_ADMIT_DEPTH:
     break
-if time.monotonic() - start >= budget_sec and depth <= admit_past_budget:
+if time.monotonic() - start >= budget_sec:
     break
 await asyncio.sleep(BULK_READ_WAIT_SLICE_SEC)
 ```
@@ -69,8 +71,8 @@ refresh waited its turn. The same two hundred reads with no refresh running at
 all were refused five times, so the refresh now costs the platform about one
 read where it used to cost forty-two. Both runs returned the same 8,558 rows.
 
-A refusal at the cap costs a symbol its rows, so the wait never ends while the
-queue is full and one refused submission earns a second wait.
+A refusal at the cap costs a symbol its rows, so one refused submission earns a
+second wait.
 
 `src/exchange/history_helpers.py` — `BULK_READ_ATTEMPTS`
 
@@ -90,19 +92,57 @@ return 0.0
 
 ### A call that waits its turn, and a call that never answers
 
-The worker runs one call at a time. A read keeps its place in the queue until
+The worker runs one call at a time. Two lines wait for it. An order, a cancel and
+each read inside an order's step stand in the first line, and every other read
+stands in the second. The worker starts the first call of the first line, and the
+first call of the second line only while the first line is empty. Each line keeps
+the order its calls were asked in. So an order waits for the call that runs and for
+the orders asked before it, and never for a read that has not started.
+
+`src/exchange/ccxt_connector.py, in SyncWorker._serve_next`
+
+```python
+job, call = (self._goes_first or self._gives_way).pop(0)
+```
+
+A read keeps its place in the queue until
 the worker reaches it or its caller stops waiting. A caller waits up to 102
 seconds for a read's turn, retries included. That is a full queue of eight calls
-at 12.8 seconds each, the slowest answer measured. An order or a cancel waits up
-to 25 seconds, and so does each try of a read in front of a fold's or a hedge's
-buy. A call that misses its turn is not sent.
+at 12.8 seconds each, the slowest call to the venue's time endpoint measured on a
+saturated link. An order or a cancel waits up
+to 25 seconds, and so does each try of a read inside an order's step. A call that
+misses its turn is not sent.
 
 `src/exchange/ccxt_connector.py, in SyncCall.to_venue`
 
 ```python
-if not reads or _QUEUE_CAP_WAIVED.get():
-    return cls(name, run, reads, ORDER_TURN_WAIT_SEC)
-return cls(name, run, reads, read_turn_left_sec(), missed=TurnMissed)
+if reads and not in_order_turn():
+    return cls(name, run, reads, read_turn_left_sec(), missed=TurnMissed)
+return cls(
+    name, run, reads, ORDER_TURN_WAIT_SEC, goes_first=True, counted=False
+)
+```
+
+The limit of eight counts the second line alone. A read asked behind eight others
+is refused at once, and a line of reads refuses no call of the first line.
+
+`src/exchange/ccxt_connector.py, in CCXTConnector._call_sync_timed`
+
+```python
+if call.counted and self._sync_queue_depth >= SYNC_QUEUE_CAP:
+```
+
+A step of an order is the bot's own function that reads for an order and sends it:
+a fold, a sale, a rebalance, a detonation, Self-Destruct, Fire, the Extractor's
+Fire, and each poll of an order. The mark holds for the task that runs the step. A
+task the step starts reads in the second line, and so do the holdings audit and the
+look at the account after a fill, which no order waits on.
+
+`src/exchange/base.py, in in_order_turn`
+
+```python
+task = _ORDER_TASK.get()
+return task is not None and task is asyncio.current_task()
 ```
 
 The limit on one call is 25 seconds, and it starts when the worker starts the
@@ -117,8 +157,9 @@ call = self.running
 return call if call is not None and call.run_left_sec() <= 0.0 else None
 ```
 
-Each read that waited behind the stuck call moves to the fresh worker, in the
-same order, and goes to the venue once. An order or a cancel that waited there
+Each read that waited behind the stuck call moves to the fresh worker, the reads
+of an order's step first and each line in the order it was asked, and goes to the
+venue once. An order or a cancel that waited there
 is dropped and is never sent. A stuck order is not sent again. A stuck read is
 tried again by its caller, up to three tries in all.
 
@@ -274,7 +315,8 @@ else:
 ### What a bot does while a shared read is late
 
 A bot whose stored price or balance has passed its lifetime asks the venue nothing
-while a shared read is on its way or due. While the venue throttles or gives no
+while a shared read is on its way or due, outside an order's step. While the venue
+throttles or gives no
 answer, the bot waits for the next shared read. It looks again at each step of the
 program and takes the new figure from the store. The wait ends after 60 seconds. The
 bot then asks alone, or its read ends in an error and the next tick tries again.
@@ -288,8 +330,9 @@ soon = self.due_at - now <= sum(self.answer_s.values())
 return now < ends_at and (bool(self.reading) or soon)
 ```
 
-A figure inside its lifetime waits for the next shared read too, once it is older
-than 2.5 seconds and older than the two newest answers together.
+A figure inside its lifetime waits for the next shared read too, outside an order's
+step, once it is older than 2.5 seconds and older than the two newest answers
+together.
 
 `src/exchange/data_pool.py, in SharedReads.replaces`
 
@@ -307,9 +350,9 @@ A bot asks the venue alone where no shared read serves it:
 - shared prices that are lost while the venue answers other calls;
 - an exchange with no such loop.
 
-One price and one account read go out alone at a time for each exchange. Each waits
-for two free places in the queue, so the last place stays for a shared read. A fold's
-or a hedge's buy needs none.
+One price and one account read go out alone at a time for each exchange, outside an
+order's step. Each waits for two free places in the queue, so the last place stays
+for a shared read.
 
 `src/exchange/data_pool.py, in MarketDataPool._ask_alone`
 
@@ -329,6 +372,17 @@ places = self.shared_reads(exchange_id).places
 ends_at = time.monotonic() + SHARED_WAIT_SECONDS
 while not places.take(connector, spare) and time.monotonic() < ends_at:
     await asyncio.sleep(SHARED_WAIT_SLICE_SECONDS)
+```
+
+A step of an order waits for none of this. It takes a stored price or balance inside
+its lifetime, or it asks the venue at once, and the worker starts that read ahead of
+every read outside a step.
+
+`src/exchange/data_pool.py, in MarketDataPool._turn_to_ask`
+
+```python
+if in_order_turn():
+    return None if served() else object()
 ```
 
 ### The pairs the pairs scout asks for
@@ -456,6 +510,66 @@ def import_ytd_csv(
     """Read ``csv_path`` and write ``exchange_id``'s trade files under
     ``get_ytd_root(root)``."""
     column_map = export_map_for(exchange_id)
+```
+
+### The platform's own line for each fill
+
+The platform also keeps its own record. Every fill a bot books writes one line
+to `trade.log` in the log folder. A fill that settles in several pieces writes
+one line for each piece, and the pieces of one order carry the same order id.
+Each line names the venue order the piece settled. It also names the event id
+of each tranche the fill spent and of each tranche it opened.
+
+A scrum, a manual sale and a DIST sale open fold tranches. A buy that opens a
+stack ladder opens stack tranches. A fold, a cartridge buy, a Manual Fire, a
+detonation, a self-destruct and a stack sale spend them.
+
+`src/core/emit_contracts.py, in SettledFill`
+
+```python
+    venue_order_id: str = ""
+    spent_event_ids: tuple[str, ...] = ()
+    opened_event_ids: tuple[str, ...] = ()
+    fee_usd: Optional[float] = None
+    fee_refusal: Optional[str] = None
+    target_growth: Optional[TargetGrowth] = None
+```
+
+A line written before these fields existed holds none of them, and it still
+loads. `src/trading/live_log_reader.py, in _validate_trade_entry` requires only
+the old fields, and checks the type of a new field where a line holds one.
+
+### The figures of a target increase
+
+A fold that runs the growth step writes its figures on the line of the fill
+that caused it, under `target_growth`. The figures are the units bought, the
+units at scrum, the fill price, the fee percent, the wire share, the gain, the
+quote rate, the surplus, the standing pool, the cycle cap, the cap already used,
+the cap room, the growth applied, the pool after and the new target. The wire
+share is the one a Manual Fire reads, and 0 where a fold reads none.
+
+The bot log line of the same step names the same order. So a target increase
+joins the fill that caused it by the order id.
+
+`src/trading/scrumming_bot.py, in ScrummingBot._apply_fold_target_growth`
+
+```python
+        cap_room = fold_cap_remaining_usd(cycle_cap, consumed)
+        applied, standing_after = target_growth_applied(surplus_usd, standing, cap_room)
+```
+
+The engine holds no copy of this arithmetic: `target_growth_applied` is the one
+rule. A surplus or a pool that is not a finite number counts as zero. A cap room
+that is not a finite number counts as used. When the surplus and the pool are
+both within one billionth of a dollar, nothing moves.
+
+`src/trading/scrumming/sizing.py, in target_growth_applied`
+
+```python
+    surplus = max(0.0, finite_reading(surplus_usd))
+    standing = max(0.0, finite_reading(standing_usd))
+    if surplus <= GROWTH_DUST_USD and standing <= GROWTH_DUST_USD:
+        return 0.0, standing
 ```
 
 ## Filtering, paging, export
