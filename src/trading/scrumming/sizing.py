@@ -2873,6 +2873,14 @@ def gain_after_fees_usd(
     return max(0.0, dollars_usd - restore_cost_usd(units, price, fee))
 
 
+def units_bought_after_fee(
+    dollars_usd: float, price: float, buy_fee_pct: float, quote_to_usd: float = 1.0
+) -> float:
+    """The units ``dollars_usd`` buys at ``price`` and ``quote_to_usd`` with ``buy_fee_pct`` on top, as ``gain_after_fees_usd`` prices them."""
+    unit_cost = priced_usd(1.0, price, quote_to_usd) * (1.0 + buy_fee_pct / 100.0)
+    return dollars_usd / unit_cost
+
+
 def discharge_gain_usd(
     record: dict, units: float, price: float, buy_fee_pct: Optional[float]
 ) -> float:

@@ -554,7 +554,7 @@ def _compose_extractor_tranche_cells(row: dict, now_ts: float) -> list[str]:
     Pure, so the row's content is testable without Qt, using the fold
     table's own columns.
 
-    Sell ref $, Original cost $ and Min rebuy $ price the parent's
+    Sell ref $, Projected Accumulation and Min rebuy $ price the parent's
     asset; an Extractor Tranche prices in base per ALT, a different
     pair, so those three cells print an em dash instead of mixing
     denominations. The alt-side figures are in the tooltip instead.
@@ -594,7 +594,7 @@ def _compose_extractor_tranche_cells(row: dict, now_ts: float) -> list[str]:
         units_text,  # 2  Units (parent's base currency on lease)
         usd_text,  # 3  USD parked -> marked value, or em dash
         "—",  # 4  Sell ref $   (parent-asset price; N/A)
-        "—",  # 5  Original cost $ (parent-asset price; N/A)
+        "—",  # 5  Projected Accumulation (parent-asset tokens; N/A)
         "—",  # 6  Min rebuy $ (parent-asset price; N/A)
         state,  # 7  Status -> the child's position state
         f"extractor {pair}",  # 8  Source
