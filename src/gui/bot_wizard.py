@@ -191,9 +191,10 @@ def _load_markets(page, exchange_id: str, doing: str) -> None:
         _draw_landed(page, exchange_id)
 
     def failed(exc: BaseException) -> None:
-        page._status.setText(f"Failed to load markets: {str(exc)[:50]}")
         page._markets_cache[exchange_id] = []
         _draw_landed(page, exchange_id)
+        if page._exchange.currentData() == exchange_id:
+            page._status.setText(f"Failed to load markets: {str(exc)[:50]}")
 
     wait = VenueWait(
         page,
