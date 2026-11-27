@@ -416,13 +416,17 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   after Age, in both builds of the Live, Paper and Simulator windows
   (`src/gui/main_tabs/fold_tranches_tab_surface.py, in fold_projected_accumulation`).
   Next, rows 6 to 8 with the Settings control of row 8, as the body orders them.
-- **#1837, the Trade Calculator. Rows 1 to 3 are built.** Each trade log line
+- **#1837, the Trade Calculator. Rows 1 to 8 are built.** Each trade log line
   names its venue order and the event ids of the tranches the fill spent and
   opened, and a fold that ran the growth step carries its figures under
-  `target_growth` (`src/core/emit_contracts.py, in SettledFill`). The engine grows
-  the target through `src/trading/scrumming/sizing.py, in target_growth_applied`
-  alone. Next, in the body's build order: row 4, then row 5, then rows 6 to 8.
-  Row 9 waits on his yes to a read of his logs.
+  `target_growth` (`src/core/emit_contracts.py, in SettledFill`). A double-click
+  on a History row, in both builds, opens the Trade Calculator. It lays out each
+  step of the fill through the engine's own functions beside the recorded
+  figure, then the opposing order and the pair's accumulation and profit
+  (`src/trading/trade_calculator.py, in calculation_steps`). The pairing rule
+  lives in `src/trading/order_pairing.py`, and the manual builder imports it.
+  Next, row 9: his retained record read through the window, which the body
+  records he agreed to on 2026-11-26.
 - The rest of the queue: read each body.
 
 ---
