@@ -898,8 +898,10 @@ if _HAS_QT:
                     return True
             return False
 
-        def _ask_venue(self, eid: str, doing: str, call, done, failed) -> None:
-            """Start one ``VenueWait`` for *eid*, writing its words in the feedback line."""
+        def _ask_venue(
+            self, eid: str, doing: str, call, done, failed, tell=None
+        ) -> None:
+            """Start one ``VenueWait`` for *eid*; its words go to *tell*, else the feedback line."""
             from .venue_wait import VenueWait
 
             wait = VenueWait(
@@ -909,10 +911,18 @@ if _HAS_QT:
                 call,
                 done,
                 failed,
-                lambda words: self._set_feedback(words, "info"),
+                tell or self._tell_waiting,
             )
             self._venue_waits[eid] = wait
             wait.start()
+
+        def _tell_waiting(self, words: str) -> None:
+            """Write one ``VenueWait`` line in the feedback line."""
+            self._set_feedback(words, "info")
+
+        def _keep_feedback(self, words: str) -> None:
+            """Leave the feedback line as it stands while a browser sign-in waits."""
+            del words
 
         def _end_venue_waits(self, code: int = 0) -> None:
             """End every wait in ``_venue_waits`` once the dialog closes with *code*."""
@@ -1167,15 +1177,15 @@ if _HAS_QT:
             self._sync_credential_kind(self._bound_venue())
 
         def _connect_browser_venue(self, eid: str) -> None:
-            """Sign one browser-authorization venue in, store what it issued and
-            write the venue's own trade-approval setting to the feedback row.
+            """Sign one browser-authorization venue in off the window's thread;
+            ``_browser_connected`` stores what it issued and writes the venue's
+            own trade-approval setting to the feedback row.
 
             No API key or secret row is read, and a refusal leaves the stored
             credential exactly as it was.
             """
-            from src.core.encryption import decrypt, encrypt, vault_phrase
-            from src.core.settings import ExchangeConfig
-            from src.trading.ata_spm_signin import SignInError, build_connector
+            from src.core.encryption import decrypt, vault_phrase
+            from src.trading.ata_spm_signin import build_connector
 
             from .sign_in_view import sign_in_session
 
@@ -1195,17 +1205,31 @@ if _HAS_QT:
                     return
             self._set_feedback(sds.browser_waiting_words(eid), "info")
             safe_process_events("legacy processEvents site")
-            try:
-                answered = sds.connect_browser_venue(
-                    eid, build_connector(sign_in_session()), client_id
+            connect_one = build_connector(sign_in_session())
+            self._ask_venue(
+                eid,
+                f"Signing in to {eid.capitalize()} in the browser",
+                lambda: sds.connect_browser_venue(eid, connect_one, client_id),
+                lambda answered: self._browser_connected(eid, master, answered),
+                lambda exc: self._browser_not_connected(eid, exc),
+                self._keep_feedback,
+            )
+
+        def _browser_not_connected(self, eid: str, exc: BaseException) -> None:
+            """Write a browser sign-in that was refused or gave no answer in time."""
+            self._set_feedback(f"{eid.capitalize()} not connected: {exc}", "error")
+            if self._status_log:
+                self._status_log.log(
+                    f"{eid.capitalize()} sign-in refused: {exc}", "error"
                 )
-            except (SignInError, OSError, ValueError, KeyError) as exc:
-                self._set_feedback(f"{eid.capitalize()} not connected: {exc}", "error")
-                if self._status_log:
-                    self._status_log.log(
-                        f"{eid.capitalize()} sign-in refused: {exc}", "error"
-                    )
-                return
+            self._sync_credential_kind(self._bound_venue())
+
+        def _browser_connected(self, eid: str, master: str, answered: dict) -> None:
+            """Store what one browser sign-in of *eid* issued and write its words."""
+            from src.core.encryption import encrypt
+            from src.core.settings import ExchangeConfig
+
+            self._sync_credential_kind(self._bound_venue())
             config = ExchangeConfig(exchange_id=eid, display_name=eid.capitalize())
             config.mcp_client_id_enc = encrypt(answered["client_id"], master)
             config.mcp_bearer_enc = encrypt(answered["bearer"], master)
