@@ -1,18 +1,18 @@
 """``TASignalProvider`` produces a per-symbol ``TASnapshot``.
 
-``evaluate`` fetches OHLCV for one symbol, runs ``VotingEngine.compute_all``
-and ``detect_bb_proximity``, then packs both results and the direction
-primitives into a ``TASnapshot``. It returns None when the fetch raises, when
-``candles_from_raw`` raises, or when fewer than ``min_candles_for_signal``
-candles come back. ``TASnapshot`` holds TA primitives only, with no
-operator-flag or bot-state fields.
+``evaluate`` reads one symbol's candles through ``read_candles``, runs
+``VotingEngine.compute_all`` and ``detect_bb_proximity``, then packs both
+results and the direction primitives into a ``TASnapshot``. It returns None
+when the read raises, when ``candles_from_raw`` raises, or when fewer than
+``min_candles_for_signal`` candles come back. ``TASnapshot`` holds TA
+primitives only, with no operator-flag or bot-state fields.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional, TYPE_CHECKING
 
 from .ta_engine import (
     BBProximityResult,
@@ -22,6 +22,9 @@ from .ta_engine import (
     candles_from_raw,
     detect_bb_proximity,
 )
+
+if TYPE_CHECKING:
+    from .bot_container import CandleRead
 
 logger = logging.getLogger("acervator.ta_signal_provider")
 
@@ -69,7 +72,7 @@ class TASnapshot:
 
 
 class TASignalProvider:
-    """``TASignalProvider`` wraps one ``exchange`` connector.
+    """``TASignalProvider`` reads candles through one ``read_candles``.
 
     ``evaluate`` recomputes from candles on every call and keeps no per-symbol
     state. ``confidence_threshold`` reaches ``VotingEngine`` and filters
@@ -78,7 +81,7 @@ class TASignalProvider:
 
     def __init__(
         self,
-        exchange: Any,
+        read_candles: CandleRead,
         *,
         timeframe: str = "1h",
         weights: Optional[dict[str, float]] = None,
@@ -87,7 +90,7 @@ class TASignalProvider:
         ohlcv_limit: int = 100,
         min_candles_for_signal: int = 30,
     ) -> None:
-        self._exchange = exchange
+        self._read_candles = read_candles
         self._timeframe = timeframe
         self._voting_engine = VotingEngine(
             confidence_threshold=confidence_threshold,
@@ -109,18 +112,14 @@ class TASignalProvider:
     async def evaluate(self, symbol: str) -> Optional[TASnapshot]:
         """Return a ``TASnapshot`` for ``symbol``, or None.
 
-        None means the OHLCV fetch or ``candles_from_raw`` raised, or fewer
+        None means ``read_candles`` or ``candles_from_raw`` raised, or fewer
         than ``min_candles_for_signal`` candles came back.
         """
         try:
-            raw = await self._exchange.get_ohlcv(
-                symbol,
-                timeframe=self._timeframe,
-                limit=self._ohlcv_limit,
-            )
+            raw = await self._read_candles(symbol, self._timeframe, self._ohlcv_limit)
         except Exception as exc:
             logger.debug(
-                "TASignalProvider %s: get_ohlcv raised %s: %s",
+                "TASignalProvider %s: read_candles raised %s: %s",
                 symbol,
                 type(exc).__name__,
                 exc,

@@ -575,7 +575,7 @@ class TickPhaseMixin:
                 parent_bot_id=self.bot_id,
                 timeframes=self._phantom_timeframes,
                 target_balance=self._target_balance,
-                exchange=self.exchange,
+                read_candles=self._get_ohlcv,
                 symbol=symbol,
                 ta_weights=self._ta_weights,
                 settings=self.config,
