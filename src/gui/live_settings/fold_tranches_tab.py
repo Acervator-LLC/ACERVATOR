@@ -27,8 +27,13 @@ from ...trading.scrumming.sizing import tranche_restore_price
 from .. import design_system as ds
 from ..main_tabs.fold_tokens_surface import FOLD_COLUMN_TOOLTIPS
 from ..main_tabs.fold_tranches_tab_surface import (
+    PROJECTED_COLUMN_HEADER,
+    PROJECTED_COLUMN_INDEX,
+    PROJECTED_EXTRACTOR_TOOLTIP,
     fold_distance_pct,
     min_rebuy_cell,
+    projected_accumulation_cell,
+    projection_reading,
     status_cell,
     units_cell,
 )
@@ -95,6 +100,33 @@ if TYPE_CHECKING:
     from ..bot_live_settings import BotLiveSettingsDialog
 
 logger = logging.getLogger("acervator.gui")
+
+FOLD_HEADER_LABELS = (
+    "#",
+    "Age",
+    "Units",
+    "USD parked",
+    "Sell ref $",
+    PROJECTED_COLUMN_HEADER,
+    "Min rebuy $",
+    "Status",
+    "Source",
+    "Fire",
+    ARBITER_COLUMN_HEADER,
+)
+EXTRACTOR_CELL_TOOLTIPS = {PROJECTED_COLUMN_INDEX: PROJECTED_EXTRACTOR_TOOLTIP}
+
+
+def projected_items(bot: Any, tranches: list) -> list:
+    """One ``QTableWidgetItem`` per tranche: ``projected_accumulation_cell`` at one ``projection_reading`` of ``bot``."""
+    reading = projection_reading(bot)
+    items = []
+    for tranche in tranches:
+        text, tooltip = projected_accumulation_cell(tranche, reading)
+        item = QTableWidgetItem(text)
+        set_description(item, tooltip)
+        items.append(item)
+    return items
 
 
 class FoldTranchesTabMixin:
@@ -447,7 +479,7 @@ class FoldTranchesTabMixin:
                 cell = QTableWidgetItem(text)
                 cell.setBackground(bg)
                 cell.setForeground(fg)
-                set_description(cell, tip)
+                set_description(cell, EXTRACTOR_CELL_TOOLTIPS.get(col, tip))
                 table.setItem(target_row, col, cell)
 
             arb_value = row_data.get("arbiter")
@@ -1013,27 +1045,11 @@ class FoldTranchesTabMixin:
             detail_group = QGroupBox(_detail_title)
             dl = QVBoxLayout(detail_group)
 
-            # "Original cost $" is informational; "Min rebuy $" is
-            # the binding per-tranche threshold.
             _otd_pct = fold_distance_pct(self._bot)
 
             table = QTableWidget()
             table.setColumnCount(ARBITER_COLUMN_INDEX + 1)
-            table.setHorizontalHeaderLabels(
-                [
-                    "#",
-                    "Age",
-                    "Units",
-                    "USD parked",
-                    "Sell ref $",
-                    "Original cost $",
-                    "Min rebuy $",
-                    "Status",
-                    "Source",
-                    "Fire",
-                    ARBITER_COLUMN_HEADER,
-                ]
-            )
+            table.setHorizontalHeaderLabels(list(FOLD_HEADER_LABELS))
 
             for _col, _tip in enumerate(FOLD_COLUMN_TOOLTIPS):
                 _head = table.horizontalHeaderItem(_col)
@@ -1081,6 +1097,7 @@ class FoldTranchesTabMixin:
 
             # queue_index is the position in _fold_tranches, not the display row.
             _ordered = fold_display_order(tranches, fold_sort_order(self))
+            _projected = projected_items(self._bot, [t for _q, t in _ordered])
             for row, (queue_index, t) in enumerate(_ordered):
                 table.setItem(row, 0, QTableWidgetItem(str(queue_index + 1)))
 
@@ -1115,14 +1132,7 @@ class FoldTranchesTabMixin:
                     QTableWidgetItem(f"${ref_v:.8f}" if ref_v is not None else "—"),
                 )
 
-                ceiling_v = _as_finite_float(t.get("initial_buy_price", 0))
-                table.setItem(
-                    row,
-                    5,
-                    QTableWidgetItem(
-                        f"${ceiling_v:.8f}" if ceiling_v is not None else "—"
-                    ),
-                )
+                table.setItem(row, PROJECTED_COLUMN_INDEX, _projected[row])
 
                 # min_rebuy_cell is the one declaration of this cell;
                 # the React page draws the same call's answer.

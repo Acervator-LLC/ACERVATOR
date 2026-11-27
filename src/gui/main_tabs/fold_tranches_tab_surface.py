@@ -28,16 +28,204 @@ is handed in.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from ...trading.container.config import DESPAWN_MAX_DAYS, DESPAWN_PREVIEW_WINDOWS
 from ...trading.otd_math import (
+    DistanceSettings,
+    DistanceSettingUnreadable,
+    distance_settings,
     fold_rebuy_factor_from_pct,
     fold_rebuy_price,
     minimum_opposing_trade_distance_pct_from_config,
 )
-from ...trading.scrumming.sizing import tranche_restore_price
+from ...trading.scrumming.sizing import (
+    fold_cap_remaining_usd,
+    gain_after_fees_usd,
+    tranche_rebuy_price,
+    tranche_restore_price,
+    units_at_scrum,
+    units_bought_after_fee,
+)
+from ...trading.stack_math import is_shadow
 from ..descriptions import FOLD_TRANCHES_TAB_DESCRIPTIONS
+
+PROJECTED_COLUMN_HEADER = "Projected Accumulation"
+PROJECTED_FORMAT = "{units:,.8f}"
+PROJECTED_FOLD_TOOLTIP_FORMAT = (
+    "Its ${dollars:,.4f} rebuys {bought:,.8f} at ${price:.8f} against {sold:,.8f} "
+    "sold: gain {gain:,.8f}. Growth room left buys {room:,.8f}."
+)
+PROJECTED_SHADOW_TOOLTIP_FORMAT = (
+    "Its ${dollars:,.4f} rebuys {bought:,.8f} at ${price:.8f} against {sold:,.8f} "
+    "sold: gain {gain:,.8f} for its Shadow Tranche. Growth room left buys "
+    "{room:,.8f}."
+)
+PROJECTED_DISTANCE_UNREAD_FORMAT = (
+    "No figure: the setting {setting} holds no number, so no buy-back price "
+    "or fee can be read."
+)
+PROJECTED_NO_SETTINGS = "No figure: this bot holds no distance settings."
+PROJECTED_BAND_UNREAD = "No figure: the Bollinger Band reading is not a number."
+PROJECTED_ROOM_UNREAD = "No figure: the room left under the growth cap cannot be read."
+PROJECTED_QUOTE_UNREAD = "No figure: the quote currency's dollar rate is not a number."
+PROJECTED_NO_DOLLARS = "No figure: this tranche holds no readable dollars."
+PROJECTED_NO_UNITS = "No figure: this tranche holds no readable units."
+PROJECTED_NO_SALE_PRICE = "No figure: this tranche holds no readable sale price."
+PROJECTED_NO_PRICE = "No figure: the buy-back price is not a positive number."
+PROJECTED_EXTRACTOR_TOOLTIP = (
+    "No figure: an Extractor Tranche is the Extractor's position, priced in "
+    "another pair."
+)
+
+VENUE_FEE_ATTRIBUTE = "highest_venue_fee_pct"
+BAND_ATTRIBUTE = "_last_bb"
+QUOTE_RATE_ATTRIBUTE = "_quote_to_usd"
+
+
+@dataclass(frozen=True)
+class ProjectionReading:
+    """The ``distance``, ``band``, ``room_usd`` and ``quote_to_usd`` one draw prices rows at, or its ``reason``."""
+
+    distance: Optional[DistanceSettings] = None
+    band: Any = None
+    room_usd: float = 0.0
+    quote_to_usd: float = 1.0
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class Projection:
+    """One row's Projected Accumulation ``figure`` in tokens and the parts behind it, or its ``reason``."""
+
+    figure: Optional[float] = None
+    sale_price: float = 0.0
+    price: float = 0.0
+    dollars: float = 0.0
+    sold: float = 0.0
+    bought: float = 0.0
+    gain: float = 0.0
+    room: float = 0.0
+    reason: str = ""
+
+
+def bot_distance(bot: Any) -> tuple:
+    """``(distance, reason)``: ``bot.opposing_distance_settings``, else ``distance_settings`` of ``bot.config``."""
+    reader = getattr(bot, "opposing_distance_settings", None)
+    try:
+        if callable(reader):
+            return reader(), ""
+        venue_fee = getattr(bot, VENUE_FEE_ATTRIBUTE, 0.0) or 0.0
+        return distance_settings(bot.config, venue_fee), ""
+    except DistanceSettingUnreadable as unread:
+        return None, PROJECTED_DISTANCE_UNREAD_FORMAT.format(setting=unread.setting)
+    except AttributeError:
+        return None, PROJECTED_NO_SETTINGS
+
+
+def projection_reading(bot: Any) -> ProjectionReading:
+    """``bot_distance``, ``_last_bb`` and ``fold_cap_remaining_usd`` of ``cycle_growth_cap_usd`` and ``_fold_cycle_cap_consumed``."""
+    distance, reason = bot_distance(bot)
+    if distance is None:
+        return ProjectionReading(reason=reason)
+    cap = finite_number(getattr(bot, CAP_BUDGET_ATTRIBUTE, None))
+    spent = finite_number(getattr(bot, CAP_SPENT_ATTRIBUTE, 0.0))
+    if cap is None or spent is None:
+        return ProjectionReading(reason=PROJECTED_ROOM_UNREAD)
+    quote = finite_number(getattr(bot, QUOTE_RATE_ATTRIBUTE, 1.0) or 1.0)
+    if quote is None or quote <= 0.0:
+        return ProjectionReading(reason=PROJECTED_QUOTE_UNREAD)
+    return ProjectionReading(
+        distance,
+        getattr(bot, BAND_ATTRIBUTE, None),
+        fold_cap_remaining_usd(cap, spent),
+        quote,
+    )
+
+
+def held_projection(
+    reading: ProjectionReading,
+    sale: list,
+    price: float,
+    gain_usd: float,
+) -> Projection:
+    """``gain_usd`` and ``reading.room_usd`` as ``units_bought_after_fee`` at ``price``; ``sale`` is dollars, units, price."""
+    if reading.distance is None or not math.isfinite(price) or price <= 0.0:
+        return Projection(reason=PROJECTED_NO_PRICE)
+    fee = reading.distance.fee_pct
+    dollars, sold, sale_price = sale
+    gain = units_bought_after_fee(gain_usd, price, fee)
+    room = units_bought_after_fee(reading.room_usd, price, fee, reading.quote_to_usd)
+    return Projection(
+        figure=min(gain, room),
+        sale_price=sale_price,
+        price=price,
+        dollars=dollars,
+        sold=sold,
+        bought=units_bought_after_fee(dollars, price, fee),
+        gain=gain,
+        room=room,
+    )
+
+
+def fold_projected_accumulation(
+    tranche: dict, reading: ProjectionReading
+) -> Projection:
+    """``held_projection`` of ``gain_after_fees_usd`` of ``tranche`` at its ``tranche_rebuy_price``."""
+    if reading.distance is None:
+        return Projection(reason=reading.reason or PROJECTED_NO_SETTINGS)
+    dollars = finite_number(tranche.get(USD_KEY))
+    sold = finite_number(tranche.get(UNITS_KEY))
+    ref = finite_number(tranche.get(REF_KEY))
+    if dollars is None or dollars <= 0.0:
+        return Projection(reason=PROJECTED_NO_DOLLARS)
+    if sold is None or sold < 0.0:
+        return Projection(reason=PROJECTED_NO_UNITS)
+    if ref is None or ref <= 0.0:
+        return Projection(reason=PROJECTED_NO_SALE_PRICE)
+    try:
+        price = tranche_rebuy_price(tranche, reading.distance, reading.band)
+    except (TypeError, ValueError):
+        return Projection(reason=PROJECTED_BAND_UNREAD)
+    restored = units_at_scrum(tranche)
+    gain_usd = gain_after_fees_usd(dollars, restored, price, reading.distance.fee_pct)
+    return held_projection(reading, [dollars, restored, ref], price, gain_usd)
+
+
+def projected_cell(projection: Projection, tooltip_format: str) -> list:
+    """``PROJECTED_FORMAT`` of ``projection`` and ``tooltip_format`` filled from it, or the dash and its reason."""
+    if projection.figure is None:
+        return [NO_VALUE_TEXT, projection.reason]
+    tooltip = tooltip_format.format(
+        sale=projection.sale_price,
+        price=projection.price,
+        dollars=projection.dollars,
+        sold=projection.sold,
+        bought=projection.bought,
+        gain=projection.gain,
+        room=projection.room,
+    )
+    return [PROJECTED_FORMAT.format(units=projection.figure), tooltip]
+
+
+def projected_accumulation_cell(tranche: dict, reading: ProjectionReading) -> list:
+    """The Projected Accumulation cell and mouse-over of one fold row, from ``fold_projected_accumulation``."""
+    tooltip_format = (
+        PROJECTED_SHADOW_TOOLTIP_FORMAT
+        if is_shadow(tranche)
+        else PROJECTED_FOLD_TOOLTIP_FORMAT
+    )
+    projection = fold_projected_accumulation(tranche, reading)
+    return projected_cell(projection, tooltip_format)
+
+
+def row_tooltips(projected_tooltip: str) -> list:
+    """One row's ``COLUMN_COUNT`` cell mouse-overs: ``projected_tooltip`` at ``PROJECTED_COLUMN_INDEX``, None elsewhere."""
+    tooltips: list = [None] * COLUMN_COUNT
+    tooltips[PROJECTED_COLUMN_INDEX] = projected_tooltip
+    return tooltips
+
 
 METHOD = "fold_tranches_tab.state"
 
@@ -98,13 +286,14 @@ COLUMNS = (
     "Units",
     "USD parked",
     "Sell ref $",
-    "Original cost $",
+    PROJECTED_COLUMN_HEADER,
     "Min rebuy $",
     "Status",
     "Source",
     "Fire",
     "Arbiter",
 )
+PROJECTED_COLUMN_INDEX = 5
 ARBITER_COLUMN_INDEX = 10
 ARBITER_COLUMN_HEADER = "Arbiter"
 FIRE_COLUMN_INDEX = 9
@@ -125,7 +314,10 @@ COLUMN_TOOLTIPS = (
     "Units this tranche buys back, against the units its scrum sold.",
     "Cash parked for this tranche's buy-back.",
     "Price per unit at which the scrum sold.",
-    "Price per unit first paid. Informational only.",
+    (
+        "Tokens the buy-back gains at the Minimum Opposing Trade Distance, after "
+        "the buy fee, held to Max Growth Per Cycle."
+    ),
     "Sell ref less the opposing trade distance. The fold gate needs it.",
     "Price gate only. A minus is the fall still needed.",
     "The action that created this tranche.",
@@ -1380,6 +1572,7 @@ def fold_row_cells(
     now: float,
     price: float,
     otd_pct: Optional[float],
+    reading: ProjectionReading,
 ) -> list:
     """The eleven cell texts one fold tranche fills a table row with."""
     stamp = finite_number(tranche.get(CREATED_TS_KEY))
@@ -1392,7 +1585,7 @@ def fold_row_cells(
         units_cell(tranche)[0],
         usd_cell(tranche.get(USD_KEY, 0)),
         price_cell(tranche.get(REF_KEY, 0)),
-        price_cell(tranche.get(INITIAL_BUY_PRICE_KEY, 0)),
+        projected_accumulation_cell(tranche, reading)[0],
         min_rebuy_cell(ref, otd_pct, restore)[0],
         status_cell(price, ref, otd_pct, restore)[0],
         source_label(tranche),
@@ -1914,6 +2107,7 @@ class FoldTranchesTabModel:
         self.rows: list = []
         self.row_colors: list = []
         self.row_backgrounds: list = []
+        self.cell_tooltips: list = []
         self.extractor_row_count = 0
         self.fold_row_count = 0
         self.fire_numbers: list = []
@@ -1988,6 +2182,7 @@ class FoldTranchesTabModel:
         self.rows = []
         self.row_colors = []
         self.row_backgrounds = []
+        self.cell_tooltips = []
         self.fire_numbers = []
         self.arbiter_ids = []
         self.buttons = []
@@ -2119,6 +2314,7 @@ class FoldTranchesTabModel:
             else DETAIL_TITLE_FORMAT.format(fold=len(tranches))
         )
         self.calls.append([BUILD_TABLE, len(tranches) + len(rows)])
+        reading = projection_reading(self.bot)
         for queue_index, tranche in display_order(tranches, self.sort_key):
             self.rows.append(
                 fold_row_cells(
@@ -2127,7 +2323,11 @@ class FoldTranchesTabModel:
                     self.now,
                     float(getattr(self.bot, "price", 0.0) or 0.0),
                     self.otd_pct,
+                    reading,
                 )
+            )
+            self.cell_tooltips.append(
+                row_tooltips(projected_accumulation_cell(tranche, reading)[1])
             )
             self.row_colors.append(
                 fold_row_colors(
@@ -2141,6 +2341,7 @@ class FoldTranchesTabModel:
             self.calls.append([BUILD_ROW, queue_index, queue_index + 1])
         for one in rows:
             self.rows.append(extractor_row_cells(one, self.now))
+            self.cell_tooltips.append(row_tooltips(PROJECTED_EXTRACTOR_TOOLTIP))
             self.row_colors.append(extractor_row_colors())
             self.row_backgrounds.append(EXTRACTOR_TRANCHE_BG_HEX)
             identity = [
@@ -2881,6 +3082,7 @@ def build_view_model(
             "fold_row_count": model.fold_row_count,
             "extractor_row_count": model.extractor_row_count,
             "rows": [list(row) for row in model.rows],
+            "cell_tooltips": [list(row) for row in model.cell_tooltips],
             "row_colors": [list(row) for row in model.row_colors],
             "row_backgrounds": list(model.row_backgrounds),
             "row_borders": [row_border_hex(one) for one in model.row_backgrounds],

@@ -428,6 +428,8 @@ class PaperFoldTranchesTabMixin:
         GUI. Writes only rows at `start_row` and beyond; fold rows
         before it are untouched.
         """
+        from ..live_settings.fold_tranches_tab import EXTRACTOR_CELL_TOOLTIPS
+
         bg = QBrush(QColor(EXTRACTOR_TRANCHE_BG_HEX))
         fg = QBrush(QColor(EXTRACTOR_TRANCHE_FG_HEX))
         for offset, row_data in enumerate(ext_rows):
@@ -438,7 +440,7 @@ class PaperFoldTranchesTabMixin:
                 cell = QTableWidgetItem(text)
                 cell.setBackground(bg)
                 cell.setForeground(fg)
-                set_description(cell, tip)
+                set_description(cell, EXTRACTOR_CELL_TOOLTIPS.get(col, tip))
                 table.setItem(target_row, col, cell)
 
             arb_value = row_data.get("arbiter")
@@ -1005,8 +1007,8 @@ class PaperFoldTranchesTabMixin:
             detail_group = QGroupBox(_detail_title)
             dl = QVBoxLayout(detail_group)
 
-            # "Original cost $" is informational; "Min rebuy $" is
-            # the binding per-tranche threshold.
+            from ..main_tabs.fold_tranches_tab_surface import PROJECTED_COLUMN_HEADER
+
             _otd_pct = fold_distance_pct(self._bot)
 
             table = QTableWidget()
@@ -1018,7 +1020,7 @@ class PaperFoldTranchesTabMixin:
                     "Units",
                     "USD parked",
                     "Sell ref $",
-                    "Original cost $",
+                    PROJECTED_COLUMN_HEADER,
                     "Min rebuy $",
                     "Status",
                     "Source",
@@ -1071,8 +1073,11 @@ class PaperFoldTranchesTabMixin:
             except Exception:
                 cur_price = 0.0
 
+            from ..live_settings.fold_tranches_tab import projected_items
+
             # queue_index is the position in _fold_tranches, not the display row.
             _ordered = fold_display_order(tranches, fold_sort_order(self))
+            _projected = projected_items(self._bot, [t for _q, t in _ordered])
             for row, (queue_index, t) in enumerate(_ordered):
                 table.setItem(row, 0, QTableWidgetItem(str(queue_index + 1)))
 
@@ -1107,14 +1112,7 @@ class PaperFoldTranchesTabMixin:
                     QTableWidgetItem(f"${ref_v:.8f}" if ref_v is not None else "—"),
                 )
 
-                ceiling_v = _as_finite_float(t.get("initial_buy_price", 0))
-                table.setItem(
-                    row,
-                    5,
-                    QTableWidgetItem(
-                        f"${ceiling_v:.8f}" if ceiling_v is not None else "—"
-                    ),
-                )
+                table.setItem(row, 5, _projected[row])
 
                 # min_rebuy_cell is the one declaration of this cell;
                 # the React page draws the same call's answer.

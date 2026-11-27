@@ -412,13 +412,17 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   from the shared balance cache, and its mouse-over names each exchange's figure
   (`src/trading/container/aggregation.py, in exchange_cash`). He reads it against
   each exchange's own Cash screen after the next build.
-- **#1836, every buy opens its Stack ladder. Rows 1 and 2 are built.** On a
-  Stack Mode bot every filled buy ladders the units it bought, the first buy, a
-  hedge, a Manual Fire and a cartridge buy among them, and a buy that opens none
-  writes one bot log line naming why
+- **#1836, every buy opens its Stack ladder, and each tranche shows its
+  Projected Accumulation. Rows 1 to 5 are done.** On a Stack Mode bot every
+  filled buy ladders the units it bought, the first buy, a hedge, a Manual Fire
+  and a cartridge buy among them, and a buy that opens none writes one bot log
+  line naming why
   (`src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold`). Row 3
-  waits on his yes to a read of his logs and saved state; then rows 4 and 5, then
-  6 to 8 with the Settings control of row 8, as the body orders them.
+  read his two bots against rows 1 and 2. Each Fold Tranche row shows Projected
+  Accumulation where Original cost stood, and each Stack Tranche row shows it
+  after Age, in both builds of the Live, Paper and Simulator windows
+  (`src/gui/main_tabs/fold_tranches_tab_surface.py, in fold_projected_accumulation`).
+  Next, rows 6 to 8 with the Settings control of row 8, as the body orders them.
 - **#1837, the Trade Calculator. Rows 1 to 3 are built.** Each trade log line
   names its venue order and the event ids of the tranches the fill spent and
   opened, and a fold that ran the growth step carries its figures under
