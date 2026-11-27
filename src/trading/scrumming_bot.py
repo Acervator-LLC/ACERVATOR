@@ -2219,28 +2219,6 @@ class ScrummingBot(
             self.note_price(ticker)
         return ticker
 
-    async def _get_ohlcv(
-        self,
-        symbol: str,
-        timeframe: str,
-        limit: int = 100,
-    ) -> list:
-        """Fetch OHLCV through the shared MarketDataPool when wired,
-        else fall back to a direct exchange call.
-        """
-        if self._data_pool is not None:
-            try:
-                return await self._data_pool.get_or_fetch_ohlcv(
-                    self.exchange,
-                    self.config.exchange_id,
-                    symbol,
-                    timeframe,
-                    limit=limit,
-                )
-            except Exception:
-                raise
-        return await self.exchange.get_ohlcv(symbol, timeframe, limit=limit)
-
     def _refresh_phantom_lock(self) -> None:
         """Write ``_phantom_locked`` and ``_phantom_lock_timeframe`` from the
         coordinator's active locks, and clear both where ``_phantoms_enabled``
@@ -5003,7 +4981,7 @@ class ScrummingBot(
             self._detonation_last_signal_bullish = False
 
         try:
-            candles = await self.exchange.get_ohlcv(self.config.symbol, tf, limit=100)
+            candles = await self._get_ohlcv(self.config.symbol, tf, limit=100)
         except Exception as exc:
             self._bus.emit(
                 "bot.log",

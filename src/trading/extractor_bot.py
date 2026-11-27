@@ -202,7 +202,7 @@ class ExtractorBot(BotContainer):
             or self.DEFAULT_TIMEFRAME
         )
         self._ta_provider = TASignalProvider(
-            exchange,
+            self._get_ohlcv,
             timeframe=self._timeframe,
         )
 

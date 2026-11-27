@@ -15,7 +15,7 @@ import uuid
 import weakref
 from dataclasses import replace
 from functools import partial
-from typing import Any, Callable, Optional, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..core.emit_contracts import TargetGrowth
@@ -110,6 +110,9 @@ RESET_ALL_SCOPE = "all"
 
 #: What ``PriceRead.what`` calls the price of the market a decision is on.
 MARKET_PRICE = "the price"
+
+#: ``BotContainer._get_ohlcv`` as a callable: symbol, timeframe and row count to candles.
+CandleRead = Callable[[str, str, int], Awaitable[list]]
 
 
 def order_status_text(order: object) -> str:
@@ -365,6 +368,24 @@ class BotContainer:
         legs.add(wallet_currency(held, self.config.base_currency))
         for leg in sorted(legs - {""}):
             self._invalidate_balance(leg)
+
+    async def _get_ohlcv(
+        self,
+        symbol: str,
+        timeframe: str,
+        limit: int = 100,
+    ) -> list:
+        """The newest ``limit`` candles of ``symbol`` from ``MarketDataPool`` when wired,
+        else from ``exchange``."""
+        if self._data_pool is not None:
+            return await self._data_pool.get_or_fetch_ohlcv(
+                self.exchange,
+                self.config.exchange_id,
+                symbol,
+                timeframe,
+                limit=limit,
+            )
+        return await self.exchange.get_ohlcv(symbol, timeframe, limit=limit)
 
     def _settled_order_id(self) -> str:
         """The venue id of ``_last_settled_order``, empty where it names none."""
