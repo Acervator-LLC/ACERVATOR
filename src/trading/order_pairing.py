@@ -283,12 +283,15 @@ def pair_figures(sells: Sequence[Leg], buys: Sequence[Leg], quote: str) -> PairF
     sold = math.fsum(leg.units for leg in sells)
     bought = math.fsum(leg.units for leg in buys)
     proceeds = math.fsum(
-        sale_proceeds_usd(priced_usd(leg.units, leg.price), leg.fee_usd) for leg in sells
+        sale_proceeds_usd(priced_usd(leg.units, leg.price), leg.fee_usd)
+        for leg in sells
     )
     paid = math.fsum(priced_usd(leg.units, leg.price) for leg in buys)
     price = paid / bought if bought > 0.0 else 0.0
     fees = math.fsum(leg.fee_usd for leg in buys)
-    fee_pct = venue_fee_pct(SettledFillFee(bought, price, fees, quote, True), price, quote)
+    fee_pct = venue_fee_pct(
+        SettledFillFee(bought, price, fees, quote, True), price, quote
+    )
     return PairFigures(
         units_sold=sold,
         units_bought=bought,

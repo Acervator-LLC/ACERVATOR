@@ -63,9 +63,7 @@ SECTION_PAIR = "The pair"
 SECTION_LINE = "The arithmetic, line {number}: {action} at {stamp}"
 
 FOUND_BY_ORDER = "by the venue order id the line names"
-FOUND_BY_FIGURES = (
-    "by side, units, price and a time inside 60 s, because the fill or the line names no order"
-)
+FOUND_BY_FIGURES = "by side, units, price and a time inside 60 s, because the fill or the line names no order"
 NO_ORDER_ON_ROW = "the venue's fill names no order"
 NO_LINE = "no line of the trade record names order {order}"
 NO_LINE_BY_FIGURES = (
@@ -74,9 +72,7 @@ NO_LINE_BY_FIGURES = (
 NO_BOT = "no running bot trades this market, so no distance is read"
 MOTD_OF_BOT = "the bot's own distance today"
 MOTD_DEFAULT = "the 5% default, because no running bot trades this market"
-OTHER_SOURCE_GAIN = (
-    "a {source} gain sums each spent tranche's own dollars, which the line does not hold"
-)
+OTHER_SOURCE_GAIN = "a {source} gain sums each spent tranche's own dollars, which the line does not hold"
 OTHER_OPENERS = "a sale here opened tranches other buys spent as well"
 OTHER_SPENDERS = "a buy here spent tranches other sales opened as well"
 
@@ -270,7 +266,9 @@ def growth_of(held: Any) -> Optional[TargetGrowth]:
         return None
     if held["fee_pct"] is not None and as_finite_float(held["fee_pct"]) is None:
         return None
-    others = [name for name in TARGET_GROWTH_FIELDS if name not in ("source", "fee_pct")]
+    others = [
+        name for name in TARGET_GROWTH_FIELDS if name not in ("source", "fee_pct")
+    ]
     if any(as_finite_float(held[name]) is None for name in others):
         return None
     return TargetGrowth(**held)
@@ -508,7 +506,9 @@ def fill_rows(fill: VenueFill) -> list[Row]:
         charged,
     )
     return [
-        Row(SECTION_FILL, "Exchange and market", inputs=f"{fill.exchange} {fill.symbol}"),
+        Row(
+            SECTION_FILL, "Exchange and market", inputs=f"{fill.exchange} {fill.symbol}"
+        ),
         Row(SECTION_FILL, "Side", inputs=fill.side),
         Row(SECTION_FILL, "Units", inputs=units_text(fill.amount)),
         Row(SECTION_FILL, "Price", inputs=price_text(fill.price)),
@@ -538,12 +538,20 @@ def record_rows(own: list[TradeLine], how: str, fill: VenueFill) -> list[Row]:
     """How the platform's lines for ``fill`` were found, and each one's figures."""
     if not own:
         missing = NO_LINE.format(order=fill.order_id or "(none named)")
-        return [Row(SECTION_RECORD, "Lines found", inputs=f"{missing}, {NO_LINE_BY_FIGURES}")]
+        return [
+            Row(
+                SECTION_RECORD, "Lines found", inputs=f"{missing}, {NO_LINE_BY_FIGURES}"
+            )
+        ]
     rows = [Row(SECTION_RECORD, "Lines found", inputs=f"{len(own)}, {how}")]
     for place, line in enumerate(own, start=1):
         rows.append(Row(SECTION_RECORD, f"Line {place}", inputs=line_text(line)))
-        rows.append(Row(SECTION_RECORD, "Tranches spent", inputs=ids_text(line.ids.spent)))
-        rows.append(Row(SECTION_RECORD, "Tranches opened", inputs=ids_text(line.ids.opened)))
+        rows.append(
+            Row(SECTION_RECORD, "Tranches spent", inputs=ids_text(line.ids.spent))
+        )
+        rows.append(
+            Row(SECTION_RECORD, "Tranches opened", inputs=ids_text(line.ids.opened))
+        )
     return rows
 
 
@@ -572,9 +580,25 @@ def fold_steps(growth: TargetGrowth) -> list[Step]:
         f"cap room {usd_text(growth.cap_room_usd)}"
     )
     return [
-        Step("Units bought", "", "the growth record", "units", None, growth.units_bought),
-        Step("Units at scrum", "", "the growth record", "units", None, growth.units_at_scrum),
-        Step("Fee the growth step priced", "", "the growth record", "pct", None, growth.fee_pct),
+        Step(
+            "Units bought", "", "the growth record", "units", None, growth.units_bought
+        ),
+        Step(
+            "Units at scrum",
+            "",
+            "the growth record",
+            "units",
+            None,
+            growth.units_at_scrum,
+        ),
+        Step(
+            "Fee the growth step priced",
+            "",
+            "the growth record",
+            "pct",
+            None,
+            growth.fee_pct,
+        ),
         Step("Gain", "fold_gain_usd", bought, "usd", gain, growth.gain),
         Step(
             "Surplus",
@@ -592,8 +616,22 @@ def fold_steps(growth: TargetGrowth) -> list[Step]:
             fold_cap_remaining_usd(growth.cycle_cap_usd, growth.consumed_usd),
             growth.cap_room_usd,
         ),
-        Step("Growth applied", "target_growth_applied", held, "usd", applied, growth.applied_usd),
-        Step("Pool after", "target_growth_applied", held, "usd", after, growth.standing_after_usd),
+        Step(
+            "Growth applied",
+            "target_growth_applied",
+            held,
+            "usd",
+            applied,
+            growth.applied_usd,
+        ),
+        Step(
+            "Pool after",
+            "target_growth_applied",
+            held,
+            "usd",
+            after,
+            growth.standing_after_usd,
+        ),
         Step(
             "New target",
             "",
@@ -630,7 +668,9 @@ def scrum_steps(line: TradeLine, distance: Optional[DistanceSettings]) -> list[S
                 routed_share_pct(proceeds, routed),
             )
         )
-        steps.append(Step("Queued for the fold", "", "the line's dollars", "usd", None, line.usd))
+        steps.append(
+            Step("Queued for the fold", "", "the line's dollars", "usd", None, line.usd)
+        )
     if distance is None:
         steps.append(Step("Surplus", "restored_sale_surplus_usd", NO_BOT, "usd"))
         return steps
@@ -703,8 +743,12 @@ def arithmetic_rows(
     """Every ``line_steps`` of ``own``, one section per line."""
     rows: list[Row] = []
     for place, line in enumerate(own, start=1):
-        section = SECTION_LINE.format(number=place, action=line.action, stamp=line.stamp)
-        rows.extend(step_row(section, step) for step in line_steps(line, quote, distance))
+        section = SECTION_LINE.format(
+            number=place, action=line.action, stamp=line.stamp
+        )
+        rows.extend(
+            step_row(section, step) for step in line_steps(line, quote, distance)
+        )
     return rows
 
 
@@ -734,7 +778,12 @@ def figure_rows(figures: op.PairFigures) -> list[Row]:
             "Accumulation in tokens",
             inputs=f"{units_text(figures.accumulated_units)}: units bought less units sold",
         ),
-        Row(SECTION_PAIR, "Sale proceeds", "sale_proceeds_usd", usd_text(figures.proceeds_usd)),
+        Row(
+            SECTION_PAIR,
+            "Sale proceeds",
+            "sale_proceeds_usd",
+            usd_text(figures.proceeds_usd),
+        ),
         step_row(SECTION_PAIR, profit),
     ]
 
@@ -758,7 +807,9 @@ def event_pair_rows(
     return rows + figure_rows(op.pair_figures(sells, buys, quote))
 
 
-def time_pair_rows(pair: op.CyclePair, motd: float, source: str, quote: str) -> list[Row]:
+def time_pair_rows(
+    pair: op.CyclePair, motd: float, source: str, quote: str
+) -> list[Row]:
     """The order-time pair's two orders, its level, and its figures."""
     sells = [op.Leg(pair.scrum.qty, pair.scrum.price, pair.scrum.fee)]
     buys = [op.Leg(pair.fold.qty, pair.fold.price, pair.fold.fee)]

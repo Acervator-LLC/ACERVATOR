@@ -781,9 +781,7 @@ window calls it on the same figures, so the two gains cannot disagree.
 `src/trading/trade_calculator.py, in OTHER_SOURCE_GAIN`
 
 ```python
-OTHER_SOURCE_GAIN = (
-    "a {source} gain sums each spent tranche's own dollars, which the line does not hold"
-)
+OTHER_SOURCE_GAIN = "a {source} gain sums each spent tranche's own dollars, which the line does not hold"
 ```
 
 ## Filtering, paging, export
