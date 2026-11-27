@@ -79,8 +79,50 @@ class SettingsTabMixin:
         if read is not None:
             from ..read_timeframe_combo import fill_read_combo
 
-            fill_read_combo(read, timeframe, str(read.currentData() or ""))
+            fill_read_combo(
+                read,
+                str(getattr(self._bot.config, "exchange_id", "") or ""),
+                timeframe,
+                str(read.currentData() or ""),
+            )
             self._mark_changed("scrum_read_timeframe", str(read.currentData() or ""))
+
+    def _read_timeframe_picked(self, _index: int) -> None:
+        """Mark ``scrum_read_timeframe`` changed to the picked length and clear ``scrum_read_timeframe_unserved``."""
+        read = getattr(self, "_scrum_read_tf", None)
+        if read is None:
+            return
+        self._mark_changed("scrum_read_timeframe", str(read.currentData() or ""))
+        self._mark_changed("scrum_read_timeframe_unserved", "")
+
+    def _add_read_rate_row(self, form: Any, cfg: Any) -> None:
+        """Add the Read Rate drop-down to ``form`` from ``cfg``, with its ``unserved_timeframe_notice`` line when one applies."""
+        from ..read_timeframe_combo import fill_read_combo
+
+        read = QComboBox()
+        self._scrum_read_tf = read
+        fill_read_combo(
+            read,
+            str(getattr(cfg, "exchange_id", "") or ""),
+            str(getattr(cfg, "ta_timeframe", "") or ""),
+            str(getattr(cfg, "scrum_read_timeframe", "") or ""),
+        )
+        set_description(read, SETTINGS_TAB_DESCRIPTIONS["scrum_read_timeframe"])
+        read.currentIndexChanged.connect(self._read_timeframe_picked)
+        form.addRow("Read Rate:", read)
+        notice = QLabel(
+            unserved_timeframe_notice(
+                getattr(cfg, "exchange_id", None),
+                getattr(cfg, "scrum_read_timeframe_unserved", ""),
+                str(read.currentData() or ""),
+            )
+        )
+        self._scrum_read_tf_notice = notice
+        if notice.text():
+            notice.setWordWrap(True)
+            notice.setStyleSheet(f"color: {ds.WARNING}; font-size: 11px;")
+            set_description(read, f"{read.toolTip()}\n{notice.text()}")
+            form.addRow(notice)
 
     def _show_admitted_figure(self, box: Any, config: Any, name: str) -> bool:
         """Put one stored dollar figure into `box`, or draw the dash instead.
@@ -811,23 +853,7 @@ class SettingsTabMixin:
         af = QFormLayout(adv_group)
         self._configure_form(af)
 
-        from ..read_timeframe_combo import fill_read_combo
-
-        self._scrum_read_tf = QComboBox()
-        fill_read_combo(
-            self._scrum_read_tf,
-            str(cfg.ta_timeframe or ""),
-            str(getattr(cfg, "scrum_read_timeframe", "") or ""),
-        )
-        set_description(
-            self._scrum_read_tf, SETTINGS_TAB_DESCRIPTIONS["scrum_read_timeframe"]
-        )
-        self._scrum_read_tf.currentIndexChanged.connect(
-            lambda _at: self._mark_changed(
-                "scrum_read_timeframe", str(self._scrum_read_tf.currentData() or "")
-            )
-        )
-        af.addRow("Read Rate:", self._scrum_read_tf)
+        self._add_read_rate_row(af, cfg)
 
         self._band_travel = QSpinBox()
         self._band_travel.setRange(0, 100)

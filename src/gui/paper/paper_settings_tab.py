@@ -490,23 +490,7 @@ class PaperSettingsTabMixin(SettingsTabMixin):
         af = QFormLayout(adv_group)
         self._configure_form(af)
 
-        from ..read_timeframe_combo import fill_read_combo
-
-        self._scrum_read_tf = QComboBox()
-        fill_read_combo(
-            self._scrum_read_tf,
-            str(cfg.ta_timeframe or ""),
-            str(getattr(cfg, "scrum_read_timeframe", "") or ""),
-        )
-        set_description(
-            self._scrum_read_tf, SETTINGS_TAB_DESCRIPTIONS["scrum_read_timeframe"]
-        )
-        self._scrum_read_tf.currentIndexChanged.connect(
-            lambda _at: self._mark_changed(
-                "scrum_read_timeframe", str(self._scrum_read_tf.currentData() or "")
-            )
-        )
-        af.addRow("Read Rate:", self._scrum_read_tf)
+        self._add_read_rate_row(af, cfg)
 
         self._band_travel = QSpinBox()
         self._band_travel.setRange(0, 100)

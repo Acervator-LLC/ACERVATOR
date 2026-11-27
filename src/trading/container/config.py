@@ -188,8 +188,11 @@ class BotConfig:
     # Weights this bot votes at; empty votes at the stored ta_indicator_weights.
     own_ta_weights: dict = field(default_factory=dict)
 
-    # SEARCH reads once per candle of it; read_timeframes(ta_timeframe) holds the choices.
+    # SEARCH reads once per candle of it; read_timeframes(exchange_id, ta_timeframe)
+    # holds the choices.
     scrum_read_timeframe: str = ""
+    # The saved length exchange_id does not serve, which _resolve_read_timeframe replaced.
+    scrum_read_timeframe_unserved: str = ""
     # % of BB band width price must travel since the last fold; 0 is off.
     band_travel_pct: int = 70
     # A band touch inside 0.5%, or a wick inside 0.2%, reads as the band edge
@@ -312,7 +315,17 @@ class BotConfig:
             else:
                 self.symbol = f"{self.target_asset}/{self.base_currency}"
         self._snap_ta_timeframe()
+        self._resolve_read_timeframe()
+
+    def _resolve_read_timeframe(self) -> None:
+        """Set ``scrum_read_timeframe`` to ``bot_read_timeframe``, recording a saved length the venue does not serve in ``scrum_read_timeframe_unserved``."""
+        from ...exchange.timeframes import is_supported
+
+        saved = self.scrum_read_timeframe
         self.scrum_read_timeframe = bot_read_timeframe(self)
+        if saved and saved != self.scrum_read_timeframe:
+            if not is_supported(self.exchange_id, saved):
+                self.scrum_read_timeframe_unserved = saved
 
     def _snap_ta_timeframe(self) -> None:
         """Replace a ``ta_timeframe`` the venue does not serve with the longest
@@ -452,6 +465,7 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "bb_landing_strip_candles",
         "landing_strip_boost_pct",
         "scrum_read_timeframe",
+        "scrum_read_timeframe_unserved",
         "band_travel_pct",
         "bb_bullseye_check",
         "hedge_rebalance_active",
@@ -702,10 +716,11 @@ def target_growth_pct(config):
 
 
 def bot_read_timeframe(config) -> str:
-    """``read_timeframe`` of ``config.ta_timeframe`` and ``config.scrum_read_timeframe``; Live, Paper and Simulator bots read it."""
+    """``read_timeframe`` of ``config.exchange_id``, ``config.ta_timeframe`` and ``config.scrum_read_timeframe``; Live, Paper and Simulator bots read it."""
     from ...exchange.timeframes import read_timeframe
 
     return read_timeframe(
+        str(getattr(config, "exchange_id", "") or ""),
         str(getattr(config, "ta_timeframe", "") or ""),
         str(getattr(config, "scrum_read_timeframe", "") or ""),
     )

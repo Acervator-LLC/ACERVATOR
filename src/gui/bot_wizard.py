@@ -1123,9 +1123,13 @@ if _HAS_QT:
 
             from .read_timeframe_combo import fill_read_combo
 
+            self._exchange_id = ""
             self._scrum_read_tf = QComboBox()
             fill_read_combo(
-                self._scrum_read_tf, str(self._ta_timeframe.currentData() or ""), ""
+                self._scrum_read_tf,
+                self._exchange_id,
+                str(self._ta_timeframe.currentData() or ""),
+                "",
             )
             set_description(
                 self._scrum_read_tf, BOT_WIZARD_DESCRIPTIONS["scrum_read_timeframe"]
@@ -1133,6 +1137,7 @@ if _HAS_QT:
             self._ta_timeframe.currentIndexChanged.connect(
                 lambda _at: fill_read_combo(
                     self._scrum_read_tf,
+                    self._exchange_id,
                     str(self._ta_timeframe.currentData() or ""),
                     str(self._scrum_read_tf.currentData() or ""),
                 )
@@ -1504,6 +1509,15 @@ if _HAS_QT:
             )
             self._ta_tf_notice.setText(notice)
             self._ta_tf_form.setRowVisible(self._ta_tf_notice, bool(notice))
+            self._exchange_id = str(exchange_id or "")
+            from .read_timeframe_combo import fill_read_combo
+
+            fill_read_combo(
+                self._scrum_read_tf,
+                self._exchange_id,
+                str(self._ta_timeframe.currentData() or ""),
+                str(self._scrum_read_tf.currentData() or ""),
+            )
 
         def set_market(
             self,

@@ -487,17 +487,17 @@ TA_TIMEFRAME_DEFAULT = "1h"
 TA_COMBO_NAME = "ta_timeframe"
 
 
-def read_items(ta_timeframe: str) -> list:
-    """``[timeframe, timeframe]`` for each of ``read_timeframes(ta_timeframe)``, the Read Rate entries."""
+def read_items(exchange_id: str, ta_timeframe: str) -> list:
+    """``[timeframe, timeframe]`` for each of ``read_timeframes(exchange_id, ta_timeframe)``, the Read Rate entries."""
     from ...exchange.timeframes import read_timeframes
 
-    return [[found, found] for found in read_timeframes(ta_timeframe)]
+    return [[found, found] for found in read_timeframes(exchange_id, ta_timeframe)]
 
 
-#: The Read Rate drop-down, refilled from ``read_items`` whenever the TA timeframe moves.
+#: The Read Rate drop-down, refilled from ``read_items`` whenever the venue or TA timeframe moves.
 READ_COMBO_NAME = "scrum_read_timeframe"
 COMBO_FIELDS[READ_COMBO_NAME] = tuple(
-    (label, data) for label, data in read_items(TA_TIMEFRAME_DEFAULT)
+    (label, data) for label, data in read_items("", TA_TIMEFRAME_DEFAULT)
 )
 COMBO_DEFAULT_INDEX[READ_COMBO_NAME] = len(COMBO_FIELDS[READ_COMBO_NAME]) - 1
 
@@ -2131,9 +2131,10 @@ class BotWizardModel:
         """Lay ``read_items`` of the picked TA timeframe into ``READ_COMBO_NAME``, keeping its pick where offered."""
         from ...exchange.timeframes import read_timeframe
 
+        exchange = str(self.exchange_id or "")
         ta = str(self.combo_data(TA_COMBO_NAME) or TA_TIMEFRAME_DEFAULT)
-        kept = read_timeframe(ta, str(self.combo_data(READ_COMBO_NAME) or ""))
-        self.read_timeframe_items = read_items(ta)
+        kept = read_timeframe(exchange, ta, str(self.combo_data(READ_COMBO_NAME) or ""))
+        self.read_timeframe_items = read_items(exchange, ta)
         self.calls.append([COMBO_CLEAR, READ_COMBO_NAME])
         for label, data in self.read_timeframe_items:
             self.calls.append([COMBO_ADD_ITEM, READ_COMBO_NAME, label, data])

@@ -1738,7 +1738,10 @@ class LiveSettingsTabModel:
         from ...exchange.timeframes import read_timeframes
 
         self.read_timeframe_items = list(
-            read_timeframes(str(getattr(config, "ta_timeframe", "") or ""))
+            read_timeframes(
+                str(getattr(config, "exchange_id", "") or ""),
+                str(getattr(config, "ta_timeframe", "") or ""),
+            )
         )
         scrum_title = SCRUM_GROUP_TITLE if is_scrumming else SHARED_GROUP_TITLE
         self._add_group(SCRUM_GROUP, scrum_title)

@@ -377,6 +377,7 @@ def paper_bot_from_record(
 
     interval_pct = as_finite_float(config.get("scrumming_interval_pct"))
     read_tf = read_timeframe(
+        str(config.get("exchange_id") or ""),
         str(config.get("ta_timeframe") or ""),
         str(config.get("scrum_read_timeframe") or ""),
     )
