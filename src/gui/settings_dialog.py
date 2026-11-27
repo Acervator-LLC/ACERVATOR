@@ -109,6 +109,7 @@ try:
         QMessageBox,
     )
     from PySide6.QtCore import Qt, Signal
+    from PySide6.QtGui import QValidator
 
     from .tooltips import set_description
 
@@ -122,6 +123,64 @@ if _HAS_QT:
 
     from .main_tabs import asset_class_surface as acs
     from .main_tabs import settings_dialog_surface as sds
+
+    #: The dynamic property a dashed number box keeps the operator's last typed text in.
+    TYPED_TEXT_PROPERTY = "typed_text"
+
+    def _accepts(box: object, text: str) -> bool:
+        """Whether ``box.validate`` reads ``text`` as a figure the box takes."""
+        answer = box.validate(text, 0)
+        state = answer[0] if isinstance(answer, tuple) else answer
+        return bool(state == QValidator.State.Acceptable)
+
+    class SpanSpinBox(QSpinBox):
+        """A ``QSpinBox`` holding a typed whole number outside its span until left.
+
+        Leaving the box puts the old figure back, and ``refused`` carries the
+        typed figure, for each control ``sds.SHOWS_TYPED_REFUSAL`` names;
+        ``taken`` says a typed figure was kept.
+        """
+
+        refused = Signal(object)
+        taken = Signal()
+
+        def __init__(self, name: str) -> None:
+            super().__init__()
+            self.setAccessibleName(name)
+            self._typed: str | None = None
+            self.lineEdit().textEdited.connect(self._hold_typed)
+            self.editingFinished.connect(self._judge_typed)
+
+        def _hold_typed(self, text: str) -> None:
+            """Keep ``text``, the box's text as the operator last typed it."""
+            self._typed = text
+
+        def _judge_typed(self) -> None:
+            """Emit ``taken`` when the text typed since the last leave is a figure the box takes."""
+            typed, self._typed = self._typed, None
+            if typed is not None and _accepts(self, typed):
+                self.taken.emit()
+
+        def outside(self, text: str) -> int | None:
+            """The whole number in ``text`` where it lies outside this box's span."""
+            figure = text.removesuffix(self.suffix()).strip()
+            if not figure.removeprefix("-").isdigit():
+                return None
+            number = int(figure)
+            return None if self.minimum() <= number <= self.maximum() else number
+
+        def validate(self, text: str, pos: int) -> tuple[QValidator.State, str, int]:
+            """``QSpinBox.validate``, with a whole number outside the span intermediate."""
+            if self.outside(text) is not None:
+                return QValidator.State.Intermediate, text, pos
+            return super().validate(text, pos)
+
+        def fixup(self, text: str) -> str:
+            """Emit ``refused`` for a whole number outside the span, and keep ``text``."""
+            number = self.outside(text)
+            if number is not None:
+                self.refused.emit(number)
+            return text
 
     class VenueArrayPanel(QWidget):
         """The Exchange Status array, one segment per venue of one sector.
@@ -1178,13 +1237,33 @@ if _HAS_QT:
             spec = sds.spec_for("price_age_limit")
             fleet = QGroupBox(spec["group"])
             fleet_form = QFormLayout(fleet)
-            self._price_age_limit = QSpinBox()
+            self._price_age_limit = SpanSpinBox(spec["label"].rstrip(":"))
+            self._price_age_limit.setKeyboardTracking(False)
             self._price_age_limit.setRange(*spec["range"])
             self._price_age_limit.setSuffix(spec["suffix"])
             self._price_age_limit.setValue(spec["value"])
+            self._price_age_limit.refused.connect(
+                lambda typed: self._show_typed_refusal(spec["name"], typed)
+            )
+            self._price_age_limit.valueChanged.connect(
+                lambda _v: self._show_description(spec["name"])
+            )
+            self._price_age_limit.taken.connect(
+                lambda: self._show_description(spec["name"])
+            )
             fleet_form.addRow(spec["label"], self._price_age_limit)
             form.addRow(fleet)
             return w
+
+        def _show_typed_refusal(self, name: str, typed: object) -> None:
+            """Name the refused ``typed`` figure in the mouse-over of the control ``name``."""
+            set_description(getattr(self, "_" + name), sds.typed_refusal(name, typed))
+
+        def _show_description(self, name: str) -> None:
+            """Put the spec's own mouse-over back where a typed refusal hangs on ``name``."""
+            held = getattr(self, "_" + name)
+            if sds.is_typed_refusal(name, held.toolTip()):
+                set_description(held, sds.spec_for(name)["tooltip"])
 
         def _create_ta_tab(self) -> QWidget:
             w = QWidget()
@@ -2056,7 +2135,7 @@ if _HAS_QT:
                     lambda _v, _b=box, _k=key: self._clear_refused(_b, _k)
                 )
                 box.lineEdit().textEdited.connect(
-                    lambda _t, _k=key: self._refused.pop(_k, None)
+                    lambda typed, _b=box: _b.setProperty(TYPED_TEXT_PROPERTY, typed)
                 )
                 box.editingFinished.connect(
                     lambda _b=box, _k=key: self._clear_typed(_b, _k)
@@ -2074,8 +2153,10 @@ if _HAS_QT:
             self._refused.pop(key, None)
 
         def _clear_typed(self, box: object, key: str) -> None:
-            """Take the dash off ``box`` once typing in it has dropped ``key`` from ``_refused``."""
-            if key not in self._refused:
+            """Take the dash off ``box`` when the text typed into it is a figure it takes."""
+            typed = box.property(TYPED_TEXT_PROPERTY)
+            box.setProperty(TYPED_TEXT_PROPERTY, None)
+            if isinstance(typed, str) and _accepts(box, typed):
                 self._clear_refused(box, key)
 
         def _untouched_since_refusal(

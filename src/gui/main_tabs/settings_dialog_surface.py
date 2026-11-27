@@ -3348,6 +3348,23 @@ def spec_for(name: str) -> dict:
     raise KeyError(name)
 
 
+#: Number boxes that keep their figure on a typed one outside their span, and name it.
+SHOWS_TYPED_REFUSAL = ("price_age_limit",)
+
+
+def typed_refusal(name: str, typed: Any) -> str:
+    """The mouse-over naming a typed `typed` that the control `name` refuses."""
+    low, high = spec_for(name)["range"]
+    found = int(typed) if type(typed) is float and typed.is_integer() else typed
+    return REFUSED_SPAN.format(found=found, low=low, high=high)
+
+
+def is_typed_refusal(name: str, words: str) -> bool:
+    """Whether `words` is a `typed_refusal` of the control `name`."""
+    low, high = spec_for(name)["range"]
+    return words.endswith(REFUSED_SPAN.format(found="", low=low, high=high))
+
+
 def specs_on(tab: str) -> tuple:
     """Every control spec belonging to one tab, in painted order."""
     return tuple(spec for spec in CONTROL_SPECS if spec["tab"] == tab)
