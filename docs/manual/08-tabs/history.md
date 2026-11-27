@@ -157,16 +157,16 @@ call = self.running
 return call if call is not None and call.run_left_sec() <= 0.0 else None
 ```
 
-Each read that waited behind the stuck call moves to the fresh worker, the reads
-of an order's step first and each line in the order it was asked, and goes to the
-venue once. An order or a cancel that waited there
-is dropped and is never sent. A stuck order is not sent again. A stuck read is
+Each call that waited behind the stuck call moves to the fresh worker, the calls
+of the first line first and each line in the order it was asked, and goes to the
+venue once. An order or a cancel still goes only inside its own 25 seconds, and one
+that waited past them is never sent. A stuck order is not sent again. A stuck read is
 tried again by its caller, up to three tries in all.
 
 `src/exchange/ccxt_connector.py, in CCXTConnector._replace_stuck_worker`
 
 ```python
-if fresh is not None and call.keeps_turn:
+if fresh is not None:
     fresh.take(call)
 else:
     call.dropped = True
@@ -383,6 +383,46 @@ every read outside a step.
 ```python
 if in_order_turn():
     return None if served() else object()
+```
+
+### When the venue answers at its normal speed again
+
+After a slow spell, a throttled spell or a stuck call, the platform comes back to its
+normal pace by itself. It needs no restart, no press in Settings and no new connection.
+Each part comes back in its own time, counted from the first answer at the normal
+speed.
+
+- The call that runs at that moment ends at its answer or at its own 25 seconds. The
+  calls behind it follow at the normal speed, so within 28 seconds the queue is back at
+  its normal depth and refuses no call.
+- Each good answer takes back one doubling of the shared reads' rest. Two turns of the
+  loop bring it back to 2.5 seconds: within 56 seconds after a slow spell or a stuck
+  call, and within 26 seconds after a throttled spell.
+- The first shared reads write each bot's stored price and balance again: within 51
+  seconds after a slow spell or a stuck call, and within 21 seconds after a throttled
+  spell.
+- A bot that cooled down after five errors in a row ticks again after its 60 seconds,
+  and that tick reads the new store.
+
+`src/exchange/data_pool.py, in SharedReads.note_good`
+
+```python
+self.refused.discard(kind)
+self.lost_at.pop(kind, None)
+self.steps = max(0, self.steps - 1)
+self.answered_at = time.monotonic()
+```
+
+Two figures keep what the spell left and hold no call back. The count of refused calls
+on the status bar is a total since the start, so it stops rising and does not fall. The
+deepest the queue has been is a peak since the start.
+
+`src/exchange/ccxt_connector.py, in CCXTConnector._call_sync_timed`
+
+```python
+self._sync_queue_depth_peak = max(
+    self._sync_queue_depth_peak, self._sync_queue_depth
+)
 ```
 
 ### The candles a phantom reads

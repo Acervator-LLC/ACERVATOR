@@ -237,14 +237,12 @@ class SyncCallTiming:
 @dataclass(eq=False)
 class SyncCall:
     """One call on a ``SyncWorker``, its turn bounded by ``turn_wait_sec`` and its run
-    by ``limit_sec``; one whose ``keeps_turn`` is False never moves to another worker.
-    ``SyncWorker`` starts a ``goes_first`` call ahead of every other, and a ``counted``
-    call takes a place of ``SYNC_QUEUE_CAP``.
+    by ``limit_sec``. ``SyncWorker`` starts a ``goes_first`` call ahead of every other,
+    and a ``counted`` call takes a place of ``SYNC_QUEUE_CAP``.
     """
 
     name: str
     run: Callable[[], Any]
-    keeps_turn: bool
     turn_wait_sec: float
     limit_sec: float = SYNC_CALL_TIMEOUT_SEC
     missed: type[asyncio.TimeoutError] = asyncio.TimeoutError
@@ -261,12 +259,9 @@ class SyncCall:
         """``fn`` on its arguments, a read where ``name`` opens with ``READ_CALL_PREFIX``;
         a read ``in_order_turn`` and each other call ``goes_first``, not ``counted``."""
         run = functools.partial(fn, *args, **kwargs)
-        reads = name.startswith(READ_CALL_PREFIX)
-        if reads and not in_order_turn():
-            return cls(name, run, reads, read_turn_left_sec(), missed=TurnMissed)
-        return cls(
-            name, run, reads, ORDER_TURN_WAIT_SEC, goes_first=True, counted=False
-        )
+        if name.startswith(READ_CALL_PREFIX) and not in_order_turn():
+            return cls(name, run, read_turn_left_sec(), missed=TurnMissed)
+        return cls(name, run, ORDER_TURN_WAIT_SEC, goes_first=True, counted=False)
 
     def turn_left_sec(self) -> float:
         """Seconds left of ``turn_wait_sec``."""
@@ -2146,7 +2141,6 @@ class CCXTConnector(ExchangeInterface):
         call = SyncCall(
             "connect",
             functools.partial(self.sync_connect, api_key, api_secret, passphrase),
-            keeps_turn=True,
             turn_wait_sec=math.inf,
             limit_sec=CONNECT_LIMIT_SEC,
             counted=False,
@@ -2468,10 +2462,10 @@ class CCXTConnector(ExchangeInterface):
             self._bulk_read_admitted = None
 
     def _replace_stuck_worker(self, worker: Optional[SyncWorker]) -> None:
-        """Put a fresh worker in place of one ``stuck_call`` names, its queued reads on
-        the fresh one, each ``goes_first`` read ahead of the rest and each class in
-        order; every other queued call is ``dropped``, and a call ``Future.cancel``
-        finds started stays where it runs."""
+        """Put a fresh worker in place of one ``stuck_call`` names, each queued call on
+        it with every ``goes_first`` call ahead and each class in order, or ``dropped``
+        with no fresh worker; a call ``Future.cancel`` finds started stays where it
+        runs."""
         with self._sync_executor_lock:
             stuck = worker.stuck_call() if worker is not None else None
             if worker is None or stuck is None:
@@ -2482,7 +2476,7 @@ class CCXTConnector(ExchangeInterface):
             for call in sorted(self._sync_calls, key=lambda held: not held.goes_first):
                 if call.worker is not worker or not call.job.cancel():
                     continue
-                if fresh is not None and call.keeps_turn:
+                if fresh is not None:
                     fresh.take(call)
                 else:
                     call.dropped = True
