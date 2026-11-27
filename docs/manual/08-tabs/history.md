@@ -578,6 +578,218 @@ both within one billionth of a dollar, nothing moves.
         return 0.0, standing
 ```
 
+## The Trade Calculator
+
+A double-click on a History row opens the Trade Calculator for that fill. It
+works in the Qt build and in the React build. Each double-click opens one new
+window beside the tab. The tab itself does not change.
+
+`src/gui/history_tab.py, in HistoryTab._open_trade_calculator`
+
+```python
+            dialog = TradeCalculatorDialog(self)
+            dialog.finished.connect(
+                lambda result: self._close_calculator(dialog, result)
+            )
+            self._calculators.append(dialog)
+            dialog.show()
+```
+
+In the Qt build, the table sends the row's place on the page. In the React
+build, the page sends the row's place and its trade id to the tab. Both open
+the same window.
+
+`src/gui/web/history_tab.js, in onRowOpen`
+
+```javascript
+    return global.acervatorHistoryTabHostAction(CALCULATOR_ACTION, {
+      row: Number(row.getAttribute("data-row-index")),
+      trade_id: row.getAttribute("data-trade-id") || ""
+    });
+```
+
+### The steps the window lays out
+
+The window names the fill on its first line. Under it is one table, and each
+row of the table is one step. The table has six columns:
+
+- Step names the figure.
+- Engine function names the function the engine trades with.
+- Inputs gives the figures that function reads.
+- Computed is the figure the window gets when it calls that function.
+- Recorded is the figure the trade record holds.
+- Check reads "equal" in green or "differs" in red.
+
+A check reads "equal" when the two figures agree to one part in a billion, or
+to 0.000000001. A step that holds only one of the two figures has no check.
+
+`src/trading/trade_calculator.py, in Step.check`
+
+```python
+        if self.computed is None or self.recorded is None:
+            return ""
+        if math.isclose(self.computed, self.recorded, rel_tol=1e-9, abs_tol=1e-9):
+            return EQUAL
+        return DIFFERS
+```
+
+The table has four parts, in this order:
+
+- The fill: the venue's own figures for the row.
+- The platform's record: the trade log lines of the fill, and the tranches
+  each line spent and opened.
+- The arithmetic: one part for each line, with each step of that line.
+- The pair: the opposing order, and the pair's accumulation and profit.
+
+`src/trading/trade_calculator.py, in SECTION_LINE`
+
+```python
+SECTION_FILL = "The fill"
+SECTION_RECORD = "The platform's record"
+SECTION_PAIR = "The pair"
+SECTION_LINE = "The arithmetic, line {number}: {action} at {stamp}"
+```
+
+### How the window finds the platform's record
+
+The window reads the trade log and its numbered copies in the log folder. Each
+line there is the platform's own record of one fill, as "The platform's own
+line for each fill" above sets out. The window reads in steps of about 8 ms on
+the window thread, so the screen keeps answering while it reads.
+
+The window first takes the lines that name the fill's venue order. Where the
+fill or a line names no order, it takes the lines that hold the fill's
+exchange, symbol, side, units and price, written within 60 seconds of it.
+
+`src/trading/trade_calculator.py, in matches_figures`
+
+```python
+    return (
+        not (line.order_id and fill.order_id)
+        and line.exchange in ("", fill.exchange)
+        and line.symbol == fill.symbol
+        and line.side == fill.side
+        and math.isclose(line.amount, fill.amount, rel_tol=1e-9)
+        and math.isclose(line.price, fill.price, rel_tol=1e-9)
+        and abs(line.epoch - fill.timestamp) <= JOIN_TOLERANCE_SECONDS
+    )
+```
+
+A History row takes its venue order from the venue's own fill. A crypto venue
+names it as the order. A broker names it as its client order id where it holds
+one, and a broker that publishes no order id leaves it empty.
+
+`src/exchange/history_helpers.py, in venue_order_id`
+
+```python
+    for key in ORDER_ID_KEYS:
+        held = raw.get(key)
+        if held is not None and str(held):
+            return str(held)
+    return ""
+```
+
+### How the pair is found
+
+The pairing rule lives in one module. The Trade Calculator calls it, and so
+does the builder of this manual's evidence charts. Neither holds a copy.
+
+The window tries three ways, in this order:
+
+1. By event ids. A line pairs with the fill when it spent a tranche the fill
+   opened, or opened a tranche the fill spent.
+2. By order time at the MOTD. The window joins the History rows of the fill's
+   market into orders. It then pairs them as
+   [Pairs by order time and MOTD](../10-live-trade-history.md#pairs-by-order-time-and-motd)
+   sets out.
+3. No pair. The window then gives the reason, once for the order as the earlier
+   order and once as the later order.
+
+The MOTD is the distance of the running bot that trades the market. Where no
+running bot trades it, the window uses the 5% default.
+
+`src/trading/order_pairing.py, in pair_fill`
+
+```python
+    partners = tuple(record for record, ids in records if own.meets(ids))
+    if partners:
+        return FillPairing(PAIRED_BY_EVENT_IDS, partners, None, ("", ""))
+    pair = order_pair(order, orders, motd_pct)
+    if pair is not None:
+        return FillPairing(PAIRED_BY_ORDER_TIME, (), pair, ("", ""))
+    return FillPairing(NOT_PAIRED, (), None, unpaired_causes(order, orders, motd_pct))
+```
+
+### The pair's accumulation and profit
+
+The accumulation is in tokens: the units the pair bought less the units it
+sold. The profit is in dollars: the sale proceeds after the sale fee, less the
+cost to buy back the units sold at the pair's buy price with the buy fee. The
+profit is never below zero, as the engine's surplus is never below zero.
+
+`src/trading/order_pairing.py, in pair_figures`
+
+```python
+    return PairFigures(
+        units_sold=sold,
+        units_bought=bought,
+        accumulated_units=bought - sold,
+        proceeds_usd=proceeds,
+        buy_price=price,
+        buy_fee_pct=fee_pct,
+        profit_usd=sale_surplus_usd(proceeds, sold, price, fee_pct),
+    )
+```
+
+### The functions the engine and the window share
+
+The window calls the functions the engine trades with, and it holds no copy of
+their arithmetic.
+
+| Step | Function | Module |
+| ---- | -------- | ------ |
+| Units at the price | `priced_usd` | `src/trading/scrumming/sizing.py` |
+| Fee the venue charged | `venue_fee_pct` | `src/trading/scrumming/execution.py` |
+| Proceeds after the fee | `sale_proceeds_usd` | `src/trading/scrumming/sizing.py` |
+| Gain of a fold | `fold_gain_usd` | `src/trading/scrumming/sizing.py` |
+| Surplus of a fold | `growth_surplus_usd` | `src/trading/scrumming/sizing.py` |
+| Cap room | `fold_cap_remaining_usd` | `src/trading/scrumming/sizing.py` |
+| Growth applied and pool after | `target_growth_applied` | `src/trading/scrumming/sizing.py` |
+| Wire share | `routed_share_pct` | `src/trading/scrumming/sizing.py` |
+| Price that re-zeroes its units | `fold_rebuy_price` | `src/trading/otd_math.py` |
+| Dollars that re-zero its units | `restore_cost_usd` | `src/trading/scrumming/sizing.py` |
+| Surplus of a Scrum | `restored_sale_surplus_usd` | `src/trading/scrumming/sizing.py` |
+| Profit of a pair | `sale_surplus_usd` | `src/trading/scrumming/sizing.py` |
+
+The engine's own fold calls `fold_gain_usd` on the figures it records. The
+window calls it on the same figures, so the two gains cannot disagree.
+
+`src/trading/scrumming/execution.py, in _fold_gain_usd`
+
+```python
+        return fold_gain_usd(
+            bought_usd, units, fill_price, self._fold_fee_pct(fill_price)
+        )
+```
+
+### What the window cannot recompute
+
+- The new target. The record holds the target after the growth, not before it,
+  so the window shows the recorded figure alone.
+- The gain of a fold from another source, such as a Manual Fire or a manual
+  tranche fold. That gain adds the spent tranches' own dollars, which the line
+  does not hold. The window shows the recorded gain and names its source.
+- The surplus of a Scrum where no running bot trades the market. The surplus
+  needs that bot's distance.
+- A line written before the order and tranche fields existed. The window finds
+  it by its figures and pairs it by order time.
+
+`src/trading/trade_calculator.py, in OTHER_SOURCE_GAIN`
+
+```python
+OTHER_SOURCE_GAIN = "a {source} gain sums each spent tranche's own dollars, which the line does not hold"
+```
+
 ## Filtering, paging, export
 
 Eight methods carry the controls under the table.

@@ -39,11 +39,25 @@ JOIN_TOLERANCE_SECONDS = 60.0
 """Largest gap ``_best_entry_within_window`` accepts between a trade and a log
 entry, and the backdate the index builders apply to ``since``."""
 
+ORDER_ID_KEYS = ("order", "client_order_id", "order_id")
+"""The ``Trade.raw`` keys ``venue_order_id`` reads, in order: ccxt's, then a broker's two."""
+
+
+def venue_order_id(raw: Any) -> str:
+    """The first ``ORDER_ID_KEYS`` value ``raw`` holds, as text, or empty."""
+    if not isinstance(raw, dict):
+        return ""
+    for key in ORDER_ID_KEYS:
+        held = raw.get(key)
+        if held is not None and str(held):
+            return str(held)
+    return ""
+
 
 def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
     """Convert an exchange ``Trade`` dataclass or ccxt dict into a row dict.
 
-    Keys are id, exchange, symbol, side, amount, price, cost, fee,
+    Keys are id, order_id, exchange, symbol, side, amount, price, cost, fee,
     fee_currency, timestamp in unix seconds, and datetime; a malformed
     ``trade`` gives None.
     """
@@ -51,6 +65,7 @@ def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
         return None
 
     if isinstance(trade, dict):
+        order_id = venue_order_id(trade)
         tid = str(trade.get("id", "") or "")
         symbol = str(trade.get("symbol", "") or "")
         side = str(trade.get("side", "") or "").upper()
@@ -75,6 +90,7 @@ def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
         elif "SELL" in side or side == "S":
             side = "SELL"
     else:
+        order_id = venue_order_id(getattr(trade, "raw", None))
         try:
             tid = str(getattr(trade, "id", "") or "")
             symbol = str(getattr(trade, "symbol", "") or "")
@@ -102,6 +118,7 @@ def normalize_trade(trade: Any, exchange_id: str) -> Optional[dict]:
 
     return {
         "id": tid,
+        "order_id": order_id,
         "exchange": exchange_id,
         "symbol": symbol,
         "side": side,

@@ -423,13 +423,24 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   after Age, in both builds of the Live, Paper and Simulator windows
   (`src/gui/main_tabs/fold_tranches_tab_surface.py, in fold_projected_accumulation`).
   Next, rows 6 to 8 with the Settings control of row 8, as the body orders them.
-- **#1837, the Trade Calculator. Rows 1 to 3 are built.** Each trade log line
+- **#1837, the Trade Calculator. Rows 1 to 8 are built.** Each trade log line
   names its venue order and the event ids of the tranches the fill spent and
   opened, and a fold that ran the growth step carries its figures under
-  `target_growth` (`src/core/emit_contracts.py, in SettledFill`). The engine grows
-  the target through `src/trading/scrumming/sizing.py, in target_growth_applied`
-  alone. Next, in the body's build order: row 4, then row 5, then rows 6 to 8.
-  Row 9 waits on his yes to a read of his logs.
+  `target_growth` (`src/core/emit_contracts.py, in SettledFill`). A double-click
+  on a History row, in both builds, opens the Trade Calculator. It lays out each
+  step of the fill through the engine's own functions beside the recorded
+  figure, then the opposing order and the pair's accumulation and profit
+  (`src/trading/trade_calculator.py, in calculation_steps`). The pairing rule
+  lives in `src/trading/order_pairing.py`, and the manual builder imports it.
+  Next, row 9: his retained record read through the window, which the body
+  records he agreed to on 2026-11-26.
+- **#1843, the currency rate strip. Rows 1 and 2 are built.** The shared rate
+  feed is built again only when no read is on its way and the reads asked since
+  the last answer have had none for one refresh
+  (`src/exchange/currency_rate_monitor.py, in CurrencyRateMonitor.has_stopped`).
+  A carried reading sets `held`, the strip names the venue alone in both builds,
+  and a Target cell marks a held figure (`in _carry_rates`). He reads the strip
+  after the next build.
 - **#1440, the trade engine. Rows 7 to 10 are built.** Inside BB Tolerance of
   the band the Target Delta points to, the gate chain passes trend hold, ADX, the
   efficiency ratio, the higher-timeframe defer and the phantom lock, and it still
@@ -437,8 +448,7 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   opposing distance, a tranche's rebuy price, the breakers and the price age
   (`src/trading/gate_chain.py, in GateChain.releases`). Past Max Cartridge Size
   the bot waits a tenth as many ticks between reads, never under one, and inside
-  the lower zone with no tranche
-  queued a fold buys the whole Target Delta
+  the lower zone with no tranche queued a fold buys the whole Target Delta
   (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_calibrating_fold`).
   Read Rate is a timeframe below the TA Timeframe, and Detect Threshold, Fire
   Threshold and BB Midline Gate are retired

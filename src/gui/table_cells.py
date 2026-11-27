@@ -341,6 +341,6 @@ def _compose_table_target_denom_cell(
             _color = ds.ERROR
             _sign = ""
         _figure = f"{units_text(_units)} ({_sign}{_delta:.1f}%)"
-        return (held_figure_text(_figure, _rates.source), _color)
+        return (held_figure_text(_figure, _rates.held), _color)
     except Exception:  # noqa: BLE001 - table paint best-effort
         return ("", _neutral)

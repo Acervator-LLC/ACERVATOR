@@ -813,13 +813,12 @@ class ExecutionEngineMixin:
     def _fold_gain_usd(
         self, bought_usd: float, units: float, fill_price: float
     ) -> float:
-        """``discharge_gain_usd`` of ``units`` restored by ``bought_usd`` at
+        """``fold_gain_usd`` of ``units`` restored by ``bought_usd`` at
         ``fill_price``, at ``_fold_fee_pct``."""
-        return discharge_gain_usd(
-            {"units": units, "usd": bought_usd},
-            units,
-            fill_price,
-            self._fold_fee_pct(fill_price),
+        from .sizing import fold_gain_usd
+
+        return fold_gain_usd(
+            bought_usd, units, fill_price, self._fold_fee_pct(fill_price)
         )
 
     def _note_venue_fee_pct(
