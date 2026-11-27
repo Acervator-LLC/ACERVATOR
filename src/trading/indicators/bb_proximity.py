@@ -74,7 +74,9 @@ def detect_bb_proximity(
     ``TOLERANCE_OF_PRICE``; any other ``tolerance_of`` raises ``ValueError``.
     """
     if tolerance_of not in TOLERANCE_UNITS:
-        raise ValueError(f"tolerance_of {tolerance_of!r} is not one of {TOLERANCE_UNITS}")
+        raise ValueError(
+            f"tolerance_of {tolerance_of!r} is not one of {TOLERANCE_UNITS}"
+        )
     closes = [c.close for c in candles]
     if len(closes) < bb_period:
         return BBProximityResult(

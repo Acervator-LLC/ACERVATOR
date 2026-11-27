@@ -2055,7 +2055,8 @@ class TickPhaseMixin:
         _fold_chain_result: Any,
     ) -> bool:
         """Rebuy the tranches ``_fold_eligible_tranches`` names at ``distance`` and
-        ``band``, or ``_tick_calibrating_fold`` with none queued; True means the tick must stop."""
+        ``band``, or ``_tick_calibrating_fold`` with none queued; True means the tick must stop.
+        """
         if not self._fold_tranches:
             return await self._tick_calibrating_fold(ticker, summary, delta)
         _otd_factor = fold_rebuy_factor_from_pct(distance.distance_at_band(band))
