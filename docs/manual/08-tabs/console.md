@@ -843,6 +843,14 @@ already name, so a flip of that state re-announces at once.
 Twelve keys, every one from a bounded set. A key space that cannot grow with
 the reading cannot fall back to announcing every pass.
 
+**Current reading.** The BB priority skew is gone, and so is its line. Two state
+lines took its place, under the same guard (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
+
+| Line | Key | Values it can take |
+|---|---|---|
+| `ZONE TIMING` | `state_zone_timing_<SCRUM\|FOLD>_<deeper\|slipping>` | 4 |
+| `LATE TURN` | `state_late_turn_<scrum\|fold>` | 2 |
+
 ### What it reads like now
 
 Driven on the real `tick`, a bot built from invented configuration, with the

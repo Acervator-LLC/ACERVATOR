@@ -274,9 +274,8 @@ WHY THIS READING AND NOT ADX, since the file carries both.
 ``ADXIndicator`` names a ``strong_trend`` detail at ADX >= 35 and
 ``ADXTrendSuppressionGate`` refuses a SCRUM at ADX >= 30. Neither can
 serve as the count bound's exception: the gate refuses the very sell
-that would open the extra tranches, and ``RipeHarvestScrumOverride``
-lists ``midline_scrum``, ``target_fires``, ``trend_hold`` and
-``ta_bullish`` -- not ``adx_trend_suppression`` -- so nothing lifts it.
+that would open the extra tranches, and outside the BB Tolerance zone
+nothing lifts it.
 TREND-HOLD IS lifted: ``tick`` clears it on band travel or on a delta of
 twice the interval, and the comment at that arm says it exists to catch
 harvests "during strong trends". That is the sell the operator's
@@ -590,6 +589,8 @@ class ScrummingBot(
         self._cartridge_reached: bool = False
         # The side whose zone visit is open, as zone_visit answers; "" for none.
         self._zone_visit_side: str = ""
+        # stats.total_sells and stats.total_buys at the last zone_visit read.
+        self._zone_visit_fills: tuple[int, int] = (0, 0)
 
         self._fold_diag_tick: int = 0
         self._fold_diag_last_blocker_set: str = ""
@@ -3138,6 +3139,18 @@ class ScrummingBot(
                 f"{type(exc).__name__}: {exc}. Fail-closed."
             )
 
+    def _zone_visit_open_side(self) -> str:
+        """``_zone_visit_side``, or "" once a sell fill closes a scrum visit or a buy fill a fold visit since the last read."""
+        from .vote_boost import FOLD_SIDE, SCRUM_SIDE
+
+        fills = (int(self.stats.total_sells), int(self.stats.total_buys))
+        seen, self._zone_visit_fills = self._zone_visit_fills, fills
+        if self._zone_visit_side == SCRUM_SIDE and fills[0] > seen[0]:
+            return ""
+        if self._zone_visit_side == FOLD_SIDE and fills[1] > seen[1]:
+            return ""
+        return self._zone_visit_side
+
     async def tick(self) -> None:
         symbol = self.config.symbol
         if self._cb_hard_tripped:
@@ -3721,7 +3734,7 @@ class ScrummingBot(
         _scrum_timing, _fold_timing = _zone.scrum, _zone.fold
         _scrum_deeper, _fold_deeper = _zone.scrum_deeper, _zone.fold_deeper
         self._zone_visit_side, _late_side = zone_visit(
-            self._zone_visit_side,
+            self._zone_visit_open_side(),
             _bb_upper_zone,
             _bb_lower_zone,
             delta,
@@ -4282,8 +4295,6 @@ class ScrummingBot(
         self._emit_gate_light_line(
             _scrum_chain_result, _fold_chain_result, summary, float(ticker.last)
         )
-        if _scrum_chain_result.should_fire or _fold_chain_result.should_fire:
-            self._zone_visit_side = ""
         if not _scrum_chain_result.should_fire and not _fold_chain_result.should_fire:
             self._emit_gate_decision_at_quiet_tick(GATE_CHAIN_EXIT)
         if _fold_chain_result.should_fire:

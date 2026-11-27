@@ -121,8 +121,6 @@ TAPE_FIELDS = (
     "bb_below_lower_dt",
     "scrum_ok",
     "fold_ok_midline",
-    "ripe_scrum",
-    "deep_fold",
 )
 
 #: Why one light differs, read off the row's own fields: the tablet candle

@@ -242,6 +242,23 @@ midline_scrum overridden by ripe_harvest_override: scrum_ok=False(bb_pos=1.23)
 scrum_ok=False(bb_pos=-0.22) [override not applied: ripe_harvest_override]
 ```
 
+**Current reading.** The ripe-harvest override is gone, so no run writes either
+line above. Inside the BB Tolerance zone and out, the midline gate holds a trade
+on the phantom lock.
+
+`src/trading/gate_chain.py` — `ZONE_RELEASED_GATES`, which leaves the midline
+gate out
+
+```python
+"scrum": (
+    TADirectionGate("scrum").name,
+    TrendHoldGate.name,
+    ADXTrendSuppressionGate.name,
+    EfficiencyRatioRegimeGate.name,
+    ZScoreExtremityGate.name,
+),
+```
+
 **What is still open, and it is his.** The open decision on the midline rule is
 whether the band should hold a ripe scrum at all. It is not a decision about the
 higher timeframe. The reading above moves the ground under it: the band does not
@@ -1584,6 +1601,22 @@ _floor_no_hunger = _skewed_confidence_floor(
     ),
     summary.signals,
 )
+```
+
+**Current reading, the floor today.** The BB priority skew, the Landing Strip
+favour and the ripe-harvest and deep-fold overrides are gone, so the code in the
+three blocks above no longer runs. The floor reads the position boost and hunger
+alone. Inside the BB Tolerance zone the TA gate passes, and the vote sets only
+when the bot trades, against the three-indicator line, which hunger does not
+move.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+_eff_conf_floor = _skewed_confidence_floor(
+    position_boost + hunger_skew, summary.signals
+)
+_floor_no_hunger = _skewed_confidence_floor(position_boost, summary.signals)
 ```
 
 The count follows his entry. A new candle adds one only in the dead zone: the

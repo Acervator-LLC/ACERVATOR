@@ -53,14 +53,17 @@ class BotMode(str, Enum):
 #: Default for ``BotConfig.stack_mode`` and the wizard's checkbox.
 STACK_MODE_DEFAULT: bool = True
 
-#: Default ``BotConfig.cartridge_boost_pct``: vote % per Max Cartridge Size the Target Delta sits past it.
-CARTRIDGE_BOOST_PCT_DEFAULT: float = 0.0
+#: Default ``BotConfig.cartridge_boost_pct``: % the bar for waiting rises per Max Cartridge Size past it.
+CARTRIDGE_BOOST_PCT_DEFAULT: float = 82.11
 
-#: Default ``BotConfig.proximity_boost_pct``: vote % with price at the band edge inside BB Tolerance.
-PROXIMITY_BOOST_PCT_DEFAULT: float = 0.0
+#: Default ``BotConfig.proximity_boost_pct``: % the bar for waiting rises with price at the band edge.
+PROXIMITY_BOOST_PCT_DEFAULT: float = 14.75
 
-#: Default ``BotConfig.landing_strip_boost_pct``: vote % for each tapering candle of the Landing Strip.
+#: Default ``BotConfig.landing_strip_boost_pct``: % the bar for waiting rises per tapering Landing Strip candle.
 LANDING_STRIP_BOOST_PCT_DEFAULT: float = 0.0
+
+#: The largest percent a Settings or wizard box takes for any of the three boost figures.
+BOOST_PCT_MAX: float = 500.0
 
 #: ``BotConfig.expiry_close_action``: stop buying and let the sell ladder run.
 EXPIRY_CLOSE_FINISH_LADDER: str = "finish_ladder"

@@ -80,7 +80,7 @@ Target Balance - The initial value of the position to be taken or controlled by 
 
 Target Delta - The amount by which a position value has drifted from the Target Balance. The Target Delta is denoted by the Ammo column under the Scrumming Bot list of the Trading Tab. This is the amount of value that will be fired during the appropriate market conditions.
 
-Now: a scrum fires the Target Delta, and so does a calibrating fold past Max Cartridge Size inside the zone; an ordinary fold fires its queued tranche dollars instead (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`).
+Now: a scrum fires the Target Delta, and so does a calibrating fold inside the zone with no tranche queued; an ordinary fold fires its queued tranche dollars instead (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_fold`).
 
 Scrum - To sell an amount from an investment position that allows it to return to its initial price level. This never closes the position. This is the first half of the infinitely divisible circle that can persist for such positions in a healthy market.
 
@@ -162,26 +162,42 @@ BB Tolerance - Determines the minimum distance of the Bollinger Band extent pric
 
 Now: BB Tolerance sets how close to a band, as a percent of price, price must sit to count as at that band. It counts only on the side the Target Delta points to, and it also sets the Landing Strip (`src/trading/indicators/bb_proximity.py, in band_zone`).
 
-Now: inside that zone the gate chain passes trend hold, ADX, the efficiency ratio, the higher-timeframe defer and the phantom lock, and each of their lights reads overridden by band_zone. The bot still holds a trade on a vote that does not top what two indicators reach on it, on the Minimum Opposing Trade Distance and its two-fee floor, on a queued tranche's rebuy price, on a circuit breaker, and on a price past the Price Age Limit (`src/trading/gate_chain.py, in GateChain.releases`).
+Now: inside that zone the vote sets when the bot trades, never whether. The bot waits while the vote reads price going deeper, and trades the size that re-zeroes the Target Delta once it reads price slipping out (`src/trading/vote_boost.py, in zone_timing`).
+
+Now: inside the zone the gate chain passes the TA gate, trend hold, ADX, the efficiency ratio and the z-score on a scrum, and the tranche gate, the TA gate and the z-score on a fold. Each of those lights reads overridden by band_zone. The phantom lock, the higher-timeframe defer, the Minimum Opposing Trade Distance and its two-fee floor, a queued tranche's rebuy price, a circuit breaker, the Price Age Limit, missing funds and the position ceiling still hold a trade (`src/trading/gate_chain.py, in GateChain.releases`).
 
 `src/trading/gate_chain.py, in ZONE_RELEASED_GATES`
 
 ```python
 ZONE_RELEASED_GATES: dict[str, tuple[str, ...]] = {
     "scrum": (
+        TADirectionGate("scrum").name,
         TrendHoldGate.name,
-        MidlineGate("scrum").name,
-        HTFDeferGate("scrum").name,
         ADXTrendSuppressionGate.name,
         EfficiencyRatioRegimeGate.name,
+        ZScoreExtremityGate.name,
     ),
-    "fold": (MidlineGate("fold").name, HTFDeferGate("fold").name),
+    "fold": (
+        TranchesQueuedGate.name,
+        TADirectionGate("fold").name,
+        ZScoreExtremityGate.name,
+    ),
 }
 ```
+
+Now: a visit opens when price enters the zone on the Target Delta's side with the Target Delta past the interval, and a fill on that side closes it. A visit with no fill stays open for the first read after price leaves the zone. On that read, with the Target Delta still past the interval, the bot takes the re-zeroing trade unless a safety hold stops it, and the log reads LATE TURN (`src/trading/vote_boost.py, in zone_visit`).
+
+BB Proximity Boost - Raises the bar for waiting inside the zone as price nears the band edge.
+
+Now: the bar for waiting is the vote's three-indicator line times one plus the boost share. This figure adds its percent times how close price sits to the band edge, from 0 at the zone's far side to 1 at the edge or on a BB Bullseye touch, and the box opens at 14.75% (`src/trading/vote_boost.py, in proximity_scale`).
 
 Landing Strip Candles - Determines the strictness of Landing Strip detection. Minimum is three candles. Longer Landing Strips are historically more likely to indicate an impending market reversal than shorter ones assuming the taper remains intact or grows tighter.
 
 Now: the box runs 2 to 10 and opens at 3; the band check reads it, and the shrinking-body check keeps its own fixed 3 (`src/trading/indicators/bb_proximity.py, in detect_bb_proximity`).
+
+Landing Strip Boost - Raises the bar for waiting inside the zone for each tapering candle of the Landing Strip.
+
+Now: a run of tapering candles at least Landing Strip Candles long adds this percent once per candle, up to 12 candles, and the box opens at 0% (`src/trading/vote_boost.py, in landing_strip_steps`).
 
 TA Timeframe - This is the timeframe at which the bot operates and denotes the price chart it will monitor for trade decisions.
 
@@ -228,17 +244,15 @@ Detect Threshold - Intended as the point at which the bot “takes the safety of
 
 Fire Threshold - The final Bollinger Band approach metric. Once satisfied, the bot can fire a trade.
 
-Now: Fire Threshold sets how close to a band the ramp reaches FIRE; a scrum past the Detect line fires without it, and folds never read it (`src/trading/gate_chain.py, in RipeHarvestScrumOverride`).
-
 BB Midline Gate - This is another, perhaps redundant layer, of Bollinger Band travel protection. It is different in that it is concerned with distance from the midline instead of the entire local width.
 
 Read Rate - To be re-evaluated.
 
-**The Detect Threshold, Fire Threshold and BB Midline Gate passages above, and the Fire Threshold Now line, are overtaken.** None is edited and none is removed.
+**The Detect Threshold, Fire Threshold and BB Midline Gate passages above are overtaken.** None is edited and none is removed.
 
 Now: the three settings are retired, so no settings page or wizard draws them. A saved bot that still holds a figure loads as if it held none, because each figure is dropped before the bot is built (`src/trading/container/config.py, in _sanitize_deprecated_kwargs`).
 
-Now: BB Tolerance is the one test of "at the band". The ramp reads FIRE while price sits inside the zone on the Target Delta's side, TRACK while the Target Delta is at or past Max Cartridge Size, and SEARCH otherwise (`src/trading/scrumming/target_ramp.py, in zone_ramp_mode`). The midline gate still holds a trade on the phantom lock outside the zone.
+Now: BB Tolerance is the one test of "at the band". The ramp reads FIRE while price sits inside the zone on the Target Delta's side, TRACK while the Target Delta is at or past Max Cartridge Size, and SEARCH otherwise (`src/trading/scrumming/target_ramp.py, in zone_ramp_mode`). The midline gate holds a trade on the phantom lock, inside the zone and out.
 
 `src/trading/container/config.py, in _DEPRECATED_KWARGS`
 
@@ -249,14 +263,18 @@ Now: BB Tolerance is the one test of "at the band". The ramp reads FIRE while pr
 "scrum_read_rate_min",
 ```
 
-Now: Read Rate is a timeframe below the TA Timeframe. In SEARCH the bot reads once per candle of it, and in TRACK, in FIRE and past Max Cartridge Size ten times as often. A saved count of minutes loads as the timeframe one step below the TA Timeframe, and a TA Timeframe of 1m reads at 1m (`src/exchange/timeframes.py, in read_timeframe`).
+Now: Read Rate offers each candle size the bot's venue serves below the TA Timeframe, shortest first. In SEARCH the bot reads once per candle of it, and in TRACK, in FIRE and past Max Cartridge Size ten times as often. A saved size the venue does not serve, or a saved count of minutes, loads as the longest size offered, and a TA Timeframe of 1m reads at 1m (`src/exchange/timeframes.py, in read_timeframe`).
+
+Now: where the saved size is one the venue does not serve, the settings page names the venue, the saved size and the size it now reads, until a new pick clears the line (`src/gui/live_settings/settings_tab.py, in SettingsTabMixin._add_read_rate_row`).
 
 `src/exchange/timeframes.py, in read_timeframes`
 
 ```python
+served = available_timeframes(exchange_id)
 if ta_timeframe not in ALL_TIMEFRAMES:
-    return ALL_TIMEFRAMES[:1]
-below = ALL_TIMEFRAMES[: ALL_TIMEFRAMES.index(ta_timeframe)]
+    return served[:1]
+cut = ALL_TIMEFRAMES.index(ta_timeframe)
+below = tuple(tf for tf in served if ALL_TIMEFRAMES.index(tf) < cut)
 return below or (ta_timeframe,)
 ```
 
@@ -264,7 +282,7 @@ Band Travel - Previously described. To be re-evaluated.
 
 BB Bullseye Check - If current price and Bollinger Band thresholds are equal, the user can opt to perform a double-sized trade.
 
-Now: inside the BB Tolerance zone, or on a 0.5% band touch or 0.2% wick, a cleared interval and distance arm the BB priority skew, which lowers the vote floor, and no trade doubles (`src/trading/scrumming_bot.py, in ScrummingBot.tick`).
+Now: a close within 0.5% of the band, or a wick within 0.2%, reads as the band edge for BB Proximity Boost, and no trade doubles (`src/trading/vote_boost.py, in band_touch`).
 
 Wire Inflow Stack - To be re-evaluated.
 
@@ -304,18 +322,13 @@ Now: each piece another bot's resting sale has sold holds its dollars from the m
 
 **The first Max Cartridge Size Now line above is overtaken.** It is not edited and not removed.
 
-Now: at this share of Target Balance the bot reads ten times as often, and the gate chain decides every trade; no order goes out on a cartridge path (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._note_cartridge_reach`).
+Now: at this share of Target Balance the bot reads ten times as often and Cartridge Boost starts; the gate chain decides every trade, and no order goes out on a cartridge path (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._note_cartridge_reach`).
 
-Now: past it, with price inside BB Tolerance of the lower band and no tranche queued, the fold chain passes its tranche gate and the bot buys the whole Target Delta as one FOLD, under every other gate the chain keeps (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_calibrating_fold`). Past it inside the upper zone, a scrum sells the whole Target Delta, as every scrum does. Under it, a fold spends queued tranche dollars, as before.
+Now: inside BB Tolerance of the lower band with no tranche queued, the fold chain passes its tranche gate, and a slipping read buys the whole Target Delta as one FOLD under every hold the zone keeps (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_calibrating_fold`). Inside the upper zone a scrum sells the whole Target Delta, as every scrum does.
 
-`src/trading/gate_chain.py, in CALIBRATING_RELEASED_GATES`
+Cartridge Boost - Raises the bar for waiting inside the zone once the Target Delta passes Max Cartridge Size.
 
-```python
-CALIBRATING_RELEASED_GATES: dict[str, tuple[str, ...]] = {
-    "scrum": (),
-    "fold": (TranchesQueuedGate.name,),
-}
-```
+Now: this figure adds its percent for each Max Cartridge Size the Target Delta sits past the threshold, so a Target Delta at twice the threshold adds it once, and the box opens at 82.11% (`src/trading/vote_boost.py, in cartridge_scale`).
 
 Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
 
@@ -783,7 +796,9 @@ The first column gives each row's range and factory opening value. Order Visibil
 | --- | --- |
 | Opposing Trade Interval (0.1 to 20%, 1%) | Sets the Target Delta a scrum needs, and the base of the opposing trade distance. Reads `scrumming_interval_pct`. `src/trading/otd_math.py, in minimum_opposing_trade_distance_pct` |
 | BB Tolerance (0.25 to 5%, 1%) | Sets how close to a band, in percent of price, price counts as at that band on the Target Delta's side, for the band gate, FIRE and the Landing Strip. Reads `bb_tolerance_pct`. `src/trading/indicators/bb_proximity.py, in band_zone` |
+| BB Proximity Boost (0 to 500%, 14.75%) | Inside the zone, raises the bar for waiting by up to this share as price nears the band edge. Reads `proximity_boost_pct`. `src/trading/vote_boost.py, in proximity_scale` |
 | Landing Strip Candles (2 to 10, 3) | Sets the tight Heikin Ashi candles the band check needs. Reads `bb_landing_strip_candles`. `src/trading/indicators/bb_proximity.py, in detect_bb_proximity` |
+| Landing Strip Boost (0 to 500%, 0%) | Inside the zone, raises the bar for waiting by this share per tapering candle of a run at least Landing Strip Candles long. Reads `landing_strip_boost_pct`. `src/trading/vote_boost.py, in landing_strip_steps` |
 | TA Timeframe (the venue's list, 1h) | Sets the candle length for votes, bands and breakers. Reads `ta_timeframe`. `src/trading/scrumming_bot.py, in ScrummingBot.tick` |
 | Target Balance ($1 to $1,000,000, $200) | Sets the value the bot trades toward. On Apply, a figure above the anchor keeps accrued growth, and one at or below moves both. Reads `target_balance`. `src/trading/scrumming_bot.py, in ScrummingBot.set_target_balance_live` |
 | Max Entry Price (0 to 10,000,000, 0 off) | Refuses fold, hedge, entry and tranche Fire buys above this price. Reads `max_entry_price`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_buy` |
@@ -799,9 +814,9 @@ The first column gives each row's range and factory opening value. Order Visibil
 
 | Row | What it does and what it reads |
 | --- | --- |
-| Read Rate (a timeframe below TA Timeframe, one step below) | Sets the timeframe whose candle spaces full reads in SEARCH. TRACK, FIRE and past Max Cartridge Size read ten times faster, and a bot the hard breaker holds reads at the SEARCH rate. Reads `scrum_read_timeframe`. `src/trading/container/config.py, in bot_read_timeframe` |
+| Read Rate (a size the venue serves below TA Timeframe, the longest) | Sets the candle size that spaces full reads in SEARCH, from the sizes `src/exchange/timeframes.py, in read_timeframes` offers. TRACK, FIRE and past Max Cartridge Size read ten times faster, and a bot the hard breaker holds reads at the SEARCH rate. Reads `scrum_read_timeframe`. `src/trading/container/config.py, in bot_read_timeframe` |
 | Band Travel (0 to 100%, 70%) | Widens the fold distance by this share of band width, and lifts trend hold after that much travel. 0 is off. Reads `band_travel_pct`. `src/trading/otd_math.py, in band_extension_pct` |
-| BB Bullseye Check (on) | Counts a band touch within 0.5%, or a wick within 0.2%, toward the BB priority skew. Reads `bb_bullseye_check`. `src/trading/scrumming_bot.py, in ScrummingBot.tick` |
+| BB Bullseye Check (on) | Counts a band touch within 0.5%, or a wick within 0.2%, as the band edge for BB Proximity Boost. Reads `bb_bullseye_check`. `src/trading/vote_boost.py, in band_touch` |
 
 ### Hedge Rebalance rows
 
@@ -817,7 +832,8 @@ The first column gives each row's range and factory opening value. Order Visibil
 | Soft CB Threshold (0 to 100%, 25%, 0 off) | Shuts one side when a candle's range reaches this share of its open at the one read of that candle. Reads `circuit_breaker_soft_pct`. `src/trading/scrumming/circuit_breakers.py, in breaker_move` |
 | Hard CB Threshold (0 to 100%, 35%, 0 off) | Trips the hard breaker at this range, and every order stops until a reset. The bot reads HELD and sends one alert. Each candle is read once, when the shared candles first show it, so a move after that does not count. Reads `circuit_breaker_hard_pct`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers` |
 | Soft CB Cooldown (1 to 100, 3) | Sets how many new candles the shared candles must show before the shut side opens again. Reopening the app reads the newest candle as new, so it spends one. Reads `circuit_breaker_cooldown_candles`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._read_breaker_candle` |
-| Max Cartridge Size (0 to 200%, 10%, 0 off) | At this share of target the bot reads ten times as often, and inside BB Tolerance with no tranche queued a fold buys the whole Target Delta. A bot that has made no first buy holds this buy until the band and its own vote clear: `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_clears`. Reads `max_cartridge_size_pct`. `src/trading/scrumming/sizing.py, in cartridge_reached` |
+| Max Cartridge Size (0 to 200%, 10%, 0 off) | At this share of target the bot reads ten times as often and Cartridge Boost starts. A bot that has made no first buy holds a fold until the band and its own vote clear: `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_clears`. Reads `max_cartridge_size_pct`. `src/trading/scrumming/sizing.py, in cartridge_reached` |
+| Cartridge Boost (0 to 500%, 82.11%) | Inside the zone, raises the bar for waiting by this share per Max Cartridge Size the Target Delta sits past the threshold. Reads `cartridge_boost_pct`. `src/trading/vote_boost.py, in cartridge_scale` |
 | Smart Cartridge (off) | Replaces that percent with the Bollinger range, floored at the interval. Reads `max_cartridge_smart`. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_smart_cartridge_pct` |
 | Smart Ceiling (1 to 100%, 30%) | Caps the Smart Cartridge figure. Reads `max_cartridge_smart_ceiling_pct`. `src/trading/container/config.py, in smart_cartridge_ceiling_pct` |
 
@@ -833,19 +849,15 @@ The first column gives each row's range and factory opening value. Order Visibil
 
 ### Strategy Gate Flags rows
 
-Past the Detect line a ripe harvest passes the bullish TA and uptrend flags, and below it the band gate holds the scrum, so those two flags change no scrum (`src/trading/gate_chain.py, in RipeHarvestScrumOverride`).
-
-**The sentence above is overtaken.** It is not edited and not removed.
-
-Now: the Detect line is retired, so no running bot, Simulator or Paper bot sets the ripe-harvest or deep-fold override. Inside the BB Tolerance zone the trend and higher-timeframe flags pass, and the two TA flags ask the vote to top what two indicators reach on it (`src/trading/gate_chain.py, in GateChain.releases`).
+Now: inside the BB Tolerance zone the two TA flags and the uptrend flag pass, and the vote sets only when the trade goes; the two higher-timeframe flags still hold a trade there (`src/trading/gate_chain.py, in GateChain.releases`).
 
 | Row | What it does and what it reads |
 | --- | --- |
-| SCRUM requires bullish TA (on) | Asks for a bullish vote; inside the BB Tolerance zone the vote must top what two indicators reach on it. Reads `scrum_require_ta_bullish`. `src/trading/gate_chain.py, in effective_gate_flags` |
+| SCRUM requires bullish TA (on) | Asks for a bullish vote outside the BB Tolerance zone; inside it the vote sets when the scrum goes. Reads `scrum_require_ta_bullish`. `src/trading/gate_chain.py, in effective_gate_flags` |
 | SCRUM holds in sustained uptrend (on) | Holds past 13 of 20 up candles, outside the BB Tolerance zone. Reads `scrum_hold_in_uptrend`. `src/trading/gate_chain.py, in TrendHoldGate` |
-| SCRUM defers to higher-TF bullish (on) | Refuses a scrum while the phantom bias reads bullish, outside the BB Tolerance zone. Reads `scrum_defer_to_htf`. `src/trading/gate_chain.py, in HTFDeferGate` |
-| FOLD requires bearish TA (on) | Asks for a bearish vote; inside the BB Tolerance zone the vote must top what two indicators reach on it. Reads `fold_require_ta_bearish`. `src/trading/gate_chain.py, in effective_gate_flags` |
-| FOLD defers to higher-TF bearish (on) | Refuses a fold while the phantom bias reads bearish, outside the BB Tolerance zone. Reads `fold_defer_to_htf`. `src/trading/gate_chain.py, in HTFDeferGate` |
+| SCRUM defers to higher-TF bullish (on) | Refuses a scrum while the phantom bias reads bullish, inside the BB Tolerance zone and out. Reads `scrum_defer_to_htf`. `src/trading/gate_chain.py, in HTFDeferGate` |
+| FOLD requires bearish TA (on) | Asks for a bearish vote outside the BB Tolerance zone; inside it the vote sets when the fold goes. Reads `fold_require_ta_bearish`. `src/trading/gate_chain.py, in effective_gate_flags` |
+| FOLD defers to higher-TF bearish (on) | Refuses a fold while the phantom bias reads bearish, inside the BB Tolerance zone and out. Reads `fold_defer_to_htf`. `src/trading/gate_chain.py, in HTFDeferGate` |
 
 ### Phantom Bots rows
 

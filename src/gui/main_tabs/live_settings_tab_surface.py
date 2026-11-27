@@ -35,6 +35,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from ...trading.container.config import (
+    BOOST_PCT_MAX,
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
     DESPAWN_MAX_DAYS,
@@ -56,6 +57,9 @@ from ..descriptions import SETTINGS_TAB_DESCRIPTIONS
 from .indicator_panel_surface import ABSENT_CELL_TEXT
 
 METHOD = "live_settings_tab.state"
+
+#: The span every zone boost box takes, in percent.
+BOOST_RANGE: tuple[float, float] = (0.0, BOOST_PCT_MAX)
 
 ACCESSIBLE_NAME = ""
 
@@ -702,6 +706,20 @@ CONTROL_SPECS = (
         "suffix": " %",
     },
     {
+        "name": "proximity_boost",
+        "kind": DOUBLE_SPIN,
+        "group": SCRUM_GROUP,
+        "scrumming_only": True,
+        "row_label": "BB Proximity Boost:",
+        "field": "proximity_boost_pct",
+        "reading": BARE_READING,
+        "default": None,
+        "no_default": True,
+        "range": BOOST_RANGE,
+        "decimals": 2,
+        "suffix": " %",
+    },
+    {
         "name": "landing",
         "kind": SPIN,
         "group": SCRUM_GROUP,
@@ -712,6 +730,20 @@ CONTROL_SPECS = (
         "default": None,
         "no_default": True,
         "range": (2, 10),
+    },
+    {
+        "name": "landing_strip_boost",
+        "kind": DOUBLE_SPIN,
+        "group": SCRUM_GROUP,
+        "scrumming_only": True,
+        "row_label": "Landing Strip Boost:",
+        "field": "landing_strip_boost_pct",
+        "reading": BARE_READING,
+        "default": None,
+        "no_default": True,
+        "range": BOOST_RANGE,
+        "decimals": 2,
+        "suffix": " %",
     },
     {
         "name": "ta_tf",
@@ -911,6 +943,19 @@ CONTROL_SPECS = (
         "default": 10.0,
         "range": (0.0, 200.0),
         "decimals": 1,
+        "suffix": " %",
+    },
+    {
+        "name": "cartridge_boost",
+        "kind": DOUBLE_SPIN,
+        "group": BREAKER_GROUP,
+        "row_label": "Cartridge Boost:",
+        "field": "cartridge_boost_pct",
+        "reading": BARE_READING,
+        "default": None,
+        "no_default": True,
+        "range": BOOST_RANGE,
+        "decimals": 2,
         "suffix": " %",
     },
     {

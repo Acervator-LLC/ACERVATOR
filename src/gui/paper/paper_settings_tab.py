@@ -273,6 +273,7 @@ class PaperSettingsTabMixin(SettingsTabMixin):
             )
             set_description(self._bb_tol, SETTINGS_TAB_DESCRIPTIONS["bb_tol"])
             sf.addRow("BB Tolerance:", self._bb_tol)
+            self._add_boost_row(sf, cfg, "proximity_boost_pct")
 
             self._landing = QSpinBox()
             self._landing.setRange(2, 10)
@@ -282,6 +283,7 @@ class PaperSettingsTabMixin(SettingsTabMixin):
                 lambda v: self._mark_changed("bb_landing_strip_candles", v)
             )
             sf.addRow("Landing Strip Candles:", self._landing)
+            self._add_boost_row(sf, cfg, "landing_strip_boost_pct")
 
             # Filtered to the timeframes the bot's exchange supports.
             self._ta_tf = QComboBox()

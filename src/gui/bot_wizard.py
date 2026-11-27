@@ -1026,6 +1026,12 @@ if _HAS_QT:
             self._bb_tolerance.setValue(1.0)
             set_description(self._bb_tolerance, BOT_WIZARD_DESCRIPTIONS["bb_tolerance"])
             sf.addRow("BB Tolerance:", self._bb_tolerance)
+            from .boost_box import BOOST_FIELDS, boost_box
+
+            self._proximity_boost = boost_box(
+                None, "proximity_boost_pct", BOT_WIZARD_DESCRIPTIONS["proximity_boost"]
+            )
+            sf.addRow(BOOST_FIELDS["proximity_boost_pct"][0], self._proximity_boost)
 
             self._ls_candles = QSpinBox()
             self._ls_candles.setRange(2, 10)
@@ -1033,6 +1039,14 @@ if _HAS_QT:
             self._ls_candles.setSuffix(" candles")
             set_description(self._ls_candles, BOT_WIZARD_DESCRIPTIONS["ls_candles"])
             sf.addRow("Landing Strip Candles:", self._ls_candles)
+            self._landing_strip_boost = boost_box(
+                None,
+                "landing_strip_boost_pct",
+                BOT_WIZARD_DESCRIPTIONS["landing_strip_boost"],
+            )
+            sf.addRow(
+                BOOST_FIELDS["landing_strip_boost_pct"][0], self._landing_strip_boost
+            )
 
             self._ta_timeframe = QComboBox()
             for _tf in ("1m", "5m", "15m", "30m", "1h", "4h", "1d"):
@@ -1218,6 +1232,10 @@ if _HAS_QT:
                 self._max_cartridge_pct, BOT_WIZARD_DESCRIPTIONS["max_cartridge_pct"]
             )
             cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
+            self._cartridge_boost = boost_box(
+                None, "cartridge_boost_pct", BOT_WIZARD_DESCRIPTIONS["cartridge_boost"]
+            )
+            cf.addRow(BOOST_FIELDS["cartridge_boost_pct"][0], self._cartridge_boost)
 
             self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
             self._cartridge_smart_chk.setChecked(False)
@@ -1645,7 +1663,9 @@ if _HAS_QT:
                     "stack_spacing_mode": self._stack_spacing.currentData(),
                     "scrumming_interval_pct": self._scrumming_interval.value(),
                     "bb_tolerance_pct": self._bb_tolerance.value(),
+                    "proximity_boost_pct": self._proximity_boost.value(),
                     "bb_landing_strip_candles": self._ls_candles.value(),
+                    "landing_strip_boost_pct": self._landing_strip_boost.value(),
                     "ta_timeframe": self._ta_timeframe.currentData(),
                     "target_balance": self._target_balance.value(),
                     "max_entry_price": (float(_max_ep) if _max_ep > 0 else None),
@@ -1663,6 +1683,7 @@ if _HAS_QT:
                     "circuit_breaker_hard_pct": self._cb_hard_pct.value(),
                     "circuit_breaker_cooldown_candles": self._cb_cooldown.value(),
                     "max_cartridge_size_pct": self._max_cartridge_pct.value(),
+                    "cartridge_boost_pct": self._cartridge_boost.value(),
                     "max_cartridge_smart": self._cartridge_smart_chk.isChecked(),
                     "max_cartridge_smart_ceiling_pct": self._cartridge_smart_ceiling.value(),
                     "position_ceiling_enabled": self._position_ceiling_enabled.isChecked(),

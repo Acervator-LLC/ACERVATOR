@@ -98,9 +98,6 @@ class GateContext:
     scrumming_interval_pct: float
     trading_fee_pct: float
 
-    ripe_scrum: bool = False
-    deep_fold: bool = False
-
     # 0.0 is the not-populated sentinel; ADXTrendSuppressionGate passes on it.
     adx: float = 0.0
 
@@ -458,40 +455,6 @@ class SmartCeilingGate(Gate):
         return GateResult(passed=False, blocker_message="position-ceiling")
 
 
-class RipeHarvestScrumOverride(Gate):
-    """Force-passes every gate in ``overrides`` when ``ctx.ripe_scrum`` is set.
-
-    ScrummingBot.tick sets ``ripe_scrum`` from positive ``delta``, cleared
-    ``below_interval``, and ``bb_pos`` at or above ``bb_upper_dt``.
-    """
-
-    name = "ripe_harvest_override"
-    side = "scrum"
-    overrides = ("midline_scrum", "target_fires", "trend_hold", "ta_bullish")
-
-    def evaluate(self, ctx: GateContext) -> GateResult:
-        if ctx.ripe_scrum:
-            return GateResult(passed=True, override_gates=self.overrides)
-        return GateResult(passed=False, blocker_message="not-ripe")
-
-
-class DeepFoldOverride(Gate):
-    """Force-passes every gate in ``overrides`` when ``ctx.deep_fold`` is set.
-
-    ScrummingBot.tick sets ``deep_fold`` from negative ``delta``, cleared
-    ``below_interval``, and ``bb_pos`` at or below ``bb_lower_dt``.
-    """
-
-    name = "deep_fold_override"
-    side = "fold"
-    overrides = ("midline_fold", "ta_bearish")
-
-    def evaluate(self, ctx: GateContext) -> GateResult:
-        if ctx.deep_fold:
-            return GateResult(passed=True, override_gates=self.overrides)
-        return GateResult(passed=False, blocker_message="not-deep")
-
-
 class ADXTrendSuppressionGate(Gate):
     """Blocks SCRUM when ``ctx.adx`` reaches ``adx_threshold``, default 30.0.
 
@@ -767,7 +730,6 @@ def build_scrumming_scrum_chain() -> GateChain:
             EfficiencyRatioRegimeGate(),
             ZScoreExtremityGate(side="scrum"),
             ZoneTimingGate(side="scrum"),
-            RipeHarvestScrumOverride(),  # runs in pass 2 regardless of list position
         ],
         side="scrum",
     )
@@ -787,7 +749,6 @@ def build_scrumming_fold_chain() -> GateChain:
             HysteresisGate(side="fold"),
             ZScoreExtremityGate(side="fold"),
             ZoneTimingGate(side="fold"),
-            DeepFoldOverride(),
         ],
         side="fold",
     )

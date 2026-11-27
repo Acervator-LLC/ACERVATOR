@@ -95,6 +95,15 @@ class SettingsTabMixin:
         self._mark_changed("scrum_read_timeframe", str(read.currentData() or ""))
         self._mark_changed("scrum_read_timeframe_unserved", "")
 
+    def _add_boost_row(self, form: Any, cfg: Any, field: str) -> None:
+        """Add the ``boost_box`` row for ``field`` of ``cfg`` to ``form``; an edit marks ``field`` changed."""
+        from ..boost_box import BOOST_FIELDS, boost_box
+
+        label, key, _default = BOOST_FIELDS[field]
+        box = boost_box(cfg, field, SETTINGS_TAB_DESCRIPTIONS[key])
+        box.valueChanged.connect(lambda v: self._mark_changed(field, float(v)))
+        form.addRow(label, box)
+
     def _add_read_rate_row(self, form: Any, cfg: Any) -> None:
         """Add the Read Rate drop-down to ``form`` from ``cfg``, with its ``unserved_timeframe_notice`` line when one applies."""
         from ..read_timeframe_combo import fill_read_combo
@@ -630,6 +639,7 @@ class SettingsTabMixin:
             )
             set_description(self._bb_tol, SETTINGS_TAB_DESCRIPTIONS["bb_tol"])
             sf.addRow("BB Tolerance:", self._bb_tol)
+            self._add_boost_row(sf, cfg, "proximity_boost_pct")
 
             self._landing = QSpinBox()
             self._landing.setRange(2, 10)
@@ -639,6 +649,7 @@ class SettingsTabMixin:
                 lambda v: self._mark_changed("bb_landing_strip_candles", v)
             )
             sf.addRow("Landing Strip Candles:", self._landing)
+            self._add_boost_row(sf, cfg, "landing_strip_boost_pct")
 
             # Filtered to the timeframes the bot's exchange supports.
             self._ta_tf = QComboBox()
@@ -971,6 +982,7 @@ class SettingsTabMixin:
             lambda v: self._mark_changed("max_cartridge_size_pct", float(v))
         )
         cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
+        self._add_boost_row(cf, cfg, "cartridge_boost_pct")
 
         self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
         self._cartridge_smart_chk.setChecked(

@@ -73,16 +73,28 @@ from typing import Any, Optional
 from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
 from ...exchange.timeframes import ALL_TIMEFRAMES
 from ...trading.container.config import (
+    BOOST_PCT_MAX,
+    CARTRIDGE_BOOST_PCT_DEFAULT,
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
     DETONATION_BAR_MAX,
     DETONATION_BAR_MIN,
     DETONATION_CONFIDENCE_MIN_DEFAULT,
+    LANDING_STRIP_BOOST_PCT_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
+    PROXIMITY_BOOST_PCT_DEFAULT,
     BotConfig,
 )
 from ..descriptions import BOT_WIZARD_DESCRIPTIONS
 from .indicator_panel_surface import ABSENT_CELL_TEXT
+
+#: Each zone boost field's ``BotConfig`` default, in percent from 0 to ``BOOST_PCT_MAX``.
+BOOST_DEFAULTS: dict[str, float] = {
+    "proximity_boost": PROXIMITY_BOOST_PCT_DEFAULT,
+    "landing_strip_boost": LANDING_STRIP_BOOST_PCT_DEFAULT,
+    "cartridge_boost": CARTRIDGE_BOOST_PCT_DEFAULT,
+}
+BOOST_SPAN: tuple[float, float] = (0.0, BOOST_PCT_MAX)
 
 #: The spec key the React field reads for the words it draws in place of a
 #: number, and the one Qt's own `setSpecialValueText` draws.
@@ -248,12 +260,28 @@ NUMBER_FIELDS: dict[str, dict] = {
         "suffix": " %",
         "value": 1.0,
     },
+    "proximity_boost": {
+        "kind": SPIN_DOUBLE,
+        "minimum": BOOST_SPAN[0],
+        "maximum": BOOST_SPAN[1],
+        "decimals": 2,
+        "suffix": " %",
+        "value": BOOST_DEFAULTS["proximity_boost"],
+    },
     "ls_candles": {
         "kind": SPIN_INT,
         "minimum": 2,
         "maximum": 10,
         "value": 3,
         "suffix": " candles",
+    },
+    "landing_strip_boost": {
+        "kind": SPIN_DOUBLE,
+        "minimum": BOOST_SPAN[0],
+        "maximum": BOOST_SPAN[1],
+        "decimals": 2,
+        "suffix": " %",
+        "value": BOOST_DEFAULTS["landing_strip_boost"],
     },
     "target_balance": {
         "kind": SPIN_DOUBLE,
@@ -336,6 +364,14 @@ NUMBER_FIELDS: dict[str, dict] = {
         "decimals": 1,
         "suffix": " %",
         "value": 10.0,
+    },
+    "cartridge_boost": {
+        "kind": SPIN_DOUBLE,
+        "minimum": BOOST_SPAN[0],
+        "maximum": BOOST_SPAN[1],
+        "decimals": 2,
+        "suffix": " %",
+        "value": BOOST_DEFAULTS["cartridge_boost"],
     },
     "cartridge_smart_ceiling": {
         "kind": SPIN_DOUBLE,
@@ -552,7 +588,9 @@ GROUP_ROWS = {
     "scrum_group": (
         "scrumming_interval",
         "bb_tolerance",
+        "proximity_boost",
         "ls_candles",
+        "landing_strip_boost",
         "ta_timeframe",
         "target_balance",
         "max_entry_px",
@@ -571,6 +609,7 @@ GROUP_ROWS = {
         "cb_hard_pct",
         "cb_cooldown",
         "max_cartridge_pct",
+        "cartridge_boost",
         "cartridge_smart_chk",
         "cartridge_smart_ceiling",
     ),
@@ -653,7 +692,9 @@ ROW_LABELS = {
     "expiry_horizon": "Expiry Horizon:",
     "scrumming_interval": "Opposing Trade Interval:",
     "bb_tolerance": "BB Tolerance:",
+    "proximity_boost": "BB Proximity Boost:",
     "ls_candles": "Landing Strip Candles:",
+    "landing_strip_boost": "Landing Strip Boost:",
     "ta_timeframe": "TA Timeframe:",
     "target_balance": "Target Balance:",
     "max_entry_px": "Max Entry Price:",
@@ -667,6 +708,7 @@ ROW_LABELS = {
     "cb_hard_pct": "Hard CB Threshold:",
     "cb_cooldown": "Soft CB Cooldown:",
     "max_cartridge_pct": "Max Cartridge Size:",
+    "cartridge_boost": "Cartridge Boost:",
     "cartridge_smart_chk": "Smart Cartridge:",
     "cartridge_smart_ceiling": "Smart Ceiling:",
     "position_ceiling_multiple": "Ceiling Multiple:",
@@ -2723,7 +2765,9 @@ class BotWizardModel:
                 "stack_spacing_mode": self.combo_data("stack_spacing"),
                 "scrumming_interval_pct": self.numbers["scrumming_interval"],
                 "bb_tolerance_pct": self.numbers["bb_tolerance"],
+                "proximity_boost_pct": self.numbers["proximity_boost"],
                 "bb_landing_strip_candles": int(self.numbers["ls_candles"]),
+                "landing_strip_boost_pct": self.numbers["landing_strip_boost"],
                 "ta_timeframe": self.combo_data("ta_timeframe"),
                 "target_balance": self.numbers["target_balance"],
                 "max_entry_price": (
@@ -2741,6 +2785,7 @@ class BotWizardModel:
                 "circuit_breaker_hard_pct": self.numbers["cb_hard_pct"],
                 "circuit_breaker_cooldown_candles": int(self.numbers["cb_cooldown"]),
                 "max_cartridge_size_pct": self.numbers["max_cartridge_pct"],
+                "cartridge_boost_pct": self.numbers["cartridge_boost"],
                 "max_cartridge_smart": self.checks["cartridge_smart_chk"],
                 "max_cartridge_smart_ceiling_pct": self.numbers[
                     "cartridge_smart_ceiling"
