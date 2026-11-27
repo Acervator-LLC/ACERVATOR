@@ -19,14 +19,13 @@ from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..exchange.base import ExchangeInterface
     from .ata_gate_scan import GateScan
     from .container.config import BotConfig
 
 from ..core.event_bus import get_event_bus
 from ..core.settings import DEFAULT_LOCK_CANDLE_COUNT
 from ..exchange.timeframes import ALL_TIMEFRAMES
-from .bot_container import BotState
+from .bot_container import BotState, CandleRead
 from .ta_engine import (
     MIN_CANDLES_FOR_TA,
     VotingEngine,
@@ -255,7 +254,7 @@ class PhantomBot:
         phantom_id: str,
         timeframe: str,
         target_balance: float,
-        exchange: ExchangeInterface,
+        read_candles: CandleRead,
         symbol: str,
         coordinator: "TimeframeCoordinator",
         ta_weights: Optional[dict[str, float]] = None,
@@ -266,7 +265,7 @@ class PhantomBot:
         self.phantom_id = phantom_id
         self.timeframe = timeframe
         self.target_balance = target_balance
-        self.exchange = exchange
+        self.read_candles = read_candles
         self.symbol = symbol
         self.coordinator = coordinator
         self.voting_engine = VotingEngine(weights=ta_weights)
@@ -330,16 +329,13 @@ class PhantomBot:
 
     async def _tick(self) -> None:
         """Set ``last_summary`` from ``voting_engine`` and ``last_gates`` from
-        ``timeframe_gates`` over the same ``timeframe`` candles at ``settings``.
+        ``timeframe_gates`` over the ``timeframe`` candles ``read_candles`` answers,
+        at ``settings``.
 
         Returns without setting either below ``MIN_TICK_CANDLES``, and constructs
         no order on any path.
         """
-        raw = await self.exchange.get_ohlcv(
-            self.symbol,
-            timeframe=self.timeframe,
-            limit=100,
-        )
+        raw = await self.read_candles(self.symbol, self.timeframe, 100)
         candles = candles_from_raw(raw)
         if len(candles) < MIN_TICK_CANDLES:
             return
@@ -527,14 +523,15 @@ class PhantomBalanceManager:
         parent_bot_id: str,
         timeframes: list[str],
         target_balance: float,
-        exchange: ExchangeInterface,
+        read_candles: CandleRead,
         symbol: str,
         balance_scaling: str = "equal",
         ta_weights: Optional[dict[str, float]] = None,
         settings: Optional[BotConfig] = None,
     ) -> list[PhantomBot]:
         """Build one ``PhantomBot`` on the one timeframe
-        ``one_active_phantom_timeframe`` names, at the parent's ``settings``.
+        ``one_active_phantom_timeframe`` names, at the parent's ``settings`` and
+        ``read_candles``.
 
         ``balance_scaling`` of "weighted" scales ``target_balance`` by
         ``tf_rank``; any other value gives every phantom ``target_balance``.
@@ -562,7 +559,7 @@ class PhantomBalanceManager:
                 phantom_id=f"{parent_bot_id}_phantom_{tf}",
                 timeframe=tf,
                 target_balance=ptb,
-                exchange=exchange,
+                read_candles=read_candles,
                 symbol=symbol,
                 coordinator=self.coordinator,
                 ta_weights=ta_weights,
