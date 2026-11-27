@@ -24,7 +24,7 @@ from ..trading.gate_vocabulary import (
 )
 
 try:
-    from PySide6.QtCore import Qt, QTimer
+    from PySide6.QtCore import Qt, QTimer, Signal
     from PySide6.QtGui import QColor
     from PySide6.QtWidgets import (
         QAbstractItemView,
@@ -278,7 +278,11 @@ if _HAS_QT:
           * page_ready            -- True once the table exists
           * model()               -- what the last draw carried
           * row_count(callback)   -- the rows drawn, through a callback
+
+        ``row_opened`` sends the page row a double-click opens.
         """
+
+        row_opened = Signal(int)
 
         def __init__(self, parent=None) -> None:
             super().__init__(parent)
@@ -295,7 +299,13 @@ if _HAS_QT:
             self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
             self._table.setAlternatingRowColors(True)
             self._table.verticalHeader().setVisible(False)
+            self._table.cellDoubleClicked.connect(self._open_row)
             layout.addWidget(self._table, 1)
+
+        def _open_row(self, row: int, column: int) -> None:
+            """Send ``row_opened`` for the ``row`` a double-click landed on."""
+            del column
+            self.row_opened.emit(row)
 
         @property
         def page_ready(self) -> bool:

@@ -1048,7 +1048,11 @@ class ScrummingBot(
         ``TargetGrowth`` of ``source`` and the fill's figures, None while
         ``profit_folding_active`` is off.
         """
-        from .scrumming.sizing import fold_cap_remaining_usd, target_growth_applied
+        from .scrumming.sizing import (
+            fold_cap_remaining_usd,
+            growth_surplus_usd,
+            target_growth_applied,
+        )
 
         order_id = self._settled_order_id()
         if not self.config.profit_folding_active:
@@ -1059,7 +1063,7 @@ class ScrummingBot(
             )
             return GrowthApplied(0.0, None)
         quote = float(self._quote_to_usd or 1.0)
-        surplus_usd = float(accum_profit) * quote
+        surplus_usd = growth_surplus_usd(accum_profit, quote)
         standing = float(getattr(self, "_standing_surplus_usd", 0.0) or 0.0)
         consumed = float(self._fold_cycle_cap_consumed)
         cycle_cap = self.cycle_growth_cap_usd

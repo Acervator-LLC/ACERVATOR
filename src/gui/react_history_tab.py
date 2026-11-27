@@ -56,8 +56,8 @@ TAB_SCRIPT_ASSETS: tuple[str, ...] = (
 
 TAB_BODY = f'<div id="{TAB_ROOT_ID}"></div>\n<div id="root"></div>'
 
-#: The two buttons the page cannot answer without an exchange or a file dialog.
-HOST_ACTIONS: tuple[str, ...] = ("refresh", "export")
+#: The two buttons needing an exchange or a file dialog, and the row double-click.
+HOST_ACTIONS: tuple[str, ...] = ("refresh", "export", surface.CALCULATOR_ACTION)
 
 #: The bridge this host answers. The Electron shell binds ``window.acervator``
 #: in its own preload, so this source is never a file under ``src/gui/web``.
@@ -90,8 +90,8 @@ HOST_SCRIPT = """(function (global) {
     return id;
   };
 
-  global.acervatorHistoryTabHostAction = function (key) {
-    console.log("%(act)s" + JSON.stringify({ key: key }));
+  global.acervatorHistoryTabHostAction = function (key, detail) {
+    console.log("%(act)s" + JSON.stringify({ key: key, detail: detail || {} }));
     return null;
   };
 
@@ -117,6 +117,18 @@ def tab_html(theme: object = None) -> str:
     """The whole tab page as one string, with no network fetch."""
     return page_html(
         TAB_STYLE_ASSETS, TAB_SCRIPT_ASSETS, TAB_BODY, theme, (HOST_SCRIPT,)
+    )
+
+
+def calculator_row(detail: Any) -> tuple[int, str]:
+    """The page row index and trade id a ``CALCULATOR_ACTION`` names, or ``(-1, "")``."""
+    if not isinstance(detail, dict):
+        return -1, ""
+    index = detail.get("row")
+    trade_id = detail.get("trade_id")
+    return (
+        index if type(index) is int else -1,
+        trade_id if isinstance(trade_id, str) else "",
     )
 
 
@@ -233,16 +245,22 @@ if _HAS_QT and _HAS_WEBENGINE:
             self._run(resolve_script(request.get("id")))
 
         def run_action(self, payload: str) -> None:
-            """Run the Refresh or the Export the page cannot answer itself."""
+            """Run the Refresh, the Export or the Trade Calculator the page cannot answer itself."""
             try:
-                key = str(json.loads(payload).get("key") or "")
+                request = json.loads(payload)
             except ValueError:
                 logger.warning("History page sent an action that is not JSON")
                 return
+            if not isinstance(request, dict):
+                logger.warning("History page sent an action that is not an object")
+                return
+            key = str(request.get("key") or "")
             if key == "refresh":
                 self.refresh()
             elif key == "export":
                 self._export_csv()
+            elif key == surface.CALCULATOR_ACTION:
+                self._open_trade_calculator(*calculator_row(request.get("detail")))
 
         # -- the state the Qt controls used to hold ----------------------
 
