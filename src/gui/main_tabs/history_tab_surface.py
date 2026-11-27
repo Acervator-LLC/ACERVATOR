@@ -130,7 +130,11 @@ ACTIONS = {
     "prev.clicked": "_prev_page",
     "next.clicked": "_next_page",
     "export.clicked": "_export_csv",
+    "table.row_opened": "_open_trade_calculator",
 }
+
+CALCULATOR_ACTION = "calculator"
+"""The host action a double-click on a row of ``history_tab.js`` sends, which opens ``_open_trade_calculator``."""
 
 BRIDGE_ACTIONS: tuple[str, ...] = (
     "apply",

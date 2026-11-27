@@ -2857,6 +2857,11 @@ def eligible_fold_tranches(
     ]
 
 
+def restore_cost_usd(units: float, price: float, buy_fee_pct: float) -> float:
+    """``units`` at ``price`` plus ``buy_fee_pct``: the dollars ``gain_after_fees_usd`` buys ``units`` back with."""
+    return priced_usd(units, price) * (1.0 + buy_fee_pct / 100.0)
+
+
 def gain_after_fees_usd(
     dollars_usd: float, units: float, price: float, buy_fee_pct: Optional[float]
 ) -> float:
@@ -2865,7 +2870,7 @@ def gain_after_fees_usd(
     fee = as_finite_float(buy_fee_pct)
     if fee is None:
         return 0.0
-    return max(0.0, dollars_usd - priced_usd(units, price) * (1.0 + fee / 100.0))
+    return max(0.0, dollars_usd - restore_cost_usd(units, price, fee))
 
 
 def units_bought_after_fee(
@@ -2884,6 +2889,15 @@ def discharge_gain_usd(
     if restore is None:
         return 0.0
     return gain_after_fees_usd(units * restore, units, price, buy_fee_pct)
+
+
+def fold_gain_usd(
+    bought_usd: float, units: float, fill_price: float, buy_fee_pct: Optional[float]
+) -> float:
+    """``discharge_gain_usd`` of ``units`` restored by ``bought_usd`` at ``fill_price`` and ``buy_fee_pct``."""
+    return discharge_gain_usd(
+        {"units": units, "usd": bought_usd}, units, fill_price, buy_fee_pct
+    )
 
 
 WIRE_CREDIT_DETAIL_KEY = "wire_credits"
@@ -3763,6 +3777,11 @@ def fold_surplus_usd(
 
 GROWTH_DUST_USD = 1e-9
 """The dollars at or under which ``target_growth_applied`` reads a surplus, a pool or a cap room as none."""
+
+
+def growth_surplus_usd(gain: float, quote_to_usd: float) -> float:
+    """``gain`` at ``quote_to_usd``: the surplus ``target_growth_applied`` reads."""
+    return float(gain) * quote_to_usd
 
 
 def target_growth_applied(
