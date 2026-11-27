@@ -439,6 +439,17 @@ self._phantom_timeframes = list(
 )
 ```
 
+A phantom reads its candles through its bot's own read, from the shared store, so a
+set its bot or another phantom already holds is not asked for again. The store keeps
+each set for one candle of its timeframe, as
+[the candles a phantom reads](08-tabs/history.md#the-candles-a-phantom-reads) states.
+
+`src/trading/phantom_balance.py, in PhantomBot._tick`
+
+```python
+raw = await self.read_candles(self.symbol, self.timeframe, 100)
+```
+
 **Design intention.** The inhibition the entry describes runs today. A bullish
 higher timeframe stops the scrum and a bearish one stops the fold, and each
 writes its own label into the blocker list so the operator can see which

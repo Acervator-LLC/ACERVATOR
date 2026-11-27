@@ -385,6 +385,42 @@ if in_order_turn():
     return None if served() else object()
 ```
 
+### The candles a phantom reads
+
+A phantom reads its candles the way its bot reads its own, and so do the detonation
+check and each pair an Extractor reads. Each asks the store for the newest 100 candles
+of one market on one timeframe. The store keeps one set for each exchange, market and
+timeframe, for one candle of that timeframe. While the set is that young, the store
+answers from it and asks the venue nothing. Once it is older, the first reader asks the
+venue once, and each other reader of that market and timeframe takes the new set.
+
+`src/trading/bot_container.py, in BotContainer._get_ohlcv`
+
+```python
+if self._data_pool is not None:
+    return await self._data_pool.get_or_fetch_ohlcv(
+        self.exchange,
+        self.config.exchange_id,
+        symbol,
+        timeframe,
+        limit=limit,
+    )
+```
+
+A phantom reads once a minute, so its reading changes once a candle of its timeframe at
+most, as the bot's own reading does. It reads through the bot's present connection, and
+follows the bot when that connection is replaced.
+
+The Charts page, the Market Inspector, the Stone Tablets fetcher and the Simulator read
+candles from the venue on their own. Each needs what the store's set does not hold: the
+newest candle as it forms, a scan's own count of candles, or history from a stated start.
+
+`src/exchange/chart_data.py, in ChartDataFetcher._fetch_exchange`
+
+```python
+raw = await exchange.get_ohlcv(symbol, timeframe=tf, limit=limit)
+```
+
 ### The pairs the pairs scout asks for
 
 The window calls the pairs scout each 2 seconds, and while a reading is on its way

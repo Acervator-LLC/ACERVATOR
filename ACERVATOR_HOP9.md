@@ -373,7 +373,10 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   built, row 7 in its price, balance and candle parts: each exchange has its own
   refresher, whose rest follows the seconds its reads held the worker and doubles
   behind a throttled or lost answer (`src/exchange/data_pool.py, in SharedReads.rest_s`),
-  and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). Row 2
+  and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). Row 7's
+  phantom part is built: a phantom, the detonation check and an Extractor pair read
+  candles through their bot's own read and the shared store
+  (`src/trading/bot_container.py, in BotContainer._get_ohlcv`). Row 2
   is built: an order, a cancel and each read of an order's step go ahead of every
   other read on the worker, and the limit of eight counts the other reads alone
   (`src/exchange/ccxt_connector.py, in SyncCall.to_venue`). Row 11
