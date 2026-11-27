@@ -5314,7 +5314,7 @@ if _HAS_QT:
                 )
                 self._create_from_config(config, exchange_id, _log)
                 return
-            from .venue_wait import VenueWait
+            from .venue_wait import VENUE_ASK_LIMIT_SEC, VenueWait
 
             # The wizard's own recorded symbol first: a contract
             # cannot be rebuilt from its two legs.
@@ -5337,6 +5337,7 @@ if _HAS_QT:
                             exchange_id=venue,
                             symbol=symbol,
                             message=f"Pre-flight check failed: {type(exc).__name__}: {exc}",
+                            elapsed_ms=VENUE_ASK_LIMIT_SEC * 1000.0,
                         )
                     )
                     return
