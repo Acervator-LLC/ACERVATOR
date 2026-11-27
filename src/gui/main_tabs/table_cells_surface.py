@@ -113,6 +113,9 @@ VENUE_HELD_MARKER = "(held)"
 VENUE_HELD_CLAUSE = "Exchange read refused."
 NO_VENUE_REFUSAL = ""
 
+#: Drawn beside a Target-denom figure whose rate reading has ``CurrencyRates.held`` set.
+RATE_HELD_MARKER = "(held)"
+
 AMMO_FIELDS = (
     "text",
     "color",
@@ -493,18 +496,15 @@ def units_text(units: float) -> str:
     )
 
 
-def held_figure_text(text: str, source: str) -> str:
-    """``text`` with ``HELD_SOURCE_SUFFIX`` on it when ``source`` ends in it.
+def held_figure_text(text: str, held: bool) -> str:
+    """``text`` with ``RATE_HELD_MARKER`` on it while ``held`` is True.
 
-    ``target_denom_cell`` and ``_compose_table_target_denom_cell`` both call
-    it, so a carried rate figure wears the mark the rate strip's own source
-    label wears.
+    ``target_denom_cell`` and ``_compose_table_target_denom_cell`` both pass
+    ``CurrencyRates.held`` here.
     """
-    from src.exchange.currency_rate_monitor import HELD_SOURCE_SUFFIX
-
-    if not text or not str(source or "").endswith(HELD_SOURCE_SUFFIX):
+    if not text or not held:
         return text
-    return text + HELD_SOURCE_SUFFIX
+    return MARKED_FIGURE_FORMAT.format(text=text, marker=RATE_HELD_MARKER)
 
 
 def divergence_colour(delta: float) -> tuple[str, str]:
@@ -894,7 +894,7 @@ class TableCellsModel:
         figure = DENOM_TEXT_FORMAT.format(
             units_text=units_text(units), sign=sign, delta=delta
         )
-        drawn = held_figure_text(figure, rates.source)
+        drawn = held_figure_text(figure, rates.held)
         if drawn != figure:
             self.calls.append([DENOM_HELD, rates.source])
         return self._denom_finish(DENOM_PATH_PRICED, color, drawn, units, delta)

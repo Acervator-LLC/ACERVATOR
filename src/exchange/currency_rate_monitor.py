@@ -9,8 +9,8 @@ first connector answering both pairs, and ``snapshot`` returns the cached
 
 A replacement built for a stopped feed takes the previous reading through
 ``_carry_rates``, so the strip and the Target-denom cells keep their last
-figures. ``held_source`` marks that reading's ``source``, which is the label
-the strip already draws, so a held figure is never drawn as a live one.
+figures. ``_carry_rates`` sets that reading's ``held``, and its ``source``
+stays the venue name the strip draws.
 """
 
 from __future__ import annotations
@@ -30,20 +30,7 @@ NO_FEED_RATES_ERROR = "the public feed returned no BTC/USD + ETH/USD price"
 SATOSHI_PER_BTC = 100_000_000
 WEI_PER_ETH = 10**18
 WEI_PER_GWEI = 10**9
-HELD_SOURCE_SUFFIX = " (held)"
 NO_SOURCE = "none"
-
-
-def held_source(source: str) -> str:
-    """``source`` with ``HELD_SOURCE_SUFFIX`` on it, added once.
-
-    ``_carry_rates`` calls it so the rate strip's trailing label names a
-    carried reading as held; ``NO_SOURCE`` and an empty name are left alone.
-    """
-    name = str(source or "")
-    if not name or name == NO_SOURCE or name.endswith(HELD_SOURCE_SUFFIX):
-        return name
-    return name + HELD_SOURCE_SUFFIX
 
 
 @dataclass
@@ -61,6 +48,7 @@ class CurrencyRates:
     last_updated: float = 0.0  # epoch seconds
     source: str = NO_SOURCE  # exchange id, "manual", or NO_SOURCE
     error: Optional[str] = None
+    held: bool = False  # True on a reading _carry_rates moved onto a rebuilt monitor
 
     def age_seconds(self, now: Optional[float] = None) -> float:
         _now = time.time() if now is None else now
@@ -90,6 +78,8 @@ class CurrencyRateMonitor:
         self._feed_asking = False
         #: Connectors ``refresh_from_connectors`` waits on now.
         self._reads_on_way = 0
+        #: Epoch seconds of the first read asked since the last answer; 0.0 once answered.
+        self._unanswered_since = 0.0
 
     @property
     def refresh_seconds(self) -> float:
@@ -117,6 +107,18 @@ class CurrencyRateMonitor:
         interval (2× tolerance for jitter)."""
         return self._snapshot.age_seconds(now) > (self._refresh_s * 2)
 
+    def has_stopped(self, now: Optional[float] = None) -> bool:
+        """True when no read is ``reading`` and reads asked over ``refresh_seconds`` ago have no answer."""
+        if self.reading or self._unanswered_since <= 0:
+            return False
+        _now = time.time() if now is None else now
+        return _now - self._unanswered_since > self._refresh_s
+
+    def _note_asked(self) -> None:
+        """Start ``_unanswered_since`` at the first read asked since the last answer."""
+        if self._unanswered_since <= 0:
+            self._unanswered_since = time.time()
+
     @staticmethod
     def _derive(btc_usd: float, eth_usd: float) -> tuple:
         """Compute the sat/wei/gwei derived rates. Safe against 0-input."""
@@ -140,6 +142,7 @@ class CurrencyRateMonitor:
         Real callers use ``refresh_from_connectors`` instead.
         """
         sd, sc, wd, wc, gd, gc = self._derive(btc_usd, eth_usd)
+        self._unanswered_since = 0.0
         self._snapshot = CurrencyRates(
             btc_usd=float(btc_usd),
             eth_usd=float(eth_usd),
@@ -162,6 +165,7 @@ class CurrencyRateMonitor:
         """
         if self._feed_asking or (not force and not self.is_stale()):
             return self._snapshot
+        self._note_asked()
         self._feed_asking = True
         try:
             btc = await asyncio.to_thread(feed.ticker, "BTC/USD")
@@ -186,6 +190,7 @@ class CurrencyRateMonitor:
             return self._snapshot
         if not force and not self.is_stale():
             return self._snapshot
+        self._note_asked()
         errors: list = []
         btc = 0.0
         eth = 0.0
@@ -220,22 +225,18 @@ class CurrencyRateMonitor:
 
 
 def _monitor_has_stopped(monitor: CurrencyRateMonitor) -> bool:
-    """True when ``monitor`` is not ``reading`` and ``is_stale`` reports its snapshot.
+    """True when ``monitor`` holds a reading and ``CurrencyRateMonitor.has_stopped`` reports it.
 
     ``_MONITOR`` passes this as ``has_stopped``, and a monitor whose
     ``last_updated`` is still zero is never reported stopped.
     """
-    return (
-        monitor.snapshot().last_updated > 0
-        and not monitor.reading
-        and monitor.is_stale()
-    )
+    return monitor.snapshot().last_updated > 0 and monitor.has_stopped()
 
 
 def _carry_rates(
     previous: CurrencyRateMonitor, replacement: CurrencyRateMonitor
 ) -> None:
-    """Move ``previous``'s ``CurrencyRates`` onto ``replacement``, marked held.
+    """Move ``previous``'s ``CurrencyRates`` onto ``replacement`` with ``held`` set.
 
     ``_MONITOR`` passes this as ``carry_reading``; a monitor whose
     ``last_updated`` is still zero carries nothing.
@@ -243,7 +244,7 @@ def _carry_rates(
     reading = previous.snapshot()
     if reading.last_updated <= 0:
         return
-    replacement.hold_reading(replace(reading, source=held_source(reading.source)))
+    replacement.hold_reading(replace(reading, held=True))
 
 
 _MONITOR: LazySingleton[CurrencyRateMonitor] = LazySingleton(

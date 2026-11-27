@@ -423,6 +423,13 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   the target through `src/trading/scrumming/sizing.py, in target_growth_applied`
   alone. Next, in the body's build order: row 4, then row 5, then rows 6 to 8.
   Row 9 waits on his yes to a read of his logs.
+- **#1843, the currency rate strip. Rows 1 and 2 are built.** The shared rate
+  feed is built again only when no read is on its way and the reads asked since
+  the last answer have had none for one refresh
+  (`src/exchange/currency_rate_monitor.py, in CurrencyRateMonitor.has_stopped`).
+  A carried reading sets `held`, the strip names the venue alone in both builds,
+  and a Target cell marks a held figure (`in _carry_rates`). He reads the strip
+  after the next build.
 - The rest of the queue: read each body.
 
 ---

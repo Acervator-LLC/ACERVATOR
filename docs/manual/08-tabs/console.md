@@ -1477,11 +1477,32 @@ reads that answer.
 `src/exchange/currency_rate_monitor.py, in _monitor_has_stopped`
 
 ```python
-return (
-    monitor.snapshot().last_updated > 0
-    and not monitor.reading
-    and monitor.is_stale()
-)
+return monitor.snapshot().last_updated > 0 and monitor.has_stopped()
+```
+
+The shared rate feed counts as stopped only when no read is on its way and the reads
+asked since the last answer have had no answer for one refresh, 60 seconds. A slow read
+that is still on its way never counts. A refused read and a read ended at its limit give
+no answer.
+
+`src/exchange/currency_rate_monitor.py, in CurrencyRateMonitor.has_stopped`
+
+```python
+if self.reading or self._unanswered_since <= 0:
+    return False
+_now = time.time() if now is None else now
+return _now - self._unanswered_since > self._refresh_s
+```
+
+A stopped feed is built again, at most once in each cool-off window. The new feed keeps
+the last figures and their time, and its `held` field reads True until the next answer
+lands. The rate strip names the venue alone, in both builds. A Target A15 or Target A14
+cell adds (held) to its figure while `held` reads True.
+
+`src/exchange/currency_rate_monitor.py, in _carry_rates`
+
+```python
+replacement.hold_reading(replace(reading, held=True))
 ```
 
 Two more clocks ask a venue: the confirmation clock of the
