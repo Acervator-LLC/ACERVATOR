@@ -367,12 +367,17 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   (`src/gui/read_slot.py, in ReadSlot.ask`). Row 4 is
   built: no order starts on a price or a rate older than `price_age_limit_s`, counted
   from the venue's answer, and Self-Destruct and the expiry close alone go at any age
-  (`src/trading/bot_container.py, in BotContainer.order_refusal`). Rows 3 and 7 are
+  (`src/trading/bot_container.py, in BotContainer.order_refusal`). Its control is the
+  Price Age Limit row of Settings, Trading, 10 to 60 seconds, in force at Save
+  (`src/core/price_age.py, in limit_range_s`). Rows 3 and 7 are
   built, row 7 in its price, balance and candle parts: each exchange has its own
   refresher, whose rest follows the seconds its reads held the worker and doubles
   behind a throttled or lost answer (`src/exchange/data_pool.py, in SharedReads.rest_s`),
-  and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). The
-  body's build order names the rest: row 2, then 5 and 6.
+  and a bot waits for that read, 60 s at most (`in SharedReads.awaited`). Row 2
+  is built: an order, a cancel and each read of an order's step go ahead of every
+  other read on the worker, and the limit of eight counts the other reads alone
+  (`src/exchange/ccxt_connector.py, in SyncCall.to_venue`). The body's build order
+  names the rest: rows 5 and 6.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before
@@ -400,6 +405,13 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   from the shared balance cache, and its mouse-over names each exchange's figure
   (`src/trading/container/aggregation.py, in exchange_cash`). He reads it against
   each exchange's own Cash screen after the next build.
+- **#1836, every buy opens its Stack ladder. Rows 1 and 2 are built.** On a
+  Stack Mode bot every filled buy ladders the units it bought, the first buy, a
+  hedge, a Manual Fire and a cartridge buy among them, and a buy that opens none
+  writes one bot log line naming why
+  (`src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold`). Row 3
+  waits on his yes to a read of his logs and saved state; then rows 4 and 5, then
+  6 to 8 with the Settings control of row 8, as the body orders them.
 - **#1837, the Trade Calculator. Rows 1 to 3 are built.** Each trade log line
   names its venue order and the event ids of the tranches the fill spent and
   opened, and a fold that ran the growth step carries its figures under
@@ -476,7 +488,7 @@ Repaired in the build he runs; each waits on his logs to show it:
 
 ```
 a Max Cartridge fold, fold rebuy or hedge top-up refused on a full call queue
-    src/exchange/ccxt_connector.py, in queue_cap_waived; #1695 rows 1 and 3
+    src/exchange/ccxt_connector.py, in SyncCall.to_venue; #1695 rows 1 and 3, #1785 row 2
 a buy sent for quote the venue does not hold
     src/exchange/ccxt_connector.py, in CCXTConnector._refuse_unheld_quote; #1695 row 2
 a lost order booked twice when the venue answers after an audit took its units in

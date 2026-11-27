@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 from ..core.emit_contracts import FILL_BUY, FILL_SELL, SettledFill, TargetGrowth
 from ..core.price_age import PriceRead, ReadMoment
-from ..exchange.base import OrderSide, OrderType
+from ..exchange.base import OrderSide, OrderType, order_turn
 from ..exchange.ccxt_connector import order_stayed_home
 from ..exchange.data_pool import TICKER_TTL_SECONDS
 from ..exchange.idempotency import decision_purpose
@@ -234,6 +234,33 @@ def ladder_held(watch: OrderWatch, hold: str, invisible: bool) -> bool:
     """True where ``hold`` stops a ladder before it opens: any hold for resting rungs, and
     an old price alone for rungs the book keeps."""
     return bool(hold) and (not invisible or hold == watch.aged)
+
+
+def buy_ladder_refusal(
+    buy: str,
+    stack_mode: bool,
+    fold_price: float,
+    bought_units: float,
+    shadow_units: float,
+) -> str:
+    """Why a filled ``buy`` opens no Stack ladder, empty where ``_spawn_stack_from_fold``
+    opens one."""
+    from .scrumming.execution import LADDER_OPENING_BUYS
+
+    if buy not in LADDER_OPENING_BUYS:
+        return f"the {buy or 'unnamed'} buy is not one that opens a Stack ladder"
+    if not stack_mode:
+        return "Stack Mode is off"
+    if not fold_price > 0:
+        return f"the fill reported no price (${fold_price})"
+    if not bought_units > 0:
+        return f"the fill reported no units ({bought_units})"
+    if not bought_units - shadow_units > 0:
+        return (
+            f"the Shadow Tranche took all {shadow_units:.8f} of the "
+            f"{bought_units:.8f} units this piece bought"
+        )
+    return ""
 
 
 _TA_CONFIDENCE_FLOOR = 0.25
@@ -1762,6 +1789,7 @@ class ScrummingBot(
             "atomic": _atomic_ok,
         }
 
+    @order_turn
     async def manual_fire_tranche(self, tranche_index: int) -> dict:
         """Operator-initiated fold-back of a specific tranche, on a price inside the age
         limit.
@@ -2380,6 +2408,7 @@ class ScrummingBot(
         except (TypeError, ValueError, ZeroDivisionError):
             return 0.0
 
+    @order_turn
     async def self_destruct(
         self,
         confirmation_token: str = "",
@@ -5286,6 +5315,15 @@ class ScrummingBot(
         _hold = self.order_refusal(_watch)
         if ladder_held(_watch, _hold, self._invisible):
             self._report_held_order(_watch, "SELL", self.config.symbol, _hold)
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"STACK STOPPED: the ladder from {origin} for "
+                    f"{float(scrum_size):.6f} units sent no rung: {_hold}. Its units "
+                    f"stay in the position."
+                ),
+            )
             return LADDER_STOPPED
 
         from .scrumming.sizing import (
@@ -5482,6 +5520,7 @@ class ScrummingBot(
         # the caller must not fall through to an undivided market sell.
         return len(_opened_rungs) + _combined_n
 
+    @order_turn
     async def _reconcile_stack_tranches_visible(self) -> int:
         """Visible-mode Stack reconciliation, once per tick.
 
@@ -5904,29 +5943,45 @@ class ScrummingBot(
         fold_size: float,
         summary: Optional[VotingSummary] = None,
         path: str = "",
+        shadow_units: float = 0.0,
     ) -> int:
-        """A filled FOLD spawns the Stack ladder above it.
+        """A filled buy spawns the Stack ladder above it from the ``fold_size`` units it
+        bought less ``shadow_units``.
 
-        Every rung keeps ``fold_price`` as its floor reference, and
-        ``_fold_piece_laddered`` reads True only when this fill opened a ladder.
+        ``path`` is an ``_execute_buy`` path or a ``_book_manual_purchase`` label. Every
+        rung keeps ``fold_price`` as its floor reference, and ``_fold_piece_laddered``
+        reads True only when this fill opened a ladder. A ``buy_ladder_refusal`` writes
+        one ``FOLD STACK NOT OPENED`` line, and every other fill that opens none gets
+        its line from ``_open_stack_from_scrum``.
 
         Returns:
             How many Stack tranches were created, 0 when none were.
 
         """
         self._fold_piece_laddered = False
-        if path not in ("fold_rebuy", "manual_tranche_fire"):
-            return 0
-        if not getattr(self.config, "stack_mode", False):
-            return 0
-        if not (fold_price and fold_price > 0):
-            return 0
-        if not (fold_size and fold_size > 0):
+        ladder_size = float(fold_size) - float(shadow_units)
+        refusal = buy_ladder_refusal(
+            path,
+            bool(getattr(self.config, "stack_mode", False)),
+            float(fold_price),
+            float(fold_size),
+            float(shadow_units),
+        )
+        if refusal:
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"FOLD STACK NOT OPENED: {refusal}. The fill at "
+                    f"${float(fold_price):.8f} (size {float(fold_size):.6f}, "
+                    f"path {path}) stands; no Stack tranches were opened above it."
+                ),
+            )
             return 0
         try:
             opened = await self._open_stack_from_scrum(
                 scrum_price=float(fold_price),
-                scrum_size=float(fold_size),
+                scrum_size=ladder_size,
                 summary=summary,
                 origin="fold",
                 floor_ref_price=float(fold_price),
@@ -5959,7 +6014,7 @@ class ScrummingBot(
                 message=(
                     f"FOLD SPAWNED STACK: {opened} tranche(s) above "
                     f"a fold filled at ${float(fold_price):.8f} "
-                    f"(size {float(fold_size):.6f}, path {path})."
+                    f"(size {ladder_size:.6f}, path {path})."
                 ),
             )
         return max(opened, 0)

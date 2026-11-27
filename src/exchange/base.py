@@ -8,8 +8,12 @@ rules ``AssetInfo`` reports for one market.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import math
 from abc import ABC, abstractmethod
+from collections.abc import Coroutine
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from decimal import (
     Decimal,
@@ -19,13 +23,51 @@ from decimal import (
     ROUND_HALF_UP,
 )
 from enum import Enum
-from typing import Callable, Optional
+from typing import Any, Callable, Optional, TypeVar, cast
 
 from ..core.price_age import ReadMoment
 
 #: Seconds in one day, the grain ``MarketRules.days_to_expiry`` answers in and
 #: the grain a venue's ``settlement_days`` is stated in.
 SETTLEMENT_DAY_SECONDS = 86400.0
+
+#: An async function ``order_turn`` or ``read_turn`` decorates, its type kept.
+Step = TypeVar("Step", bound=Callable[..., Coroutine[Any, Any, Any]])
+
+# The task inside an ``order_turn`` step, None outside one.
+_ORDER_TASK: ContextVar[Optional[asyncio.Task]] = ContextVar("order_task", default=None)
+
+
+def in_order_turn() -> bool:
+    """True where this task is the one inside an ``order_turn`` step, outside any
+    ``read_turn`` step of it."""
+    task = _ORDER_TASK.get()
+    return task is not None and task is asyncio.current_task()
+
+
+def _marked(run: Step, order: bool) -> Step:
+    """``run`` with ``_ORDER_TASK`` held at its own task for an ``order``, else None."""
+
+    @functools.wraps(run)
+    async def marked(*args: Any, **kwargs: Any) -> Any:
+        token = _ORDER_TASK.set(asyncio.current_task() if order else None)
+        try:
+            return await run(*args, **kwargs)
+        finally:
+            _ORDER_TASK.reset(token)
+
+    return cast(Step, marked)
+
+
+def order_turn(run: Step) -> Step:
+    """Decorate one step of an order, whose venue calls a connector's queue starts ahead
+    of every read outside a step."""
+    return _marked(run, order=True)
+
+
+def read_turn(run: Step) -> Step:
+    """Decorate a read no order waits on, so ``in_order_turn`` is False inside it."""
+    return _marked(run, order=False)
 
 
 class OrderSide(str, Enum):

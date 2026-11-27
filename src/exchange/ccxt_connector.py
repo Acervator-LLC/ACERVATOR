@@ -78,26 +78,8 @@ NAMED_TICKERS: dict[str, NamedTickers] = {
 }
 
 
-# Submissions past this depth are refused, outside queue_cap_waived.
+# Counted calls past this depth are refused; SyncCall.counted is False for an order's.
 SYNC_QUEUE_CAP: int = 8
-
-# True inside queue_cap_waived, where _call_sync_timed queues past SYNC_QUEUE_CAP.
-_QUEUE_CAP_WAIVED: ContextVar[bool] = ContextVar("queue_cap_waived", default=False)
-
-
-@contextmanager
-def queue_cap_waived() -> Iterator[None]:
-    """Queue every sync call this task makes inside the block past ``SYNC_QUEUE_CAP``."""
-    token = _QUEUE_CAP_WAIVED.set(True)
-    try:
-        yield
-    finally:
-        _QUEUE_CAP_WAIVED.reset(token)
-
-
-def queue_cap_is_waived() -> bool:
-    """True inside ``queue_cap_waived``, where a full queue refuses no call."""
-    return _QUEUE_CAP_WAIVED.get()
 
 
 # The name CCXTConnector.latest_run keeps this task's runs under, empty for none.
@@ -170,13 +152,13 @@ CCXT_REQUEST_TIMEOUT_MS: int = int(
 # ccxt names every read with this prefix.
 READ_CALL_PREFIX: str = "fetch_"
 
-# Slowest whole answer measured from a venue, on a saturated link.
-SLOWEST_ANSWER_SEC: float = 12.8
+# Slowest call to the venue's time endpoint measured on a saturated link.
+SATURATED_CALL_SEC: float = 12.8
 
-# Longest a read waits for its turn: SYNC_QUEUE_CAP calls of SLOWEST_ANSWER_SEC each.
-READ_TURN_WAIT_SEC: float = SYNC_QUEUE_CAP * SLOWEST_ANSWER_SEC
+# Longest a read waits for its turn: SYNC_QUEUE_CAP calls of SATURATED_CALL_SEC each.
+READ_TURN_WAIT_SEC: float = SYNC_QUEUE_CAP * SATURATED_CALL_SEC
 
-# Longest an order, a cancel, or a read inside queue_cap_waived waits for its turn.
+# Longest a SyncCall.goes_first call waits for its turn.
 ORDER_TURN_WAIT_SEC: float = SYNC_CALL_TIMEOUT_SEC
 
 # Longest sync_connect runs on the worker: CONNECT_ATTEMPTS of READ_TURN_WAIT_SEC.
@@ -256,6 +238,8 @@ class SyncCallTiming:
 class SyncCall:
     """One call on a ``SyncWorker``, its turn bounded by ``turn_wait_sec`` and its run
     by ``limit_sec``; one whose ``keeps_turn`` is False never moves to another worker.
+    ``SyncWorker`` starts a ``goes_first`` call ahead of every other, and a ``counted``
+    call takes a place of ``SYNC_QUEUE_CAP``.
     """
 
     name: str
@@ -268,18 +252,21 @@ class SyncCall:
     submitted_at: float = field(default_factory=time.monotonic)
     job: Future[Any] = field(default_factory=Future)
     worker: Optional[SyncWorker] = None
+    goes_first: bool = False
     counted: bool = True
     dropped: bool = False
 
     @classmethod
     def to_venue(cls, name: str, fn: Callable, args: tuple, kwargs: dict) -> SyncCall:
         """``fn`` on its arguments, a read where ``name`` opens with ``READ_CALL_PREFIX``;
-        one inside ``queue_cap_waived`` waits for its turn as an order does."""
+        a read ``in_order_turn`` and each other call ``goes_first``, not ``counted``."""
         run = functools.partial(fn, *args, **kwargs)
         reads = name.startswith(READ_CALL_PREFIX)
-        if not reads or _QUEUE_CAP_WAIVED.get():
-            return cls(name, run, reads, ORDER_TURN_WAIT_SEC)
-        return cls(name, run, reads, read_turn_left_sec(), missed=TurnMissed)
+        if reads and not in_order_turn():
+            return cls(name, run, reads, read_turn_left_sec(), missed=TurnMissed)
+        return cls(
+            name, run, reads, ORDER_TURN_WAIT_SEC, goes_first=True, counted=False
+        )
 
     def turn_left_sec(self) -> float:
         """Seconds left of ``turn_wait_sec``."""
@@ -298,7 +285,8 @@ class SyncCall:
 
 
 class SyncWorker:
-    """One connector's single call thread, and the ``SyncCall`` it is inside."""
+    """One connector's single call thread, the calls that wait for it, and the
+    ``SyncCall`` it is inside."""
 
     def __init__(self, exchange_id: str) -> None:
         self._exchange_id = exchange_id
@@ -307,11 +295,30 @@ class SyncWorker:
             thread_name_prefix=f"ccxt-{exchange_id}",
         )
         self.running: Optional[SyncCall] = None
+        self._goes_first: list[tuple[Future[Any], SyncCall]] = []
+        self._gives_way: list[tuple[Future[Any], SyncCall]] = []
 
     def take(self, call: SyncCall) -> None:
-        """Queue ``call`` behind every call this worker holds."""
+        """Queue ``call`` behind each call this worker holds that ``goes_first`` as it
+        does, every other behind those."""
         call.worker = self
-        call.job = self.pool.submit(self._serve, call)
+        call.job = Future()
+        line = self._goes_first if call.goes_first else self._gives_way
+        line.append((call.job, call))
+        self.pool.submit(self._serve_next)
+
+    def _serve_next(self) -> None:
+        """Answer the ``job`` of the first waiting call, run by ``_serve`` unless
+        cancelled."""
+        job, call = (self._goes_first or self._gives_way).pop(0)
+        if not job.set_running_or_notify_cancel():
+            return
+        try:
+            answer = self._serve(call)
+        except BaseException as raised:
+            job.set_exception(raised)
+        else:
+            job.set_result(answer)
 
     def _serve(self, call: SyncCall) -> Any:
         """Run ``call`` on the worker thread, or raise its ``missed_turn`` unrun."""
@@ -346,6 +353,7 @@ from .base import (
     OrderType,
     Ticker,
     TickerRows,
+    in_order_turn,
     no_order_hold,
     refuse_held_order,
 )
@@ -2112,7 +2120,7 @@ class CCXTConnector(ExchangeInterface):
 
     @property
     def _sync_queue_depth(self) -> int:
-        """Running and queued venue calls whose callers wait, ``connect`` left out."""
+        """Running and queued ``SyncCall.counted`` calls whose callers wait."""
         with self._sync_executor_lock:
             return sum(
                 call.counted and not call.job.done() for call in self._sync_calls
@@ -2460,9 +2468,10 @@ class CCXTConnector(ExchangeInterface):
             self._bulk_read_admitted = None
 
     def _replace_stuck_worker(self, worker: Optional[SyncWorker]) -> None:
-        """Put a fresh worker in place of one ``stuck_call`` names, its queued reads in
-        order on the fresh one; every other queued call is ``dropped``, and a call
-        ``Future.cancel`` finds started stays where it runs."""
+        """Put a fresh worker in place of one ``stuck_call`` names, its queued reads on
+        the fresh one, each ``goes_first`` read ahead of the rest and each class in
+        order; every other queued call is ``dropped``, and a call ``Future.cancel``
+        finds started stays where it runs."""
         with self._sync_executor_lock:
             stuck = worker.stuck_call() if worker is not None else None
             if worker is None or stuck is None:
@@ -2470,7 +2479,7 @@ class CCXTConnector(ExchangeInterface):
             fresh = None
             if worker is self._sync_worker:
                 fresh = self._sync_worker = SyncWorker(self._exchange_id)
-            for call in self._sync_calls:
+            for call in sorted(self._sync_calls, key=lambda held: not held.goes_first):
                 if call.worker is not worker or not call.job.cancel():
                     continue
                 if fresh is not None and call.keeps_turn:
@@ -2592,8 +2601,8 @@ class CCXTConnector(ExchangeInterface):
         thread around ``fn`` alone, and ``queued_ms`` is the wait for that worker.
 
         Raises:
-            CCXTQueueFullError: queue depth is at ``SYNC_QUEUE_CAP`` outside
-                ``queue_cap_waived``.
+            CCXTQueueFullError: queue depth is at ``SYNC_QUEUE_CAP`` and the call is
+                ``SyncCall.counted``.
             TimeoutError: ``fn`` ran past ``SYNC_CALL_TIMEOUT_SEC``, its turn never came
                 inside ``SyncCall.turn_wait_sec``, or it was ``SyncCall.dropped``.
             asyncio.CancelledError: this awaiter itself was cancelled; a queued call
@@ -2601,7 +2610,8 @@ class CCXTConnector(ExchangeInterface):
             Any CCXT exception: propagated unchanged.
         """
         call_name = getattr(fn, "__name__", repr(fn))
-        if self._sync_queue_depth >= SYNC_QUEUE_CAP and not _QUEUE_CAP_WAIVED.get():
+        call = SyncCall.to_venue(call_name, fn, args, kwargs)
+        if call.counted and self._sync_queue_depth >= SYNC_QUEUE_CAP:
             self._release_bulk_read_slot()
             self._sync_queue_refusals += 1
             self._sync_queue_refusals_by_call[call_name] += 1
@@ -2613,7 +2623,6 @@ class CCXTConnector(ExchangeInterface):
                 f"Call: {call_name}"
             )
 
-        call = SyncCall.to_venue(call_name, fn, args, kwargs)
         try:
             self._queue_sync_call(call)
         except RuntimeError:

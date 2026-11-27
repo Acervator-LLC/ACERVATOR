@@ -10,7 +10,7 @@ This page is for lookup. Each row of a control table names a control or a group 
 | --- | --- |
 | User | Your name and the Fleet Lock password. |
 | Exchanges | Each venue's keys, for the asset class active when the window opened, or the bot's own class when Start opened it. |
-| Trading | Where a new bot's wizard opens: target, order visibility and aggressive mode. |
+| Trading | Where a new bot's wizard opens: target, order visibility and aggressive mode. And the price age limit every running bot obeys. |
 | TA Indicators | How far each of the twelve indicator votes counts. |
 | Phantom Bots | Where a new bot's phantom choices open. |
 | Theme | The colour theme and the accent colour. |
@@ -87,7 +87,7 @@ The Twilio Auth Token, SMTP Password and Anthropic API Key rows hide only the sc
 | --- | --- | --- |
 | User | `username` | At Save. Fleet Lock writes its own key file. |
 | Exchanges | `exchanges` | At each press, with no Save. |
-| Trading | `default_target_balance`, `bot_visibility`, `aggressive_trading` | At the next bot wizard. |
+| Trading | `default_target_balance`, `bot_visibility`, `aggressive_trading`, `price_age_limit_s` | At the next bot wizard. The price age limit at Save, on every running bot. |
 | TA Indicators | `ta_indicator_weights` | At Save, on every Scrumming bot. |
 | Phantom Bots | `default_enable_phantoms`, `default_phantom_timeframe`, `default_lock_candle_count` | At the next bot wizard. |
 | Theme | `theme`, `accent_color` | At Save. |
@@ -95,7 +95,7 @@ The Twilio Auth Token, SMTP Password and Anthropic API Key rows hide only the sc
 | SMS | `message_channels` | At Save. |
 | AI Monitor | `ai_monitor` | At Save. |
 
-The file also holds `price_age_limit_s`, and no page has a row for it. It is the most seconds old a price may be when an order starts on it, 20 at the start ([the Trading tab page](../06-trading-tab.md#an-order-and-the-age-of-its-price)). It takes effect at each read (`src/core/price_age.py, in price_age_limit_s`).
+The Trading page's Price Age Limit row writes `price_age_limit_s`. It is the most seconds old a price may be when an order starts on it, 20 at the start ([the Trading tab page](../06-trading-tab.md#an-order-and-the-age-of-its-price)). It takes effect at each read (`src/core/price_age.py, in price_age_limit_s`).
 
 | Control | What it does and what it reads |
 | --- | --- |
@@ -157,15 +157,16 @@ The figure shows a drop-down and a list of stored exchanges. The drawn page puts
 
 ![Settings, the Trading page.](p36-i0.png)
 
-The figure shows Position Distance, Increment Style and Default Positions rows the page does not draw.
+The figure shows Position Distance, Increment Style and Default Positions rows the page does not draw. The drawn page adds the Price Age Limit group under its three rows.
 
-Each row sets where a bot wizard opens. A running bot keeps its own value.
+Each row but the last sets where a bot wizard opens. A running bot keeps its own value.
 
 | Row | What it does and what it reads |
 | --- | --- |
 | Default Target Balance ($1 to $1,000,000, $200) | Opens the wizard's Target Balance. A wizard opened by a Market Inspector topology Adopt press opens on the proposal's suggested target instead. Reads `default_target_balance`. `src/gui/bot_wizard.py, in _show_stored_target`, `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel._apply_stored_target_balance`, `src/gui/main_window.py, in MainWindow._adopt_topology_proposal` |
 | Bot Visibility (orderbook or internal, orderbook) | Opens the wizard's Order Visibility. Reads `bot_visibility`. `src/gui/bot_wizard.py, in TradingParamsPage`, `src/gui/main_tabs/bot_wizard_surface.py, in BotWizardModel._apply_stored_visibility` |
 | Enable aggressive trading mode (off) | Opens the wizard's Aggressive Trading. The engine changes only Stack tranches in Order Book mode, which go out as immediate-or-cancel limits. A tranche above the market cancels unfilled, and Robinhood on the Crypto class refuses each one. The mouse-over says it changes every buy and sell. Reads `aggressive_trading`. `src/trading/scrumming_bot.py, in ScrummingBot._open_stack_from_scrum` |
+| Price Age Limit (10 to 60 sec, 20) | The oldest price an order starts on, and the oldest a Current Position Value cell draws. It sits in the group Acts on the Running Fleet at Save. Save hands it to every running bot, and the next check of each order and the next paint read it. Under 20, it is also the longest rest of each exchange's shared reads after a throttled or lost answer ([the History page](history.md#the-pace-of-the-shared-reads), `src/exchange/data_pool.py, in longest_period_s`). 10 is two lifetimes of a stored price, and 60 is the age at which the platform reports that fetching stopped. At 10, a buy that asks for other bots' resting sales is held beside more than 16 of them while its price is 5 seconds old. A stored value the row cannot hold reads as 20. Reads `price_age_limit_s`. `src/core/price_age.py, in limit_range_s` |
 
 ### Settings > TA Indicators
 

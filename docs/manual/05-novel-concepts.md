@@ -1734,6 +1734,8 @@ The term tranche emerged in Acervator as the concept of placing soft boundaries 
 
 Now: Shadow Tranches are listed on the bot's Stack Tranches tab, each with SHADOW in its Mode column (`src/gui/main_tabs/stack_tranches_tab_surface.py, in compose_shadow_rows`).
 
+Now: on a bot with Stack Mode on, every filled buy opens a Stack ladder above its fill from the units it bought: a fold, a tranche Fire, the first buy, a hedge buy, a Manual Fire, a cartridge buy and a lost buy the holdings audit books. A buy that opens no ladder writes one bot log line that names why (`src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold`).
+
 **Functional.** All four tranche kinds run. Fold Tranches spawn on a
 scrum and hold the price of the sale that made them. Stack Tranches spawn on a
 fold and are priced as a ladder above the buy. A three-unit scrum at 100 with a
