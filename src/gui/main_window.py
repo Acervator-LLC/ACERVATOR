@@ -32,7 +32,6 @@ from .main_tabs.exchange_tab_surface import (
 )
 from .main_tabs.main_window_surface import (
     ABOUT_TITLE,
-    ACCUMULATION_TAB,
     BAR_TAB_ORDER,
     CHARTS_TAB,
     CONSOLE_TAB,
@@ -58,7 +57,6 @@ from .main_tabs.main_window_surface import (
     STATUS_TAB,
     SWARM_TAB,
     TAB_TOOLTIPS,
-    UNBUILT_TABS,
     about_text,
     api_pill_tooltip,
     header_strip_reads_paper,
@@ -206,7 +204,6 @@ try:
     from .main_tabs.history_tab import HistoryTabMixin
     from .main_tabs.market_inspector_tab import MarketInspectorTabMixin
     from .main_tabs.paper_trader_tab import PaperTraderTabMixin
-    from .main_tabs.proof_of_accumulation_tab import ProofOfAccumulationTabMixin
     from .main_tabs.retired_tabs import RetiredTabsMixin
     from .main_tabs.simulator_tab import SimulatorTabMixin
     from .main_tabs.system_status_tab import SystemStatusTabMixin
@@ -312,7 +309,6 @@ if _HAS_QT:
         HistoryTabMixin,
         MarketInspectorTabMixin,
         PaperTraderTabMixin,
-        ProofOfAccumulationTabMixin,
         RetiredTabsMixin,
         SimulatorTabMixin,
         SystemStatusTabMixin,
@@ -504,10 +500,7 @@ if _HAS_QT:
             self._timed_build_step(CONSOLE_TAB, self._build_console_tab)
             self._timed_build_step(PAPER_TAB, self._build_paper_trader_tab)
             self._timed_build_step(STATUS_TAB, self._build_system_status_tab)
-            if ACCUMULATION_TAB not in UNBUILT_TABS:
-                self._timed_build_step(
-                    ACCUMULATION_TAB, self._build_proof_of_accumulation_tab
-                )
+            self._timed_build_step("inactive tabs", self._add_inactive_tabs)
 
             logger.info(
                 "Startup build: every tab took %.3fs in all",
@@ -518,9 +511,29 @@ if _HAS_QT:
             self._describe_main_tabs()
 
             self._main_tabs.currentChanged.connect(self._on_main_tab_changed)
+            self._main_tabs.tabBar().tabMoved.connect(self._on_main_tab_moved)
 
             main_layout.addWidget(self._main_tabs, 1)
             self._apply_asset_class()
+
+        def _add_inactive_tabs(self) -> None:
+            """Append each ``INACTIVE_TABS`` label over an empty ``QLabel``, a tab no press opens."""
+            for name in window_surface.INACTIVE_TABS:
+                at = self._main_tabs.addTab(QLabel(), name)
+                self._main_tabs.setTabEnabled(at, False)
+
+        def _on_main_tab_moved(self, _from: int, _to: int) -> None:
+            """Queue ``_join_inactive_tabs`` behind the move the bar just made."""
+            QTimer.singleShot(0, self._join_inactive_tabs)
+
+        def _join_inactive_tabs(self) -> None:
+            """Put each ``INACTIVE_TABS`` label back right after the one before it."""
+            labels = [
+                self._main_tabs.tabText(at) for at in range(self._main_tabs.count())
+            ]
+            joined = window_surface.joined_tabs(labels)
+            if joined != labels:
+                self._reorder_main_tabs(joined)
 
         def _describe_main_tabs(self) -> None:
             """Give each main tab the ``TAB_TOOLTIPS`` sentence its label names."""

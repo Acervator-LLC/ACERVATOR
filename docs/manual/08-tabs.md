@@ -15,59 +15,17 @@ Detail: [08-tabs/console.md](08-tabs/console.md).
 Detail: [08-tabs/system-status.md](08-tabs/system-status.md).
 Detail: [08-tabs/settings.md](08-tabs/settings.md).
 
-One list names the ten tabs the window builds, and every screen below that the
-window does not build says as much in its own entry. Two are skeletons now:
-Status and Accumulation each draw a name, one sentence saying the tab is not
-built, and the issue that carries the build-out. Sim and Paper were skeletons
-until issues #117 and #19 built them, and both are full screens today.
-
-`src/gui/main_tabs/main_window_surface.py` — the order before issue #450
-
-```python
-CANONICAL_TAB_ORDER = (
-    TRADING_TAB,
-    MARKET_INSPECTOR_TAB,
-    BOT_SWARM_TAB,
-    ASSET_CHARTS_TAB,
-    HISTORY_TAB,
-    SIMULATOR_TAB,
-    CONSOLE_TAB,
-    PAPER_TRADER_TAB,
-    SYSTEM_STATUS_TAB,
-    PROOF_OF_ACCUMULATION_TAB,
-)
-```
-
-Each of those names is a constant holding the label the tab bar shows. The
-skeletons take their label from their own surface, so the bar and the
-screen cannot carry two spellings of one name. Issue #450 renamed every one of
-those constants and reordered the tuple, and the section under this one holds
-what the file carries today.
-
-`src/gui/main_tabs/main_window_surface.py` — the labels before issue #450
-
-```python
-TRADING_TAB = "Trading"
-MARKET_INSPECTOR_TAB = "Market Inspector"
-BOT_SWARM_TAB = "Bot Swarm"
-ASSET_CHARTS_TAB = "Asset Charts"
-HISTORY_TAB = "History"
-SIMULATOR_TAB = "Simulator"
-CONSOLE_TAB = "Console"
-
-PAPER_TRADER_TAB = paper_trader_tab_surface.HEADING
-SYSTEM_STATUS_TAB = system_status_tab_surface.HEADING
-PROOF_OF_ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
-```
-
-The module `paper_trader_tab_surface` named in that block is gone.
-`src/gui/paper/paper_trading_tab_surface.py, in HEADING` carries the Paper label
+One list names the eleven tabs the bar draws, and every screen below that the
+window does not build says as much in its own entry. Status is a skeleton now:
+it draws a name, one sentence saying the tab is not built, and the issue that
+carries the build-out. PoA and Quint are drawn and open no screen. Sim and Paper
+were skeletons until issues #117 and #19 built them, and both are full screens
 today.
 
 ### The order, the names and the colours today
 
 The bar now opens on Sim and every tab carries a single word. The order below is
-what the window ends with, and it is decided in the one place named above.
+what the window ends with, and it is decided in the one place named below.
 
 `src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
 
@@ -79,16 +37,18 @@ CANONICAL_TAB_ORDER = (
     CHARTS_TAB,
     INSPECTOR_TAB,
     SWARM_TAB,
-    ACCUMULATION_TAB,
+    POA_TAB,
+    QUINT_TAB,
     HISTORY_TAB,
     STATUS_TAB,
     CONSOLE_TAB,
 )
 ```
 
-Eight of the ten labels are new words for screens that already existed. History
-and Console were already one word and did not change. Each constant was renamed
-to match the word it now holds.
+Seven of the eleven labels are new words for screens that already existed.
+History and Console were already one word and did not change. PoA and Quint are
+two tabs that open no screen. Each constant was renamed to match the word it now
+holds.
 
 `src/gui/main_tabs/main_window_surface.py` — the labels
 
@@ -100,13 +60,17 @@ CHARTS_TAB = "Charts"
 HISTORY_TAB = "History"
 SIM_TAB = "Sim"
 CONSOLE_TAB = "Console"
+POA_TAB = "PoA"
+QUINT_TAB = "Quint"
+
+#: The tabs the bar draws and no click, key or drag opens, side by side in this order.
+INACTIVE_TABS = (POA_TAB, QUINT_TAB)
 
 PAPER_TAB = paper_trading_tab_surface.HEADING
 STATUS_TAB = system_status_tab_surface.HEADING
-ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 ```
 
-The eight renames, in the order the bar reads them:
+The seven renames, in the order the bar reads them:
 
 | was | is now |
 | --- | ------ |
@@ -116,30 +80,13 @@ The eight renames, in the order the bar reads them:
 | Asset Charts | Charts |
 | Market Inspector | Inspector |
 | Bot Swarm | Swarm |
-| Proof of Accumulation | Accumulation |
 | System Status | Status |
 
 Sim, Paper and Live carried the promotion pipeline on three different grounds,
 and the other seven tabs shared the gold ground. Those grounds are gone, and
 every tab now takes one look from the theme's style sheet.
 
-The table that gave each tab its ground is gone from the window surface. It
-read:
-
-```python
-TAB_GROUNDS = {
-    SIM_TAB: BLACK_GROUND,
-    PAPER_TAB: WHITE_GROUND,
-    LIVE_TAB: GOLD_GROUND,
-    CHARTS_TAB: GOLD_GROUND,
-    INSPECTOR_TAB: GOLD_GROUND,
-    SWARM_TAB: GOLD_GROUND,
-    ACCUMULATION_TAB: GOLD_GROUND,
-    HISTORY_TAB: GOLD_GROUND,
-    STATUS_TAB: GOLD_GROUND,
-    CONSOLE_TAB: GOLD_GROUND,
-}
-```
+The table that gave each tab its ground is gone from the window surface.
 
 No tab holds a colour of its own. A ground named two theme tokens, and every
 theme filled those tokens with its own values, so gold was the yellow that
@@ -178,14 +125,18 @@ painter.setPen(text)
 painter.drawText(self.tabRect(index), int(Qt.AlignCenter), self.tabText(index))
 ```
 
-The React bar draws the same ten buttons. The window publishes their labels and
-methods and no colours, so the page holds no palette of its own.
+The React bar draws the same eleven buttons. The window publishes their labels,
+their methods and the two tabs that open no screen, and no colours, so the page
+holds no palette of its own.
 
 `src/gui/main_tabs/main_window_surface.py` — `MainWindowModel.as_dict`, what the frontend reads
 
 ```python
 "tab_labels": list(self.tab_labels),
 "tab_methods": dict(self.tab_methods),
+"inactive_tabs": [
+    name for name in self.tab_labels if name in INACTIVE_TABS
+],
 "theme": self.theme,
 "tabs_movable": self.tabs_movable,
 ```
@@ -1305,14 +1256,16 @@ the 2026-09-05 file-verification audit, removed with the audit folders.
 
 ### The tab bar the shell draws now
 
-The shell builds the same ten tabs the application builds, with the same labels
-and in the same order. It holds no list of its own. `main_window.state` reports
-`tab_labels` and `tab_methods`; the bar keeps one tab per label, filled by the
-registered panel that calls that label's bridge method.
+The shell builds the same eleven tabs the application builds, with the same
+labels and in the same order. It holds no list of its own. `main_window.state`
+reports the labels, the bridge method of each and the two tabs that open no
+screen; the bar keeps one tab per label, filled by the registered panel that
+calls that label's bridge method, and draws PoA and Quint as tabs no press
+selects.
 
 ```
-Sim  Paper  Live  Charts  Inspector
-Swarm  Accumulation  History  Status  Console
+Sim  Paper  Live  Charts  Inspector  Swarm
+PoA  Quint  History  Status  Console
 ```
 
 A module that draws a screen inside a dialog registers no bridge method and
@@ -1393,7 +1346,6 @@ rather than typed.
 | `src/gui/bot_visualizer.py` | `bot_visualizer.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/bot_wizard.py` | `bot_wizard.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/buy_confirmation_dialog.py` | `buy_confirmation.js` | yes | yes | yes | - | yes | yes | in scope |
-| `src/gui/competition_tab.py` | `competition_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/crypto_news_ticker.py` | `crypto_news_ticker.js` | yes | yes | yes | - | yes | shell | in scope |
 | `src/gui/history_qt_table.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/history_tab.py` | `history_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
@@ -1419,32 +1371,28 @@ rather than typed.
 | `src/gui/main_tabs/console_tab.py` | `console_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/empty_tabs.py` | no | - | no | no | no | - | - | shelved |
 | `src/gui/main_tabs/header_strip.py` | `header_strip.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | yes | yes | yes | yes | no | shell | in scope |
 | `src/gui/main_tabs/stock_main_window_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | no | yes | in scope |
+| `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/main_tabs/trading_tab.py` | `trading_tab.js` | yes | yes | yes | yes | yes | - | in scope |
 | `src/gui/main_tabs/tradingview_chart_surface.py` | no | - | yes | no | no | - | no | React side |
-| `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | no | yes | in scope |
+| `src/gui/main_window.py` | `main_window.js` | yes | yes | yes | no | yes | yes | in scope |
 | `src/gui/market_inspector.py` | `market_inspector.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/market_inspector_topologies.py` | `market_inspector_topologies.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/native_chart.py` | `native_chart.js` | yes | yes | yes | yes | yes | yes | in scope |
 | `src/gui/qt_safe_events.py` | no | - | yes | no | no | - | no | not a screen |
 | `src/gui/react_history_panel.py` | no | - | yes | no | no | - | no | React side |
 | `src/gui/react_history_tab.py` | no | - | no | no | no | - | no | React side |
-| `src/gui/react_proof_of_accumulation_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_simulator_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/react_system_status_tab.py` | no | - | no | no | no | - | no | React side |
 | `src/gui/settings_dialog.py` | `settings_dialog.js` | yes | yes | yes | - | yes | yes | in scope |
-| `src/gui/shared_testnet.py` | `shared_testnet.js` | no | yes | yes | no | yes | no | shelved |
 | `src/gui/simulator_tab.py` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | in scope |
-| `fleet_replay_panel` | `fleet_replay_panel.js` | yes | yes | yes | no | yes | yes | shelved |
-| `sim_visuals` | `sim_visuals.js` | yes | yes | yes | no | yes | yes | shelved |
-| `nuclear_mode_panel` | `nuclear_mode_panel.js` | yes | yes | yes | no | yes | yes | shelved |
-| `sim_stat_strip` | `sim_stat_strip.js` | yes | yes | yes | no | yes | yes | shelved |
+| `fleet_replay_panel` | `fleet_replay_panel.js` | yes | yes | yes | no | no | yes | shelved |
+| `sim_visuals` | `sim_visuals.js` | yes | yes | yes | no | no | yes | shelved |
+| `nuclear_mode_panel` | `nuclear_mode_panel.js` | yes | yes | yes | no | no | yes | shelved |
+| `sim_stat_strip` | `sim_stat_strip.js` | yes | yes | yes | no | no | yes | shelved |
 | `SimulatorTab` | `simulator_tab.js` | yes | yes | yes | yes | yes | yes | shelved |
 | `src/gui/start_all_progress_dialog.py` | `start_all_progress.js` | yes | yes | yes | - | yes | yes | in scope |
 | `src/gui/stock_main_window.py` | no | - | yes | no | no | - | no | shelved |
-| `src/gui/testnet_tab.py` | `testnet_tab.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/tradingview_chart.py` | `tradingview_chart.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/usb_auth_widget.py` | `usb_auth_widget.js` | yes | yes | yes | no | yes | no | shelved |
 | `src/gui/visualizer/bot_node.py` | `bot_node.js` | yes | yes | yes | yes | yes | yes | in scope |
@@ -1477,18 +1425,18 @@ The table holds no row for the two Paper Trader hosts. The Qt host
 and the React host were removed together, and the Paper tab is drawn in Qt by
 `src/gui/paper/paper_trading_tab.py, in PaperTradingTab` today.
 
-Totals across the 76 rows above, measured on 5 September 2026:
+Totals across the 76 rows above, measured on 28 November 2026:
 
 ```
-React module             63
-Uses React               60
-Bridge                   72
-Manifest                 62
-Registers in Electron    25
-Ships in the build       58
-RENDERS                  44
-RENDERS, in scope        35 of 43
-out of scope             41
+React module             57
+Uses React               55
+Bridge                   66
+Manifest                 56
+Registers in Electron    23
+Ships in the build       52
+RENDERS                  42
+RENDERS, in scope        34 of 41
+out of scope             35
 ```
 
 Four columns are all but complete. RENDERS, the column that is the item, is not.
@@ -1670,15 +1618,6 @@ draws the whole screen in one web view from `src/gui/web/alerts_tab.js`, and
 The window a bot row opens already registered with the shell's panel host. Its
 cell read `no`, and the running shell named it among nineteen registered
 panels, so the cell was stale.
-
-```
-registered  bot_live_settings bot_swarm_tab bot_visualizer console_tab
-            header_strip history_tab indicator_panel market_inspector
-            market_inspector_tab market_inspector_topologies native_chart
-            paper_trader_tab proof_of_accumulation_tab simulator_tab
-            spendable_profits status_log system_status_tab trade_charts_tab
-            trading_tab
-```
 
 Registering was never the whole of it. The window drew its title, its tab
 strip and its two footer buttons, and every one of its seven tab pages was an
@@ -2126,13 +2065,11 @@ than a screen, and it stays where it is.
 | `alerts_tab.py` | Not reachable from a live tab |
 | `analytics_tab.py` | Not reachable from a live tab |
 | `audio_suite.py` | Not reachable from a live tab |
-| `competition_tab.py` | Not reachable from a live tab |
 | `init_wizard.py` | Not reachable from a live tab |
 | `journal_tab.py` | Not reachable from a live tab |
 | `launcher.py` | Not reachable from a live tab |
 | `live_bot_window.py` | Not reachable from a live tab |
 | `stock_main_window.py` | Not reachable from a live tab |
-| `testnet_tab.py` | Not reachable from a live tab |
 | `usb_auth_widget.py` | Not reachable from a live tab |
 | `widgets/__init__.py` | Package marker, no screen |
 | `widgets/api_tester_tab.py` | Not reachable from a live tab |
@@ -2520,7 +2457,6 @@ Qt-side file the conversion added.
 
 | Qt file | React module | RENDERS | Scope |
 | --- | --- | --- | --- |
-| `src/gui/main_tabs/empty_tabs.py` | `proof_of_accumulation_tab.js` | yes | in scope |
 | `src/gui/main_tabs/system_status_tab.py` | `system_status_tab.js` | shell | in scope |
 | `src/gui/react_system_status_tab.py` | no | - | React side |
 
@@ -2606,74 +2542,7 @@ measured pass, per bot     mean 5.318 s           mean 8.218 s
 38 bots, three retried     3 min 17 s             about 5 min 45 s
 ```
 
-### 2026-09-09 21:37 - #147 - the Accumulation tab leaves the empty-tab pair
-
-Accumulation is no longer a skeleton, so it leaves `empty_tabs.py` and takes a
-row of its own. It draws three zones: the player window on the left, the square
-enemy screen upper right, and the party window across the lower half. Every zone
-draws a placeholder and no art, class or mode is built.
-
-`src/gui/main_tabs/proof_of_accumulation_tab.py` — what the window builds
-
-```python
-    def _build_proof_of_accumulation_tab(self) -> None:
-        """Append the Accumulation tab, and hold None when its page cannot be built."""
-        try:
-            from ..react_proof_of_accumulation_tab import ProofOfAccumulationReactPanel
-
-            self._proof_of_accumulation_tab = ProofOfAccumulationReactPanel()
-            self._main_tabs.addTab(self._proof_of_accumulation_tab, HEADING)
-        except Exception as exc:  # noqa: BLE001 - a missing tab is not a crash
-            logger.warning("Accumulation tab unavailable: %s", exc)
-            self._proof_of_accumulation_tab = None
-```
-
-Three cells move and two rows are new. The empty-tab row names no module now, so
-nothing the window builds reaches it.
-
-| Qt file | React module | RENDERS | Scope |
-| --- | --- | --- | --- |
-| `src/gui/main_tabs/empty_tabs.py` | no | - | shelved |
-| `src/gui/main_tabs/proof_of_accumulation_tab.py` | `proof_of_accumulation_tab.js` | shell | in scope |
-| `src/gui/react_proof_of_accumulation_tab.py` | no | - | React side |
-
-The new cell reads `shell`, and the reason is the seam. Sixteen screens are
-registered there and none of them is this one, because no Qt widget ever drew a
-proof-of-accumulation screen. The two shelved Qt classes are set aside by the
-operator's directive of 21 April 2026 and this tab is built on neither.
-
-```
-seam screens             16
-a PoA, competition or testnet entry among them   none
-registered               proof_of_accumulation_tab, with no fault
-tab bar                  Accumulation, seventh of ten
-zones drawn              player window 2, enemy screen 2, party window 56
-party window             8 groups of 5, 40 slots on page 1 of 3
-wallet                   0 panels closed, 1 panel and 3 sections open
-```
-
-Removing the registration is the control. The panel name leaves the register,
-the Accumulation tab leaves the bar, and every zone count falls to nought while
-the same counter still reads 154 elements elsewhere on the page.
-
-```
-registered               proof_of_accumulation_tab absent, 18 names
-reasonFor                proof_of_accumulation_tab.js registered no panel to draw
-tab bar                  nine tabs, Accumulation gone
-zones drawn              0, 0, 0
-whole page               154 elements, so the noughts are the zones
-```
-
-The chain the shell draws is a field of the payload, so a demo run on the
-TestNet asks the same bridge method with a different chain and reaches the same
-page. Nothing else in the request changes.
-
-```python
-def chain_of(params: dict) -> str:
-    """The chain ``params`` names, or ``LIVE_CHAIN`` when it names none in ``CHAINS``."""
-    asked = params.get(CHAIN_FIELD) if isinstance(params, dict) else None
-    return asked if asked in CHAINS else LIVE_CHAIN
-```
+### 2026-09-09 21:37 - the Scope writer picks the widest table
 
 One tooling defect surfaced and is fixed here. The page carries three tables
 under the same header, and the Scope writer took the first, which is a two-row
@@ -3238,25 +3107,6 @@ classic_terminal  22,027     0          14,262        0
 minimal_modern    20,643     0          14,091        0
 glass_metal       20,604     0          14,078        0
 ```
-
-### 2026-09-13 - #23 - Accumulation leaves the bar in one place
-
-**One tuple names every tab the window does not build.** The window skips the
-builder for a name in it, and the tab list the frontend reads leaves that name
-out. The bar now reads Sim, Paper, Live, Charts, Inspector, Swarm, History,
-Status, Console.
-
-`src/gui/main_tabs/main_window_surface.py` — `UNBUILT_TABS`
-
-```python
-UNBUILT_TABS = (ACCUMULATION_TAB,)
-
-BAR_TAB_ORDER = tuple(name for name in CANONICAL_TAB_ORDER if name not in UNBUILT_TABS)
-```
-
-**Removing the name from that tuple puts the tab back.** The Accumulation screen
-is unfinished, not unwanted. Its builder, its panel, its bridge method and its
-manual page are all unchanged.
 
 ### 2026-09-13 - #23 - a tab that fails to build no longer moves the tabs after it
 

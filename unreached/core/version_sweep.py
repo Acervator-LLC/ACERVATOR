@@ -693,11 +693,10 @@ class VersionSweep:
             skip_dirs_secret = {
                 "docs",
                 "deploy/kiosk",
-                "contracts",
                 "sadp",
                 ".session26_backups",
             }
-            skip_ext_secret = {".md", ".sol", ".txt", ".bak", ".jsonl"}
+            skip_ext_secret = {".md", ".txt", ".bak", ".jsonl"}
             if any(s in rel for s in skip_for_secret):
                 continue
             if any(
@@ -1283,9 +1282,6 @@ class VersionSweep:
         MANDATORY = [
             ("simulator.py", "_sim_scrumming_tick"),
             ("scrumming_bot.py", "tick"),
-            ("token_ledger.py", "award"),
-            ("merkle_log.py", "append"),
-            ("competition_engine.py", "adjudicate"),
         ]
         mandatory_found = {f"{f}:{fn}": False for f, fn in MANDATORY}
         annotation_count = 0

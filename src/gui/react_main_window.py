@@ -137,7 +137,12 @@ _HOST_SOURCE = """(function (global) {
     };
   }
 
-  global.acervatorMainWindowSetTabs = function (labels, selected, descriptions) {
+  global.acervatorMainWindowSetTabs = function (
+    labels,
+    selected,
+    descriptions,
+    inactive
+  ) {
     var host = global.acervatorPanelHost;
     var bar = global.acervatorTabBar;
     global.acervatorMainWindowDescriptions = descriptions || {};
@@ -156,7 +161,8 @@ _HOST_SOURCE = """(function (global) {
       panels,
       function (from, to) {
         report({ move: { from: from, to: to } });
-      }
+      },
+      inactive || []
     );
     if (selected) {
       bar.select(selected);
@@ -220,10 +226,13 @@ def chrome_html(theme: object = None) -> str:
 
 
 def set_tabs_script(
-    labels: list, selected: Optional[str], descriptions: Optional[dict] = None
+    labels: list,
+    selected: Optional[str],
+    descriptions: Optional[dict] = None,
+    inactive: Optional[list] = None,
 ) -> str:
-    """The one JS statement that hands the page its tab set, selection and
-    each tab's description."""
+    """The one JS statement that hands the page its tab set, selection, each
+    tab's description and the labels no press opens."""
     return (
         "window.acervatorMainWindowSetTabs("
         + json.dumps(list(labels), ensure_ascii=True)
@@ -231,6 +240,8 @@ def set_tabs_script(
         + json.dumps(selected, ensure_ascii=True)
         + ", "
         + json.dumps(dict(descriptions or {}), ensure_ascii=True)
+        + ", "
+        + json.dumps(list(inactive or []), ensure_ascii=True)
         + ");"
     )
 
@@ -270,8 +281,8 @@ if _HAS_WEBENGINE:
         Answers ``addTab``, ``insertTab``, ``removeTab``, ``count``,
         ``tabText``, ``widget``, ``indexOf``, ``currentIndex``,
         ``setCurrentIndex``, ``setMovable``, ``isTabVisible``,
-        ``setTabVisible`` and ``tabBar`` over the ``QTabWidget`` it holds,
-        whose own bar is hidden.
+        ``setTabVisible``, ``isTabEnabled``, ``setTabEnabled`` and ``tabBar``
+        over the ``QTabWidget`` it holds, whose own bar is hidden.
         """
 
         def __init__(self, parent=None) -> None:
@@ -348,6 +359,23 @@ if _HAS_WEBENGINE:
             self._book.setTabVisible(index, visible)
             self._push_tabs()
 
+        def isTabEnabled(self, index: int) -> bool:
+            """True while a press can open the tab at ``index``."""
+            return self._book.isTabEnabled(index)
+
+        def setTabEnabled(self, index: int, enabled: bool) -> None:
+            """Let a press open the tab at ``index``, or refuse every press, and redraw."""
+            self._book.setTabEnabled(index, enabled)
+            self._push_tabs()
+
+        def inactive_labels(self) -> list:
+            """The labels of the tabs the bar draws and no press opens."""
+            return [
+                self._book.tabText(at)
+                for at in range(self._book.count())
+                if not self._book.isTabEnabled(at)
+            ]
+
         def setTabToolTip(self, index: int, text: str) -> None:
             """Hold ``text`` as the description of the tab at ``index`` and redraw."""
             self._book.setTabToolTip(index, text)
@@ -404,7 +432,10 @@ if _HAS_WEBENGINE:
             self._layout.insertWidget(0, self._web)
 
         def run_action(self, payload: str) -> None:
-            """Apply one press the bar reported: a tab, or a dropped tab."""
+            """Apply one press the bar reported: a tab, or a dropped tab.
+
+            A press on a tab ``isTabEnabled`` refuses, or a drag of one, changes nothing.
+            """
             try:
                 request = json.loads(payload)
             except ValueError:
@@ -413,12 +444,14 @@ if _HAS_WEBENGINE:
             name = request.get("tab")
             if name is not None:
                 labels = self.labels()
-                if name in labels:
+                if name in labels and self._book.isTabEnabled(labels.index(name)):
                     self._book.setCurrentIndex(labels.index(name))
                 return
             move = request.get("move") or {}
             if "from" in move and "to" in move:
-                self._book.tabBar().moveTab(int(move["from"]), int(move["to"]))
+                source = int(move["from"])
+                if self._book.isTabEnabled(source):
+                    self._book.tabBar().moveTab(source, int(move["to"]))
 
         def _run(self, script: str) -> None:
             if self._web is not None and self._page_ready:
@@ -428,7 +461,12 @@ if _HAS_WEBENGINE:
             index = self._book.currentIndex()
             selected = self._book.tabText(index) if index >= 0 else None
             self._run(
-                set_tabs_script(self.shown_labels(), selected, self.descriptions())
+                set_tabs_script(
+                    self.shown_labels(),
+                    selected,
+                    self.descriptions(),
+                    self.inactive_labels(),
+                )
             )
 
         def _on_current_changed(self, index: int) -> None:

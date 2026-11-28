@@ -47,8 +47,8 @@ C151 1bfab86fa6e7ca3a230a9b8edec019c59b9840e3 src/exchange/ccxt_connector.py CCX
 C152 ccc8ea8fbe7d2923f544702aaea27bc36531053b src/gui/settings_dialog.py SettingsDialog._create_exchange_tab
 ```
 
-The four test files in the list are not in the tree today. Git holds each one
-at its commit, and the command reads it from there.
+Five files in the list are not in the tree today, four of them tests. Git holds
+each one at its commit, and the command reads it from there.
 
 ## How a case is restored
 
