@@ -54,6 +54,9 @@ TURN_PER_HELD_SECOND = 1.5
 # Reads in one turn of an exchange: its prices, then its account.
 READS_PER_TURN = 2
 
+# Seconds a shared account read serves: half of BALANCE_TTL_SECONDS.
+ACCOUNT_READ_PERIOD_S = BALANCE_TTL_SECONDS / 2.0
+
 # Longest a caller waits for a shared read, for its turn to ask alone or for a place.
 SHARED_WAIT_SECONDS = LOCK_WAIT_BUDGET_SECONDS
 
@@ -249,6 +252,8 @@ class SharedReads:
     answer_s: dict[str, float] = field(
         default_factory=lambda: {PRICES_CALL: 0.0, ACCOUNT_CALL: 0.0}
     )
+    turns: int = 0
+    answered_turn: dict[str, int] = field(default_factory=dict)
     lost_at: dict[str, float] = field(default_factory=dict)
     refused: set[str] = field(default_factory=set)
     places: LinePlaces = field(default_factory=LinePlaces)
@@ -275,9 +280,11 @@ class SharedReads:
             self.attendant = None
 
     def open_read(self) -> None:
-        """Count one read about to be asked, the first of which begins a turn."""
+        """Count one read about to be asked, the first of which begins a turn and counts
+        in ``turns``."""
         if self.turn_reads == 0:
             self.turn_began = time.monotonic()
+            self.turns += 1
         self.turn_reads += 1
 
     @contextmanager
@@ -290,11 +297,13 @@ class SharedReads:
             self.reading = ""
 
     def note_good(self, kind: str) -> None:
-        """Note an answer of ``kind``, which takes back one of ``steps``."""
+        """Note an answer of ``kind`` in ``answered_turn``, which takes back one of
+        ``steps``."""
         self.refused.discard(kind)
         self.lost_at.pop(kind, None)
         self.steps = max(0, self.steps - 1)
         self.answered_at = time.monotonic()
+        self.answered_turn[kind] = self.turns
 
     def note_failed(self, kind: str, exc: BaseException) -> bool:
         """True where ``exc`` lost or throttled a read of ``kind``, adding to ``steps``;
@@ -383,13 +392,30 @@ class SharedReads:
         soon = self.due_at - now <= sum(self.answer_s.values())
         return now < ends_at and (bool(self.reading) or soon)
 
+    def serves_s(self, kind: str) -> float:
+        """Seconds a read of ``kind`` serves: ``interval_s``, and ``ACCOUNT_READ_PERIOD_S``
+        at least for ``ACCOUNT_CALL``."""
+        if kind == ACCOUNT_CALL:
+            return max(self.interval_s, ACCOUNT_READ_PERIOD_S)
+        return self.interval_s
+
+    def account_due(self) -> bool:
+        """True where ``ACCOUNT_CALL`` has no answer in the last whole number of turns
+        of ``period_s`` that ``serves_s`` holds, one at least."""
+        answered = self.answered_turn.get(ACCOUNT_CALL)
+        if answered is None:
+            return True
+        period = self.period_s()
+        held = int(self.serves_s(ACCOUNT_CALL) // period) if period > 0.0 else 1
+        return self.turns - answered >= max(1, held)
+
     def replaces(self, kind: str, age_s: float) -> bool:
-        """True where ``age_s`` passes ``interval_s`` and the newest answers with
-        ``min_rest_s``, so a caller waits for the next read."""
+        """True where ``age_s`` passes ``serves_s`` of ``kind`` and the newest answers
+        with ``min_rest_s``, so a caller waits for the next read."""
         if self.attendant is None or self.left_alone(kind):
             return False
         answers_s = sum(self.answer_s.values())
-        return age_s > max(self.interval_s, answers_s + self.min_rest_s)
+        return age_s > max(self.serves_s(kind), answers_s + self.min_rest_s)
 
 
 @dataclass
@@ -1301,13 +1327,16 @@ class MarketDataPool:
 
         Returns the number of slots filled, and zero without a venue call when
         this exchange holds no balance slot, the connector serves no account
-        read, or the read raised.
+        read, ``SharedReads.account_due`` is False while ``_balance_unread`` is
+        False, or the read raised.
         """
         if not hasattr(connector, "get_account_balances"):
             return 0
         if not self._slots_held(self._balances, exchange_id):
             return 0
         reads = self.shared_reads(exchange_id)
+        if not reads.account_due() and not self._balance_unread(exchange_id):
+            return 0
         once = getattr(connector, "get_account_balances_once", None)
         reader = connector.get_account_balances if once is None else once
         begun = self._balance_end_count
@@ -1339,6 +1368,14 @@ class MarketDataPool:
                 return 0
             finally:
                 reads.account_turn.give_back(token)
+
+    def _balance_unread(self, exchange_id: str) -> bool:
+        """True where a balance slot of ``exchange_id`` holds no answer and is not
+        ``BalanceEntry.ended``."""
+        return any(
+            slot.exchange_id == exchange_id and not slot.has_data and not slot.ended
+            for slot in list(self._balances.values())
+        )
 
     async def _hold_account_turn(
         self, reads: SharedReads, exchange_id: str

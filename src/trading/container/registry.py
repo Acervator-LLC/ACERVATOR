@@ -291,6 +291,11 @@ class BotRegistryMixin:
         """Return status snapshots for all registered bots."""
         return [bot.get_status() for bot in self._bots.values()]
 
+    def loaded_records(self) -> list[dict]:
+        """Each registered bot's ``get_full_state`` record, in registration
+        order, the shape ``save_all_state`` writes."""
+        return [bot.get_full_state() for bot in self._bots.values()]
+
     def list_bots_by_exchange(self, exchange_id: str) -> list[dict]:
         """Filter bots by exchange."""
         return [
