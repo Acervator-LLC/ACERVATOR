@@ -141,29 +141,6 @@ dependencies = [
 #            `.[dev]` and mypy and pyright read the builders' pptx imports. No
 #            shipping consumer names it: `build` and `os` both run with the
 #            package absent, and nothing in the product imports it.
-#   contracts  `contracts/deploy.py` is a standalone CLI that deploys
-#            ACRV.sol, CompetitionRegistry.sol and AcervatorTrophy.sol
-#            to Base Sepolia or Base Mainnet. It imports web3 and
-#            eth_account, and deploys the artifacts `forge build` wrote,
-#            so it runs no Solidity compiler and py-solc-x left the set.
-#            It is an extra, and not a core dependency, for the same reason
-#            `charts` is: no code in the product reaches it. No file in
-#            the tree imports `contracts.deploy`, neither .spec file
-#            collects `contracts/`, and `acrv_address` and
-#            `registry_address` in src/competition/base_config.py are all
-#            the empty string, so the deployment has never completed on
-#            any machine. The two imports sit inside `try:` with an
-#            `except ImportError` that names this extra, so the script
-#            states what to install instead of pip-installing behind the
-#            operator.
-#            NO LOWER BOUND IS STATED, and that is deliberate. A bound
-#            would be a guess: neither has been resolved, installed or
-#            run anywhere this project has measured.
-#            A bound gets stated here the first time one is.
-#            `src/competition/` needs NONE of these. An AST walk over its
-#            modules finds one third-party import, `cryptography` in
-#            src/competition/bot_identity.py, and that is already a core
-#            dependency above.
 #   display  src/core/mini_display.py imports luma, ST7789, RPLCD and
 #            smbus2, each inside `try:` with an `except` that returns
 #            False, so a machine with no panel reports "not connected".
@@ -191,7 +168,6 @@ charts = ["matplotlib>=3.8.0"]
 slides = ["python-pptx>=1.0.2"]
 cointegration = ["statsmodels>=0.15.0"]
 monitor = ["httpx>=0.27.0"]
-contracts = ["web3", "eth-account"]
 display = [
     "luma.oled>=3.13.0",
     "RPLCD>=1.3.1",
@@ -221,16 +197,8 @@ dev = [
     # ruff, mypy, pyright, bandit, vulture, semgrep - and to shellcheck or
     # yamllint on a shell or YAML target. pyright is a bare-executable
     # runner, so it must be on PATH or every archetype test fails closed with
-    # "pyright: not installed". slither-analyzer below is a seventh
-    # analyzer that no archetype spawns; it is run on the Solidity sources.
+    # "pyright: not installed".
     "semgrep>=1.0",
-    # Solidity static analysis over contracts/*.sol, proved against the
-    # pair in harness_fixtures/solidity_analyzers/. 0.11.6 is the version
-    # measured on those fixtures, and it carries its own solc-select, so
-    # no compiler is installed by hand. It is here rather than in
-    # `contracts` because that extra holds what contracts/deploy.py
-    # imports at run time, and nothing imports slither.
-    "slither-analyzer>=0.11.6",
     "opencv-python-headless>=4.8",
     "ruff>=0.16.0",
     "mypy>=2.1.0",

@@ -2,7 +2,7 @@
 
 Acervator features a semi-modular / layered design that nests a hyper-vigilant trading engine capable of operating in multiple investment domains simultaneously and all from one terminal. The Main Window contains all of the various subsections found in each subsystem tab. As it stands the existing and planned subsystem tabs are: Simulator, Paper Trading, Trading (Live), Market Inspector, Bot Swarm, Asset Charts, History, Console, Proof of Accumulation (PoA), and System Status. Most of these subsystems interact with each other to some degree with key isolations existing between the three trading tabs and their wiring to Market Inspector, Bot Swarm, and History.
 
-Now: the window builds nine tabs in this order: Sim, Paper, Live, Charts, Inspector, Swarm, History, Status and Console, and it builds no Proof of Accumulation tab (`src/gui/main_tabs/main_window_surface.py, in BAR_TAB_ORDER`).
+Now: the bar draws eleven tabs in this order: Sim, Paper, Live, Charts, Inspector, Swarm, PoA, Quint, History, Status and Console, and PoA and Quint open no screen (`src/gui/main_tabs/main_window_surface.py, in BAR_TAB_ORDER`).
 
 ## The mark
 

@@ -32,7 +32,6 @@ CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
     # the first `acervator[...]` self-reference. Naming the group here makes the
     # analyzers' statsmodels reach this route too, not only `pip install -e .[dev]`.
     "dev": ("dev", "cointegration", "slides"),
-    "contracts": ("contracts",),
     "ci": ("test", "lint"),
     "all": (
         "report",
@@ -45,7 +44,6 @@ CONSUMER_EXTRAS: dict[str, tuple[str, ...]] = {
         "display",
         "build",
         "dev",
-        "contracts",
     ),
 }
 

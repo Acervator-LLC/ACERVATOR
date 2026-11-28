@@ -122,11 +122,6 @@ desktop/node_modules/
 # beside them pins every version.
 /node_modules/
 
-# forge build writes compiled contract artifacts here. foundry.toml names both
-# paths; the contracts in contracts/ are the tracked source.
-/out/
-/cache/
-
 # ensure_root() creates this beside the tablets on every registry build. The
 # 407 tablet files next to it are tracked; this holds nothing durable.
 /stone_tablets/_scratch/

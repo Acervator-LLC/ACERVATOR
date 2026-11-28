@@ -9,7 +9,8 @@
 // Both hosts of the bar draw through this module: the Electron shell reaches
 // it from `desktop/renderer/tab_bar.js`, and the Qt window reaches it from
 // `src/gui/react_main_window.py`. A caller that supplies `onMove` gets
-// draggable buttons and is told the index a tab was dropped on.
+// draggable buttons and is told the index a tab was dropped on. A name in
+// `inactive` draws a button marked `aria-disabled` that no press selects or drags.
 
 "use strict";
 
@@ -17,6 +18,8 @@
   var TAB_ATTRIBUTE = "data-tab";
   var SELECTED_ATTRIBUTE = "data-selected";
   var SELECTED_ARIA = "aria-selected";
+  var DISABLED_ARIA = "aria-disabled";
+  var OUT_OF_TAB_ORDER = -1;
   var DRAG_TYPE = "text/plain";
   var SUFFIX = "_tab";
   var SEPARATOR = "_";
@@ -54,18 +57,28 @@
       role: "tab",
       "aria-label": props.text,
       onClick: function () {
-        props.onSelect(props.name);
+        if (!props.inactive) {
+          props.onSelect(props.name);
+        }
       }
     };
     made[TAB_ATTRIBUTE] = props.name;
     made[SELECTED_ARIA] = chosen ? "true" : "false";
     made[SELECTED_ATTRIBUTE] = chosen ? "true" : undefined;
+    if (props.inactive) {
+      made[DISABLED_ARIA] = "true";
+      made.tabIndex = OUT_OF_TAB_ORDER;
+    }
     if (typeof props.description === STRING_KIND && props.description) {
       made.title = props.description;
     }
     if (typeof props.onMove === FUNCTION_KIND) {
-      made.draggable = true;
+      made.draggable = !props.inactive;
       made.onDragStart = function (event) {
+        if (props.inactive) {
+          event.preventDefault();
+          return;
+        }
         dragging = props.at;
         event.dataTransfer.setData(DRAG_TYPE, String(props.at));
       };
@@ -103,6 +116,7 @@
           name: props.names[index],
           text: textFor(props.names[index], props.labels),
           description: descriptionFor(props.names[index], props.descriptions),
+          inactive: (props.inactive || []).indexOf(props.names[index]) >= 0,
           selected: props.selected,
           onSelect: props.onSelect,
           onMove: props.onMove
@@ -142,6 +156,7 @@
           names: Array.isArray(model.names) ? model.names : [],
           labels: model.labels,
           descriptions: model.descriptions,
+          inactive: Array.isArray(model.inactive) ? model.inactive : [],
           selected: model.selected,
           onSelect:
             typeof model.onSelect === FUNCTION_KIND ? model.onSelect : ignore,
