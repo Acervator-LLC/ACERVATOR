@@ -503,10 +503,13 @@ often it runs and what sets that rate.
 | The shared account read | Each bot's stored balance, its holdings audit and the Ammo cell | Each 5 seconds, in every second turn of the shared reads | Half of a balance's 10 seconds in the store. `src/exchange/data_pool.py, in ACCOUNT_READ_PERIOD_S` |
 | A balance read at a buy | The position check before a buy | Once for each buy attempt | `src/trading/buy_safety.py, in verify_buy_safe_or_refuse` |
 | Open orders before a buy | The refusal of a second buy while one is open | Once for each buy attempt | `src/trading/scrumming/execution.py, in ExecutionEngineMixin._refuses_stacked_buy` |
+| The order book at an order | The spread check of a buy or a sale | Once for each buy or sale attempt | `src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_spread_pct` |
+| An order by its own id | An order whose send got no answer | Once for each lost send | `src/exchange/ccxt_connector.py, in CCXTConnector.get_order_by_client_id` |
 | A bot's candles | The TA vote and the band of each bot | Once for each candle of the bot's timeframe | `src/exchange/data_pool.py, in TF_SECONDS` |
 | The chart's candles | The candles of the market the Charts tab shows | Each 30 seconds | `src/gui/main_tabs/trade_charts_tab_surface.py, in FETCH_THROTTLE_S` |
 | The rate strip | The two rates of the strip and the Target-denom cells | Each 60 seconds at most | `src/exchange/currency_rate_monitor.py, in DEFAULT_REFRESH_SECONDS` |
-| A bot's position read | Realised P/L, fees, average entry, the YTD trade count and the counts of open orders | Each 300 seconds for each bot. The YTD walk starts at the year's anchor once an hour, else 7 days back | `src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC` |
+| A bot's fill walk: its fill history and its YTD windows | Realised P/L, fees, average entry, the YTD trade count and the YTD dollars. Each fill the platform books moves them at once | Each hour for each bot, from the year's anchor | `src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.FILL_WALK_REFRESH_SEC` |
+| A bot's open orders | The counts of open buy and sell orders. A placed Stack rung joins them, and a cancelled or expired order leaves them, only at this read | Each 300 seconds for each bot | `src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC` |
 | The spot positions | Unrealised P/L and the venue's basis | Each 60 seconds at most | `src/exchange/ccxt_connector.py, in SPOT_POSITIONS_CACHE_SEC` |
 | Held orders and Stack rungs | The booking of their fills | Each tick of 5 seconds, while a bot holds one | `src/trading/scrumming_bot.py, in ScrummingBot.tick_interval` |
 | An order and its settled reads | The order, then its filled count and average price | Once for each order, and up to 3 settled reads | `src/trading/bot_container.py, in SETTLE_REREADS` |
@@ -525,6 +528,18 @@ ends its balance, and the bot reads it alone.
 ```python
 if not reads.account_due() and not self._balance_unread(exchange_id):
     return 0
+```
+
+A bot's fill walk runs once an hour. Each fill the platform books moves the Trades
+count, the YTD dollars, realised P/L, fees and average entry at the fill, so the walk
+reads the venue only for what the platform did not book. A fill made outside the
+platform moves the stored balance at the next account read, and these figures within
+the hour. A walk the venue refuses is tried again at the next position read.
+
+`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.refresh_exchange_position_health`
+
+```python
+_walks = force or _now - self._fill_walk_ts >= self.FILL_WALK_REFRESH_SEC
 ```
 
 ### The header strip

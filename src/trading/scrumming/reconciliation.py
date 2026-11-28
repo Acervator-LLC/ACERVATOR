@@ -118,6 +118,9 @@ class ReconciliationEngineMixin:
     # The walk's open orders on config.symbol, order id to "buy" or "sell".
     _open_order_sides: Optional[dict] = None
 
+    # Unix seconds of the last position read whose fill page and YTD walk both answered.
+    _fill_walk_ts: float = 0.0
+
     EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC = 300.0
 
     async def fetch_fill_history(self) -> Optional[list]:
@@ -187,6 +190,10 @@ class ReconciliationEngineMixin:
         Returns True when a fetch updated ``stats``; returns False when
         ``EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC`` throttles the call without
         ``force``, and when ``self.exchange`` cannot serve ``get_my_trades``.
+
+        ``fetch_fill_history`` and ``sync_ytd_trade_count`` run once each
+        ``FILL_WALK_REFRESH_SEC`` or on ``force``; between them the fill-derived
+        fields stand as ``_join_walk_readings`` wrote them at each fill.
         """
         import time as _t
 
@@ -203,10 +210,15 @@ class ReconciliationEngineMixin:
         try:
             from ...exchange.position_health import compute_position_health
 
-            _trades = await self.fetch_fill_history()
-            if _trades is None:
-                return False
-            self._fills_since_walk = ()
+            _walks = force or _now - self._fill_walk_ts >= self.FILL_WALK_REFRESH_SEC
+            if _walks:
+                _trades = await self.fetch_fill_history()
+                if _trades is None:
+                    return False
+                self._fills_since_walk = ()
+            else:
+                _held = getattr(self._fill_history, "trades", None) or []
+                _trades = [*_held, *self._fills_since_walk]
             _complete = bool(getattr(self._fill_history, "complete", False))
             self.stats.fill_history_complete = _complete
             _asset_base = self.config.symbol.split("/")[0]
@@ -253,14 +265,16 @@ class ReconciliationEngineMixin:
                 self.stats.unrealised_pnl = float(_venue.unrealized_pnl_usd)
                 self._basis_from_history = False
                 self._log_basis_check(_venue.cost_basis_usd, _ph)
-            try:
-                await self.sync_ytd_trade_count()
-            except Exception as _ytd_exc:
-                logger.debug(
-                    "Bot %s YTD sync inside health-refresh raised: %s",
-                    self.bot_id,
-                    _ytd_exc,
-                )
+            if _walks:
+                try:
+                    if await self.sync_ytd_trade_count() is not None:
+                        self._fill_walk_ts = _now
+                except Exception as _ytd_exc:
+                    logger.debug(
+                        "Bot %s YTD sync inside health-refresh raised: %s",
+                        self.bot_id,
+                        _ytd_exc,
+                    )
             self.stats.exchange_data_fresh_ts = _now
 
             try:
@@ -329,6 +343,9 @@ class ReconciliationEngineMixin:
 
     YTD_SETTLE_LAG_SEC = 7 * 24 * 3600.0
     YTD_FULL_REWALK_SEC = 3600.0
+
+    # Seconds between two fill walks of refresh_exchange_position_health.
+    FILL_WALK_REFRESH_SEC = YTD_FULL_REWALK_SEC
 
     async def _await_ytd_read_slot(self) -> float:
         """Seconds ``exchange.await_bulk_read_slot`` waited before this window's call.
