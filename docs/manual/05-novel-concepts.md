@@ -1810,6 +1810,8 @@ Now: Shadow Tranches are listed on the bot's Stack Tranches tab, each with SHADO
 
 Now: on a bot with Stack Mode on, every filled buy opens a Stack ladder above its fill from the units it bought: a fold, a tranche Fire, the first buy, a hedge buy, a Manual Fire, a calibrating fold and a lost buy the holdings audit books. A buy that opens no ladder writes one bot log line that names why (`src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold`).
 
+Now: a scrum read counts the units of every pending Stack rung, whichever sale or buy opened it, against its Target Delta and rests rungs only for the rest. A ladder that has not filled is booked as placed, with one SCRUM PLACED line, and a later read whose resting rungs already hold the Target Delta adds none and writes SCRUM RESTING (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_scrum`).
+
 **Functional.** All four tranche kinds run. Fold Tranches spawn on a
 scrum and hold the price of the sale that made them. Stack Tranches spawn on a
 fold and are priced as a ladder above the buy. A three-unit scrum at 100 with a
@@ -2169,6 +2171,8 @@ that is not a positive finite number, and `src/trading/scrumming_bot.py`, in
 `_open_stack_from_scrum`, passes the venue's own figure through unmasked so an
 absent rule arrives as the absence it is. The scrum still sells as one undivided
 order; only the split is refused.
+
+Now: every piece must also reach the venue's minimum order cost at the ladder's own base price, so a small ladder holds fewer and larger pieces. While rungs rest, a scrum whose rest of the Target Delta is under one such piece adds none and writes SCRUM HELD (`src/trading/scrumming/tick_phases.py, in rung_floor_units`).
 
 **The signature in the code block at the head of this entry is overtaken.** It is
 not edited and not removed. It read:

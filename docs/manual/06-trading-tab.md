@@ -130,6 +130,8 @@ Stack Mode - Stack Mode enables Stack Tranches which operate on the Sell or Scru
 
 Now: a scrum sells through a rising ladder of Stack Tranches, and every filled buy ladders the units it bought above its fill, the first buy, a hedge, a Manual Fire and a calibrating fold among them. A buy that opens no ladder writes one bot log line that names why (`src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold`).
 
+Now: a scrum rests rungs only for the units of its Target Delta that no pending Stack rung already holds, and the bot log names them in one SCRUM PLACED line. A read whose resting rungs already hold the Target Delta adds none and writes SCRUM RESTING, so no read rests a second ladder beside them (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_scrum`).
+
 Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
 
 Now: Split Distance sets the percent gap between Stack tranches while Stack Mode is on, and no Tranche Spread row exists (`src/trading/stack_math.py, in ladder_offsets_pct`).
@@ -785,7 +787,7 @@ The first column gives each row's range and factory opening value. Order Visibil
 | --- | --- |
 | Order Visibility (Order Book) | Order Book sends limit orders and rests tranches on the book. Internal sends market orders and tracks tranches in the app. Reads `visibility`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_sell` |
 | Aggressive Trading (off) | Sends Stack tranches in Order Book mode as immediate-or-cancel limits. A tranche above the market cancels unfilled. Reads `aggressive_trading`. `src/trading/scrumming_bot.py, in ScrummingBot._open_stack_from_scrum` |
-| Stack Mode (on) | Turns a scrum into a rising sell ladder, and ladders a fold's bought units too. Every filled buy ladders its units, the first buy, a hedge, a Manual Fire and a calibrating fold among them, and a buy that opens no ladder writes why to the bot log. Reads `stack_mode`. `src/trading/scrumming/execution.py, in ExecutionEngineMixin._execute_sell` and `src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold` |
+| Stack Mode (on) | Turns a scrum into a rising sell ladder, and ladders a fold's bought units too. Every filled buy ladders its units, the first buy, a hedge, a Manual Fire and a calibrating fold among them, and a buy that opens no ladder writes why to the bot log. A scrum ladders only the units its Target Delta names past the rungs already resting. Reads `stack_mode`. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_scrum` and `src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold` |
 | Split Distance (0.1 to 20%, 1%) | Sets the percent gap between tranches. Reads `split_distance`. `src/trading/stack_math.py, in ladder_offsets_pct` |
 | Tranche Count (2 to 20, 3) | Sets the tranches a ladder aims for. Fewer appear under the venue minimum, or where two prices merge within 0.1%. Reads `stack_tranche_count_target`. `src/trading/stack_math.py, in split_scrum_into_tranches` |
 | Spacing (Linear) | Picks the multipliers: Linear, Quadratic or Exponential. Reads `stack_spacing_mode`. `src/trading/stack_math.py, in level_multipliers` |
