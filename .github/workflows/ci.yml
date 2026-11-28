@@ -1,6 +1,6 @@
 # Acervator CI — the checks a pull request must pass before it can merge.
 #
-# Five lanes, and each one adjudicates something this repository actually holds:
+# Four lanes, and each one adjudicates something this repository actually holds:
 #
 #   * changes    — diffs the push or pull request and publishes the changed file
 #                  list the archetype lane reads, plus three flags: `any` (the
@@ -9,10 +9,6 @@
 #                  the Electron shell's own). Always runs.
 #   * lint       — black --check and flake8 over `src tests tools *.py`, from the
 #                  [lint] extra. Runs when `code` is true.
-#   * contracts  — `forge test` over tests/contracts, the six Solidity test files
-#                  that are the only tests in the tree. foundry.toml resolves its
-#                  libraries from node_modules, so `npm ci` runs first. Runs when
-#                  `code` is true.
 #   * archetypes — runs EVERY archetype that owns each changed file: coding for
 #                  .py, .sh/.bash/.zsh, .yml/.yaml and .spec, gui for
 #                  .js/.mjs/.cjs/.css/.html, docs for .md. A .py file under
@@ -37,8 +33,8 @@
 #                  xvfb-run and reads the loaded page back out of the running
 #                  window. Runs when `desktop` is true.
 #
-# There are no pytest lanes. `git ls-files tests/` returns 7 files: six Solidity
-# tests and conftest.py. No `test_*.py` exists, so pytest collected nothing and
+# There are no pytest lanes. `git ls-files tests/` returns 1 file, conftest.py.
+# No `test_*.py` exists, so pytest collected nothing and
 # exited 5 on every run, for a reason that was never the change under it.
 #
 # Python version: ONE version, pinned in `.python-version` at the repo root and
@@ -77,8 +73,8 @@ jobs:
   changes:
     # Publishes the changed file list and the two flags the lanes below read.
     # `code=false` means every changed file is non-functional (docs, *.md,
-    # .claude/, license/ignore metadata), so the lint and contracts lanes are
-    # skipped and no runner time is spent on them. The archetype lane reads
+    # .claude/, license/ignore metadata), so the lint lane is skipped and no
+    # runner time is spent on it. The archetype lane reads
     # `any` instead, because the docs archetype adjudicates markdown.
     name: changes
     runs-on: ubuntu-latest
@@ -105,7 +101,7 @@ jobs:
           set -euo pipefail
 
           # Paths that never affect the build. If EVERY changed file matches one
-          # of these, the lint and contracts lanes are skipped. Anything not
+          # of these, the lint lane is skipped. Anything not
           # matched here is treated as functional, so the list is deliberately
           # conservative — add to it, don't broaden it.
           IGNORE='^\.claude/|^docs/|\.md$|^LICENSE$|^\.gitignore$|^\.gitattributes$|^\.editorconfig$'
@@ -205,29 +201,6 @@ jobs:
       - name: flake8 (lint)
         run: flake8 src tests tools *.py
 
-  contracts:
-    # The six files under tests/contracts are the only tests in the tree.
-    name: contracts
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          # package-lock.json was written by npm 11, which ships with node 24.
-          # Node 22 carries npm 10, and npm 10 reads that lock file as out of
-          # sync with the aliased @openzeppelin overrides and refuses `npm ci`.
-          node-version: '24'
-          cache: npm
-      - name: Install the Solidity libraries
-        # foundry.toml sets libs = ["node_modules"], so forge resolves
-        # @openzeppelin and @chainlink out of what npm installs.
-        run: npm ci
-      - uses: foundry-rs/foundry-toolchain@v1
-      - name: forge test
-        run: forge test -vv
-
   archetypes:
     # Each changed file, through the archetype that owns its type.
     name: archetypes
@@ -249,7 +222,7 @@ jobs:
           cache: pip
       - uses: actions/setup-node@v7
         with:
-          # See the contracts lane: npm 10 refuses this lock file.
+          # package-lock.json was written by npm 11, which ships with node 24.
           node-version: '24'
           cache: npm
       - name: Cache installed Python packages
@@ -693,14 +666,13 @@ jobs:
     # passes only when no required lane actually failed.
     name: ci-gate
     if: always()
-    needs: [changes, lint, contracts, archetypes, shell]
+    needs: [changes, lint, archetypes, shell]
     runs-on: ubuntu-latest
     steps:
       - name: Verify required lanes
         env:
           CHANGES: ${{ needs.changes.result }}
           LINT: ${{ needs.lint.result }}
-          CONTRACTS: ${{ needs.contracts.result }}
           ARCHETYPES: ${{ needs.archetypes.result }}
           # Not SHELL: the runner already carries that name for its own
           # interpreter path.
@@ -718,7 +690,7 @@ jobs:
 
           # A lane is acceptable when it succeeded or was skipped; skipped means
           # the change did not call for it. Any other result fails the gate.
-          for name in LINT CONTRACTS ARCHETYPES SHELL_LANE; do
+          for name in LINT ARCHETYPES SHELL_LANE; do
             result="$(eval "echo \$$name")"
             case "$result" in
               success|skipped) echo "$name: $result — ok" ;;

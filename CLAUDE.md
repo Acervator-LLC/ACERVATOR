@@ -20,7 +20,6 @@ software trades real money on real exchanges — correctness is not optional.**
 | `src/gui/`         | PyQt UI — tabs, dialogs, widgets |
 | `src/exchange/`    | crypto exchange integrations |
 | `src/stocks/`      | equities / broker connectors |
-| `src/competition/` | Proof-of-Accumulation package |
 | `tests/`           | ALL tests **and** their fixtures (`tests/fixtures/`) |
 | `tools/`           | dev / build tooling |
 | `dev_harness/`     | the review archetypes (issue #84 moved them off the product path) |

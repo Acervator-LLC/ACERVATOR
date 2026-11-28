@@ -26,3 +26,8 @@
   background: var(--SURFACE_3);
   color: var(--TEXT_HIGH);
 }
+
+#tabs button[aria-disabled="true"] {
+  color: var(--TEXT_LOW);
+  cursor: default;
+}

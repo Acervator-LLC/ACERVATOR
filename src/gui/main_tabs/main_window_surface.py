@@ -56,7 +56,6 @@ from . import console_tab_surface
 from . import history_tab_surface
 from . import market_inspector_surface
 from ..paper import paper_trading_tab_surface
-from . import proof_of_accumulation_tab_surface
 from . import settings_dialog_surface
 from . import simulator_tab_surface
 from . import system_status_tab_surface
@@ -118,12 +117,16 @@ CHARTS_TAB = "Charts"
 HISTORY_TAB = "History"
 SIM_TAB = "Sim"
 CONSOLE_TAB = "Console"
+POA_TAB = "PoA"
+QUINT_TAB = "Quint"
+
+#: The tabs the bar draws and no click, key or drag opens, side by side in this order.
+INACTIVE_TABS = (POA_TAB, QUINT_TAB)
 
 # Each unbuilt tab is labelled by its own surface, so the bar and the empty
 # state it draws cannot carry two spellings of one name.
 PAPER_TAB = paper_trading_tab_surface.HEADING
 STATUS_TAB = system_status_tab_surface.HEADING
-ACCUMULATION_TAB = proof_of_accumulation_tab_surface.HEADING
 
 CANONICAL_TAB_ORDER = (
     SIM_TAB,
@@ -132,15 +135,15 @@ CANONICAL_TAB_ORDER = (
     CHARTS_TAB,
     INSPECTOR_TAB,
     SWARM_TAB,
-    ACCUMULATION_TAB,
+    POA_TAB,
+    QUINT_TAB,
     HISTORY_TAB,
     STATUS_TAB,
     CONSOLE_TAB,
 )
 
-# The tabs `_setup_ui` skips. Dropping ACCUMULATION_TAB from this tuple is
-# the one edit that builds the Accumulation tab and puts it back on the bar.
-UNBUILT_TABS = (ACCUMULATION_TAB,)
+#: The tabs `_setup_ui` skips.
+UNBUILT_TABS: tuple = ()
 
 # CANONICAL_TAB_ORDER without the tabs nothing builds, which is the order
 # `_reorder_main_tabs` and `reordered_tabs` move the bar into.
@@ -166,6 +169,8 @@ TAB_TOOLTIPS = {
         "and proposes swarm topologies."
     ),
     SWARM_TAB: "Your bots as nodes, with the wires that route profit between them.",
+    POA_TAB: "Proof of Accumulation. This tab is not open yet.",
+    QUINT_TAB: "The Quintessence Wallet. This tab is not open yet.",
     HISTORY_TAB: (
         "Trades pulled from your venues, paired with the bots' own logic and graded."
     ),
@@ -185,7 +190,6 @@ TAB_METHODS = {
     CONSOLE_TAB: console_tab_surface.METHOD,
     PAPER_TAB: paper_trading_tab_surface.METHOD,
     STATUS_TAB: system_status_tab_surface.METHOD,
-    ACCUMULATION_TAB: proof_of_accumulation_tab_surface.METHOD,
 }
 
 # The order `_setup_ui` runs the builders in, which is not the order the bar ends in.
@@ -199,7 +203,8 @@ BUILT_TAB_ORDER = (
     CONSOLE_TAB,
     PAPER_TAB,
     STATUS_TAB,
-    ACCUMULATION_TAB,
+    POA_TAB,
+    QUINT_TAB,
 )
 
 SIMULATOR_BUILD_INDEX = 1
@@ -807,6 +812,16 @@ def reordered_tabs(labels: Any, desired: Any) -> list:
                     order.insert(target_index, order.pop(current_index))
                 target_index += 1
                 break
+    return order
+
+
+def joined_tabs(labels: Any) -> list:
+    """`labels` with each `INACTIVE_TABS` name moved to sit right after the one before it."""
+    order = list(labels)
+    for before, after in zip(INACTIVE_TABS, INACTIVE_TABS[1:]):
+        if before in order and after in order:
+            order.remove(after)
+            order.insert(order.index(before) + 1, after)
     return order
 
 
@@ -1655,8 +1670,11 @@ class MainWindowModel:
         return self
 
     def change_tab(self, index: Any, now: Any = 0.0) -> "MainWindowModel":
-        """The operator picks a tab."""
+        """The operator picks a tab; a pick of an `INACTIVE_TABS` name changes nothing."""
         name = self.tab_labels[index]
+        if name in INACTIVE_TABS:
+            self._record("tab_refused", name)
+            return self
         self.current_tab = name
         self.header_strip_shown = header_strip_visible(name)
         self._record("tab_changed", name)
@@ -1970,6 +1988,9 @@ class MainWindowModel:
             "menus": self.menus,
             "tab_labels": list(self.tab_labels),
             "tab_methods": dict(self.tab_methods),
+            "inactive_tabs": [
+                name for name in self.tab_labels if name in INACTIVE_TABS
+            ],
             "theme": self.theme,
             "tabs_movable": self.tabs_movable,
             "current_tab": self.current_tab,

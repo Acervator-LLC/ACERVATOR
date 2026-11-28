@@ -13,20 +13,16 @@ from collections.abc import Callable
 ALERTS_TAB_METHOD = "alerts_tab.state"
 ANALYTICS_TAB_METHOD = "analytics.tab"
 AUDIO_SUITE_METHOD = "audio_suite.state"
-COMPETITION_TAB_METHOD = "competition_tab.state"
 JOURNAL_TAB_METHOD = "journal_tab.state"
 RISK_TAB_METHOD = "risk_tab.state"
-TESTNET_TAB_METHOD = "testnet_tab.state"
 
 #: The ``src.gui.main_tabs`` module that answers each method.
 SURFACE_MODULES: dict[str, str] = {
     ALERTS_TAB_METHOD: "alerts_tab_surface",
     ANALYTICS_TAB_METHOD: "analytics_tab_surface",
     AUDIO_SUITE_METHOD: "audio_suite_surface",
-    COMPETITION_TAB_METHOD: "competition_tab_surface",
     JOURNAL_TAB_METHOD: "journal_tab_surface",
     RISK_TAB_METHOD: "risk_tab_surface",
-    TESTNET_TAB_METHOD: "testnet_tab_surface",
 }
 
 
