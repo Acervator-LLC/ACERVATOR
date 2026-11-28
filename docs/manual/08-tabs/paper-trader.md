@@ -797,7 +797,11 @@ table and the Extractor Bots table, both hidden until a row arrives, and the
 command bar of Start, Pause, Stop, Restart and Delete. The panel holds its
 title, the Bot selector and its privacy dot, the currency rate strip, both
 indicator tables, both confidence bar graphs, the timeframe-lock line and the
-staleness banner.
+staleness banner. It also holds the Timing row beside the title, which reads
+the state the selected bot's newest Paper tick acted on
+(`src/gui/paper/paper_trading_tab_surface.py, in zone_state_for`). A Paper
+tick arms no Minimum Opposing Trade Distance and takes no late turn, so neither
+state draws there.
 
 Three positions differ from Live by ruling, the ruling unit 7 of issue #117
 made for the Simulator. The corner Live gives `＋ Add Crypto Exchange` holds

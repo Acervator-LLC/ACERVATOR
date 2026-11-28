@@ -591,6 +591,8 @@ class ScrummingBot(
         self._zone_visit_side: str = ""
         # stats.total_sells and stats.total_buys at the last zone_visit read.
         self._zone_visit_fills: tuple[int, int] = (0, 0)
+        # The vote_boost.ZoneState the last worked tick acted on; None before one.
+        self._zone_state: Any = None
 
         self._fold_diag_tick: int = 0
         self._fold_diag_last_blocker_set: str = ""
@@ -3139,6 +3141,11 @@ class ScrummingBot(
                 f"{type(exc).__name__}: {exc}. Fail-closed."
             )
 
+    @property
+    def zone_state(self) -> Any:
+        """The ``vote_boost.ZoneState`` the last worked tick stored, which the TA-IVP Timing row draws."""
+        return self._zone_state
+
     def _zone_visit_open_side(self) -> str:
         """``_zone_visit_side``, or "" once a sell fill closes a scrum visit or a buy fill a fold visit since the last read."""
         from .vote_boost import FOLD_SIDE, SCRUM_SIDE
@@ -3226,6 +3233,10 @@ class ScrummingBot(
         if not self._initialised:
             await self._tick_initialise(symbol)
             return
+
+        from . import vote_boost as _zone_rule
+
+        self._zone_state = _zone_rule.ZoneState()
 
         await self._start_phantom_set(symbol)
 
@@ -4215,6 +4226,21 @@ class ScrummingBot(
             zone_bar=float(_fold_timing.bar),
         )
         _fold_chain_result = self._fold_chain.evaluate(_fold_ctx)
+        self._zone_state = _zone_rule.zone_state(
+            _zone,
+            eff_direction,
+            eff_confidence,
+            past_interval=not below_interval,
+            late_side=_late_side,
+            scrum=(
+                bool(_scrum_chain_result.should_fire),
+                [name for name, _message in _scrum_chain_result.blocked],
+            ),
+            fold=(
+                bool(_fold_chain_result.should_fire),
+                [name for name, _message in _fold_chain_result.blocked],
+            ),
+        )
         _fold_blockers = [message for _name, message in _fold_chain_result.blocked]
         _fold_replaced = list(_fold_chain_result.overrides_applied)
         try:

@@ -8,7 +8,7 @@ engine produces new signals.
 
 Layout:
   ┌─────────────────────────────────────────────────────────────┐
-  │  INDICATOR VOTING PANEL             [BTC/USDT]  [4 Bull │ 2 Bear │ 1 Neutral]  │
+  │  TA-IVP  Timing: Scrum waiting ▮▮▯ gap +8.3%   ◀ [bot] ▶ ●  │
   ├─────┬──────┬──────┬──────┬──────┬──────┬──────┬──────────┤
   │ TF  │ BB   │ VTX  │ MACD │ SRsi │ Ichi │ Vol  │ Sling    │
   ├─────┼──────┼──────┼──────┼──────┼──────┼──────┼──────────┤
@@ -848,11 +848,19 @@ if _HAS_QT:
 
             header = QHBoxLayout()
             header.setContentsMargins(*ivp.HEADER["margins_px"])
-            self._title = QLabel("Indicator Voting Panel")
+            self._title = QLabel(ivp.TITLE_TEXT)
             self._title.setProperty("heading", True)
+            self._title.setStyleSheet(ivp.TITLE_STYLE_SHEET)
             header.addWidget(self._title)
 
             from PySide6.QtWidgets import QComboBox
+
+            from .widgets.zone_timing_row import ZoneTimingRow
+
+            self._timing: dict | None = None
+            self._timing_row = ZoneTimingRow(self)
+            self._timing_row.draw(ivp.timing_payload(None, ""))
+            header.addWidget(self._timing_row)
 
             header.addStretch()
 
@@ -867,6 +875,7 @@ if _HAS_QT:
                 self._bot_selector, INDICATOR_PANEL_DESCRIPTIONS["bot_selector"]
             )
             self._bot_selector.setMinimumWidth(ivp.HEADER["selector_minimum_width_px"])
+            self._bot_selector.setMaximumWidth(ivp.HEADER["selector_maximum_width_px"])
             self._bot_selector.addItem(ivp.SELECTOR_PLACEHOLDER_TEXT, "")
             self._bot_selector.currentIndexChanged.connect(self._on_bot_selected)
             header.addWidget(self._bot_selector)
@@ -1240,6 +1249,7 @@ if _HAS_QT:
                 bool(self._data),
             )
             self._refresh_bot_arrows()
+            self._draw_timing()
             # Generate demo TA immediately when bot selected and no data exists
             if self._selected_bot_id and not self._data:
                 self._generate_demo_ta()
@@ -1247,6 +1257,21 @@ if _HAS_QT:
         @property
         def selected_bot_id(self) -> str:
             return self._selected_bot_id
+
+        def show_timing(self, bot_id: str, state) -> dict:
+            """Hold ``state``, the zone state ``bot_id``'s tick stored, and draw the Timing row for the selected bot."""
+            self._timing = ivp.timing_reading(bot_id, state)
+            return self._draw_timing()
+
+        def _draw_timing(self) -> dict:
+            """Draw ``timing_payload`` of the held reading at the selected bot, and answer it."""
+            row = ivp.timing_payload(self._timing, self._selected_bot_id)
+            self._timing_row.draw(row)
+            return row
+
+        def timing_reading(self) -> dict:
+            """What the Timing row draws, read off ``ZoneTimingRow``."""
+            return self._timing_row.reading()
 
         def select_bot(self, bot_id: str) -> str:
             """Draw ``bot_id`` and answer the bot the panel then holds.
@@ -1534,6 +1559,7 @@ if _HAS_QT:
                 "message": self._no_data_message,
                 "cause": self._no_data_cause,
                 "masked": masked,
+                "timing": self._timing,
             }
             if self._showing_stored and self._shown_stored:
                 read.update(self._shown_stored)

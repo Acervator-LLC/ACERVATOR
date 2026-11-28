@@ -1015,6 +1015,8 @@ if _HAS_WEBENGINE:
             self._replay: dict = {}
             self._choices: list = []
             self._fills: list[SimTrade] = []
+            #: ``walk_zone_states`` of the last finished run, by ``bot_id``.
+            self._zone_states: dict = {}
             self._battery_outcome: Any = None
             self._bot_manager = SimBotManager(self._fleet_source)
             self._theme = theme
@@ -1872,6 +1874,8 @@ if _HAS_WEBENGINE:
             if outcome is None:
                 self._refresh_replay(follow_run=True)
                 return
+            self._zone_states = tab_surface.walk_zone_states(outcome)
+            self._feed_votes()
             for line in outcome.lines:
                 self.log(line, "info")
             if outcome.report is not None:
@@ -2096,6 +2100,11 @@ if _HAS_WEBENGINE:
             model, step the bars ``settled_frames`` times as Live's push does,
             and push the payload through ``show_votes``."""
             chosen = str(bot_id or self._panel.selected_bot_id or "")
+            self._panel.set_timing(
+                indicator_panel_surface.timing_reading(
+                    chosen, self._zone_states.get(chosen)
+                )
+            )
             if not chosen:
                 feed = {"cause": "no_selection", "detail": {}, "reason": ""}
             else:

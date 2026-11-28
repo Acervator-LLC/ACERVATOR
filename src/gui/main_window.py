@@ -1618,6 +1618,9 @@ if _HAS_QT:
                         sel_bid = self._indicator_panel.selected_bot_id
                         if sel_bid:
                             bot = self._bot_manager.get_bot(sel_bid)
+                            self._indicator_panel.show_timing(
+                                sel_bid, getattr(bot, "zone_state", None)
+                            )
                             summary = getattr(bot, "_last_summary", None)
                             if bot is not None and summary is None:
                                 summary = self._ivp_summary_from_pool(bot)

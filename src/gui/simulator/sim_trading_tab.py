@@ -384,6 +384,8 @@ class SimTradingTab(QWidget):
         self._tablet_key: str = ""
         self._replay: dict = {}
         self._fills: list[SimTrade] = []
+        #: ``walk_zone_states`` of the last finished run, by ``bot_id``.
+        self._zone_states: dict = {}
         self._battery_outcome: Any = None
         self._stats_dirty = False
         self._stats_redraw_timer = QTimer(self)
@@ -1274,6 +1276,9 @@ class SimTradingTab(QWidget):
         if outcome is None:
             self._refresh_replay(follow_run=True)
             return
+        self._zone_states = tab_surface.walk_zone_states(outcome)
+        chosen = self._indicator_panel.selected_bot_id
+        self._indicator_panel.show_timing(chosen, self._zone_states.get(chosen))
         for line in outcome.lines:
             self._status_log.log(line, "info")
         if outcome.report is not None:
@@ -1847,6 +1852,7 @@ class SimTradingTab(QWidget):
         ``show_stored`` over a reading, ``show_no_data`` with its cause."""
         panel = self._indicator_panel
         chosen = str(bot_id or panel.selected_bot_id or "")
+        panel.show_timing(chosen, self._zone_states.get(chosen))
         if not chosen:
             panel.show_no_data(cause="no_selection")
             return {"cause": "no_selection"}

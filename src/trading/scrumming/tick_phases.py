@@ -272,6 +272,7 @@ class TickPhaseMixin:
     _underfunded_log_counter: int
     _verify_buy_safe_or_refuse: Callable[..., Any]
     _voting_engine: VotingEngine
+    _zone_state: Any
     bot_id: Any
     opposing_distance_settings: Callable[..., Any]
     config: Any
@@ -1097,6 +1098,19 @@ class TickPhaseMixin:
             parsed,
             target_delta_usd(current_value, self._target_balance),
             cartridge_pct,
+        )
+        from dataclasses import replace
+
+        from ..vote_boost import zone_state
+
+        self._zone_state = zone_state(
+            replace(zone, upper=False),
+            summary.consensus_direction,
+            summary.consensus_confidence,
+            past_interval=True,
+            late_side="",
+            scrum=(False, ()),
+            fold=(zone.lower and not zone.fold_deeper, ()),
         )
         band = zone.band
         if band is None or band.lower <= 0:
