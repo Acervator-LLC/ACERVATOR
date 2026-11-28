@@ -36,9 +36,8 @@ from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
     VotingEngine,
     candles_from_raw,
-    three_agree,
-    two_indicator_ceiling,
 )
+from ..vote_boost import ZoneRead, boost_figures, cartridge_scale, read_zone
 from .distribution import (
     DIST_FOLD_PRICE_KEY,
     DIST_LADDER_TRIED_KEY,
@@ -70,6 +69,7 @@ from .sizing import (
     tranche_short_at_fill,
     routed_share_pct,
     scrum_units,
+    spend_leaving_held_usd,
     target_delta_usd,
     tranche_rebuy_price,
     units_at_scrum,
@@ -104,9 +104,6 @@ INIT_WAIT_FORMAT = (
     "INIT HANDSHAKE WAITS: {wait}. No unit is adopted and none is claimed at it. "
     "Retrying next tick."
 )
-
-#: The voters ``three_agree`` asks for, which ``_third_indicator_text`` counts against.
-AGREEING_VOTERS = 3
 
 #: The ``_tick_initial_entry`` exit of a tick whose order may have reached the venue.
 ENTRY_NO_FILL_EXIT = "initial-entry(no-fill)"
@@ -158,6 +155,7 @@ class FirstBuyRead:
     summary: Any = None
     bb_pos: float = 0.0
     dist_down: float = 0.0
+    bar: float = 0.0
 
 
 class TickPhaseMixin:
@@ -204,6 +202,7 @@ class TickPhaseMixin:
     _fold_diag_last_blocker_set: str
     _fold_diag_tick: int
     _fold_eligible_tranches: Callable[..., list[dict]]
+    _fee_pct_read: Callable[..., Optional[float]]
     _fold_fee_pct: Callable[..., Optional[float]]
     _fold_gain_usd: Callable[..., float]
     _fold_piece_laddered: bool
@@ -1025,7 +1024,7 @@ class TickPhaseMixin:
         weights = self._voting_engine.indicator_weights
         if not any(weight > 0.0 for weight in weights):
             return FirstBuyRead(
-                f"INITIAL ENTRY BLOCKED: TA=NEUTRAL (0%) — need BEARISH. All "
+                f"INITIAL ENTRY BLOCKED: TA=NEUTRAL (0%). All "
                 f"{len(weights)} TA Indicator weights on this bot are zero, so it "
                 f"has no vote and makes no {self._entry_buy_word()}. Press Save on "
                 f"the TA Indicators page of Settings to give it your weights.",
@@ -1034,38 +1033,39 @@ class TickPhaseMixin:
             )
         return None
 
-    def _third_indicator_text(self, summary: Any, reach: float) -> str:
-        """Why ``three_agree`` refused ``summary``, with ``reach`` the figure two
-        indicators reach, ``AGREEING_VOTERS`` the count it asks for."""
-        weighted = sum(
-            1 for weight in self._voting_engine.indicator_weights if weight > 0.0
+    def _zone_read(
+        self, summary: Any, candles: list, delta: float, cartridge_pct: float
+    ) -> ZoneRead:
+        """``read_zone`` of ``summary`` on ``candles`` at Target Delta ``delta``, with
+        this bot's BB Tolerance, boosts and ``cartridge_pct``."""
+        return read_zone(
+            summary.signals,
+            summary.consensus_direction,
+            summary.consensus_confidence,
+            delta,
+            candles,
+            tolerance_pct=float(self.config.bb_tolerance_pct),
+            taper_minimum=int(self.config.bb_landing_strip_candles),
+            figures=boost_figures(self.config),
+            cartridge=cartridge_scale(
+                delta, cartridge_threshold_usd(self._target_balance, cartridge_pct)
+            ),
+            bullseye=bool(getattr(self.config, "bb_bullseye_check", True)),
         )
-        if weighted < AGREEING_VOTERS:
-            return (
-                f"{weighted} of {len(self._voting_engine.indicator_weights)} TA "
-                f"Indicator weights sit above zero, so three cannot agree. Give "
-                f"another a weight on the TA Indicators page and press Save."
-            )
-        bearish = sum(
-            1
-            for sig in summary.signals
-            if sig.weight > 0.0 and sig.direction.name == "BEARISH"
-        )
-        if bearish >= AGREEING_VOTERS:
-            return f"{bearish} indicators agree, and their vote must top {reach:.4f}."
-        abstained = [
-            str(sig.indicator)
-            for sig in summary.signals
-            if sig.abstained and sig.weight > 0.0
-        ]
-        waits = f"The {self._entry_buy_word()} waits for a third to agree."
-        if not abstained:
-            return waits
-        return f"{waits} {', '.join(abstained)} abstained on this tape."
 
-    async def _first_buy_read(self, ticker: Any, symbol: str) -> FirstBuyRead:
-        """The band position and own vote a buy clears, read by ``_first_buy_clears``
-        and ``_tick_initial_entry`` alike."""
+    @staticmethod
+    def _zone_vote_text(summary: Any, bar: float) -> str:
+        """``summary``'s direction and confidence against the zone timing ``bar``."""
+        return (
+            f"vote {summary.consensus_direction.name} at confidence "
+            f"{summary.consensus_confidence:.4f} against {bar:.4f}"
+        )
+
+    async def _first_buy_read(
+        self, ticker: Any, symbol: str, current_value: float, cartridge_pct: float
+    ) -> FirstBuyRead:
+        """The band and the fold side of ``_zone_read`` a buy at ``current_value``
+        clears, read by ``_first_buy_clears`` and ``_tick_initial_entry`` alike."""
         standing = await self._first_buy_standing(ticker, symbol)
         if standing is not None:
             return standing
@@ -1092,10 +1092,14 @@ class TickPhaseMixin:
                 standing=True,
             )
         self._last_summary = summary
-        from ..indicators.bb_proximity import band_zone, panel_band
-
-        _init_bb = panel_band(summary.signals)
-        if _init_bb is None or _init_bb.lower <= 0:
+        zone = self._zone_read(
+            summary,
+            parsed,
+            target_delta_usd(current_value, self._target_balance),
+            cartridge_pct,
+        )
+        band = zone.band
+        if band is None or band.lower <= 0:
             return FirstBuyRead(
                 f"INITIAL ENTRY BLOCKED: BB data not yet "
                 f"computable — need proper band formation "
@@ -1103,60 +1107,36 @@ class TickPhaseMixin:
                 "initial-entry(band-unread)",
             )
 
-        _init_price = ticker.last
-        _init_bb_width = _init_bb.upper - _init_bb.lower
-        _init_bb_pos = (_init_price - _init_bb.lower) / max(_init_bb_width, 1e-12)
+        price = ticker.last
+        bb_pos = (price - band.lower) / max(band.upper - band.lower, 1e-12)
+        mid = (band.upper + band.lower) / 2.0
+        dist_down = (mid - price) / max(mid - band.lower, 1e-12)
+        tolerance = float(self.config.bb_tolerance_pct)
 
-        if _init_bb_pos > 0.30:
-            return FirstBuyRead(
-                f"INITIAL ENTRY BLOCKED: bb_pos="
-                f"{_init_bb_pos:.2f} > 0.30 — price too "
-                f"high in band for structural entry. "
-                f"Waiting for decline to lower third.",
-                "initial-entry(band-position)",
-            )
-
-        _bb_mid_init = (_init_bb.upper + _init_bb.lower) / 2.0
-        _lower_half = _bb_mid_init - _init_bb.lower
-        _dist_down = (_bb_mid_init - _init_price) / max(_lower_half, 1e-12)
-
-        _, _at_lower = band_zone(_init_bb, -1.0, float(self.config.bb_tolerance_pct))
-        if not _at_lower:
+        if not zone.lower:
             return FirstBuyRead(
                 f"INITIAL ENTRY BLOCKED: price is not within "
-                f"{float(self.config.bb_tolerance_pct):g}% of price of the "
-                f"lower band. Price=${_init_price:.8f} "
-                f"(lower=${_init_bb.lower:.8f}, "
-                f"mid=${_bb_mid_init:.8f})",
+                f"{tolerance:g}% of price of the "
+                f"lower band. Price=${price:.8f} "
+                f"(lower=${band.lower:.8f}, "
+                f"mid=${mid:.8f})",
                 "initial-entry(distance)",
             )
 
-        if summary.consensus_direction.name != "BEARISH":
+        if zone.fold_deeper:
             return FirstBuyRead(
-                f"INITIAL ENTRY BLOCKED: TA="
-                f"{summary.consensus_direction.name} "
-                f"({summary.consensus_confidence:.0%}) — "
-                f"need BEARISH (accumulation-trading "
-                f"thesis: buy decline, not rally). "
-                f"BB OK (pos={_init_bb_pos:.2f}, "
-                f"dist={_dist_down:.0%}).",
-                "initial-entry(vote)",
+                f"INITIAL ENTRY BLOCKED: zone timing reads price going deeper "
+                f"within {tolerance:g}% of price of the lower band, "
+                f"{self._zone_vote_text(summary, zone.fold.bar)}, so the "
+                f"{self._entry_buy_word()} waits for the turn. "
+                f"BB OK (pos={bb_pos:.2f}, dist={dist_down:.0%}).",
+                "initial-entry(zone-timing)",
                 summary=summary,
             )
 
-        if not three_agree(summary.consensus_confidence, summary.signals):
-            _reach = two_indicator_ceiling(summary.signals)
-            return FirstBuyRead(
-                f"INITIAL ENTRY BLOCKED: TA=BEARISH at confidence "
-                f"{summary.consensus_confidence:.4f}, and two indicators "
-                f"reach {_reach:.4f} on this vote. "
-                f"{self._third_indicator_text(summary, _reach)} "
-                f"BB OK (pos={_init_bb_pos:.2f}, dist={_dist_down:.0%}).",
-                "initial-entry(three-agree)",
-                summary=summary,
-            )
-
-        return FirstBuyRead(summary=summary, bb_pos=_init_bb_pos, dist_down=_dist_down)
+        return FirstBuyRead(
+            summary=summary, bb_pos=bb_pos, dist_down=dist_down, bar=zone.fold.bar
+        )
 
     def _first_buy_terms(self, read: FirstBuyRead, cartridge_pct: float) -> str:
         """``cartridge_pct`` and the weights above zero ``read.summary`` voted at."""
@@ -1222,7 +1202,7 @@ class TickPhaseMixin:
         """
         if self._first_buy_made:
             return True
-        read = await self._first_buy_read(ticker, symbol)
+        read = await self._first_buy_read(ticker, symbol, current_value, cartridge_pct)
         terms = self._first_buy_terms(read, cartridge_pct)
         if not read.refusal:
             if self._first_buy_line_is_new(FIRST_BUY_CLEARED, ticker.last):
@@ -1230,8 +1210,8 @@ class TickPhaseMixin:
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
-                        f"FIRST BUY READ CLEARED: TA=BEARISH at confidence "
-                        f"{read.summary.consensus_confidence:.4f}. BB OK "
+                        f"FIRST BUY READ CLEARED: zone timing reads price slipping, "
+                        f"{self._zone_vote_text(read.summary, read.bar)}. BB OK "
                         f"(pos={read.bb_pos:.2f}, dist={read.dist_down:.0%}). {terms}"
                     ),
                 )
@@ -1253,7 +1233,7 @@ class TickPhaseMixin:
     ) -> str:
         """Decide and place the structural entry buy for an empty position, and
         answer the gate-record exit of a tick that sent nothing."""
-        read = await self._first_buy_read(ticker, symbol)
+        read = await self._first_buy_read(ticker, symbol, current_value, cartridge_pct)
         terms = self._first_buy_terms(read, cartridge_pct)
         if read.standing:
             if self._first_buy_line_is_new(read.tick_exit, ticker.last):
@@ -1416,7 +1396,9 @@ class TickPhaseMixin:
                 )
             return "initial-entry(over-allocation)"
 
-        if _quote_free < self._target_balance:
+        buy_cost = max(0.0, -target_delta_usd(current_value, self._target_balance))
+        fee_pct = self._fee_pct_read() or 0.0
+        if spend_leaving_held_usd(buy_cost, _quote_free, fee_pct) < buy_cost:
             self._underfunded_log_counter = (
                 getattr(self, "_underfunded_log_counter", 0) + 1
             )
@@ -1434,7 +1416,8 @@ class TickPhaseMixin:
                         f"INITIAL ENTRY BLOCKED: insufficient "
                         f"{self.config.base_currency} — have "
                         f"{_have_str}, need "
-                        f"${self._target_balance:.2f}. "
+                        f"${buy_cost * (1.0 + fee_pct / 100.0):.2f}, the "
+                        f"${buy_cost:.2f} Target Delta and its {fee_pct:g}% fee. "
                         f"({self.config.target_asset} position: "
                         f"{self._current_holdings:.6f} @ "
                         f"${ticker.last:.8f} = "
@@ -1457,16 +1440,15 @@ class TickPhaseMixin:
             return read.tick_exit
 
         self._first_buy_held_exit = FIRST_BUY_CLEARED
-        buy_cost = self._target_balance
         price = ticker.last
         self._bus.emit(
             "bot.log",
             bot_id=self.bot_id,
-            message=f"INITIAL ENTRY: all 4 gates pass — "
+            message=f"INITIAL ENTRY: zone timing reads price slipping — "
             f"BB OK, bb_pos={read.bb_pos:.2f}, "
             f"dist_down={read.dist_down:.0%}, "
-            f"TA=BEARISH ({read.summary.consensus_confidence:.0%}). "
-            f"{terms} Acquiring ${buy_cost:.2f} of "
+            f"{self._zone_vote_text(read.summary, read.bar)}. "
+            f"{terms} Acquiring the Target Delta ${buy_cost:.2f} of "
             f"{self.config.target_asset} @ ${price:.8f}",
         )
         entry_fill = await self._execute_buy(

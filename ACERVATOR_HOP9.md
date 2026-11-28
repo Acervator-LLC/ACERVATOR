@@ -492,6 +492,14 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   sale's one exchange read follows its booking
   (`in ExecutionEngineMixin._read_venue_after_sale`). Every row of the body is
   built.
+- **#1861, a new bot's first buy. Rows 1, 2 and 4 are built.** Inside BB
+  Tolerance of the lower band the first buy waits only while zone timing reads
+  price going deeper, and buys its Target Delta otherwise, through the zone read
+  the tick uses (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._zone_read`).
+  Inside the zone the first entry asks no three agreeing indicators of its own,
+  by his #1440 ruling. Its wallet check counts the trading fee, and the holds
+  that protect the venue or the data stay (`in TickPhaseMixin._tick_initial_entry`).
+  Row 3, the hold named on the bot's row, is not built.
 - The rest of the queue: read each body.
 
 ---
