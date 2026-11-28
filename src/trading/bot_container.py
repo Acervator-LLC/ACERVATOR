@@ -2101,6 +2101,25 @@ class BotContainer:
         return state
 
 
+def _listed_count(value: Any) -> int:
+    """The length of ``value`` when it is a list or a tuple, else 0."""
+    return len(value) if isinstance(value, (list, tuple)) else 0
+
+
+def saved_record_sizes(records: Any) -> tuple[int, int]:
+    """The main lots and fold tranches the saved ``records`` map carries, a record,
+    a ``scrumming_state`` or a list of another type counting as none."""
+    lots = 0
+    tranches = 0
+    for record in records.values() if isinstance(records, dict) else ():
+        saved = record.get("scrumming_state") if isinstance(record, dict) else None
+        if not isinstance(saved, dict):
+            continue
+        lots += _listed_count(saved.get("main_lots"))
+        tranches += _listed_count(saved.get("fold_tranches"))
+    return lots, tranches
+
+
 class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
     """Registry for every ``BotContainer``: register, start, stop, pause,
     aggregate fleet stats, and save or restore state."""
@@ -2209,12 +2228,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         restore segment states its own size.
         """
         records = state.get("bots", {}) if isinstance(state, dict) else {}
-        lots = 0
-        tranches = 0
-        for record in records.values():
-            saved = record.get("scrumming_state") or {}
-            lots += len(saved.get("main_lots") or ())
-            tranches += len(saved.get("fold_tranches") or ())
+        lots, tranches = saved_record_sizes(records)
         restored: list[str] = []
         started = time.perf_counter()
         try:
