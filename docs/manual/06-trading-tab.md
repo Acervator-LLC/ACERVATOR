@@ -491,6 +491,42 @@ Every press on this page runs the same handler on both builds. The React page se
 | API load pill | Names the busiest exchange, its calls per minute, its busy share, its answer time and any refused calls. Amber above 50% and red above 75% of the worse of busy share and 600 calls a minute. Reads each call the exchange's worker ran in the last 60 seconds, a call still running included. The busy share is the time those calls held the worker, and the answer time is the slowest answer among them. A venue with no such worker is read from the API log. While the shared reads come less often than each 2.5 seconds, the pill adds "waits" and the seconds from one shared read to the next. `src/exchange/api_load_monitor.py, in APILoadMonitor.sample` |
 | AI state label | Shows AI: OFF, READY or NO PACKAGE, then AUTH or UNAUTH once feedback arrives. Reads the `ai_monitor` settings and `ai.feedback` events. `src/gui/main_window.py, in MainWindow._on_ai_feedback` |
 
+### The calls behind the API load pill
+
+Each call the pill counts feeds one figure or one decision. A call runs only as often
+as the figure it feeds needs. The table names each kind of call, what it feeds, how
+often it runs and what sets that rate.
+
+| Call | What it feeds | How often it runs | What sets the rate |
+| --- | --- | --- | --- |
+| The shared price read | Each bot's stored price, its decisions and the Current Position Value cell | Each 2.5 seconds | Half of a price's 5 seconds in the store. `src/trading/bot_container.py, in TICKER_REFRESH_INTERVAL_S` |
+| The shared account read | Each bot's stored balance, its holdings audit and the Ammo cell | Each 5 seconds, in every second turn of the shared reads | Half of a balance's 10 seconds in the store. `src/exchange/data_pool.py, in ACCOUNT_READ_PERIOD_S` |
+| A balance read at a buy | The position check before a buy | Once for each buy attempt | `src/trading/buy_safety.py, in verify_buy_safe_or_refuse` |
+| Open orders before a buy | The refusal of a second buy while one is open | Once for each buy attempt | `src/trading/scrumming/execution.py, in ExecutionEngineMixin._refuses_stacked_buy` |
+| A bot's candles | The TA vote and the band of each bot | Once for each candle of the bot's timeframe | `src/exchange/data_pool.py, in TF_SECONDS` |
+| The chart's candles | The candles of the market the Charts tab shows | Each 30 seconds | `src/gui/main_tabs/trade_charts_tab_surface.py, in FETCH_THROTTLE_S` |
+| The rate strip | The two rates of the strip and the Target-denom cells | Each 60 seconds at most | `src/exchange/currency_rate_monitor.py, in DEFAULT_REFRESH_SECONDS` |
+| A bot's position read | Realised P/L, fees, average entry, the YTD trade count and the counts of open orders | Each 300 seconds for each bot. The YTD walk starts at the year's anchor once an hour, else 7 days back | `src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC` |
+| The spot positions | Unrealised P/L and the venue's basis | Each 60 seconds at most | `src/exchange/ccxt_connector.py, in SPOT_POSITIONS_CACHE_SEC` |
+| Held orders and Stack rungs | The booking of their fills | Each tick of 5 seconds, while a bot holds one | `src/trading/scrumming_bot.py, in ScrummingBot.tick_interval` |
+| An order and its settled reads | The order, then its filled count and average price | Once for each order, and up to 3 settled reads | `src/trading/bot_container.py, in SETTLE_REREADS` |
+| The pairs scout | The two Target columns and the Target rows of the Detail window | After a rest of 10 seconds, or of twice the time its answers took | `src/exchange/market_pairs_scout.py, in MarketPairsScout._read` |
+| The Market Inspector | The 24 hour volumes, and a scan | Each 15 minutes, and a scan on a press | `src/exchange/market_inspector_fetcher.py, in DEFAULT_MIN_REFRESH_S` |
+| The market list | The market rules | Once for each start | `src/exchange/ccxt_connector.py, in CCXTConnector.sync_connect` |
+| The trade history scan | The history analysis of each bot | Once for each bot after a connect. It runs off the worker, so the pill does not count it | `src/core/trade_historian.py, in TradeHistorian._fetch_sync` |
+
+The shared account read runs each 5 seconds, in every second turn of the shared reads.
+A balance lives 10 seconds in the store, so each balance stays at half its lifetime, as
+each price does. A balance with no answer yet is read in the next turn. A fill still
+ends its balance, and the bot reads it alone.
+
+`src/exchange/data_pool.py, in MarketDataPool.refresh_all_balances`
+
+```python
+if not reads.account_due() and not self._balance_unread(exchange_id):
+    return 0
+```
+
 ### The header strip
 
 Every figure repaints each 2 seconds (`src/gui/main_window.py, in MainWindow._refresh_header_strip`). With Sim or Paper in front, the strip reads that tab's own fleet. Otherwise figures cover the whole fleet, except AMMO, which reads the active class, and EXCH, which reads the active layer.
@@ -904,6 +940,35 @@ Each group shows only for a market that needs it.
 | Lead Fraction (0 to 1, 0.20) | The share of life left at bot start. 0 is off. Reads `expiry_lead_fraction`. `src/trading/container/config.py, in expiry_lead_resolved_days` |
 | Lead Days (0 to 36,500, 11) | Days before expiry, read in days mode only. 0 is off. Reads `expiry_lead_days`. `src/trading/container/config.py, in expiry_lead_resolved_days` |
 | Expiry Horizon (0 to 36,500 days, 365) | Treats a later contract as non-expiring. 0 turns the close off. Reads `expiry_horizon_days`. `src/trading/container/config.py, in expiry_close_decision` |
+
+### Presets
+
+A Preset is a named set of bot settings. It holds one value for every bot setting except the venue, the Base Currency, the target asset, Target Balance, Max Entry Price and Min Entry Price. It also names the market sector its bots trade in.
+
+Now: the store keeps each saved Preset by name in one file in the home folder, and a save under a name it already holds replaces that Preset (`src/trading/bot_presets.py, in PresetStore.save`). A value outside the span or list that a running bot's Settings tab offers, or a value of another kind, is refused, and the file is not written. A read of a name the file does not hold answers that no such Preset is saved. A file that is not a Preset file is never written over.
+
+Now: Ekthelius's Prototyping Baseline is never saved. Each read counts the settings of the bots the app has loaded, and each setting takes the value most of them hold (`src/trading/bot_presets.py, in baseline_preset`). On a tie, the app's own default wins when it is one of the tied values, and otherwise the value of the bot loaded first wins. A setting no bot holds a value for takes the app's own default. A change made on a running bot's Settings tab shows at the next read.
+
+Now: no screen reads a Preset yet. The + New Fleet button and its menu are not built.
+
+```python
+BASELINE_NAME = "Ekthelius's Prototyping Baseline"
+
+#: ``BotConfig`` fields the fleet menu sets on each bot: market and Target Balance.
+MENU_FIELDS = frozenset(
+    {"exchange_id", "base_currency", "target_asset", "symbol", "target_balance"}
+)
+
+#: ``BotConfig`` fields naming one market: unserved timeframes and entry prices.
+ONE_BOT_FIELDS = frozenset(
+    {
+        "ta_timeframe_unserved",
+        "scrum_read_timeframe_unserved",
+        "max_entry_price",
+        "min_entry_price",
+    }
+)
+```
 
 ## How to use a running bot
 

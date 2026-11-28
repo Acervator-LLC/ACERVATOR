@@ -394,6 +394,11 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   load pill reads each call the venue's worker ran in the last 60 s, a call still
   running included, names the answer time, and says "waits" while the shared reads
   rest longer than 2.5 s (`src/exchange/ccxt_connector.py, in CCXTConnector.worker_runs`).
+  Row 12 is built: every venue call kind has its six answers and its need in the
+  ledger comment 7244711836, and the shared account read runs each 5 s, half a
+  balance's lifetime, in every second turn of the shared reads
+  (`src/exchange/data_pool.py, in SharedReads.account_due`). The call account is in
+  `docs/manual/06-trading-tab.md`, in its section on the calls behind the API load pill.
   Every row of the body is built.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
@@ -506,6 +511,16 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   by his #1440 ruling. Its wallet check counts the trading fee, and the holds
   that protect the venue or the data stay (`in TickPhaseMixin._tick_initial_entry`).
   Row 3, the hold named on the bot's row, is not built.
+- **#1859, + New Fleet. Rows 2 and 3 are built.** A Preset holds one value for
+  each of 58 bot settings and the sector its bots trade in, and the store saves
+  and reads it by name in its own file under the state root
+  (`src/trading/bot_presets.py, in PresetStore`). Ekthelius's Prototyping
+  Baseline is counted again from the loaded bots at each read, each setting at
+  the value most of them hold. A saved bot whose config
+  or mode has the wrong type now skips that bot alone at restore. A record that
+  is not a mapping still stops the restore in
+  `src/trading/bot_container.py, in BotManager.restore_bots_from_state`.
+  Nothing on screen reads a Preset yet; rows 1 and 4 to 7 are not built.
 - **#1865, the Live tab's tab bar and launch layout. Rows 1 to 3 are built.** No
   Proof of Accumulation code is in the tree. The bar draws PoA and Quint between
   Swarm and History, and no click, key or drag opens either one
