@@ -1329,6 +1329,11 @@ if _HAS_WEBENGINE:
             model, step the bars ``settled_frames`` times as Live's push does,
             and push the payload through ``show_votes``."""
             chosen = str(bot_id or self._panel.selected_bot_id or "")
+            self._panel.set_timing(
+                indicator_panel_surface.timing_reading(
+                    chosen, tab_surface.zone_state_for(self.run(), chosen)
+                )
+            )
             feed = tab_surface.ivp_feed(
                 self._fleet_source.bot_for(chosen) if chosen else None
             )
