@@ -362,6 +362,10 @@ its fold wait for one read. Price must sit in the lowest 30% of the band, past
 the Detect distance or within the Fire Threshold of the lower band. The bot's own
 vote must then be bearish and top what two indicators reach on that same vote.
 
+Now: price must sit inside BB Tolerance of the lower band. Inside it the first
+buy waits only while zone timing reads price going deeper, and it buys
+otherwise, as every fold does.
+
 A new bot holds twelve zeros, so it has no vote. It makes no first buy until you
 press Save on the TA Indicators page, and its line in the log says so. Twelve
 zeros never read as made, whatever the bot holds. After Save, a bot that finds
@@ -382,6 +386,10 @@ made its first buy and buys back here votes with its own weights, and at twelve
 zeros it waits for Save. Only a first buy's entry fill restarts the opposing
 trade distance.
 
+Now: the first entry buys its Target Delta, the target less what it holds. Its
+wallet must hold that buy and the trading fee on it after what the other bots
+claim.
+
 Both routes refuse a buy while the venue holds more of the coin than the book
 shows, past other bots on that venue and by more than 1% of target, or omits the
 coin from its balance reply. The holdings audit books those coins on its own
@@ -390,7 +398,7 @@ count.
 `src/trading/scrumming/tick_phases.py` — `TickPhaseMixin._first_buy_read`
 
 ```python
-if not three_agree(summary.consensus_confidence, summary.signals):
+if zone.fold_deeper:
 ```
 
 ### 2 - The Phantom Bot
@@ -1233,6 +1241,10 @@ if not any(sig.weight > 0.0 for sig in signals):
     return True
 return confidence > two_indicator_ceiling(signals)
 ```
+
+Now: a bot's first buy no longer asks three agreeing indicators of its own.
+Inside BB Tolerance of the lower band it waits only while the vote is bearish and
+tops what two indicators reach, raised by the boost, and buys otherwise.
 
 ### 13 - Initial-Purchase-Price Floor on Folds
 

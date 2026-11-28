@@ -321,14 +321,18 @@ distance and the Fire Threshold are overtaken.** None is edited and none is
 removed.
 
 Now: while a bot owes a first buy, its calibrating fold, its hedge top-up and
-its fold wait for one read. Price must sit in the lowest 30% of the band and
-inside BB Tolerance of the lower band, and the bot's own vote must then be
-bearish and top what two indicators reach (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_read`).
+its fold wait for one read. Price must sit inside BB Tolerance of the lower band.
+Inside it the first buy waits only while zone timing reads price going deeper,
+and it buys otherwise, as every fold does (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_read`).
 
 Now: once the read clears, a bot under target with no tranche queued buys the
 whole Target Delta as one FOLD when the Target Delta is at or past Max Cartridge
 Size and price sits inside BB Tolerance of the lower band, under every gate the
 fold chain keeps (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_calibrating_fold`).
+
+Now: under 1% of target, a bot takes the first entry with the same read and buys
+its Target Delta, the target less what it holds. Its wallet must hold that buy
+and the trading fee on it after what the other bots claim (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_initial_entry`).
 
 Both routes refuse a buy while the venue holds more of the coin than the book
 shows, past other bots on that venue and by more than 1% of target, or omits the
@@ -346,6 +350,10 @@ above zero that the vote ran at. A read that clears in front of the rebalance, t
 hedge top-up or the fold writes FIRST BUY READ CLEARED. A read that clears on the
 first entry writes that all 4 gates pass.
 
+Now: a read that clears on the first entry writes INITIAL ENTRY, zone timing
+reads price slipping, and names the vote against the zone timing bar. A read
+inside the zone that waits writes that zone timing reads price going deeper.
+
 When the app starts, each restored bot writes FIRST BUY MADE or FIRST BUY OWED in
 its log. The line says what decided it: the saved record, or, where the record
 saves no such field, its fills, tranches and holding.
@@ -361,7 +369,7 @@ summary = self._voting_engine.compute_all(
 ```
 
 ```python
-if not three_agree(summary.consensus_confidence, summary.signals):
+if zone.fold_deeper:
 ```
 
 The hold the rebalance, the hedge top-up and the fold ask:
@@ -371,7 +379,7 @@ The hold the rebalance, the hedge top-up and the fold ask:
 ```python
 if self._first_buy_made:
     return True
-read = await self._first_buy_read(ticker, symbol)
+read = await self._first_buy_read(ticker, symbol, current_value, cartridge_pct)
 terms = self._first_buy_terms(read, cartridge_pct)
 if not read.refusal:
     if self._first_buy_line_is_new(FIRST_BUY_CLEARED, ticker.last):
@@ -379,8 +387,8 @@ if not read.refusal:
             "bot.log",
             bot_id=self.bot_id,
             message=(
-                f"FIRST BUY READ CLEARED: TA=BEARISH at confidence "
-                f"{read.summary.consensus_confidence:.4f}. BB OK "
+                f"FIRST BUY READ CLEARED: zone timing reads price slipping, "
+                f"{self._zone_vote_text(read.summary, read.bar)}. BB OK "
                 f"(pos={read.bb_pos:.2f}, dist={read.dist_down:.0%}). {terms}"
             ),
         )
@@ -994,6 +1002,28 @@ return scan_gates(
 The six gates that read the position do not run at the phantom read. No timeframe
 above the phantom's is weighed there.
 
+Now: the phantom's gate reading judges the band by BB Tolerance alone, as the bot
+does. Its band gate, its FIRE gate and its zone timing read the bot's own zone,
+ramp and timing functions on the phantom's candles. Each chain reads its own side
+of the Target Delta, and the reading still decides no trade.
+
+`src/trading/ata_gate_scan.py, in side_zone`
+
+```python
+zone = read_zone(
+    getattr(summary, "signals", None) or [],
+    getattr(summary, "consensus_direction", None),
+    float(getattr(summary, "consensus_confidence", NO_WEIGHT)),
+    float(delta),
+    list(candles or []),
+    tolerance_pct=float(settings.bb_tolerance_pct),
+    taper_minimum=int(settings.bb_landing_strip_candles),
+    figures=boost_figures(settings),
+    cartridge=float(cartridge),
+    bullseye=bool(getattr(settings, "bb_bullseye_check", True)),
+)
+```
+
 ## 3 - The Landing Strip
 
 Perhaps the earliest assumption that hit me the most and really presented the catalyzing challenge to creating all of my alternate trading methods, is that you cannot predict what the market will do and after only a short while of actively trading I asked the questions: “But what if I don’t have to?” “What if I decide that I do not have to speculate at all?” I do not remember exactly when I first used the term but I think it was when I was trading A34 and A27 some years ago while participating in a Telegram group with some psytrance friends and associations called the Better Bitcoin Bureau. The name changed a few times but this is the one I recall.
@@ -1095,6 +1125,19 @@ Driven on a stand-in exchange at a lower strip, with the twelve published
 weights. Two agreeing indicators read 0.1966 and the fold waited. Three read
 0.2821 and the fold went through. The code before this change, taken from git,
 folded on both.
+
+Now: the four tightening constants left the Market Inspector scan with its strip
+favour. The scan's floor takes the favours the live tick's floor takes, and
+neither adds a strip favour. Neither hands a band to the vote, so a strip sets
+no side there. The Landing Strip reaches the vote as Landing Strip Boost, inside
+the zone.
+
+`src/trading/ata_gate_scan.py, in confidence_floor`
+
+```python
+skew = voter_favour(summary, position) + swing_favour(candles, position)
+return _skewed_confidence_floor(skew, getattr(summary, "signals", None) or [])
+```
 
 ## 4 - Bollinger Band Travel Detection
 
@@ -2611,6 +2654,10 @@ if not any(sig.weight > 0.0 for sig in signals):
     return True
 return confidence > two_indicator_ceiling(signals)
 ```
+
+Now: a bot's first buy no longer asks three agreeing indicators of its own.
+Inside BB Tolerance of the lower band it waits only while the vote is bearish and
+tops what two indicators reach, raised by the boost, and buys otherwise (`src/trading/vote_boost.py, in zone_timing`).
 
 ## 13 - Initial-Purchase-Price Floor on Folds
 

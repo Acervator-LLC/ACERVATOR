@@ -561,6 +561,8 @@ On the Scrumming table, a press on a row draws that bot on the Indicator Voting 
 | Detail button | Opens the bot settings window and selects the row. `src/gui/main_window.py, in MainWindow._on_bot_clicked` |
 | Round header dots | Hides that column behind asterisks. Filled shows and hollow hides. Target's three columns share one field, as do Position Value and Ammo. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel.on_privacy_toggled` |
 
+Now: when the exchange confirms a fill, the units the Ammo cell reads move in the same step as the units Current Position Value prices, on every fill path, so both cells show the fill in the same redraw (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_sale`). After a sale is booked, the bot reads the exchange once, and that reading stands (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.refresh_priced_figures_after_fill`).
+
 | Extractor Bots column | What it shows and what it reads |
 | --- | --- |
 | Bot ID | The bot's id. `src/gui/main_tabs/extractor_bot_table_surface.py, in row_values` |
