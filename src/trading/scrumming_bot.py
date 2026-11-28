@@ -48,9 +48,7 @@ from .ta_engine import (
     VotingSummary,
     SignalDirection,
     candles_from_raw,
-    detect_bb_proximity,
     BBProximityResult,
-    detect_landing_strip_v2,
     three_agree,
     three_indicator_floor,
     two_indicator_ceiling,
@@ -72,7 +70,7 @@ from .otd_math import (
     opposing_sale_price,
 )
 from .stack_math import LADDER_STOPPED, rung_floor_ref
-from .indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
+from .indicators.bb_proximity import bb_tolerance_reading
 from ..core.settings import DEFAULT_ENABLE_PHANTOMS
 from .phantom_balance import (
     TIMEFRAME_SECONDS,
@@ -83,14 +81,6 @@ from .phantom_balance import (
     set_aside_note,
 )
 
-from .ata_gate_scan import (
-    LANDING_STRIP_FAVOUR,
-    LANDING_STRIP_STRENGTH_FAVOUR,
-    TIGHTENING_MIN_CANDLES,
-    TIGHTENING_MIN_CONSECUTIVE,
-    TIGHTENING_SHRINK_THRESHOLD,
-    TIGHTENING_TOLERANCE_PCT,
-)
 from .gate_chain import (
     OVERRIDE_APPLIED_FORMAT,
     TREND_HOLD_OVERRIDE,
@@ -126,9 +116,7 @@ from .scrumming.sizing import (
     EVENT_ID_KEY,
     GROWTH_DUST_USD,
     HEDGE_BUY,
-    REBALANCE_UNFUNDED,
     SIDE_BUY,
-    cartridge_threshold_usd,
     cycle_growth_cap_usd,
     delta_below_interval,
     fold_decision,
@@ -267,79 +255,6 @@ _TA_CONFIDENCE_FLOOR = 0.25
 """Minimum TA confidence before a direction counts as actionable.
 """
 
-_BB_PRIORITY_SKEW = 0.30
-"""How far the BB-priority arm relaxes ``_TA_CONFIDENCE_FLOOR``.
-
-The 0.30 is a PROPORTIONAL relaxation of the threshold the measurement
-is judged against, not confidence added to the measurement. See
-``_BB_PRIORITY_CONFIDENCE_FLOOR``.
-"""
-
-_BB_PRIORITY_CONFIDENCE_FLOOR = _TA_CONFIDENCE_FLOOR / (1.0 + _BB_PRIORITY_SKEW)
-"""The floor that applies when the three BB-priority conditions coincide.
-
-WHAT THE OPERATOR ASKED FOR, verbatim, 2026-04-26::
-
-    "BB proximity and / or contact should immediately trigger or heavily
-     favor a trade if Minimum Opposing Trade Distance is also satisfied
-     and a Target Delta is available."
-    Refinement: "Should skew TA confidence, not over ride as this seems
-     dangerous."
-
-The refinement is a ruling. ``DEVELOPMENT_CHRONICLE`` records why: the
-first attempt WAS an override -- ``_bb_priority_scrum`` /
-``_bb_priority_fold`` clauses bolted onto the SCRUM/FOLD if-conditions --
-and the operator refused it by name.
-
-WHAT SHIPPED INSTEAD, AND WHY IT WAS THE SAME OVERRIDE. An earlier build
-replaced those clauses with ``eff_confidence += 0.30``, sized in the
-chronicle as "enough to lift any low-confidence NEUTRAL reading
-(0.0-0.24) over the 0.25 threshold". Confidence is bounded [0, 1]. A skew
-of 0.30 against a floor of 0.25 reduces ``eff_confidence + 0.30 >= 0.25``
-to ``eff_confidence >= -0.05``, which EVERY reading satisfies, including
-exactly 0.0. So the confidence conjunct became universally true on that
-arm: the refused override, restored in arithmetic. A decision sweep on
-that arm returned a structural zero -- not "no decisions changed" but
-"this comparison has no false case".
-
-A SECOND DEFECT IN THE SAME LINE. The chronicle also required the skew
-to be "not so large that it inflates already-confident readings into
-something deceptive". The addition inflated every reading, and the
-inflated number -- not the measured one -- was what nine downstream
-sites in ``tick()`` printed, including the ``HOLD FOLD`` explainer that
-names the failing conjunct. The audit trail reported a confidence no
-indicator produced.
-
-THE REPAIR, AND WHY THIS SHAPE. ``eff_confidence`` is a measured
-quantity. It is left alone. The favour is what it always was in the
-operator's own words -- a PRIORITISATION -- so it is expressed against
-the THRESHOLD, and the arm gets this floor instead of the standing one.
-
-The relaxation is PROPORTIONAL, not subtractive, and that is what makes
-the gate able to refuse. Subtracting the same 0.30 from 0.25 lands at or
-below zero and is the tautology again. Dividing preserves zero: however
-large the favour, a confidence of exactly 0.0 is still refused, and here
-the arm refuses everything below 0.25 / 1.30 = 0.1923. It is also what
-the operator's word means -- a skew SCALES, a shift OFFSETS, and a shift
-is what shipped.
-
-NO NEW NUMBER IS INTRODUCED. This floor is derived from the two constants
-already of record: the 0.25 floor and the 0.30 favour. The magnitude of
-the favour is unchanged; only its form and its target are.
-
-WHAT IS DELIBERATELY NOT CHANGED. The direction conjunct
-(``eff_direction in (BULLISH, NEUTRAL)``) still gates the trade --
-actively-contradicting TA still refuses. The non-priority arm keeps
-``_TA_CONFIDENCE_FLOOR`` untouched.
-
-THIS CONSTANT IS NO LONGER THE WHOLE FLOOR ON THE ARM. Two further
-favours were found in the same shape and repaired the same way, so the
-arm's skew is now one term of a sum that
-``_skewed_confidence_floor`` divides by. With the other favours at zero the
-arm's floor is this number while ``two_indicator_ceiling`` reads under it,
-and otherwise the next number above that ceiling.
-"""
-
 _STRONG_TREND_MIN_BULL_SHARE = _STRONG_TREND_MIN_BULL_CANDLES / _STRONG_TREND_CANDLES
 """Share of the last 20 candles that must close up to call it a trend.
 
@@ -359,9 +274,8 @@ WHY THIS READING AND NOT ADX, since the file carries both.
 ``ADXIndicator`` names a ``strong_trend`` detail at ADX >= 35 and
 ``ADXTrendSuppressionGate`` refuses a SCRUM at ADX >= 30. Neither can
 serve as the count bound's exception: the gate refuses the very sell
-that would open the extra tranches, and ``RipeHarvestScrumOverride``
-lists ``midline_scrum``, ``target_fires``, ``trend_hold`` and
-``ta_bullish`` -- not ``adx_trend_suppression`` -- so nothing lifts it.
+that would open the extra tranches, and outside the BB Tolerance zone
+nothing lifts it.
 TREND-HOLD IS lifted: ``tick`` clears it on band travel or on a delta of
 twice the interval, and the comment at that arm says it exists to catch
 harvests "during strong trends". That is the sell the operator's
@@ -379,19 +293,6 @@ def _skewed_confidence_floor(
         return math.inf
     eased = floor if math.isnan(denominator) else floor / denominator
     return three_indicator_floor(eased, signals)
-
-
-def _favour_skew(
-    position_boost: float, band_boost: float, hunger_skew: float, *, priority_arm: bool
-) -> float:
-    """``position_boost`` plus ``band_boost`` and ``hunger_skew``, and
-    ``_BB_PRIORITY_SKEW`` on ``priority_arm``."""
-    skew = position_boost + band_boost
-    if hunger_skew:
-        skew += hunger_skew
-    if priority_arm:
-        skew += _BB_PRIORITY_SKEW
-    return skew
 
 
 def _in_hunger_zone(
@@ -685,6 +586,11 @@ class ScrummingBot(
         self._tick_counter: int = 0
         self._tick_skip: int = 1
         self._tick_skip_search: int = 1
+        self._cartridge_reached: bool = False
+        # The side whose zone visit is open, as zone_visit answers; "" for none.
+        self._zone_visit_side: str = ""
+        # stats.total_sells and stats.total_buys at the last zone_visit read.
+        self._zone_visit_fills: tuple[int, int] = (0, 0)
 
         self._fold_diag_tick: int = 0
         self._fold_diag_last_blocker_set: str = ""
@@ -2253,8 +2159,8 @@ class ScrummingBot(
         ``symbol``, and answer whether a summary was written.
 
         ``tick`` calls this above every early return, so a bot parked at
-        target, firing a cartridge or answering a manual fire still holds a
-        current reading for the Indicator Voting Panel to draw. The shared
+        target or answering a manual fire still holds a current reading for
+        the Indicator Voting Panel to draw. The shared
         ``MarketDataPool`` slot lives one timeframe, so a tick that finds the
         slot fresh makes no venue call. ``_tick_smart_cartridge_pct`` reads
         ``_last_bb`` earlier in the tick than ``_tick_main`` writes it, so the
@@ -2281,11 +2187,10 @@ class ScrummingBot(
         self._tick_candles = candles
         if len(candles) < MIN_CANDLES_FOR_TA:
             return False
-        self._last_bb = detect_bb_proximity(
+        self._last_bb = bb_tolerance_reading(
             candles,
-            tolerance_pct=self.config.bb_tolerance_pct,
-            consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-            min_pattern_candles=self.config.bb_landing_strip_candles,
+            self.config.bb_tolerance_pct,
+            self.config.bb_landing_strip_candles,
         )
         stamp = float(getattr(candles[-1], "timestamp", 0) or 0)
         if (
@@ -3234,6 +3139,18 @@ class ScrummingBot(
                 f"{type(exc).__name__}: {exc}. Fail-closed."
             )
 
+    def _zone_visit_open_side(self) -> str:
+        """``_zone_visit_side``, or "" once a sell fill closes a scrum visit or a buy fill a fold visit since the last read."""
+        from .vote_boost import FOLD_SIDE, SCRUM_SIDE
+
+        fills = (int(self.stats.total_sells), int(self.stats.total_buys))
+        seen, self._zone_visit_fills = self._zone_visit_fills, fills
+        if self._zone_visit_side == SCRUM_SIDE and fills[0] > seen[0]:
+            return ""
+        if self._zone_visit_side == FOLD_SIDE and fills[1] > seen[1]:
+            return ""
+        return self._zone_visit_side
+
     async def tick(self) -> None:
         symbol = self.config.symbol
         if self._cb_hard_tripped:
@@ -3250,14 +3167,16 @@ class ScrummingBot(
                 _crr_tick_exc,
             )
 
-        if self.config.scrum_read_rate_min > 0 and not self._manual_fire_pending:
+        if not self._manual_fire_pending:
+            from .container.config import bot_read_timeframe
+
+            _read_tf = bot_read_timeframe(self.config)
             _tick_sec = max(self.tick_interval, 0.1)
-            _base_skip = max(1, int((self.config.scrum_read_rate_min * 60) / _tick_sec))
+            _base_skip = max(1, int(TIMEFRAME_SECONDS[_read_tf] / _tick_sec))
             self._tick_skip_search = _base_skip
             if (
-                self._scrum_target_mode in ("track", "fire")
-                and not self._cb_hard_tripped
-            ):
+                self._scrum_target_mode in ("track", "fire") or self._cartridge_reached
+            ) and not self._cb_hard_tripped:
                 self._tick_skip = max(1, _base_skip // 10)
             else:
                 self._tick_skip = _base_skip
@@ -3274,7 +3193,7 @@ class ScrummingBot(
                             "bot_id": self.bot_id,
                             "counter": self._tick_counter,
                             "skip": self._tick_skip,
-                            "read_rate_min": self.config.scrum_read_rate_min,
+                            "read_timeframe": _read_tf,
                         },
                     )
                 except Exception as _sup:  # noqa: BLE001,S110
@@ -3377,6 +3296,15 @@ class ScrummingBot(
             return
         self._last_price = self._last_price or ticker.last
 
+        try:
+            _cartridge_pct = float(
+                getattr(self.config, "max_cartridge_size_pct", 10.0) or 0.0
+            )
+        except (TypeError, ValueError):
+            _cartridge_pct = 0.0
+        _cartridge_pct = self._tick_smart_cartridge_pct(_cartridge_pct)
+        self._note_cartridge_reach(current_value, _cartridge_pct)
+
         if await self._tick_shadow(ticker):
             return
 
@@ -3428,106 +3356,6 @@ class ScrummingBot(
         if self._manual_fire_pending:
             await self._tick_manual_fire(ticker)
             return
-
-        try:
-            _cartridge_pct = float(
-                getattr(self.config, "max_cartridge_size_pct", 10.0) or 0.0
-            )
-        except (TypeError, ValueError):
-            _cartridge_pct = 0.0
-
-        _cartridge_pct = self._tick_smart_cartridge_pct(_cartridge_pct)
-
-        if _cartridge_pct > 0 and self._target_balance > 0:
-            _cartridge_threshold = cartridge_threshold_usd(
-                self._target_balance, _cartridge_pct
-            )
-            _cartridge_delta = target_delta_usd(current_value, self._target_balance)
-            if abs(_cartridge_delta) >= _cartridge_threshold:
-                _direction = "SCRUM" if _cartridge_delta > 0 else "FOLD"
-
-                _hyst_blocks = False
-                _hyst_reason = ""
-                _block_label = "hysteresis"
-                try:
-                    _eff_pct = self.opposing_trade_distance_pct()
-                except DistanceSettingUnreadable as _unread:
-                    _eff_pct = 0.0
-                    _hyst_blocks = True
-                    _block_label = "opposing distance unreadable"
-                    _hyst_reason = (
-                        f"{_unread}, so the opposing trade distance cannot be read"
-                    )
-                _eff_frac = _eff_pct / 100.0
-
-                if (
-                    not _hyst_blocks
-                    and _direction == "SCRUM"
-                    and getattr(self, "_hyst_armed_scrum_side", False)
-                    and float(getattr(self, "_hyst_ref_scrum_side", 0.0) or 0.0) > 0
-                ):
-                    _required_min = self._hyst_ref_scrum_side * (1.0 + _eff_frac)
-                    if ticker.last < _required_min:
-                        _hyst_blocks = True
-                        _hyst_reason = (
-                            f"price ${ticker.last:.8f} below "
-                            f"${_required_min:.8f} "
-                            f"(pivot ${self._hyst_ref_scrum_side:.8f} "
-                            f"+ {_eff_pct:.2f}%)"
-                        )
-                elif (
-                    not _hyst_blocks
-                    and _direction == "FOLD"
-                    and getattr(self, "_hyst_armed_fold_side", False)
-                    and float(getattr(self, "_hyst_ref_fold_side", 0.0) or 0.0) > 0
-                ):
-                    _required_max = self._hyst_ref_fold_side * (1.0 - _eff_frac)
-                    if ticker.last > _required_max:
-                        _hyst_blocks = True
-                        _hyst_reason = (
-                            f"price ${ticker.last:.8f} above "
-                            f"${_required_max:.8f} "
-                            f"(pivot ${self._hyst_ref_fold_side:.8f} "
-                            f"− {_eff_pct:.2f}%)"
-                        )
-
-                if _hyst_blocks:
-                    import time as _t_block
-
-                    _now_b = _t_block.time()
-                    _last_b = float(
-                        getattr(self, "_cartridge_blocked_last_log_ts", 0.0) or 0.0
-                    )
-                    if _now_b - _last_b >= 30.0:
-                        self._cartridge_blocked_last_log_ts = _now_b
-                        self._bus.emit(
-                            "bot.log",
-                            bot_id=self.bot_id,
-                            message=(
-                                f"MAX CARTRIDGE BLOCKED ({_block_label}): "
-                                f"would fire {_direction} on "
-                                f"|delta|=${abs(_cartridge_delta):.2f} "
-                                f"≥ ${_cartridge_threshold:.2f}, but "
-                                f"{_hyst_reason}. Refusing to prevent "
-                                f"fee-thrash round-trip with recent "
-                                f"opposite trade. Will re-evaluate "
-                                f"each tick as price moves."
-                            ),
-                        )
-                else:
-                    if _direction == "FOLD" and not await self._first_buy_clears(
-                        ticker, symbol, current_value, _cartridge_pct
-                    ):
-                        return
-                    _cartridge = await self._tick_cartridge_fire(
-                        ticker,
-                        _direction,
-                        _cartridge_delta,
-                        _cartridge_threshold,
-                        _cartridge_pct,
-                    )
-                    if _cartridge != REBALANCE_UNFUNDED:
-                        return
 
         if await self._tick_detonation(ticker):
             return
@@ -3582,11 +3410,10 @@ class ScrummingBot(
             )
             self._last_summary = summary
 
-            bb_result = detect_bb_proximity(
+            bb_result = bb_tolerance_reading(
                 candles,
-                tolerance_pct=self.config.bb_tolerance_pct,
-                consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-                min_pattern_candles=self.config.bb_landing_strip_candles,
+                self.config.bb_tolerance_pct,
+                self.config.bb_landing_strip_candles,
             )
             self._last_bb = bb_result
 
@@ -3635,58 +3462,15 @@ class ScrummingBot(
             self._last_price = ticker.last
             return
 
-        bb_confidence_boost = 0.0
-        bb_override_direction = None
         if bb_result and bb_result.landing_strip:
-            # The same favour ata_gate_scan.landing_strip_favour sums.
-            bb_confidence_boost = (
-                LANDING_STRIP_FAVOUR
-                + bb_result.consolidation_strength * LANDING_STRIP_STRENGTH_FAVOUR
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=f"LANDING STRIP ({bb_result.landing_strip_side} BB): "
+                f"{bb_result.landing_strip_candles} tight HA candles (avg body "
+                f"{bb_result.ha_body_avg}%), "
+                f"strength={bb_result.consolidation_strength:.2f}",
             )
-            if bb_result.landing_strip_side == "upper":
-                bb_override_direction = SignalDirection.BEARISH
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"LANDING STRIP (upper BB): {bb_result.landing_strip_candles} "
-                    f"tight HA candles (avg body {bb_result.ha_body_avg}%), "
-                    f"strength={bb_result.consolidation_strength:.2f}",
-                )
-            elif bb_result.landing_strip_side == "lower":
-                bb_override_direction = SignalDirection.BULLISH
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"LANDING STRIP (lower BB): {bb_result.landing_strip_candles} "
-                    f"tight HA candles (avg body {bb_result.ha_body_avg}%), "
-                    f"strength={bb_result.consolidation_strength:.2f}",
-                )
-
-        tightening = None
-        if len(candles) >= TIGHTENING_MIN_CANDLES:
-            try:
-                # min_consecutive counts shrinking bodies, not the tight
-                # candles bb_landing_strip_candles counts.
-                tightening = detect_landing_strip_v2(
-                    candles,
-                    min_consecutive=TIGHTENING_MIN_CONSECUTIVE,
-                    shrink_threshold=TIGHTENING_SHRINK_THRESHOLD,
-                    bb_tolerance_pct=TIGHTENING_TOLERANCE_PCT,
-                )
-                if tightening and tightening.detected:
-                    bb_confidence_boost += tightening.confidence_boost
-                    self._bus.emit(
-                        "bot.log",
-                        bot_id=self.bot_id,
-                        message=f"TIGHTENING ({tightening.side} BB): "
-                        f"{tightening.length} candles, "
-                        f"ratio={tightening.tightening_ratio:.0%}, "
-                        f"boost=+{tightening.confidence_boost:.2f}",
-                    )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                )
 
         if summary:
             eff_confidence = summary.consensus_confidence
@@ -3881,15 +3665,9 @@ class ScrummingBot(
             f"state_ta_vote_{summary.consensus_direction.name}", ticker.last
         ):
             _skew_note = ""
-            if position_boost or bb_confidence_boost or hunger_skew:
-                _skew_note = (
-                    f", floor skew {position_boost:+.2f} position"
-                    + (
-                        ""
-                        if not bb_confidence_boost
-                        else f" {bb_confidence_boost:+.2f} BB"
-                    )
-                    + ("" if not hunger_skew else f" {hunger_skew:+.2f} hunger")
+            if position_boost or hunger_skew:
+                _skew_note = f", floor skew {position_boost:+.2f} position" + (
+                    "" if not hunger_skew else f" {hunger_skew:+.2f} hunger"
                 )
             self._bus.emit(
                 "bot.log",
@@ -3925,176 +3703,115 @@ class ScrummingBot(
             ],
         )
 
-        if bb_override_direction and eff_direction == SignalDirection.NEUTRAL:
-            eff_direction = bb_override_direction
+        from .scrumming.sizing import cartridge_threshold_usd
+        from .vote_boost import (
+            FOLD_SIDE,
+            SCRUM_SIDE,
+            ZONE_DEEPER,
+            boost_figures,
+            cartridge_scale,
+            read_zone,
+            zone_visit,
+        )
 
-        _bb_lower_dt_pre, _bb_upper_dt_pre = self._bb_detect_thresholds()
-        _be_upper = False
-        _be_upper_wick = False
-        _be_lower = False
-        _be_lower_wick = False
-        if (
-            getattr(self.config, "bb_bullseye_check", True)
-            and bb_result is not None
-            and getattr(bb_result, "upper", 0) > 0
-            and getattr(bb_result, "lower", 0) > 0
+        _zone = read_zone(
+            summary.signals,
+            eff_direction,
+            eff_confidence,
+            delta,
+            candles,
+            tolerance_pct=float(self.config.bb_tolerance_pct),
+            taper_minimum=int(self.config.bb_landing_strip_candles),
+            figures=boost_figures(self.config),
+            cartridge=cartridge_scale(
+                delta, cartridge_threshold_usd(self._target_balance, _cartridge_pct)
+            ),
+            bullseye=bool(getattr(self.config, "bb_bullseye_check", True)),
+        )
+        _panel = _zone.band
+        _bb_upper_zone, _bb_lower_zone = _zone.upper, _zone.lower
+        _zone_floor = _zone.line
+        _scrum_timing, _fold_timing = _zone.scrum, _zone.fold
+        _scrum_deeper, _fold_deeper = _zone.scrum_deeper, _zone.fold_deeper
+        self._zone_visit_side, _late_side = zone_visit(
+            self._zone_visit_open_side(),
+            _bb_upper_zone,
+            _bb_lower_zone,
+            delta,
+            not below_interval,
+        )
+        if _late_side and self._refusal_is_new(
+            f"state_late_turn_{_late_side}", ticker.last
         ):
-            _bp_inline = ticker.last
-            _touch_tol_inline = 0.005
-            _wick_tol_inline = 0.002
-            try:
-                _be_upper = (
-                    abs(_bp_inline - bb_result.upper) / bb_result.upper
-                    < _touch_tol_inline
-                )
-                _be_lower = (
-                    abs(_bp_inline - bb_result.lower) / bb_result.lower
-                    < _touch_tol_inline
-                )
-                if candles and not _be_upper:
-                    _be_upper_wick = candles[-1].high >= bb_result.upper * (
-                        1.0 - _wick_tol_inline
-                    )
-                if candles and not _be_lower:
-                    _be_lower_wick = candles[-1].low <= bb_result.lower * (
-                        1.0 + _wick_tol_inline
-                    )
-            except (TypeError, ValueError, ZeroDivisionError) as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                )
-        _bb_proximity_upper = (
-            (bb_pos >= _bb_upper_dt_pre) or _be_upper or _be_upper_wick
-        )
-        _bb_proximity_lower = (
-            (bb_pos <= _bb_lower_dt_pre) or _be_lower or _be_lower_wick
-        )
-        _delta_available = abs(delta) >= _interval_usd
-        _bb_priority_scrum_skew = (
-            _bb_proximity_upper
-            and _hyst_ok_scrum_side
-            and _delta_available
-            and delta > 0
-        )
-        _bb_priority_fold_skew = (
-            _bb_proximity_lower
-            and _hyst_ok_fold_side
-            and _delta_available
-            and delta < 0
-        )
-        _bb_priority_arm = _bb_priority_scrum_skew or _bb_priority_fold_skew
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"LATE TURN [{_late_side.upper()}]: price left the zone "
+                    f"between reads with the Target Delta ${delta:+.2f} past the "
+                    f"interval; the bot re-zeroes it now unless a safety hold, the "
+                    f"Minimum Opposing Trade Distance among them, holds it."
+                ),
+            )
+        _bb_upper_zone = _bb_upper_zone or _late_side == SCRUM_SIDE
+        _bb_lower_zone = _bb_lower_zone or _late_side == FOLD_SIDE
         # _eff_conf_floor carries hunger for both chains; _floor_no_hunger serves
         # the DIST sale and the hedge top-up.
-        _ta_conf_skew = _favour_skew(
-            position_boost,
-            bb_confidence_boost,
-            hunger_skew,
-            priority_arm=_bb_priority_arm,
+        _eff_conf_floor = _skewed_confidence_floor(
+            position_boost + hunger_skew, summary.signals
         )
-        _eff_conf_floor = _skewed_confidence_floor(_ta_conf_skew, summary.signals)
-        _floor_no_hunger = _skewed_confidence_floor(
-            _favour_skew(
-                position_boost, bb_confidence_boost, 0.0, priority_arm=_bb_priority_arm
-            ),
-            summary.signals,
+        _floor_no_hunger = _skewed_confidence_floor(position_boost, summary.signals)
+
+        is_bullish, is_bearish = vote_sides(
+            eff_direction, eff_confidence, _eff_conf_floor, None, summary.signals
         )
-        _bb_skew_side = "scrum" if _bb_priority_scrum_skew else "fold"
-        if _bb_priority_arm and self._refusal_is_new(
-            f"state_bb_skew_{_bb_skew_side}", ticker.last
+        _bullish_no_hunger, _ = vote_sides(
+            eff_direction, eff_confidence, _floor_no_hunger, None, summary.signals
+        )
+        for _timing, _side_word, _in_zone in (
+            (_scrum_timing, "SCRUM", _bb_upper_zone),
+            (_fold_timing, "FOLD", _bb_lower_zone),
         ):
-            _hunger_note = "" if not hunger_skew else f", hunger {hunger_skew:+.2f}"
-            _two_reach = two_indicator_ceiling(summary.signals)
-            _line_note = f"and the floor stays over that, at {_eff_conf_floor:.4f}"
-            try:
+            if _in_zone and self._refusal_is_new(
+                f"state_zone_timing_{_side_word}_{_timing.reading}", ticker.last
+            ):
+                _scales = _timing.boost.scales
+                _next = (
+                    "the bot waits for the turn"
+                    if _timing.reading == ZONE_DEEPER
+                    else "the bot re-zeroes the Target Delta now"
+                )
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
-                        f"BB PRIORITY SKEW "
-                        f"[{'SCRUM' if _bb_priority_scrum_skew else 'FOLD'}] "
-                        f"at BB position {bb_pos:.1%}, delta "
-                        f"${abs(delta):.2f} at or over the interval. "
-                        f"Confidence stays {eff_confidence:.2f}. The skew "
-                        f"divides the {_TA_CONFIDENCE_FLOOR:.2f} floor by "
-                        f"{1.0 + _ta_conf_skew:.2f}: BB priority "
-                        f"{_BB_PRIORITY_SKEW:+.2f}, position "
-                        f"{position_boost:+.2f}, BB confidence "
-                        f"{bb_confidence_boost:+.2f}{_hunger_note}. Two "
-                        f"indicators reach {_two_reach:.4f} at this vote's "
-                        f"weights, {_line_note}. The direction is "
-                        f"untouched, so a contradicting TA still refuses "
-                        f"the trade."
+                        f"ZONE TIMING [{_side_word}]: price reads {_timing.reading}; "
+                        f"vote {eff_direction.name if eff_direction else 'NONE'} "
+                        f"{eff_confidence:.4f} against {_timing.bar:.4f}, the line "
+                        f"{_zone_floor:.4f} x{1.0 + _timing.boost.share:.2f}; "
+                        f"cartridge {_scales.cartridge:.2f} of full, proximity "
+                        f"{_scales.proximity:.2f}, {_scales.taper_steps} tapering "
+                        f"candles; {_next}."
                     ),
                 )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup
-                )
-
-        is_bullish, is_bearish = vote_sides(
-            eff_direction, eff_confidence, _eff_conf_floor, bb_result, summary.signals
-        )
-        _bullish_no_hunger, _ = vote_sides(
-            eff_direction, eff_confidence, _floor_no_hunger, bb_result, summary.signals
-        )
+        _scrum_floor = _zone_floor if _bb_upper_zone else _eff_conf_floor
+        _fold_floor = _zone_floor if _bb_lower_zone else _eff_conf_floor
+        # Inside the zone zone_timing sets when, so the vote holds nothing there.
+        if _bb_upper_zone:
+            is_bullish = True
+        if _bb_lower_zone:
+            is_bearish = True
 
         self._refresh_phantom_lock()
-        if self.config.bb_midline_gate:
-            scrum_ok = (bb_pos > 0.50) and not self._phantom_locked
-            fold_ok_midline = (bb_pos < 0.50) and not self._phantom_locked
-        else:
-            scrum_ok = not self._phantom_locked
-            fold_ok_midline = not self._phantom_locked
+        scrum_ok = not self._phantom_locked
+        fold_ok_midline = not self._phantom_locked
 
-        _ripe_scrum = False
-        _deep_fold = False
-        _bb_lower_dt, _bb_upper_dt = self._bb_detect_thresholds()
-        if (
-            bb_result is not None
-            and bb_result.upper > 0
-            and bb_result.lower > 0
-            and ticker.last > 0
-        ):
-            if delta > 0 and not below_interval and bb_pos >= _bb_upper_dt:
-                _ripe_scrum = True
-            if delta < 0 and not below_interval and bb_pos <= _bb_lower_dt:
-                _deep_fold = True
+        _bb_upper_dt = bb_result.upper_line if bb_result is not None else 1.0
+        _bb_lower_dt = bb_result.lower_line if bb_result is not None else 0.0
 
-        if _ripe_scrum and not scrum_ok:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"RIPE-HARVEST (override via "
-                    f"GateChain): Δ={delta_pct:.1f}% ≥ "
-                    f"interval {self.config.scrumming_interval_pct:.1f}% "
-                    f"+ bb_pos={bb_pos:.2f} ≥ Upper Detect Threshold "
-                    f"{_bb_upper_dt:.3f}. RipeHarvestScrumOverride "
-                    f"will force-pass midline_scrum + target_fires + "
-                    f"trend_hold + ta_bullish. Operator directive: "
-                    f"claim the profit."
-                ),
-            )
-        if _deep_fold and not fold_ok_midline:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"DEEP-FOLD (override via "
-                    f"GateChain): Δ={delta_pct:.1f}% ≥ "
-                    f"interval {self.config.scrumming_interval_pct:.1f}% "
-                    f"+ bb_pos={bb_pos:.2f} ≤ Lower Detect Threshold "
-                    f"{_bb_lower_dt:.3f}. DeepFoldOverride will "
-                    f"force-pass midline_fold + ta_bearish. The "
-                    f"per-tranche price-floor is still enforced downstream."
-                ),
-            )
+        target_fires = self._tick_target_ramp(_bb_upper_zone, _bb_lower_zone)
 
-        target_fires = self._tick_target_ramp(
-            bb_result, ticker, delta, delta_pct, _interval_usd
-        )
-
-        self._tick_bullseye_notices(bb_result, candles, ticker)
+        self._tick_bullseye_notices(_panel, candles, ticker)
 
         if delta > 0 and not (
             not below_interval
@@ -4123,9 +3840,9 @@ class ScrummingBot(
                     else:
                         _blocked.append(
                             f"TA={eff_direction.name} but confidence "
-                            f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} floor"
+                            f"{eff_confidence:.4f} < {_scrum_floor:.4f} floor"
                         )
-                if trend_hold:
+                if trend_hold and not _bb_upper_zone:
                     _blocked.append("trend hold is active")
                 if not scrum_ok:
                     _blocked.append(
@@ -4144,51 +3861,13 @@ class ScrummingBot(
                     f"{'; '.join(_blocked) or 'a gate the summary does not name'}.",
                 )
 
-        if _ripe_scrum:
-            if not is_bullish:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"RIPE HARVEST OVERRIDE: the TA gate refused "
-                    f"the scrum (TA={eff_direction.name}, confidence "
-                    f"{eff_confidence:.4f}, floor {_eff_conf_floor:.4f}). "
-                    f"The ripe-harvest override passes it.",
-                )
-            if not target_fires:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message="RIPE HARVEST OVERRIDE: the FIRE gate refused "
-                    "the scrum, the ramp having not reached FIRE. "
-                    "The ripe-harvest override passes it.",
-                )
-            if trend_hold:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"RIPE HARVEST OVERRIDE: the trend-hold gate "
-                    f"refused the scrum at {trend_strength:.0%} bullish. "
-                    f"The ripe-harvest override passes it.",
-                )
-        if _deep_fold:
-            if not is_bearish:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"DEEP FOLD OVERRIDE: the TA gate refused the "
-                    f"fold (TA={eff_direction.name}, confidence "
-                    f"{eff_confidence:.4f}, floor {_eff_conf_floor:.4f}). "
-                    f"The deep-fold override passes it.",
-                )
-
-        _bb_above_upper_dt = bb_pos >= _bb_upper_dt
-        _bb_below_lower_dt = bb_pos <= _bb_lower_dt
+        _bb_above_upper_dt = _bb_upper_zone
+        _bb_below_lower_dt = _bb_lower_zone
         _cb_blocks_scrum = self._cb_soft_active_side == "scrum"
         _htf_bias_dir = None
-        _htf_bias_detail: dict = {}
         try:
             if self._coordinator is not None:
-                _htf_bias_dir, _htf_bias_detail = self._coordinator.get_higher_tf_bias(
+                _htf_bias_dir, _ = self._coordinator.get_higher_tf_bias(
                     self.bot_id,
                     self.config.ta_timeframe or "1h",
                 )
@@ -4277,13 +3956,14 @@ class ScrummingBot(
             htf_blocks_fold=False,
             scrumming_interval_pct=_distance.interval_pct,
             trading_fee_pct=_distance.fee_pct,
-            ripe_scrum=bool(_ripe_scrum),
-            deep_fold=bool(_deep_fold),
             adx=_extract_signal_detail(summary, "adx", "adx", 0.0),
             efficiency_ratio=_extract_signal_detail(summary, "kaufman_er", "er", 0.0),
             z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
             eff_confidence=float(eff_confidence),
-            ta_conf_floor=float(_eff_conf_floor),
+            ta_conf_floor=float(_scrum_floor),
+            bb_upper_zone=bool(_bb_upper_zone),
+            zone_deeper=bool(_scrum_deeper),
+            zone_bar=float(_scrum_timing.bar),
         )
         _scrum_chain_result = self._scrum_chain.evaluate(_scrum_ctx)
         _scrum_blockers = [message for _name, message in _scrum_chain_result.blocked]
@@ -4328,6 +4008,8 @@ class ScrummingBot(
                 "scrum_ok": bool(scrum_ok),
                 "target_fires": bool(target_fires),
                 "bb_above_upper_dt": bool(_bb_above_upper_dt),
+                "bb_upper_zone": bool(_bb_upper_zone),
+                "zone_deeper": bool(_scrum_deeper),
                 "cb_blocks_scrum": bool(_cb_blocks_scrum),
                 "htf_bias_dir": (
                     str(_htf_bias_dir.name) if _htf_bias_dir is not None else None
@@ -4389,12 +4071,12 @@ class ScrummingBot(
                 bb_pos,
                 eff_direction,
                 eff_confidence,
-                _eff_conf_floor,
+                _scrum_floor,
                 position_boost,
                 _scrum_chain_result,
             )
 
-        elif delta > 0 and not below_interval and trend_hold:
+        elif delta > 0 and not below_interval and trend_hold and not _bb_upper_zone:
             if self._refusal_is_new("scrum_trend_hold", ticker.last):
                 self._bus.emit(
                     "bot.log",
@@ -4414,40 +4096,12 @@ class ScrummingBot(
                 else:
                     _scrum_why = (
                         f"TA={eff_direction.name} but confidence "
-                        f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} floor"
+                        f"{eff_confidence:.4f} < {_scrum_floor:.4f} floor"
                     )
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
                     message=f"HOLD SCRUM: delta +${abs(delta):.4f} — {_scrum_why}",
-                )
-
-        elif (
-            delta > 0
-            and not below_interval
-            and is_bullish
-            and not trend_hold
-            and scrum_ok
-            and target_fires
-            and not _bb_above_upper_dt
-            and not _cb_blocks_scrum
-        ):
-            if self._refusal_is_new("scrum_bb_upper_detect", ticker.last):
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"SCRUM REFUSED (Upper BB Detection Threshold): "
-                        f"bb_pos={bb_pos:.3f} < upper_detect={_bb_upper_dt:.3f} "
-                        f"(scrum_detect_pct={self.config.scrum_detect_pct}%). "
-                        f"Operator rule: SCRUM cannot occur below the Upper "
-                        f"BB Detection Threshold. All other gates passed."
-                    ),
-                )
-                self._emit_trade_notification(
-                    "SCRUM",
-                    "REFUSED",
-                    f"bb_pos {bb_pos:.3f} < upper detect {_bb_upper_dt:.3f}",
                 )
 
         elif (
@@ -4472,47 +4126,6 @@ class ScrummingBot(
                         f"{self._cb_soft_cooldown_remaining} candle(s) of "
                         f"cooldown remaining before SCRUM side re-opens."
                     ),
-                )
-
-        elif (
-            delta > 0
-            and not below_interval
-            and is_bullish
-            and not trend_hold
-            and scrum_ok
-            and target_fires
-            and _bb_above_upper_dt
-            and not _cb_blocks_scrum
-            and _htf_blocks_scrum
-        ):
-            if self._refusal_is_new("scrum_htf_bias", ticker.last):
-                _bull_w = _htf_bias_detail.get("bull_weight", 0.0)
-                _bear_w = _htf_bias_detail.get("bear_weight", 0.0)
-                _contribs = _htf_bias_detail.get("contributors", [])
-                _summary = (
-                    ", ".join(
-                        f"{c.get('tf', '?')}={c.get('direction', '?')}"
-                        f"@{c.get('conf', 0):.2f}"
-                        for c in _contribs
-                        if not c.get("skipped")
-                    )
-                    or "no usable phantoms"
-                )
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"SCRUM REFUSED (Higher-TF Bias gate): higher-TF "
-                        f"phantom consensus is BULLISH "
-                        f"(bull weight {_bull_w:.2f} > bear {_bear_w:.2f}). "
-                        f"Selling here would fight the higher-TF trend. "
-                        f"Contributors: {_summary}."
-                    ),
-                )
-                self._emit_trade_notification(
-                    "SCRUM",
-                    "REFUSED",
-                    f"higher-TF BULLISH bias ({_bull_w:.2f} vs {_bear_w:.2f})",
                 )
 
         _anchor = float(getattr(self, "_anchor_target_balance", self._target_balance))
@@ -4610,11 +4223,13 @@ class ScrummingBot(
             htf_blocks_fold=bool(_htf_blocks_fold),
             scrumming_interval_pct=_distance.interval_pct,
             trading_fee_pct=_distance.fee_pct,
-            ripe_scrum=bool(_ripe_scrum),
-            deep_fold=bool(_deep_fold),
             z_score=_extract_signal_detail(summary, "zscore", "z", 0.0),
             eff_confidence=float(eff_confidence),
-            ta_conf_floor=float(_eff_conf_floor),
+            ta_conf_floor=float(_fold_floor),
+            bb_upper_zone=bool(_bb_upper_zone),
+            bb_lower_zone=bool(_bb_lower_zone),
+            zone_deeper=bool(_fold_deeper),
+            zone_bar=float(_fold_timing.bar),
         )
         _fold_chain_result = self._fold_chain.evaluate(_fold_ctx)
         _fold_blockers = [message for _name, message in _fold_chain_result.blocked]
@@ -4645,6 +4260,8 @@ class ScrummingBot(
                     _mem253_current_pos if _mem253_current_pos else 0.0
                 ),
                 "bb_below_lower_dt": bool(_bb_below_lower_dt),
+                "bb_lower_zone": bool(_bb_lower_zone),
+                "zone_deeper": bool(_fold_deeper),
                 "cb_blocks_fold": bool(_cb_blocks_fold),
                 "htf_blocks_fold": bool(_htf_blocks_fold),
                 "flag_fold_require_ta_bearish": bool(_flag_fold_require_ta_bearish),
@@ -4696,10 +4313,10 @@ class ScrummingBot(
                 )
                 if not _dir_ok:
                     _why = f"TA={eff_direction.name} is not BEARISH or " f"NEUTRAL"
-                elif eff_confidence < _eff_conf_floor:
+                elif eff_confidence < _fold_floor:
                     _why = (
                         f"TA={eff_direction.name} but confidence "
-                        f"{eff_confidence:.4f} < {_eff_conf_floor:.4f} "
+                        f"{eff_confidence:.4f} < {_fold_floor:.4f} "
                         f"floor"
                     )
                 else:
@@ -4715,16 +4332,20 @@ class ScrummingBot(
                     f"(${self._fold_queue_usd:.4f}) queued — {_why}",
                 )
 
-        elif self._fold_tranches and is_bearish and not fold_ok_midline:
+        elif (
+            self._fold_tranches
+            and is_bearish
+            and not fold_ok_midline
+            and not _bb_lower_zone
+        ):
             if self._refusal_is_new("fold_bb_midline", ticker.last):
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
                     message=f"HOLD FOLD: BEARISH and {len(self._fold_tranches)} "
-                    f"tranche(s) queued but BB position {bb_pos:.0%} > 50% "
-                    f"(bb_midline_gate blocking fold — wait for price "
-                    f"to drop below midline), phantom lock "
-                    f"{_yes_no(self._phantom_locked)}",
+                    f"tranche(s) queued, but the "
+                    f"{self._phantom_lock_timeframe or 'higher-timeframe'} "
+                    f"phantom lock holds the fold outside the BB Tolerance zone.",
                 )
 
         elif (
@@ -4740,17 +4361,16 @@ class ScrummingBot(
                     "bot.log",
                     bot_id=self.bot_id,
                     message=(
-                        f"FOLD REFUSED (Lower BB Detection Threshold): "
-                        f"bb_pos={bb_pos:.3f} > lower_detect={_bb_lower_dt:.3f} "
-                        f"(scrum_detect_pct={self.config.scrum_detect_pct}%). "
-                        f"Operator rule: FOLD cannot occur above the Lower "
-                        f"BB Detection Threshold. All other gates passed."
+                        f"FOLD REFUSED (BB Tolerance): bb_pos={bb_pos:.3f} > "
+                        f"{_bb_lower_dt:.3f}, so price is not within "
+                        f"{float(self.config.bb_tolerance_pct):g}% of price of "
+                        f"the lower band. A fold waits for the zone."
                     ),
                 )
                 self._emit_trade_notification(
                     "FOLD",
                     "REFUSED",
-                    f"bb_pos {bb_pos:.3f} > lower detect {_bb_lower_dt:.3f}",
+                    f"bb_pos {bb_pos:.3f} > zone line {_bb_lower_dt:.3f}",
                 )
 
         elif (
@@ -4773,45 +4393,6 @@ class ScrummingBot(
                         f"{self._cb_soft_cooldown_remaining} candle(s) of "
                         f"cooldown remaining before FOLD side re-opens."
                     ),
-                )
-
-        elif (
-            self._fold_tranches
-            and is_bearish
-            and fold_ok_midline
-            and not _mem253_at_ceiling
-            and _bb_below_lower_dt
-            and not _cb_blocks_fold
-            and _htf_blocks_fold
-        ):
-            if self._refusal_is_new("fold_htf_bias", ticker.last):
-                _bull_w = _htf_bias_detail.get("bull_weight", 0.0)
-                _bear_w = _htf_bias_detail.get("bear_weight", 0.0)
-                _contribs = _htf_bias_detail.get("contributors", [])
-                _summary = (
-                    ", ".join(
-                        f"{c.get('tf', '?')}={c.get('direction', '?')}"
-                        f"@{c.get('conf', 0):.2f}"
-                        for c in _contribs
-                        if not c.get("skipped")
-                    )
-                    or "no usable phantoms"
-                )
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"FOLD REFUSED (Higher-TF Bias gate): higher-TF "
-                        f"phantom consensus is BEARISH "
-                        f"(bear weight {_bear_w:.2f} > bull {_bull_w:.2f}). "
-                        f"Buying here would catch a falling knife. "
-                        f"Contributors: {_summary}."
-                    ),
-                )
-                self._emit_trade_notification(
-                    "FOLD",
-                    "REFUSED",
-                    f"higher-TF BEARISH bias ({_bear_w:.2f} vs {_bull_w:.2f})",
                 )
 
         # Re-read after the fold above moved ``_current_holdings`` and the target.

@@ -273,6 +273,7 @@ class PaperSettingsTabMixin(SettingsTabMixin):
             )
             set_description(self._bb_tol, SETTINGS_TAB_DESCRIPTIONS["bb_tol"])
             sf.addRow("BB Tolerance:", self._bb_tol)
+            self._add_boost_row(sf, cfg, "proximity_boost_pct")
 
             self._landing = QSpinBox()
             self._landing.setRange(2, 10)
@@ -282,6 +283,7 @@ class PaperSettingsTabMixin(SettingsTabMixin):
                 lambda v: self._mark_changed("bb_landing_strip_candles", v)
             )
             sf.addRow("Landing Strip Candles:", self._landing)
+            self._add_boost_row(sf, cfg, "landing_strip_boost_pct")
 
             # Filtered to the timeframes the bot's exchange supports.
             self._ta_tf = QComboBox()
@@ -490,46 +492,7 @@ class PaperSettingsTabMixin(SettingsTabMixin):
         af = QFormLayout(adv_group)
         self._configure_form(af)
 
-        self._detect_pct = QSpinBox()
-        self._detect_pct.setRange(10, 90)
-        self._detect_pct.setSuffix(" %")
-        self._detect_pct.setValue(int(cfg.scrum_detect_pct))
-        set_description(self._detect_pct, SETTINGS_TAB_DESCRIPTIONS["detect_pct"])
-        self._detect_pct.valueChanged.connect(
-            lambda v: self._mark_changed("scrum_detect_pct", v)
-        )
-        af.addRow("Detect Threshold:", self._detect_pct)
-
-        self._fire_pct = QDoubleSpinBox()
-        self._fire_pct.setRange(0.1, 10.0)
-        self._fire_pct.setDecimals(2)
-        self._fire_pct.setSuffix(" %")
-        self._fire_pct.setValue(float(cfg.scrum_fire_pct))
-        set_description(self._fire_pct, SETTINGS_TAB_DESCRIPTIONS["fire_pct"])
-        self._fire_pct.valueChanged.connect(
-            lambda v: self._mark_changed("scrum_fire_pct", v)
-        )
-        af.addRow("Fire Threshold:", self._fire_pct)
-
-        self._midline_gate = QCheckBox("BB Midline Gate")
-        self._midline_gate.setChecked(bool(cfg.bb_midline_gate))
-        set_description(self._midline_gate, SETTINGS_TAB_DESCRIPTIONS["midline_gate"])
-        self._midline_gate.toggled.connect(
-            lambda v: self._mark_changed("bb_midline_gate", v)
-        )
-        af.addRow(self._midline_gate)
-
-        self._scrum_read_rate_min = QSpinBox()
-        self._scrum_read_rate_min.setRange(1, 60)
-        self._scrum_read_rate_min.setSuffix(" min")
-        self._scrum_read_rate_min.setValue(int(cfg.scrum_read_rate_min))
-        set_description(
-            self._scrum_read_rate_min, SETTINGS_TAB_DESCRIPTIONS["scrum_read_rate_min"]
-        )
-        self._scrum_read_rate_min.valueChanged.connect(
-            lambda v: self._mark_changed("scrum_read_rate_min", v)
-        )
-        af.addRow("Read Rate:", self._scrum_read_rate_min)
+        self._add_read_rate_row(af, cfg)
 
         self._band_travel = QSpinBox()
         self._band_travel.setRange(0, 100)

@@ -2449,7 +2449,7 @@ flowchart TD
     FLOOR["_skewed_confidence_floor: 0.25 relaxed by the skew"] --> EFF
     CANDLES --> BBP[detect_bb_proximity]
     BBP --> BBPOS[bb_position]
-    BBPOS --> DT{"bb_pos against _bb_detect_thresholds"}
+    BBPOS --> DT{"band_zone: within BB Tolerance on the Target Delta's side"}
     EFF --> CHAIN[build_scrumming_scrum_chain]
     DT --> CHAIN
     ADXD["adx signal detail 'adx'"] --> CHAIN
@@ -2693,6 +2693,22 @@ instead of being turned back into 75.
 _raw = getattr(self.config, "scrum_detect_pct", None)
 ```
 
+**The detect threshold passages above are overtaken.** None is edited and none
+is removed.
+
+Now: Detect Threshold is retired, and its method went with it. The band gate,
+the FIRE ramp, the first buy and the BB priority skew each read BB Tolerance,
+in percent of price, on the side the Target Delta points to. The zone's own
+line in band-position terms comes off the same reading (`src/trading/indicators/bb_proximity.py, in detect_bb_proximity`).
+
+`src/trading/indicators/bb_proximity.py, in band_zone`
+
+```python
+if band is None:
+    return (False, False)
+return (bool(delta > 0 and band.near_upper), bool(delta < 0 and band.near_lower))
+```
+
 ### The scrum chain gates
 
 `src/trading/gate_chain.py` — `build_scrumming_scrum_chain`
@@ -2713,7 +2729,7 @@ return GateChain(
         ADXTrendSuppressionGate(),
         EfficiencyRatioRegimeGate(),
         ZScoreExtremityGate(side="scrum"),
-        RipeHarvestScrumOverride(),  # runs in pass 2 regardless of list position
+        ZoneTimingGate(side="scrum"),
     ],
     side="scrum",
 )
@@ -2753,17 +2769,18 @@ def evaluate(self, ctx: GateContext) -> GateResult:
 | ---- | ----------- | ----- | ------------- |
 | `delta_positive` | the holdings sit above target | the target delta | none |
 | `interval` | the delta clears the scrumming interval | the delta | none |
-| `ta_bullish` | `is_bullish` | Net, Conf and the floor | `ripe_harvest_override` |
-| `trend_hold` | no sustained uptrend | more than 13 of the last 20 candles closing above their open | `ripe_harvest_override` |
-| `midline_scrum` | `bb_pos` above 0.50 and no phantom lock | `bb_position` | `ripe_harvest_override` |
-| `target_fires` | the detect and fire ramp is in FIRE | the target ramp | `ripe_harvest_override` |
-| `bb_proximity_scrum` | `bb_pos >= upper_detect` | `bb_position` | none |
+| `ta_bullish` | `is_bullish` | Net, Conf and the floor | `band_zone` |
+| `trend_hold` | no sustained uptrend | more than 13 of the last 20 candles closing above their open | `band_zone` |
+| `midline_scrum` | no phantom lock | the coordinator's locks | none |
+| `target_fires` | the ramp is in FIRE, price inside the upper zone | the target ramp | none |
+| `bb_proximity_scrum` | price inside BB Tolerance of the upper band on a surplus | `band_zone` | none |
 | `circuit_breaker_scrum` | no soft trip on the scrum side | the breaker state | none |
 | `htf_defer_scrum` | the higher timeframe is not bullish | the coordinator | none |
 | `hysteresis_scrum` | the price cleared the last pivot plus fees | the pivot | none |
-| `adx_trend_suppression` | ADX under 30.0 | the `adx` signal detail | none |
-| `efficiency_ratio_regime` | ER between 0.05 and 0.70 | the `er` signal detail | none |
-| `zscore_extremity` | Z above -2.0 | the `z` signal detail | none |
+| `adx_trend_suppression` | ADX under 30.0 | the `adx` signal detail | `band_zone` |
+| `efficiency_ratio_regime` | ER between 0.05 and 0.70 | the `er` signal detail | `band_zone` |
+| `zscore_extremity` | Z above -2.0 | the `z` signal detail | `band_zone` |
+| `zone_timing_scrum` | inside the upper zone, the vote does not read price going deeper | the vote, its line and the boost | none |
 
 **Functional.** Three of those gates skip the collated vote and read one
 indicator's own number: ADX, the Efficiency Ratio and the Z-Score. The bot
@@ -2805,13 +2822,13 @@ return GateChain(
         HTFDeferGate(side="fold"),
         HysteresisGate(side="fold"),
         ZScoreExtremityGate(side="fold"),
-        DeepFoldOverride(),
+        ZoneTimingGate(side="fold"),
     ],
     side="fold",
 )
 ```
 
-**Functional.** The buy side runs nine gates against the sell side's thirteen.
+**Functional.** The buy side runs ten gates against the sell side's fourteen.
 Six of the sell-side gates have no twin here, and the buy side adds two of its
 own.
 
@@ -2848,20 +2865,21 @@ worth knowing before anyone assumes the asymmetry is deliberate.
 
 | Gate | Passes when | Overridden by |
 | ---- | ----------- | ------------- |
-| `tranches_queued` | at least one fold tranche is waiting | none |
-| `ta_bearish` | `is_bearish` | `deep_fold_override` |
-| `midline_fold` | `bb_pos` below 0.50 | `deep_fold_override` |
+| `tranches_queued` | at least one fold tranche is waiting | `band_zone` |
+| `ta_bearish` | `is_bearish` | `band_zone` |
+| `midline_fold` | no phantom lock | none |
 | `smart_ceiling` | the position sits under the smart ceiling | none |
-| `bb_proximity_fold` | `bb_pos <= lower_detect` | none |
+| `bb_proximity_fold` | price inside BB Tolerance of the lower band on a deficit | none |
 | `circuit_breaker_fold` | no soft trip on the fold side | none |
 | `htf_defer_fold` | the higher timeframe is not bearish | none |
 | `hysteresis_fold` | the price cleared the last pivot plus fees | none |
-| `zscore_extremity` | Z below +2.0 | none |
+| `zscore_extremity` | Z below +2.0 | `band_zone` |
+| `zone_timing_fold` | inside the lower zone, the vote does not read price going deeper | none |
 
-### The two overrides
+### The zone release
 
-**Functional.** An override runs in a second pass and force-passes gates that
-already refused. Its own verdict never appears in the pass list or the block
+**Functional.** A release rule, and any override gate, runs in a second pass and
+force-passes gates that already refused. Its own verdict never appears in the pass list or the block
 list. Each refusal it lifts has its message rewritten to name the override, and
 the name is recorded separately, so the log tells you which gate was overridden
 and by what.
@@ -2869,21 +2887,16 @@ and by what.
 `src/trading/gate_chain.py` — `GateChain.evaluate`, the second pass
 
 ```python
-overrides_applied: list[str] = []
+for rule, names in self.releases(ctx):
+    for target_name in names:
+        replace(target_name, rule)
+
 for gate in self._override_gates:
     result = gate.evaluate(ctx)
     if not result.passed:
         continue
     for target_name in result.override_gates:
-        if target_name in blocked_index:
-            idx = blocked_index.pop(target_name)
-            _name, _msg = blocked[idx]
-            blocked[idx] = (_name, f"OVERRIDDEN_BY:{gate.name}({_msg})")
-            overrides_applied.append(
-                OVERRIDE_APPLIED_FORMAT.format(
-                    gate=target_name, override=gate.name, refusal=_msg
-                )
-            )
+        replace(target_name, gate.name)
 ```
 
 **Functional.** The record separates a refusal that stood from one an override
@@ -2902,21 +2915,19 @@ OVERRIDE_NOT_APPLIED_FORMAT = "{message} [override not applied: {overrides}]"
 
 | Override | Arms on | Force-passes |
 | -------- | ------- | ------------ |
-| `ripe_harvest_override` | positive delta, interval cleared, `bb_pos >= upper_detect` | `midline_scrum`, `target_fires`, `trend_hold`, `ta_bullish` |
-| `deep_fold_override` | negative delta, interval cleared, `bb_pos <= lower_detect` | `midline_fold`, `ta_bearish` |
+| `band_zone`, a rule of `GateChain.releases` | price inside BB Tolerance on the Target Delta's side, or a late turn's read | on a scrum `ta_bullish`, `trend_hold`, `adx_trend_suppression`, `efficiency_ratio_regime` and `zscore_extremity`; on a fold `tranches_queued`, `ta_bearish` and `zscore_extremity` |
 
-**Design intention.** At the band extreme, the band position outranks the vote.
-That comes straight from the operator's own reading of the Bollinger Bands:
-they are the boundary a trade fires at, and a position sitting on one is the
-condition he wants to trade. Neither override touches the circuit breaker, the
-hysteresis or the three indicator gates, so the safety gates keep their veto.
+**Design intention.** At the band extreme, the band position outranks the vote,
+and the vote sets only when the trade goes. The release touches neither the
+circuit breaker, the hysteresis, the phantom lock nor the higher-timeframe
+defer, so those keep their veto.
 
-`src/trading/gate_chain.py` — `RipeHarvestScrumOverride`, and what it may lift
+`src/trading/gate_chain.py` — `ZoneTimingGate.evaluate`, the wait inside the zone
 
 ```python
-name = "ripe_harvest_override"
-side = "scrum"
-overrides = ("midline_scrum", "target_fires", "trend_hold", "ta_bullish")
+in_zone = ctx.bb_upper_zone if self.side == "scrum" else ctx.bb_lower_zone
+if not (ctx.zone_deeper and in_zone):
+    return GateResult(passed=True)
 ```
 
 ### The trend-hold override

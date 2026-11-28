@@ -53,6 +53,21 @@ class BotMode(str, Enum):
 #: Default for ``BotConfig.stack_mode`` and the wizard's checkbox.
 STACK_MODE_DEFAULT: bool = True
 
+#: Default ``BotConfig.cartridge_boost_pct``: % the bar for waiting rises with the Target Delta at Max Cartridge Size.
+CARTRIDGE_BOOST_PCT_DEFAULT: float = 0.0
+
+#: Default ``BotConfig.proximity_boost_pct``: % the bar for waiting rises with price at the band edge.
+PROXIMITY_BOOST_PCT_DEFAULT: float = 0.0
+
+#: Default ``BotConfig.landing_strip_boost_pct``: % the bar for waiting rises per tapering Landing Strip candle.
+LANDING_STRIP_BOOST_PCT_DEFAULT: float = 0.13
+
+#: Indicators the TA panel votes with; ``three_indicator_floor`` never answers under two of them, 2 / 12.
+PANEL_INDICATOR_COUNT: int = 12
+
+#: The largest boost percent: past it the bar, line times one plus share, tops confidence 1.0 at that lowest line.
+BOOST_PCT_MAX: float = 100.0 * (PANEL_INDICATOR_COUNT / 2 - 1)
+
 #: ``BotConfig.expiry_close_action``: stop buying and let the sell ladder run.
 EXPIRY_CLOSE_FINISH_LADDER: str = "finish_ladder"
 #: ``BotConfig.expiry_close_action``: one order for the whole remaining position.
@@ -167,28 +182,27 @@ class BotConfig:
     # Caps per-cycle target_balance growth as a % of the cycle's anchor; 1-100.
     max_target_growth_pct: float = 1.0
 
-    bb_tolerance_pct: float = 1.0  # 0.25% to 5% tolerance for BB proximity
-    bb_landing_strip_candles: int = (
-        3  # Newest small-body HA candles the band-proximity check needs
-    )
+    bb_tolerance_pct: float = 1.0  # 0.25% to 5% of price from either band edge
+    proximity_boost_pct: float = PROXIMITY_BOOST_PCT_DEFAULT
+    # Small-body HA candles the band check needs, and the shortest tapering run
+    # the Landing Strip boost counts.
+    bb_landing_strip_candles: int = 3
+    landing_strip_boost_pct: float = LANDING_STRIP_BOOST_PCT_DEFAULT
     ta_timeframe: str = "1h"  # Timeframe for TA indicator calculations
     # The length exchange_id does not serve, which _snap_ta_timeframe replaced.
     ta_timeframe_unserved: str = ""
     # Weights this bot votes at; empty votes at the stored ta_indicator_weights.
     own_ta_weights: dict = field(default_factory=dict)
 
-    # % distance from the BB midline that switches SEARCH to TRACK; 10-90.
-    scrum_detect_pct: int = 75
-    # % distance from a BB band that triggers a trade; 0.1-10.0.
-    scrum_fire_pct: float = 0.5
-    # True scrums only above the BB midline and folds only below it.
-    bb_midline_gate: bool = True
-    # SEARCH-mode read rate in minutes; TRACK mode reads 10x faster.
-    scrum_read_rate_min: int = 5
+    # SEARCH reads once per candle of it; read_timeframes(exchange_id, ta_timeframe)
+    # holds the choices.
+    scrum_read_timeframe: str = ""
+    # The saved length exchange_id does not serve, which _resolve_read_timeframe replaced.
+    scrum_read_timeframe_unserved: str = ""
     # % of BB band width price must travel since the last fold; 0 is off.
     band_travel_pct: int = 70
-    # A band touch inside 0.5%, or a wick inside 0.2%, lowers the TA
-    # confidence floor; scrum_fire_pct is untouched.
+    # A band touch inside 0.5%, or a wick inside 0.2%, reads as the band edge
+    # for the BB Proximity boost.
     bb_bullseye_check: bool = True
     # A separate USD reserve for buying sharp drawdowns.
     hedge_rebalance_active: bool = True
@@ -200,9 +214,10 @@ class BotConfig:
     circuit_breaker_hard_pct: float = 35.0
     circuit_breaker_cooldown_candles: int = 3
 
-    # 0 disables; otherwise triggers a rebalance once |delta| >= target_balance x
-    # pct/100.
+    # 0 disables; past target_balance x pct/100 the bot reads faster and the
+    # vote boost's cartridge term starts.
     max_cartridge_size_pct: float = 10.0
+    cartridge_boost_pct: float = CARTRIDGE_BOOST_PCT_DEFAULT
 
     # Derives the threshold from the BB range, clamped by
     # max_cartridge_smart_ceiling_pct.
@@ -306,6 +321,17 @@ class BotConfig:
             else:
                 self.symbol = f"{self.target_asset}/{self.base_currency}"
         self._snap_ta_timeframe()
+        self._resolve_read_timeframe()
+
+    def _resolve_read_timeframe(self) -> None:
+        """Set ``scrum_read_timeframe`` to ``bot_read_timeframe``, recording a saved length the venue does not serve in ``scrum_read_timeframe_unserved``."""
+        from ...exchange.timeframes import is_supported
+
+        saved = self.scrum_read_timeframe
+        self.scrum_read_timeframe = bot_read_timeframe(self)
+        if saved and saved != self.scrum_read_timeframe:
+            if not is_supported(self.exchange_id, saved):
+                self.scrum_read_timeframe_unserved = saved
 
     def _snap_ta_timeframe(self) -> None:
         """Replace a ``ta_timeframe`` the venue does not serve with the longest
@@ -441,11 +467,11 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         # ScrummingBot-only.
         "tranche_despawn_days",
         "bb_tolerance_pct",
+        "proximity_boost_pct",
         "bb_landing_strip_candles",
-        "scrum_detect_pct",
-        "scrum_fire_pct",
-        "bb_midline_gate",
-        "scrum_read_rate_min",
+        "landing_strip_boost_pct",
+        "scrum_read_timeframe",
+        "scrum_read_timeframe_unserved",
         "band_travel_pct",
         "bb_bullseye_check",
         "hedge_rebalance_active",
@@ -454,6 +480,7 @@ _BOT_CONFIG_SCRUMMING_ONLY_FIELDS: frozenset = frozenset(
         "circuit_breaker_hard_pct",
         "circuit_breaker_cooldown_candles",
         "max_cartridge_size_pct",
+        "cartridge_boost_pct",
         "max_cartridge_smart",
         "max_cartridge_smart_ceiling_pct",
         # strategy toggle fields
@@ -511,6 +538,10 @@ _DEPRECATED_KWARGS: frozenset = frozenset(
         "personal_hold_qty",
         "wire_inflow_stack_pct",
         "scrum_fold_pct",
+        "scrum_detect_pct",
+        "scrum_fire_pct",
+        "bb_midline_gate",
+        "scrum_read_rate_min",
     }
 )
 
@@ -688,6 +719,17 @@ def target_growth_pct(config):
     keeps its own `float` and `or` coercion.
     """
     return getattr(config, "max_target_growth_pct", TARGET_GROWTH_PCT_DEFAULT)
+
+
+def bot_read_timeframe(config) -> str:
+    """``read_timeframe`` of ``config.exchange_id``, ``config.ta_timeframe`` and ``config.scrum_read_timeframe``; Live, Paper and Simulator bots read it."""
+    from ...exchange.timeframes import read_timeframe
+
+    return read_timeframe(
+        str(getattr(config, "exchange_id", "") or ""),
+        str(getattr(config, "ta_timeframe", "") or ""),
+        str(getattr(config, "scrum_read_timeframe", "") or ""),
+    )
 
 
 def ceiling_multiple(config) -> float:

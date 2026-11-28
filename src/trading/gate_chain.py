@@ -3,7 +3,8 @@
 Each Gate returns a GateResult from ``evaluate(ctx)``, and GateContext
 carries every input a gate reads. GateChain evaluates every gate with no
 short-circuit; ChainResult.blocked names each gate that failed, and an
-override gate force-passes the gates listed in its ``overrides``.
+override gate force-passes the gates listed in its ``overrides``, as a rule
+``GateChain.releases`` names force-passes its own.
 ScrummingBot.tick calls evaluate on ``self._scrum_chain`` and
 ``self._fold_chain``, and ChainResult.should_fire decides whether that
 tick's trade executes.
@@ -97,9 +98,6 @@ class GateContext:
     scrumming_interval_pct: float
     trading_fee_pct: float
 
-    ripe_scrum: bool = False
-    deep_fold: bool = False
-
     # 0.0 is the not-populated sentinel; ADXTrendSuppressionGate passes on it.
     adx: float = 0.0
 
@@ -113,6 +111,14 @@ class GateContext:
     # leaves TADirectionGate on its plain refusal text.
     eff_confidence: float = 0.0
     ta_conf_floor: float = 0.0
+
+    # Price inside BB Tolerance of the band the delta points to, as band_zone answers.
+    bb_upper_zone: bool = False
+    bb_lower_zone: bool = False
+
+    # zone_timing read price going deeper into this side's zone, at zone_bar.
+    zone_deeper: bool = False
+    zone_bar: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -319,8 +325,8 @@ class TargetFiresGate(Gate):
 
 
 class BBProximityGate(Gate):
-    """Passes on ``ctx.bb_above_upper_dt`` for scrum, ``ctx.bb_below_lower_dt``
-    for fold.
+    """Passes on ``ctx.bb_above_upper_dt`` or ``ctx.bb_upper_zone`` for scrum,
+    ``ctx.bb_below_lower_dt`` or ``ctx.bb_lower_zone`` for fold.
 
     ``blocker_message`` compares ``ctx.bb_pos`` against ``ctx.bb_upper_dt`` or
     ``ctx.bb_lower_dt``, all three in bb_pos terms.
@@ -332,7 +338,7 @@ class BBProximityGate(Gate):
 
     def evaluate(self, ctx: GateContext) -> GateResult:
         if self.side == "scrum":
-            if ctx.bb_above_upper_dt:
+            if ctx.bb_above_upper_dt or ctx.bb_upper_zone:
                 return GateResult(passed=True)
             return GateResult(
                 passed=False,
@@ -342,7 +348,7 @@ class BBProximityGate(Gate):
                 ),
             )
         else:
-            if ctx.bb_below_lower_dt:
+            if ctx.bb_below_lower_dt or ctx.bb_lower_zone:
                 return GateResult(passed=True)
             return GateResult(
                 passed=False,
@@ -447,40 +453,6 @@ class SmartCeilingGate(Gate):
         if not ctx.mem253_at_ceiling:
             return GateResult(passed=True)
         return GateResult(passed=False, blocker_message="position-ceiling")
-
-
-class RipeHarvestScrumOverride(Gate):
-    """Force-passes every gate in ``overrides`` when ``ctx.ripe_scrum`` is set.
-
-    ScrummingBot.tick sets ``ripe_scrum`` from positive ``delta``, cleared
-    ``below_interval``, and ``bb_pos`` at or above ``bb_upper_dt``.
-    """
-
-    name = "ripe_harvest_override"
-    side = "scrum"
-    overrides = ("midline_scrum", "target_fires", "trend_hold", "ta_bullish")
-
-    def evaluate(self, ctx: GateContext) -> GateResult:
-        if ctx.ripe_scrum:
-            return GateResult(passed=True, override_gates=self.overrides)
-        return GateResult(passed=False, blocker_message="not-ripe")
-
-
-class DeepFoldOverride(Gate):
-    """Force-passes every gate in ``overrides`` when ``ctx.deep_fold`` is set.
-
-    ScrummingBot.tick sets ``deep_fold`` from negative ``delta``, cleared
-    ``below_interval``, and ``bb_pos`` at or below ``bb_lower_dt``.
-    """
-
-    name = "deep_fold_override"
-    side = "fold"
-    overrides = ("midline_fold", "ta_bearish")
-
-    def evaluate(self, ctx: GateContext) -> GateResult:
-        if ctx.deep_fold:
-            return GateResult(passed=True, override_gates=self.overrides)
-        return GateResult(passed=False, blocker_message="not-deep")
 
 
 class ADXTrendSuppressionGate(Gate):
@@ -601,11 +573,51 @@ class ZScoreExtremityGate(Gate):
         return GateResult(passed=True)
 
 
+class ZoneTimingGate(Gate):
+    """Holds while ``ctx.zone_deeper`` inside its side's zone: the vote reads price going deeper, so the bot waits."""
+
+    def __init__(self, side: Literal["scrum", "fold"]):
+        self.side = side
+        self.name = f"zone_timing_{side}"
+
+    def evaluate(self, ctx: GateContext) -> GateResult:
+        in_zone = ctx.bb_upper_zone if self.side == "scrum" else ctx.bb_lower_zone
+        if not (ctx.zone_deeper and in_zone):
+            return GateResult(passed=True)
+        return GateResult(
+            passed=False,
+            blocker_message=(
+                f"zone-timing(deeper: dir={ctx.eff_direction_name},"
+                f"conf={ctx.eff_confidence:.4f}>={ctx.zone_bar:.4f}; the bot waits)"
+            ),
+        )
+
+
+BAND_ZONE_RELEASE = "band_zone"
+"""The rule ``GateChain.releases`` names while price sits inside BB Tolerance on the Target Delta's side."""
+
+ZONE_RELEASED_GATES: dict[str, tuple[str, ...]] = {
+    "scrum": (
+        TADirectionGate("scrum").name,
+        TrendHoldGate.name,
+        ADXTrendSuppressionGate.name,
+        EfficiencyRatioRegimeGate.name,
+        ZScoreExtremityGate.name,
+    ),
+    "fold": (
+        TranchesQueuedGate.name,
+        TADirectionGate("fold").name,
+        ZScoreExtremityGate.name,
+    ),
+}
+"""The gates ``BAND_ZONE_RELEASE`` passes on each side; ``ZoneTimingGate`` sets the timing there."""
+
+
 class GateChain:
     """Evaluates every Gate for one side and returns a ChainResult.
 
-    A Gate declaring ``overrides`` is held back to a second pass, where
-    passing it moves each named gate from ``blocked`` into ``overrides_applied``.
+    A rule ``releases`` puts in force, then a Gate declaring ``overrides``,
+    moves each gate it names from ``blocked`` into ``overrides_applied``.
     """
 
     def __init__(self, gates: list[Gate], side: Literal["scrum", "fold"]) -> None:
@@ -624,6 +636,13 @@ class GateChain:
         """Return the override gates whose ``overrides`` names ``gate_name``."""
         return self._covered_by.get(gate_name, ())
 
+    def releases(self, ctx: GateContext) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        """Each rule ``ctx`` puts in force on this side, with the gate names it passes."""
+        in_zone = ctx.bb_upper_zone if self._side == "scrum" else ctx.bb_lower_zone
+        if not in_zone:
+            return ()
+        return ((BAND_ZONE_RELEASE, ZONE_RELEASED_GATES[self._side]),)
+
     def evaluate(self, ctx: GateContext) -> ChainResult:
         passed: list[str] = []
         blocked: list[tuple[str, str]] = []
@@ -636,22 +655,31 @@ class GateChain:
                 blocked_index[gate.name] = len(blocked)
                 blocked.append((gate.name, result.blocker_message))
 
-        # An override gate's own verdict never reaches passed or blocked.
         overrides_applied: list[str] = []
+
+        def replace(target_name: str, by: str) -> None:
+            if target_name not in blocked_index:
+                return
+            idx = blocked_index.pop(target_name)
+            _name, _msg = blocked[idx]
+            blocked[idx] = (_name, f"OVERRIDDEN_BY:{by}({_msg})")
+            overrides_applied.append(
+                OVERRIDE_APPLIED_FORMAT.format(
+                    gate=target_name, override=by, refusal=_msg
+                )
+            )
+
+        for rule, names in self.releases(ctx):
+            for target_name in names:
+                replace(target_name, rule)
+
+        # An override gate's own verdict never reaches passed or blocked.
         for gate in self._override_gates:
             result = gate.evaluate(ctx)
             if not result.passed:
                 continue
             for target_name in result.override_gates:
-                if target_name in blocked_index:
-                    idx = blocked_index.pop(target_name)
-                    _name, _msg = blocked[idx]
-                    blocked[idx] = (_name, f"OVERRIDDEN_BY:{gate.name}({_msg})")
-                    overrides_applied.append(
-                        OVERRIDE_APPLIED_FORMAT.format(
-                            gate=target_name, override=gate.name, refusal=_msg
-                        )
-                    )
+                replace(target_name, gate.name)
 
         final_blocked: list[tuple[str, str]] = []
         for name, msg in blocked:
@@ -701,7 +729,7 @@ def build_scrumming_scrum_chain() -> GateChain:
             ADXTrendSuppressionGate(),
             EfficiencyRatioRegimeGate(),
             ZScoreExtremityGate(side="scrum"),
-            RipeHarvestScrumOverride(),  # runs in pass 2 regardless of list position
+            ZoneTimingGate(side="scrum"),
         ],
         side="scrum",
     )
@@ -720,7 +748,7 @@ def build_scrumming_fold_chain() -> GateChain:
             HTFDeferGate(side="fold"),
             HysteresisGate(side="fold"),
             ZScoreExtremityGate(side="fold"),
-            DeepFoldOverride(),
+            ZoneTimingGate(side="fold"),
         ],
         side="fold",
     )

@@ -52,7 +52,9 @@ from ..core.log_paths import FLEET_FILE_NAME, get_sim_dir, resolve_fleet_path
 from ..exchange.ytd_trade_store import SIDE_BUY, SIDE_SELL, YtdFileEntry, YtdTrade
 from ..trading.container.config import (
     DETONATION_CONFIDENCE_MIN_DEFAULT,
+    LANDING_STRIP_BOOST_PCT_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
+    PROXIMITY_BOOST_PCT_DEFAULT,
     TARGET_GROWTH_PCT_DEFAULT,
     BotMode,
     BotState,
@@ -186,10 +188,10 @@ class SimBot:
     ta_timeframe: str = ""
     scrumming_interval_pct: float = 0.0
     trading_fee_pct: float = 0.0
-    bb_midline_gate: bool = True
     bb_tolerance_pct: float = 1.0
+    proximity_boost_pct: float = PROXIMITY_BOOST_PCT_DEFAULT
     bb_landing_strip_candles: int = 2
-    scrum_detect_pct: float = 75.0
+    landing_strip_boost_pct: float = LANDING_STRIP_BOOST_PCT_DEFAULT
     scrum_require_ta_bullish: bool = True
     scrum_hold_in_uptrend: bool = True
     scrum_defer_to_htf: bool = True
@@ -351,7 +353,6 @@ def _sim_bot_from_record(
     fee_pct = as_finite_float(config.get("trading_fee_pct"))
     tolerance_pct = as_finite_float(config.get("bb_tolerance_pct"))
     landing_candles = as_finite_float(config.get("bb_landing_strip_candles"))
-    detect_pct = as_finite_float(config.get("scrum_detect_pct"))
     price = as_finite_float(stats.get("current_price"))
     position_value = as_finite_float(stats.get("position_value"))
     quote_rate = as_finite_float(saved.get("quote_to_usd"))
@@ -388,6 +389,8 @@ def _sim_bot_from_record(
                 scrum_mode,
             )
             scrum_mode = None
+    proximity_pct = as_finite_float(config.get("proximity_boost_pct"))
+    strip_pct = as_finite_float(config.get("landing_strip_boost_pct"))
     return SimBot(
         bot_id=str(bot_id),
         symbol=symbol,
@@ -400,10 +403,14 @@ def _sim_bot_from_record(
             REFUSED_FIGURE if interval_pct is None else interval_pct
         ),
         trading_fee_pct=REFUSED_FIGURE if fee_pct is None else fee_pct,
-        bb_midline_gate=bool(config.get("bb_midline_gate", True)),
         bb_tolerance_pct=1.0 if tolerance_pct is None else tolerance_pct,
+        proximity_boost_pct=(
+            PROXIMITY_BOOST_PCT_DEFAULT if proximity_pct is None else proximity_pct
+        ),
         bb_landing_strip_candles=int(2 if landing_candles is None else landing_candles),
-        scrum_detect_pct=75.0 if detect_pct is None else detect_pct,
+        landing_strip_boost_pct=(
+            LANDING_STRIP_BOOST_PCT_DEFAULT if strip_pct is None else strip_pct
+        ),
         scrum_require_ta_bullish=bool(config.get("scrum_require_ta_bullish", True)),
         scrum_hold_in_uptrend=bool(config.get("scrum_hold_in_uptrend", True)),
         scrum_defer_to_htf=bool(config.get("scrum_defer_to_htf", True)),

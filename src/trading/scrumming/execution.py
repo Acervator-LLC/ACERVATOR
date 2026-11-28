@@ -94,8 +94,8 @@ LADDER_OPENING_BUYS = (
     "manual_tranche_fire",
     "zero_balance_initial_entry",
     "hedge_replenish",
+    "calibrating_fold",
     "MANUAL_FOLD",
-    "CARTRIDGE_FOLD",
     "FOLD",
 )
 
@@ -105,7 +105,7 @@ BUY_BACK_SALE_BOOKERS = ("_book_scrum_fill", "_book_dist_fill", "_book_manual_sa
 
 #: The buy paths held to the venue's coin count, which refuse an omitted coin and
 #: answer ``_unbooked_coin_refusal``.
-BOOK_COMPARED_PATHS = ("cartridge_fold", "zero_balance_initial_entry")
+BOOK_COMPARED_PATHS = ("zero_balance_initial_entry", "calibrating_fold")
 
 #: The booker of an order a repeated decision got back that no plan sized.
 EARLIER_ORDER_BOOKER = "_book_earlier_order"
@@ -1185,8 +1185,8 @@ class ExecutionEngineMixin:
     def _refused_rebalance(
         self, side: str, role: str, watch: OrderWatch, price: float, pressed: bool
     ) -> None:
-        """``_refused_no_order`` for a rebalance ``side``: every press, and a cartridge
-        once a stretch ``_refusal_is_new`` opens."""
+        """``_refused_no_order`` for a rebalance ``side``: every press, and an unpressed
+        refusal once a stretch ``_refusal_is_new`` opens."""
         if pressed or self._refusal_is_new("manual_no_order", price):
             self._refused_no_order(f"MANUAL FIRE {side}", role, watch, pressed=pressed)
 
@@ -1211,7 +1211,6 @@ class ExecutionEngineMixin:
 
         _INTENT_MAP = {
             "manual_button": ("MANUAL_SCRUM", "MANUAL_FOLD", True),
-            "max_cartridge": ("CARTRIDGE_SCRUM", "CARTRIDGE_FOLD", False),
         }
         if caller_intent not in _INTENT_MAP:
             raise ValueError(
@@ -3409,6 +3408,8 @@ class ExecutionEngineMixin:
         _slippage_tol_pct = SLIPPAGE_TOLERANCE_PCT
         if _path == "zero_balance_initial_entry":
             _path_budget = float(self._target_balance)
+        elif _path == "calibrating_fold":
+            _path_budget = max(0.0, _target_delta_usd)
         elif _path in ("fold_rebuy", "manual_tranche_fire"):
             _path_budget = float(cost)
         elif _path == "hedge_replenish":

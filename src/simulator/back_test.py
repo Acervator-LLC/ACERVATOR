@@ -126,7 +126,6 @@ from .sim_bus import (
     fill_line,
 )
 from .validation import (
-    BB_MIDLINE,
     MIN_RERUN_CANDLES,
     RERUN_WINDOW_CANDLES,
     bb_reading,
@@ -149,9 +148,6 @@ MIN_CANDLES = MIN_RERUN_CANDLES
 #: ``_TA_CONFIDENCE_FLOOR`` in ``scrumming_bot``, unskewed; ``ta_direction`` reads it
 #: through ``three_indicator_floor``.
 TA_CONFIDENCE_FLOOR = 0.25
-
-#: ``scrum_detect_pct`` when a stored config names none.
-DEFAULT_SCRUM_DETECT_PCT = 75.0
 
 #: ``ta_timeframe`` when a stored config names none. Every live tablet is 5m.
 DEFAULT_TIMEFRAME = "5m"
@@ -1007,20 +1003,6 @@ def new_bots(specs: Sequence[dict]) -> list[SimBot]:
     return out
 
 
-def bb_detect_thresholds(scrum_detect_pct: float) -> tuple[float, float]:
-    """``(lower, upper)`` in ``bb_pos`` terms, 75 giving 0.125 and 0.875.
-
-    A second spelling of ``CircuitBreakerMixin._bb_detect_thresholds``, which is
-    a method on a live bot mixin and needs one to call.
-    """
-    try:
-        detect_pct = float(scrum_detect_pct)
-    except (TypeError, ValueError):
-        detect_pct = DEFAULT_SCRUM_DETECT_PCT
-    half = max(0.0, min(1.0, detect_pct / 100.0)) * 0.5
-    return (0.5 - half, 0.5 + half)
-
-
 def trend_reading(window: Sequence[Any]) -> tuple[bool, float]:
     """``(trend_hold, trend_strength)`` from the share of up closes in the last
     20."""
@@ -1046,18 +1028,27 @@ def signal_detail(summary: Any, indicator: str, key: str) -> float:
     return 0.0
 
 
-def ta_direction(summary: Any, reading: Any) -> tuple[bool, bool, str, float]:
+def ta_direction(
+    summary: Any, upper_zone: bool = False, lower_zone: bool = False
+) -> tuple[bool, bool, str, float]:
     """``(is_bullish, is_bearish, direction_name, confidence)`` for one window,
-    ``vote_sides`` against ``three_indicator_floor`` of ``TA_CONFIDENCE_FLOOR``."""
+    ``vote_sides`` against ``three_indicator_floor`` of ``TA_CONFIDENCE_FLOOR``;
+    True on the side ``upper_zone`` or ``lower_zone`` names, where ``zone_timing`` sets when.
+    """
     if summary is None:
         return False, False, NEUTRAL, 0.0
     direction = summary.consensus_direction
     confidence = float(summary.consensus_confidence)
     floor = three_indicator_floor(TA_CONFIDENCE_FLOOR, summary.signals)
     is_bullish, is_bearish = vote_sides(
-        direction, confidence, floor, reading, summary.signals
+        direction, confidence, floor, None, summary.signals
     )
-    return is_bullish, is_bearish, direction.name, confidence
+    return (
+        is_bullish or upper_zone,
+        is_bearish or lower_zone,
+        direction.name,
+        confidence,
+    )
 
 
 def tape_context(
@@ -1079,28 +1070,33 @@ def tape_context(
     ``BEARISH`` under the two defer flags; the circuit breaker and hysteresis
     fields read as not populated.
     """
+    from ..trading.vote_boost import boost_figures, read_zone
+
     close = float(window[-1].close)
     bb_pos = float(reading.bb_position) if reading is not None else 0.0
-    lower_dt, upper_dt = bb_detect_thresholds(bot.scrum_detect_pct)
+    upper_dt = reading.upper_line if reading is not None else 1.0
+    lower_dt = reading.lower_line if reading is not None else 0.0
     target_usd = float(getattr(position, "target_usd", 0.0) or bot.target_usd or 0.0)
     delta = target_delta_usd(position.value_usd(close), target_usd)
+    zone = read_zone(
+        summary.signals if summary is not None else [],
+        summary.consensus_direction if summary is not None else None,
+        float(summary.consensus_confidence) if summary is not None else 0.0,
+        delta,
+        window,
+        tolerance_pct=float(bot.bb_tolerance_pct),
+        taper_minimum=int(bot.bb_landing_strip_candles),
+        figures=boost_figures(bot),
+    )
+    upper_zone, lower_zone = zone.upper, zone.lower
     htf_blocks_scrum = htf_bias_name == BULLISH
     htf_blocks_fold = htf_bias_name == BEARISH
     interval_usd = scrumming_interval_usd(target_usd, float(bot.scrumming_interval_pct))
     below_interval = delta_below_interval(delta, interval_usd)
-    is_bullish, is_bearish, direction_name, _confidence = ta_direction(summary, reading)
+    is_bullish, is_bearish, direction_name, _confidence = ta_direction(
+        summary, upper_zone, lower_zone
+    )
     trend_hold, trend_strength = trend_reading(window)
-
-    if bot.bb_midline_gate:
-        scrum_ok = bb_pos > BB_MIDLINE
-        fold_ok_midline = bb_pos < BB_MIDLINE
-    else:
-        scrum_ok = True
-        fold_ok_midline = True
-
-    above_upper = bb_pos >= upper_dt
-    below_lower = bb_pos <= lower_dt
-    banded = reading is not None and reading.upper > 0 and reading.lower > 0
     effective = effective_gate_flags(
         bot,
         is_bullish=is_bullish,
@@ -1133,10 +1129,10 @@ def tape_context(
         flag_defer_to_htf=bot.scrum_defer_to_htf,
         flag_fold_require_ta_bearish=bot.fold_require_ta_bearish,
         flag_fold_defer_to_htf=bot.fold_defer_to_htf,
-        bb_above_upper_dt=above_upper,
-        bb_below_lower_dt=below_lower,
-        scrum_ok=scrum_ok,
-        fold_ok_midline=fold_ok_midline,
+        bb_above_upper_dt=upper_zone,
+        bb_below_lower_dt=lower_zone,
+        scrum_ok=True,
+        fold_ok_midline=True,
         target_fires=True,
         cb_blocks_scrum=False,
         cb_blocks_fold=False,
@@ -1156,11 +1152,13 @@ def tape_context(
         htf_blocks_fold=htf_blocks_fold,
         scrumming_interval_pct=float(bot.scrumming_interval_pct),
         trading_fee_pct=float(bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT),
-        ripe_scrum=banded and delta > 0 and not below_interval and above_upper,
-        deep_fold=banded and delta < 0 and not below_interval and below_lower,
         adx=signal_detail(summary, "adx", "adx"),
         efficiency_ratio=signal_detail(summary, "kaufman_er", "er"),
         z_score=signal_detail(summary, "zscore", "z"),
+        bb_upper_zone=upper_zone,
+        bb_lower_zone=lower_zone,
+        zone_deeper=zone.scrum_deeper or zone.fold_deeper,
+        zone_bar=zone.scrum.bar if upper_zone else zone.fold.bar,
     )
 
 
@@ -2450,7 +2448,6 @@ __all__ = [
     "BotCost",
     "BotResult",
     "BotStatsSnapshot",
-    "DEFAULT_SCRUM_DETECT_PCT",
     "DEFAULT_TIMEFRAME",
     "DEFAULT_TRADING_FEE_PCT",
     "FOLD",
@@ -2494,7 +2491,6 @@ __all__ = [
     "TradeSink",
     "apply_fold",
     "apply_scrum",
-    "bb_detect_thresholds",
     "bot_tape",
     "bot_timeframe",
     "cited_rule_for",

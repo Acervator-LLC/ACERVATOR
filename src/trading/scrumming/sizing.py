@@ -3264,6 +3264,7 @@ EXCESS_SALE = "excess_sale"
 SHORTFALL_BUY = "shortfall_buy"
 ENTRY_BUY = "entry_buy"
 HEDGE_BUY = "hedge_buy"
+CALIBRATING_BUY = "calibrating_buy"
 DETONATION_SALE = "detonation_sale"
 DIST_SALE = "dist_sale"
 SELF_DESTRUCT_SALE = "self_destruct_sale"
@@ -3896,9 +3897,19 @@ def fold_size_taper(ratio: float) -> float:
 
 
 def cartridge_threshold_usd(target_balance: float, cartridge_pct: float) -> float:
-    """The Target Delta at which the cartridge fires: ``cartridge_pct`` of
+    """The Target Delta that sets the fast read: ``cartridge_pct`` of
     ``target_balance``."""
     return target_balance * cartridge_pct / 100.0
+
+
+def cartridge_reached(
+    position_usd: float, target_balance: float, cartridge_pct: float
+) -> bool:
+    """True when ``cartridge_pct`` and ``target_balance`` exceed zero and the Target Delta reaches ``cartridge_threshold_usd``."""
+    if not (cartridge_pct > 0.0 and target_balance > 0.0):
+        return False
+    delta = target_delta_usd(position_usd, target_balance)
+    return abs(delta) >= cartridge_threshold_usd(target_balance, cartridge_pct)
 
 
 __all__ = [
@@ -3982,6 +3993,7 @@ __all__ = [
     "WHOLE_UNIT_STEP_IS_A_FRACTION",
     "assumed_excess_note",
     "bot_scrum_excess_usd",
+    "cartridge_reached",
     "cartridge_threshold_usd",
     "clearing_reach_named",
     "clearing_refusal",

@@ -75,6 +75,63 @@ class SettingsTabMixin:
         """
         self._mark_changed("ta_timeframe", timeframe)
         self._mark_changed("ta_timeframe_unserved", "")
+        read = getattr(self, "_scrum_read_tf", None)
+        if read is not None:
+            from ..read_timeframe_combo import fill_read_combo
+
+            fill_read_combo(
+                read,
+                str(getattr(self._bot.config, "exchange_id", "") or ""),
+                timeframe,
+                str(read.currentData() or ""),
+            )
+            self._mark_changed("scrum_read_timeframe", str(read.currentData() or ""))
+
+    def _read_timeframe_picked(self, _index: int) -> None:
+        """Mark ``scrum_read_timeframe`` changed to the picked length and clear ``scrum_read_timeframe_unserved``."""
+        read = getattr(self, "_scrum_read_tf", None)
+        if read is None:
+            return
+        self._mark_changed("scrum_read_timeframe", str(read.currentData() or ""))
+        self._mark_changed("scrum_read_timeframe_unserved", "")
+
+    def _add_boost_row(self, form: Any, cfg: Any, field: str) -> None:
+        """Add the ``boost_box`` row for ``field`` of ``cfg`` to ``form``; an edit marks ``field`` changed."""
+        from ..boost_box import BOOST_FIELDS, boost_box
+
+        label, key, _default = BOOST_FIELDS[field]
+        box = boost_box(cfg, field, SETTINGS_TAB_DESCRIPTIONS[key])
+        box.valueChanged.connect(lambda v: self._mark_changed(field, float(v)))
+        form.addRow(label, box)
+
+    def _add_read_rate_row(self, form: Any, cfg: Any) -> None:
+        """Add the Read Rate drop-down to ``form`` from ``cfg``, with its ``unserved_timeframe_notice`` line when one applies."""
+        from ..read_timeframe_combo import fill_read_combo
+
+        read = QComboBox()
+        self._scrum_read_tf = read
+        fill_read_combo(
+            read,
+            str(getattr(cfg, "exchange_id", "") or ""),
+            str(getattr(cfg, "ta_timeframe", "") or ""),
+            str(getattr(cfg, "scrum_read_timeframe", "") or ""),
+        )
+        set_description(read, SETTINGS_TAB_DESCRIPTIONS["scrum_read_timeframe"])
+        read.currentIndexChanged.connect(self._read_timeframe_picked)
+        form.addRow("Read Rate:", read)
+        notice = QLabel(
+            unserved_timeframe_notice(
+                getattr(cfg, "exchange_id", None),
+                getattr(cfg, "scrum_read_timeframe_unserved", ""),
+                str(read.currentData() or ""),
+            )
+        )
+        self._scrum_read_tf_notice = notice
+        if notice.text():
+            notice.setWordWrap(True)
+            notice.setStyleSheet(f"color: {ds.WARNING}; font-size: 11px;")
+            set_description(read, f"{read.toolTip()}\n{notice.text()}")
+            form.addRow(notice)
 
     def _show_admitted_figure(self, box: Any, config: Any, name: str) -> bool:
         """Put one stored dollar figure into `box`, or draw the dash instead.
@@ -582,6 +639,7 @@ class SettingsTabMixin:
             )
             set_description(self._bb_tol, SETTINGS_TAB_DESCRIPTIONS["bb_tol"])
             sf.addRow("BB Tolerance:", self._bb_tol)
+            self._add_boost_row(sf, cfg, "proximity_boost_pct")
 
             self._landing = QSpinBox()
             self._landing.setRange(2, 10)
@@ -591,6 +649,7 @@ class SettingsTabMixin:
                 lambda v: self._mark_changed("bb_landing_strip_candles", v)
             )
             sf.addRow("Landing Strip Candles:", self._landing)
+            self._add_boost_row(sf, cfg, "landing_strip_boost_pct")
 
             # Filtered to the timeframes the bot's exchange supports.
             self._ta_tf = QComboBox()
@@ -805,46 +864,7 @@ class SettingsTabMixin:
         af = QFormLayout(adv_group)
         self._configure_form(af)
 
-        self._detect_pct = QSpinBox()
-        self._detect_pct.setRange(10, 90)
-        self._detect_pct.setSuffix(" %")
-        self._detect_pct.setValue(int(cfg.scrum_detect_pct))
-        set_description(self._detect_pct, SETTINGS_TAB_DESCRIPTIONS["detect_pct"])
-        self._detect_pct.valueChanged.connect(
-            lambda v: self._mark_changed("scrum_detect_pct", v)
-        )
-        af.addRow("Detect Threshold:", self._detect_pct)
-
-        self._fire_pct = QDoubleSpinBox()
-        self._fire_pct.setRange(0.1, 10.0)
-        self._fire_pct.setDecimals(2)
-        self._fire_pct.setSuffix(" %")
-        self._fire_pct.setValue(float(cfg.scrum_fire_pct))
-        set_description(self._fire_pct, SETTINGS_TAB_DESCRIPTIONS["fire_pct"])
-        self._fire_pct.valueChanged.connect(
-            lambda v: self._mark_changed("scrum_fire_pct", v)
-        )
-        af.addRow("Fire Threshold:", self._fire_pct)
-
-        self._midline_gate = QCheckBox("BB Midline Gate")
-        self._midline_gate.setChecked(bool(cfg.bb_midline_gate))
-        set_description(self._midline_gate, SETTINGS_TAB_DESCRIPTIONS["midline_gate"])
-        self._midline_gate.toggled.connect(
-            lambda v: self._mark_changed("bb_midline_gate", v)
-        )
-        af.addRow(self._midline_gate)
-
-        self._scrum_read_rate_min = QSpinBox()
-        self._scrum_read_rate_min.setRange(1, 60)
-        self._scrum_read_rate_min.setSuffix(" min")
-        self._scrum_read_rate_min.setValue(int(cfg.scrum_read_rate_min))
-        set_description(
-            self._scrum_read_rate_min, SETTINGS_TAB_DESCRIPTIONS["scrum_read_rate_min"]
-        )
-        self._scrum_read_rate_min.valueChanged.connect(
-            lambda v: self._mark_changed("scrum_read_rate_min", v)
-        )
-        af.addRow("Read Rate:", self._scrum_read_rate_min)
+        self._add_read_rate_row(af, cfg)
 
         self._band_travel = QSpinBox()
         self._band_travel.setRange(0, 100)
@@ -962,6 +982,7 @@ class SettingsTabMixin:
             lambda v: self._mark_changed("max_cartridge_size_pct", float(v))
         )
         cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
+        self._add_boost_row(cf, cfg, "cartridge_boost_pct")
 
         self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
         self._cartridge_smart_chk.setChecked(

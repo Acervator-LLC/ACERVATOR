@@ -121,8 +121,6 @@ TAPE_FIELDS = (
     "bb_below_lower_dt",
     "scrum_ok",
     "fold_ok_midline",
-    "ripe_scrum",
-    "deep_fold",
 )
 
 #: Why one light differs, read off the row's own fields: the tablet candle
@@ -398,36 +396,18 @@ def coverage_lines(cover: Coverage) -> list[str]:
 
 def phantom_locked(bot: SimBot, fixture: dict) -> tuple[bool, bool]:
     """The phantom lock the recorded ``scrum_ok`` implies, and whether it is
-    known.
-
-    ``scrum_ok`` is ``(bb_pos > 0.50) and not locked`` under
-    ``bb_midline_gate``; a recorded False at or below ``BB_MIDLINE`` names no
-    lock state.
-    """
-    recorded_ok = bool(fixture.get("scrum_ok"))
-    recorded_bb_pos = float(fixture.get("bb_pos") or 0.0)
-    if not bot.bb_midline_gate:
-        return (not recorded_ok), True
-    if recorded_ok:
-        return False, True
-    if recorded_bb_pos > BB_MIDLINE:
-        return True, True
-    return True, False
+    known; ``scrum_ok`` is ``not locked``, so it is always known."""
+    del bot
+    return (not bool(fixture.get("scrum_ok"))), True
 
 
 def bb_reading(candles: Sequence[Any], bot: SimBot):
-    """``detect_bb_proximity`` over ``candles``, called as ``ScrummingBot.tick``
+    """``bb_tolerance_reading`` over ``candles``, called as ``ScrummingBot.tick``
     calls it."""
-    from ..trading.indicators.bb_proximity import (
-        CONSOLIDATION_THRESHOLD_PCT,
-        detect_bb_proximity,
-    )
+    from ..trading.indicators.bb_proximity import bb_tolerance_reading
 
-    return detect_bb_proximity(
-        list(candles),
-        tolerance_pct=bot.bb_tolerance_pct,
-        consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-        min_pattern_candles=bot.bb_landing_strip_candles,
+    return bb_tolerance_reading(
+        list(candles), bot.bb_tolerance_pct, bot.bb_landing_strip_candles
     )
 
 
@@ -460,20 +440,11 @@ def rerun_context(
     below_interval = bool(scrum.get("below_interval"))
 
     locked, locked_known = phantom_locked(bot, scrum)
-    if bot.bb_midline_gate:
-        scrum_ok = (bb_pos > BB_MIDLINE) and not locked
-        fold_ok_midline = (bb_pos < BB_MIDLINE) and not locked
-    else:
-        scrum_ok = not locked
-        fold_ok_midline = not locked
-    if not locked_known:
-        scrum_ok = bool(scrum.get("scrum_ok"))
-        fold_ok_midline = bool(fold.get("fold_ok_midline"))
+    from ..trading.indicators.bb_proximity import band_zone, panel_band
+    from ..trading.indicators.bollinger import BollingerBands
 
-    bb_above_upper_dt = bb_pos >= bb_upper_dt
-    bb_below_lower_dt = bb_pos <= bb_lower_dt
-    ripe_scrum = delta > 0 and not below_interval and bb_above_upper_dt
-    deep_fold = delta < 0 and not below_interval and bb_below_lower_dt
+    band = panel_band([BollingerBands().compute(list(candles))])
+    upper_zone, lower_zone = band_zone(band, delta, float(bot.bb_tolerance_pct))
 
     context = GateContext(
         symbol=row.symbol,
@@ -499,10 +470,10 @@ def rerun_context(
         flag_defer_to_htf=bool(scrum.get("flag_defer_to_htf")),
         flag_fold_require_ta_bearish=bool(fold.get("flag_fold_require_ta_bearish")),
         flag_fold_defer_to_htf=bool(fold.get("flag_fold_defer_to_htf")),
-        bb_above_upper_dt=bb_above_upper_dt,
-        bb_below_lower_dt=bb_below_lower_dt,
-        scrum_ok=scrum_ok,
-        fold_ok_midline=fold_ok_midline,
+        bb_above_upper_dt=upper_zone,
+        bb_below_lower_dt=lower_zone,
+        scrum_ok=not locked,
+        fold_ok_midline=not locked,
         target_fires=bool(scrum.get("target_fires")),
         cb_blocks_scrum=bool(scrum.get("cb_blocks_scrum")),
         cb_blocks_fold=bool(fold.get("cb_blocks_fold")),
@@ -522,8 +493,9 @@ def rerun_context(
         htf_blocks_fold=bool(fold.get("htf_blocks_fold")),
         scrumming_interval_pct=bot.scrumming_interval_pct,
         trading_fee_pct=bot.trading_fee_pct,
-        ripe_scrum=ripe_scrum,
-        deep_fold=deep_fold,
+        bb_upper_zone=upper_zone,
+        bb_lower_zone=lower_zone,
+        zone_deeper=bool(scrum.get("zone_deeper")) or bool(fold.get("zone_deeper")),
     )
     return context, bb_pos, locked_known
 

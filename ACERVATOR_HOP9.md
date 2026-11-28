@@ -451,6 +451,19 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   A carried reading sets `held`, the strip names the venue alone in both builds,
   and a Target cell marks a held figure (`in _carry_rates`). He reads the strip
   after the next build.
+- **#1440, the trade engine. Rows 7 to 12 are built on PR 1848.** Inside BB
+  Tolerance of the band the Target Delta points to, the vote sets when the bot
+  trades, never whether: it waits on a deeper read and re-zeroes the Target
+  Delta on a slipping one (`src/trading/vote_boost.py, in zone_timing`). The
+  phantom lock, the higher-timeframe defer and the safety holds still hold
+  (`src/trading/gate_chain.py, in ZONE_RELEASED_GATES`). A visit with no fill
+  takes its late turn on the first read after price leaves the zone
+  (`src/trading/vote_boost.py, in zone_visit`). Cartridge, BB Proximity and
+  Landing Strip Boost raise the bar for waiting, each a Settings box
+  (`src/gui/boost_box.py, in boost_box`). Read Rate offers the venue's sizes
+  below the TA Timeframe (`src/exchange/timeframes.py, in read_timeframes`).
+  Row 11 is not this unit. Rows 2 to 6 stay readings over the retained gate
+  record.
 - The rest of the queue: read each body.
 
 ---

@@ -482,24 +482,3 @@ class CircuitBreakerMixin(_Host):
                 _sup,
             )
         return {"applied": applied, "scope": scope_norm}
-
-    def _bb_detect_thresholds(self) -> tuple[float, float]:
-        """Return ``(lower_detect, upper_detect)`` thresholds in ``bb_pos``
-        terms from ``config.scrum_detect_pct``.
-
-        With the ``bb_pos`` convention (0.0 = lower band, 0.5 = midline,
-        1.0 = upper band): SCRUM requires ``bb_pos >= upper_detect`` and
-        FOLD requires ``bb_pos <= lower_detect``. ``scrum_detect_pct`` is
-        the percent distance from midline to band, so 75 gives
-        ``upper_detect = 0.875`` and ``lower_detect = 0.125``.
-        """
-        # None-sentinel default so a legitimate 0 isn't coerced to 75 by
-        # `or` truthiness.
-        _raw = getattr(self.config, "scrum_detect_pct", None)
-        try:
-            detect_pct = float(_raw) if _raw is not None else 75.0
-        except (TypeError, ValueError):
-            detect_pct = 75.0
-        detect_frac = max(0.0, min(1.0, detect_pct / 100.0))
-        half = detect_frac * 0.5
-        return (0.5 - half, 0.5 + half)

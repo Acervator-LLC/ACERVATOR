@@ -3,7 +3,7 @@ exchange adapter, filled at the book against the unbounded fake budget.
 
 ``PaperRunner`` is the forked shape of the Simulator's ``_walk_bot``: one
 worker thread per Start Paper Run that ticks every ``running`` paper bot each
-``TICK_INTERVAL_S`` and works one every ``tick_skip`` ticks, reading the
+``TICK_INTERVAL_S`` and works one every ``read_tick_skip`` ticks, reading the
 adapter's ``ticker`` and ``candles`` on that thread and never on the GUI
 thread. ``tick`` builds a ``GateContext`` through ``paper_tape_context``,
 which prices the position at the ticker's last as Live's tick does and leaves
@@ -53,7 +53,6 @@ from ..simulator.back_test import (
     STOPPED_STATE,
     WINDOW_CANDLES,
     BotStatsSnapshot,
-    bb_detect_thresholds,
     grow_target,
     reset_growth_cycle,
     signal_detail,
@@ -63,7 +62,7 @@ from ..simulator.back_test import (
 )
 from ..exchange.base import MarketRules
 from ..exchange.market_rules_store import recorded_rules
-from ..simulator.validation import BB_MIDLINE, bb_reading, latch
+from ..simulator.validation import bb_reading, latch
 from ..trading.container.config import BotState
 from ..trading.gate_chain import GateContext, effective_gate_flags
 from ..trading.otd_math import BAND_TRAVEL_OFF_PCT, DistanceSettings
@@ -228,14 +227,11 @@ class PaperTick:
     last: float = 0.0
 
 
-def tick_skip(scrum_read_rate_min: int, scrum_target_mode: Optional[str]) -> int:
-    """How many ``TICK_INTERVAL_S`` ticks pass between two worked ticks, the
-    rule ``ScrummingBot.tick`` applies: ``scrum_read_rate_min`` minutes over
-    the tick, at least one, a tenth of that in ``TRACK_MODES``."""
-    rate = max(0, int(scrum_read_rate_min or 0))
-    if rate <= 0:
-        return 1
-    base = max(1, int((rate * 60) / max(TICK_INTERVAL_S, 0.1)))
+def read_tick_skip(read_timeframe: str, scrum_target_mode: Optional[str]) -> int:
+    """``TICK_INTERVAL_S`` ticks between two worked ticks: one ``read_timeframe`` candle, a tenth in ``TRACK_MODES``, as ``ScrummingBot.tick`` reads."""
+    from ..trading.phantom_balance import TIMEFRAME_SECONDS
+
+    base = max(1, int(TIMEFRAME_SECONDS[read_timeframe] / max(TICK_INTERVAL_S, 0.1)))
     if str(scrum_target_mode or "") in TRACK_MODES:
         return max(1, base // 10)
     return base
@@ -293,29 +289,34 @@ def paper_tape_context(
     ``mem253_current_pos``, and leaves ``reading``, ``summary`` and ``window``
     to drive ``bb_pos``, every indicator and ``trend_reading``.
     """
+    from ..trading.vote_boost import boost_figures, read_zone
+
     last = float(ticker_last)
     bb_pos = float(reading.bb_position) if reading is not None else 0.0
-    lower_dt, upper_dt = bb_detect_thresholds(bot.scrum_detect_pct)
+    upper_dt = reading.upper_line if reading is not None else 1.0
+    lower_dt = reading.lower_line if reading is not None else 0.0
     target_usd = float(getattr(balance, "target_usd", 0.0) or bot.target_usd or 0.0)
     position_usd = balance.value_usd(last)
     delta = target_delta_usd(position_usd, target_usd)
+    zone = read_zone(
+        summary.signals if summary is not None else [],
+        summary.consensus_direction if summary is not None else None,
+        float(summary.consensus_confidence) if summary is not None else 0.0,
+        delta,
+        window,
+        tolerance_pct=float(bot.bb_tolerance_pct),
+        taper_minimum=int(bot.bb_landing_strip_candles),
+        figures=boost_figures(bot),
+    )
+    upper_zone, lower_zone = zone.upper, zone.lower
     htf_blocks_scrum = htf_bias_name == BULLISH
     htf_blocks_fold = htf_bias_name == BEARISH
     interval_usd = scrumming_interval_usd(target_usd, float(bot.scrumming_interval_pct))
     below_interval = delta_below_interval(delta, interval_usd)
-    is_bullish, is_bearish, direction_name, _confidence = ta_direction(summary, reading)
+    is_bullish, is_bearish, direction_name, _confidence = ta_direction(
+        summary, upper_zone, lower_zone
+    )
     trend_hold, trend_strength = trend_reading(window)
-
-    if bot.bb_midline_gate:
-        scrum_ok = bb_pos > BB_MIDLINE
-        fold_ok_midline = bb_pos < BB_MIDLINE
-    else:
-        scrum_ok = True
-        fold_ok_midline = True
-
-    above_upper = bb_pos >= upper_dt
-    below_lower = bb_pos <= lower_dt
-    banded = reading is not None and reading.upper > 0 and reading.lower > 0
     effective = effective_gate_flags(
         bot,
         is_bullish=is_bullish,
@@ -348,10 +349,10 @@ def paper_tape_context(
         flag_defer_to_htf=bot.scrum_defer_to_htf,
         flag_fold_require_ta_bearish=bot.fold_require_ta_bearish,
         flag_fold_defer_to_htf=bot.fold_defer_to_htf,
-        bb_above_upper_dt=above_upper,
-        bb_below_lower_dt=below_lower,
-        scrum_ok=scrum_ok,
-        fold_ok_midline=fold_ok_midline,
+        bb_above_upper_dt=upper_zone,
+        bb_below_lower_dt=lower_zone,
+        scrum_ok=True,
+        fold_ok_midline=True,
         target_fires=True,
         cb_blocks_scrum=False,
         cb_blocks_fold=False,
@@ -371,11 +372,13 @@ def paper_tape_context(
         htf_blocks_fold=htf_blocks_fold,
         scrumming_interval_pct=float(bot.scrumming_interval_pct),
         trading_fee_pct=float(bot.trading_fee_pct or DEFAULT_TRADING_FEE_PCT),
-        ripe_scrum=banded and delta > 0 and not below_interval and above_upper,
-        deep_fold=banded and delta < 0 and not below_interval and below_lower,
         adx=signal_detail(summary, "adx", "adx"),
         efficiency_ratio=signal_detail(summary, "kaufman_er", "er"),
         z_score=signal_detail(summary, "zscore", "z"),
+        bb_upper_zone=upper_zone,
+        bb_lower_zone=lower_zone,
+        zone_deeper=zone.scrum_deeper or zone.fold_deeper,
+        zone_bar=zone.scrum.bar if upper_zone else zone.fold.bar,
     )
 
 
@@ -1147,7 +1150,7 @@ class PaperRunner:
 
     def advance(self) -> list[PaperTick]:
         """One tick over every bot whose state reads ``RUNNING_STATE``: each
-        counts one tick and is worked through ``work`` at its ``tick_skip``,
+        counts one tick and is worked through ``work`` at its ``read_tick_skip``,
         the first tick after it starts running always worked, as
         ``ScrummingBot.tick`` throttles; ``on_figures`` is handed the ledger's
         figures when any bot was worked."""
@@ -1158,7 +1161,7 @@ class PaperRunner:
                 self._counters.pop(bot.bot_id, None)
                 continue
             self._run.ticks_made += 1
-            skip = tick_skip(bot.scrum_read_rate_min, bot.scrum_target_mode)
+            skip = read_tick_skip(bot.scrum_read_timeframe, bot.scrum_target_mode)
             counter = self._counters.get(bot.bot_id)
             if counter is not None:
                 counter += 1
@@ -1300,7 +1303,7 @@ __all__ = [
     "start",
     "stop",
     "taker_fee_pct",
+    "read_tick_skip",
     "tick",
-    "tick_skip",
     "wall_clock_ms",
 ]

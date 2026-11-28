@@ -232,17 +232,11 @@ spelled once for all three data sources. Live's gate log, the Paper Trader's gat
 row and the Simulator's gate event therefore record an override the same way.
 Which gate each override covers, and the sentence that says what the overrides
 are for, are on the indicators page under
-[The two overrides](../07-indicators.md).
+[The zone release](../07-indicators.md).
 
-Two overrides exist and they cover six of the twenty-four gates the two shipped
-chains hold. Both chains were built and each gate asked which override covers
-it. The control is the same ask answering both ways in one run: it named an
-override for these six and nothing for the other eighteen.
-
-| Override | Side | Gates it covers |
-| -------- | ---- | --------------- |
-| `ripe_harvest_override` | scrum | midline_scrum, ta_bullish, target_fires, trend_hold |
-| `deep_fold_override` | fold | midline_fold, ta_bearish |
+No override gate remains in either shipped chain, so `covering_overrides`
+answers none for each of the twenty-four gates they hold. The zone release is
+recorded the same way an override was, under the rule name `band_zone`.
 
 Nothing about which trades fire changed. The armed verdict and the refusal list
 are untouched, and the row simply carries one more field.
@@ -1610,6 +1604,22 @@ def tick_skip(scrum_read_rate_min: int, scrum_target_mode: Optional[str]) -> int
     if str(scrum_target_mode or "") in TRACK_MODES:
         return max(1, base // 10)
     return base
+```
+
+**The paragraph above and its skip are overtaken.** Neither is edited and
+neither is removed.
+
+Now: a running bot is worked every `read_tick_skip` ticks: one candle of its
+Read Rate timeframe over the 5 s tick, a tenth of that in track or fire. The
+record's saved minutes load as the timeframe one step below its TA timeframe (`src/paper/fleet_source.py, in PaperBot`).
+
+`src/paper/paper_run.py, in read_tick_skip`
+
+```python
+base = max(1, int(TIMEFRAME_SECONDS[read_timeframe] / max(TICK_INTERVAL_S, 0.1)))
+if str(scrum_target_mode or "") in TRACK_MODES:
+    return max(1, base // 10)
+return base
 ```
 
 A worked tick reads `ticker` and `candles` on the runner's thread, never on

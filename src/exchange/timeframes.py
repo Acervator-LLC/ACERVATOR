@@ -210,3 +210,19 @@ def filter_timeframes(exchange_id: str | None, requested: Iterable[str]) -> list
     exchange supports. Order-preserving."""
     allow = set(available_timeframes(exchange_id))
     return [tf for tf in requested if tf in allow]
+
+
+def read_timeframes(exchange_id: str | None, ta_timeframe: str) -> tuple[str, ...]:
+    """Each ``available_timeframes(exchange_id)`` entry below ``ta_timeframe``, else ``ta_timeframe`` alone; an unlisted length offers the venue's shortest."""
+    served = available_timeframes(exchange_id)
+    if ta_timeframe not in ALL_TIMEFRAMES:
+        return served[:1]
+    cut = ALL_TIMEFRAMES.index(ta_timeframe)
+    below = tuple(tf for tf in served if ALL_TIMEFRAMES.index(tf) < cut)
+    return below or (ta_timeframe,)
+
+
+def read_timeframe(exchange_id: str | None, ta_timeframe: str, chosen: str) -> str:
+    """``chosen`` where ``read_timeframes(exchange_id, ta_timeframe)`` offers it, else the last offered, one step below ``ta_timeframe``."""
+    offered = read_timeframes(exchange_id, ta_timeframe)
+    return chosen if chosen in offered else offered[-1]

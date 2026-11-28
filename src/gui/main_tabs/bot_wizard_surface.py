@@ -73,16 +73,28 @@ from typing import Any, Optional
 from ...core.settings import DEFAULT_ENABLE_PHANTOMS, DEFAULT_LOCK_CANDLE_COUNT
 from ...exchange.timeframes import ALL_TIMEFRAMES
 from ...trading.container.config import (
+    BOOST_PCT_MAX,
+    CARTRIDGE_BOOST_PCT_DEFAULT,
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
     DETONATION_BAR_MAX,
     DETONATION_BAR_MIN,
     DETONATION_CONFIDENCE_MIN_DEFAULT,
+    LANDING_STRIP_BOOST_PCT_DEFAULT,
     POSITION_CEILING_MULTIPLE_DEFAULT,
+    PROXIMITY_BOOST_PCT_DEFAULT,
     BotConfig,
 )
 from ..descriptions import BOT_WIZARD_DESCRIPTIONS
 from .indicator_panel_surface import ABSENT_CELL_TEXT
+
+#: Each zone boost field's ``BotConfig`` default, in percent from 0 to ``BOOST_PCT_MAX``.
+BOOST_DEFAULTS: dict[str, float] = {
+    "proximity_boost": PROXIMITY_BOOST_PCT_DEFAULT,
+    "landing_strip_boost": LANDING_STRIP_BOOST_PCT_DEFAULT,
+    "cartridge_boost": CARTRIDGE_BOOST_PCT_DEFAULT,
+}
+BOOST_SPAN: tuple[float, float] = (0.0, BOOST_PCT_MAX)
 
 #: The spec key the React field reads for the words it draws in place of a
 #: number, and the one Qt's own `setSpecialValueText` draws.
@@ -248,12 +260,28 @@ NUMBER_FIELDS: dict[str, dict] = {
         "suffix": " %",
         "value": 1.0,
     },
+    "proximity_boost": {
+        "kind": SPIN_DOUBLE,
+        "minimum": BOOST_SPAN[0],
+        "maximum": BOOST_SPAN[1],
+        "decimals": 2,
+        "suffix": " %",
+        "value": BOOST_DEFAULTS["proximity_boost"],
+    },
     "ls_candles": {
         "kind": SPIN_INT,
         "minimum": 2,
         "maximum": 10,
         "value": 3,
         "suffix": " candles",
+    },
+    "landing_strip_boost": {
+        "kind": SPIN_DOUBLE,
+        "minimum": BOOST_SPAN[0],
+        "maximum": BOOST_SPAN[1],
+        "decimals": 2,
+        "suffix": " %",
+        "value": BOOST_DEFAULTS["landing_strip_boost"],
     },
     "target_balance": {
         "kind": SPIN_DOUBLE,
@@ -297,28 +325,6 @@ NUMBER_FIELDS: dict[str, dict] = {
         "suffix": " %",
         "value": 1.0,
     },
-    "scrum_detect_pct": {
-        "kind": SPIN_INT,
-        "minimum": 10,
-        "maximum": 90,
-        "value": 75,
-        "suffix": " %",
-    },
-    "scrum_fire_pct": {
-        "kind": SPIN_DOUBLE,
-        "minimum": 0.1,
-        "maximum": 10.0,
-        "decimals": 2,
-        "suffix": " %",
-        "value": 0.5,
-    },
-    "scrum_read_rate_min": {
-        "kind": SPIN_INT,
-        "minimum": 1,
-        "maximum": 60,
-        "value": 5,
-        "suffix": " min",
-    },
     "band_travel_pct": {
         "kind": SPIN_INT,
         "minimum": 0,
@@ -358,6 +364,14 @@ NUMBER_FIELDS: dict[str, dict] = {
         "decimals": 1,
         "suffix": " %",
         "value": 10.0,
+    },
+    "cartridge_boost": {
+        "kind": SPIN_DOUBLE,
+        "minimum": BOOST_SPAN[0],
+        "maximum": BOOST_SPAN[1],
+        "decimals": 2,
+        "suffix": " %",
+        "value": BOOST_DEFAULTS["cartridge_boost"],
     },
     "cartridge_smart_ceiling": {
         "kind": SPIN_DOUBLE,
@@ -429,7 +443,6 @@ STACK_MODE_DEFAULT = True
 CHECK_FIELDS: dict[str, bool] = {
     "aggressive": False,
     "stack_mode": STACK_MODE_DEFAULT,
-    "bb_midline_gate": True,
     "bb_bullseye_check": True,
     "hedge_rebalance": True,
     "cartridge_smart_chk": False,
@@ -509,6 +522,21 @@ TA_TIMEFRAMES = tuple(value for _label, value in COMBO_FIELDS["ta_timeframe"])
 TA_TIMEFRAME_DEFAULT = "1h"
 TA_COMBO_NAME = "ta_timeframe"
 
+
+def read_items(exchange_id: str, ta_timeframe: str) -> list:
+    """``[timeframe, timeframe]`` for each of ``read_timeframes(exchange_id, ta_timeframe)``, the Read Rate entries."""
+    from ...exchange.timeframes import read_timeframes
+
+    return [[found, found] for found in read_timeframes(exchange_id, ta_timeframe)]
+
+
+#: The Read Rate drop-down, refilled from ``read_items`` whenever the venue or TA timeframe moves.
+READ_COMBO_NAME = "scrum_read_timeframe"
+COMBO_FIELDS[READ_COMBO_NAME] = tuple(
+    (label, data) for label, data in read_items("", TA_TIMEFRAME_DEFAULT)
+)
+COMBO_DEFAULT_INDEX[READ_COMBO_NAME] = len(COMBO_FIELDS[READ_COMBO_NAME]) - 1
+
 #: The drop-down naming the money a bot funds its position in, which
 #: ``base_items_for`` refills off the picked venue's own market rows.
 BASE_COMBO_NAME = "base"
@@ -560,7 +588,9 @@ GROUP_ROWS = {
     "scrum_group": (
         "scrumming_interval",
         "bb_tolerance",
+        "proximity_boost",
         "ls_candles",
+        "landing_strip_boost",
         "ta_timeframe",
         "target_balance",
         "max_entry_px",
@@ -569,10 +599,7 @@ GROUP_ROWS = {
         "max_target_growth_pct",
     ),
     "adv_group": (
-        "scrum_detect_pct",
-        "scrum_fire_pct",
-        "bb_midline_gate",
-        "scrum_read_rate_min",
+        "scrum_read_timeframe",
         "band_travel_pct",
         "bb_bullseye_check",
     ),
@@ -582,6 +609,7 @@ GROUP_ROWS = {
         "cb_hard_pct",
         "cb_cooldown",
         "max_cartridge_pct",
+        "cartridge_boost",
         "cartridge_smart_chk",
         "cartridge_smart_ceiling",
     ),
@@ -664,22 +692,23 @@ ROW_LABELS = {
     "expiry_horizon": "Expiry Horizon:",
     "scrumming_interval": "Opposing Trade Interval:",
     "bb_tolerance": "BB Tolerance:",
+    "proximity_boost": "BB Proximity Boost:",
     "ls_candles": "Landing Strip Candles:",
+    "landing_strip_boost": "Landing Strip Boost:",
     "ta_timeframe": "TA Timeframe:",
     "target_balance": "Target Balance:",
     "max_entry_px": "Max Entry Price:",
     "min_entry_px": "Min Entry Price:",
     "trading_fee": "Trading Fee %:",
     "max_target_growth_pct": "Max Target Growth %:",
-    "scrum_detect_pct": "Detect Threshold:",
-    "scrum_fire_pct": "Fire Threshold:",
-    "scrum_read_rate_min": "Read Rate:",
+    "scrum_read_timeframe": "Read Rate:",
     "band_travel_pct": "Band Travel:",
     "hedge_amount": "Hedge Balance:",
     "cb_soft_pct": "Soft CB Threshold:",
     "cb_hard_pct": "Hard CB Threshold:",
     "cb_cooldown": "Soft CB Cooldown:",
     "max_cartridge_pct": "Max Cartridge Size:",
+    "cartridge_boost": "Cartridge Boost:",
     "cartridge_smart_chk": "Smart Cartridge:",
     "cartridge_smart_ceiling": "Smart Ceiling:",
     "position_ceiling_multiple": "Ceiling Multiple:",
@@ -696,7 +725,6 @@ ROW_LABELS = {
 CHECK_TEXTS = {
     "aggressive": "Aggressive Trading (force IOC-limit takers)",
     "stack_mode": "Stack Mode (split SCRUM across upward tranches)",
-    "bb_midline_gate": "BB Midline Gate",
     "bb_bullseye_check": "BB Bullseye Check",
     "hedge_rebalance": "Hedge Rebalance Active",
     "cartridge_smart_chk": "Calibrate to BB range",
@@ -1923,6 +1951,7 @@ class BotWizardModel:
             for one in PHANTOM_TIMEFRAMES
         }
         self.ta_timeframe_items = list(COMBO_FIELDS["ta_timeframe"])
+        self.read_timeframe_items = list(COMBO_FIELDS[READ_COMBO_NAME])
         self.base_items = list(COMBO_FIELDS["base"])
         self.exchange_index = 0 if self.exchanges else -1
         self.pool_exchange_index = 0 if self.exchanges else -1
@@ -2115,6 +2144,8 @@ class BotWizardModel:
             items = list(COMBO_FIELDS[name])
         self.combo_indexes[name] = list_position(value, len(items))
         self.calls.append([COMBO_SET_CURRENT_INDEX, name, self.combo_indexes[name]])
+        if name == TA_COMBO_NAME:
+            self._refill_read_items()
         if name == BASE_COMBO_NAME:
             self.filter_assets()
         elif name == "pool_base":
@@ -2132,9 +2163,28 @@ class BotWizardModel:
         for a drop-down ``COMBO_FIELDS`` alone fills."""
         if name == TA_COMBO_NAME:
             return self.ta_timeframe_items
+        if name == READ_COMBO_NAME:
+            return self.read_timeframe_items
         if name == BASE_COMBO_NAME:
             return self.base_items
         return None
+
+    def _refill_read_items(self) -> None:
+        """Lay ``read_items`` of the picked TA timeframe into ``READ_COMBO_NAME``, keeping its pick where offered."""
+        from ...exchange.timeframes import read_timeframe
+
+        exchange = str(self.exchange_id or "")
+        ta = str(self.combo_data(TA_COMBO_NAME) or TA_TIMEFRAME_DEFAULT)
+        kept = read_timeframe(exchange, ta, str(self.combo_data(READ_COMBO_NAME) or ""))
+        self.read_timeframe_items = read_items(exchange, ta)
+        self.calls.append([COMBO_CLEAR, READ_COMBO_NAME])
+        for label, data in self.read_timeframe_items:
+            self.calls.append([COMBO_ADD_ITEM, READ_COMBO_NAME, label, data])
+        index = next(
+            at for at, pair in enumerate(self.read_timeframe_items) if pair[1] == kept
+        )
+        self.combo_indexes[READ_COMBO_NAME] = index
+        self.calls.append([COMBO_SET_CURRENT_INDEX, READ_COMBO_NAME, index])
 
     def _combo_items(self, name: str) -> list:
         """The entries one drop-down currently holds."""
@@ -2579,6 +2629,7 @@ class BotWizardModel:
         index = max(index, 0)
         self.combo_indexes["ta_timeframe"] = index
         self.calls.append([COMBO_SET_CURRENT_INDEX, "ta_timeframe", index])
+        self._refill_read_items()
 
     def set_phantom_exchange_id(self, exchange_id: Any, supported: Any = None) -> None:
         """Grey out the phantom timeframes the picked venue does not offer."""
@@ -2714,7 +2765,9 @@ class BotWizardModel:
                 "stack_spacing_mode": self.combo_data("stack_spacing"),
                 "scrumming_interval_pct": self.numbers["scrumming_interval"],
                 "bb_tolerance_pct": self.numbers["bb_tolerance"],
+                "proximity_boost_pct": self.numbers["proximity_boost"],
                 "bb_landing_strip_candles": int(self.numbers["ls_candles"]),
+                "landing_strip_boost_pct": self.numbers["landing_strip_boost"],
                 "ta_timeframe": self.combo_data("ta_timeframe"),
                 "target_balance": self.numbers["target_balance"],
                 "max_entry_price": (
@@ -2723,10 +2776,7 @@ class BotWizardModel:
                 "min_entry_price": (float(lowest_entry) if lowest_entry > 0 else None),
                 "trading_fee_pct": self.numbers["trading_fee"],
                 "max_target_growth_pct": self.numbers["max_target_growth_pct"],
-                "scrum_detect_pct": int(self.numbers["scrum_detect_pct"]),
-                "scrum_fire_pct": self.numbers["scrum_fire_pct"],
-                "bb_midline_gate": self.checks["bb_midline_gate"],
-                "scrum_read_rate_min": int(self.numbers["scrum_read_rate_min"]),
+                "scrum_read_timeframe": str(self.combo_data(READ_COMBO_NAME) or ""),
                 "band_travel_pct": int(self.numbers["band_travel_pct"]),
                 "bb_bullseye_check": self.checks["bb_bullseye_check"],
                 "hedge_rebalance_active": self.checks["hedge_rebalance"],
@@ -2735,6 +2785,7 @@ class BotWizardModel:
                 "circuit_breaker_hard_pct": self.numbers["cb_hard_pct"],
                 "circuit_breaker_cooldown_candles": int(self.numbers["cb_cooldown"]),
                 "max_cartridge_size_pct": self.numbers["max_cartridge_pct"],
+                "cartridge_boost_pct": self.numbers["cartridge_boost"],
                 "max_cartridge_smart": self.checks["cartridge_smart_chk"],
                 "max_cartridge_smart_ceiling_pct": self.numbers[
                     "cartridge_smart_ceiling"
@@ -3332,6 +3383,8 @@ def build_view_model(
             "ta_default": TA_TIMEFRAME_DEFAULT,
             "ta_combo": TA_COMBO_NAME,
             "ta_items": [list(one) for one in model.ta_timeframe_items],
+            "read_combo": READ_COMBO_NAME,
+            "read_items": [list(one) for one in model.read_timeframe_items],
             "base_currencies": list(BASE_CURRENCIES),
         },
         "layout": layout_catalogue(),

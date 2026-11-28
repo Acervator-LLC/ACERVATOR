@@ -242,6 +242,23 @@ midline_scrum overridden by ripe_harvest_override: scrum_ok=False(bb_pos=1.23)
 scrum_ok=False(bb_pos=-0.22) [override not applied: ripe_harvest_override]
 ```
 
+**Current reading.** The ripe-harvest override is gone, so no run writes either
+line above. Inside the BB Tolerance zone and out, the midline gate holds a trade
+on the phantom lock.
+
+`src/trading/gate_chain.py` — `ZONE_RELEASED_GATES`, which leaves the midline
+gate out
+
+```python
+"scrum": (
+    TADirectionGate("scrum").name,
+    TrendHoldGate.name,
+    ADXTrendSuppressionGate.name,
+    EfficiencyRatioRegimeGate.name,
+    ZScoreExtremityGate.name,
+),
+```
+
 **What is still open, and it is his.** The open decision on the midline rule is
 whether the band should hold a ripe scrum at all. It is not a decision about the
 higher timeframe. The reading above moves the ground under it: the band does not
@@ -252,6 +269,15 @@ are described in [Part 6, the Trading tab](06-trading-tab.md).
 
 Which gate each override covers is on the gate table in
 [Part 7, Indicators](07-indicators.md).
+
+**The current reading and the open decision above are overtaken.** Neither is
+edited and neither is removed.
+
+Now: the Detect line and the BB Midline Gate are retired, so no running bot, no
+Simulator walk and no Paper run sets the ripe-harvest override. Inside the BB
+Tolerance zone on the Target Delta's side the chain passes the phantom lock,
+trend hold, ADX, the efficiency ratio and the higher-timeframe defer, and it
+still asks the vote to top what two indicators reach on it (`src/trading/gate_chain.py, in GateChain.releases`).
 
 #### The first buy reads three agreeing indicators
 
@@ -289,6 +315,20 @@ other bots claim, and in Order Book mode its order is a limit. A bot that has
 made its first buy and buys back here votes with its own weights, and at twelve
 zeros it waits for Save. Only a first buy's entry fill restarts the opposing
 trade distance.
+
+**The four paragraphs above that name the Max Cartridge rebalance, the Detect
+distance and the Fire Threshold are overtaken.** None is edited and none is
+removed.
+
+Now: while a bot owes a first buy, its calibrating fold, its hedge top-up and
+its fold wait for one read. Price must sit in the lowest 30% of the band and
+inside BB Tolerance of the lower band, and the bot's own vote must then be
+bearish and top what two indicators reach (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_read`).
+
+Now: once the read clears, a bot under target with no tranche queued buys the
+whole Target Delta as one FOLD when the Target Delta is at or past Max Cartridge
+Size and price sits inside BB Tolerance of the lower band, under every gate the
+fold chain keeps (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_calibrating_fold`).
 
 Both routes refuse a buy while the venue holds more of the coin than the book
 shows, past other bots on that venue and by more than 1% of target, or omits the
@@ -1563,6 +1603,22 @@ _floor_no_hunger = _skewed_confidence_floor(
 )
 ```
 
+**Current reading, the floor today.** The BB priority skew, the Landing Strip
+favour and the ripe-harvest and deep-fold overrides are gone, so the code in the
+three blocks above no longer runs. The floor reads the position boost and hunger
+alone. Inside the BB Tolerance zone the TA gate passes, and the vote sets only
+when the bot trades, against the three-indicator line, which hunger does not
+move.
+
+`src/trading/scrumming_bot.py` — `ScrummingBot.tick`
+
+```python
+_eff_conf_floor = _skewed_confidence_floor(
+    position_boost + hunger_skew, summary.signals
+)
+_floor_no_hunger = _skewed_confidence_floor(position_boost, summary.signals)
+```
+
 The count follows his entry. A new candle adds one only in the dead zone: the
 delta at the interval or past it, the opposing trade distance clear on its side,
 and the price still inside the band on that side. A candle inside the interval,
@@ -1693,6 +1749,13 @@ what the delta names and leaves no units past its tranche. A stack rung sale
 queues no fold tranche, so on a Stack Mode bot only a cartridge sale can mark a
 row (`src/trading/scrumming_bot.py, in ScrummingBot._book_stack_spend`).
 
+**The two sentences above that name a cartridge buy and a cartridge sale are
+overtaken.** Neither is edited and neither is removed.
+
+Now: no order goes out on a cartridge path. A calibrating fold buys the whole
+Target Delta with no tranche queued, so it leaves no units past a tranche, and on
+a Stack Mode bot a plain scrum sale is the sale that can mark a row (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._book_calibrating_fill`).
+
 A self-destruct or an
 expiry close returns every row to the lots first, so that exit sells them
 (`src/trading/scrumming/shadow.py, in ShadowTrancheMixin._return_shadows_to_lots`).
@@ -1745,7 +1808,7 @@ The term tranche emerged in Acervator as the concept of placing soft boundaries 
 
 Now: Shadow Tranches are listed on the bot's Stack Tranches tab, each with SHADOW in its Mode column (`src/gui/main_tabs/stack_tranches_tab_surface.py, in compose_shadow_rows`).
 
-Now: on a bot with Stack Mode on, every filled buy opens a Stack ladder above its fill from the units it bought: a fold, a tranche Fire, the first buy, a hedge buy, a Manual Fire, a cartridge buy and a lost buy the holdings audit books. A buy that opens no ladder writes one bot log line that names why (`src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold`).
+Now: on a bot with Stack Mode on, every filled buy opens a Stack ladder above its fill from the units it bought: a fold, a tranche Fire, the first buy, a hedge buy, a Manual Fire, a calibrating fold and a lost buy the holdings audit books. A buy that opens no ladder writes one bot log line that names why (`src/trading/scrumming_bot.py, in ScrummingBot._spawn_stack_from_fold`).
 
 **Functional.** All four tranche kinds run. Fold Tranches spawn on a
 scrum and hold the price of the sale that made them. Stack Tranches spawn on a
@@ -2547,7 +2610,7 @@ return confidence > two_indicator_ceiling(signals)
 
 This rule asserts that a subsequent Fold occurring after a Scrum MUST be less than sell. This, of course, is asserted by Bollinger Band Travel, Minimum Opposing Trade Distance, Target Balance Not Zero, etc.
 
-Now: every fold path, the cartridge included, pays a tranche back only at or under its own sale price less the distance, wired or not (`src/trading/scrumming/sizing.py, in tranche_rebuy_price`).
+Now: every fold path pays a tranche back only at or under its own sale price less the distance, wired or not (`src/trading/scrumming/sizing.py, in tranche_rebuy_price`).
 
 **Functional.** The floor runs, and it lives on the tranche. Every fold tranche
 stores the price of the scrum that spawned it. The row is released only when

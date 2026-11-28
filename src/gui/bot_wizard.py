@@ -1026,6 +1026,12 @@ if _HAS_QT:
             self._bb_tolerance.setValue(1.0)
             set_description(self._bb_tolerance, BOT_WIZARD_DESCRIPTIONS["bb_tolerance"])
             sf.addRow("BB Tolerance:", self._bb_tolerance)
+            from .boost_box import BOOST_FIELDS, boost_box
+
+            self._proximity_boost = boost_box(
+                None, "proximity_boost_pct", BOT_WIZARD_DESCRIPTIONS["proximity_boost"]
+            )
+            sf.addRow(BOOST_FIELDS["proximity_boost_pct"][0], self._proximity_boost)
 
             self._ls_candles = QSpinBox()
             self._ls_candles.setRange(2, 10)
@@ -1033,6 +1039,14 @@ if _HAS_QT:
             self._ls_candles.setSuffix(" candles")
             set_description(self._ls_candles, BOT_WIZARD_DESCRIPTIONS["ls_candles"])
             sf.addRow("Landing Strip Candles:", self._ls_candles)
+            self._landing_strip_boost = boost_box(
+                None,
+                "landing_strip_boost_pct",
+                BOT_WIZARD_DESCRIPTIONS["landing_strip_boost"],
+            )
+            sf.addRow(
+                BOOST_FIELDS["landing_strip_boost_pct"][0], self._landing_strip_boost
+            )
 
             self._ta_timeframe = QComboBox()
             for _tf in ("1m", "5m", "15m", "30m", "1h", "4h", "1d"):
@@ -1121,41 +1135,28 @@ if _HAS_QT:
             af = _mkform()
             self._adv_group.setLayout(af)
 
-            self._scrum_detect_pct = QSpinBox()
-            self._scrum_detect_pct.setRange(10, 90)
-            self._scrum_detect_pct.setSuffix(" %")
-            self._scrum_detect_pct.setValue(75)
-            set_description(
-                self._scrum_detect_pct, BOT_WIZARD_DESCRIPTIONS["scrum_detect_pct"]
-            )
-            af.addRow("Detect Threshold:", self._scrum_detect_pct)
+            from .read_timeframe_combo import fill_read_combo
 
-            self._scrum_fire_pct = QDoubleSpinBox()
-            self._scrum_fire_pct.setRange(0.1, 10.0)
-            self._scrum_fire_pct.setDecimals(2)
-            self._scrum_fire_pct.setSuffix(" %")
-            self._scrum_fire_pct.setValue(0.5)
-            set_description(
-                self._scrum_fire_pct, BOT_WIZARD_DESCRIPTIONS["scrum_fire_pct"]
+            self._exchange_id = ""
+            self._scrum_read_tf = QComboBox()
+            fill_read_combo(
+                self._scrum_read_tf,
+                self._exchange_id,
+                str(self._ta_timeframe.currentData() or ""),
+                "",
             )
-            af.addRow("Fire Threshold:", self._scrum_fire_pct)
-
-            self._bb_midline_gate = QCheckBox("BB Midline Gate")
-            self._bb_midline_gate.setChecked(True)
             set_description(
-                self._bb_midline_gate, BOT_WIZARD_DESCRIPTIONS["bb_midline_gate"]
+                self._scrum_read_tf, BOT_WIZARD_DESCRIPTIONS["scrum_read_timeframe"]
             )
-            af.addRow(self._bb_midline_gate)
-
-            self._scrum_read_rate_min = QSpinBox()
-            self._scrum_read_rate_min.setRange(1, 60)
-            self._scrum_read_rate_min.setSuffix(" min")
-            self._scrum_read_rate_min.setValue(5)
-            set_description(
-                self._scrum_read_rate_min,
-                BOT_WIZARD_DESCRIPTIONS["scrum_read_rate_min"],
+            self._ta_timeframe.currentIndexChanged.connect(
+                lambda _at: fill_read_combo(
+                    self._scrum_read_tf,
+                    self._exchange_id,
+                    str(self._ta_timeframe.currentData() or ""),
+                    str(self._scrum_read_tf.currentData() or ""),
+                )
             )
-            af.addRow("Read Rate:", self._scrum_read_rate_min)
+            af.addRow("Read Rate:", self._scrum_read_tf)
 
             self._band_travel_pct = QSpinBox()
             self._band_travel_pct.setRange(0, 100)
@@ -1231,6 +1232,10 @@ if _HAS_QT:
                 self._max_cartridge_pct, BOT_WIZARD_DESCRIPTIONS["max_cartridge_pct"]
             )
             cf.addRow("Max Cartridge Size:", self._max_cartridge_pct)
+            self._cartridge_boost = boost_box(
+                None, "cartridge_boost_pct", BOT_WIZARD_DESCRIPTIONS["cartridge_boost"]
+            )
+            cf.addRow(BOOST_FIELDS["cartridge_boost_pct"][0], self._cartridge_boost)
 
             self._cartridge_smart_chk = QCheckBox("Calibrate to BB range")
             self._cartridge_smart_chk.setChecked(False)
@@ -1522,6 +1527,15 @@ if _HAS_QT:
             )
             self._ta_tf_notice.setText(notice)
             self._ta_tf_form.setRowVisible(self._ta_tf_notice, bool(notice))
+            self._exchange_id = str(exchange_id or "")
+            from .read_timeframe_combo import fill_read_combo
+
+            fill_read_combo(
+                self._scrum_read_tf,
+                self._exchange_id,
+                str(self._ta_timeframe.currentData() or ""),
+                str(self._scrum_read_tf.currentData() or ""),
+            )
 
         def set_market(
             self,
@@ -1649,17 +1663,18 @@ if _HAS_QT:
                     "stack_spacing_mode": self._stack_spacing.currentData(),
                     "scrumming_interval_pct": self._scrumming_interval.value(),
                     "bb_tolerance_pct": self._bb_tolerance.value(),
+                    "proximity_boost_pct": self._proximity_boost.value(),
                     "bb_landing_strip_candles": self._ls_candles.value(),
+                    "landing_strip_boost_pct": self._landing_strip_boost.value(),
                     "ta_timeframe": self._ta_timeframe.currentData(),
                     "target_balance": self._target_balance.value(),
                     "max_entry_price": (float(_max_ep) if _max_ep > 0 else None),
                     "min_entry_price": (float(_min_ep) if _min_ep > 0 else None),
                     "trading_fee_pct": self._trading_fee.value(),
                     "max_target_growth_pct": self._max_target_growth_pct.value(),
-                    "scrum_detect_pct": self._scrum_detect_pct.value(),
-                    "scrum_fire_pct": self._scrum_fire_pct.value(),
-                    "bb_midline_gate": self._bb_midline_gate.isChecked(),
-                    "scrum_read_rate_min": self._scrum_read_rate_min.value(),
+                    "scrum_read_timeframe": str(
+                        self._scrum_read_tf.currentData() or ""
+                    ),
                     "band_travel_pct": self._band_travel_pct.value(),
                     "bb_bullseye_check": self._bb_bullseye_check.isChecked(),
                     "hedge_rebalance_active": self._hedge_rebalance.isChecked(),
@@ -1668,6 +1683,7 @@ if _HAS_QT:
                     "circuit_breaker_hard_pct": self._cb_hard_pct.value(),
                     "circuit_breaker_cooldown_candles": self._cb_cooldown.value(),
                     "max_cartridge_size_pct": self._max_cartridge_pct.value(),
+                    "cartridge_boost_pct": self._cartridge_boost.value(),
                     "max_cartridge_smart": self._cartridge_smart_chk.isChecked(),
                     "max_cartridge_smart_ceiling_pct": self._cartridge_smart_ceiling.value(),
                     "position_ceiling_enabled": self._position_ceiling_enabled.isChecked(),

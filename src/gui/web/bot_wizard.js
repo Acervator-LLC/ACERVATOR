@@ -222,6 +222,8 @@
   var WORD_WRAPPED_LABELS = "word_wrapped_labels";
 
   var TA_ITEMS = "ta_items";
+  var READ_ITEMS = "read_items";
+  var READ_COMBO = "read_combo";
 
   var MISSING_FAULT = "missing";
   var NULL_FAULT = "null";
@@ -591,6 +593,12 @@
       var served = listField(bag(TIMEFRAMES), TA_ITEMS);
       if (served.length) {
         return served;
+      }
+    }
+    if (name === bag(TIMEFRAMES)[READ_COMBO]) {
+      var reads = listField(bag(TIMEFRAMES), READ_ITEMS);
+      if (reads.length) {
+        return reads;
       }
     }
     if (name === bag(ASSET_PAGE)[BASE_COMBO]) {

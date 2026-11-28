@@ -11,7 +11,6 @@ from typing import Any, Callable, Optional
 
 from ...core.emit_contracts import FILL_BUY, FILL_SELL
 from ...exchange.base import OrderSide, OrderType, order_turn
-from ...exchange.ccxt_connector import order_stayed_home
 from ..container.config import (
     CEILING_MULTIPLE_MAX,
     CEILING_MULTIPLE_MIN,
@@ -26,7 +25,6 @@ from ..container.config import (
     target_growth_pct,
 )
 from ..container.order_watch import PRESS_AGAIN_FRESH
-from ..indicators.bb_proximity import CONSOLIDATION_THRESHOLD_PCT
 from ..otd_math import (
     DistanceSettings,
     DistanceSettingUnreadable,
@@ -38,7 +36,6 @@ from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
     VotingEngine,
     candles_from_raw,
-    detect_bb_proximity,
     three_agree,
     two_indicator_ceiling,
 )
@@ -58,10 +55,10 @@ from .sizing import (
     EVENT_ID_KEY,
     EXCESS_SALE,
     FRACTIONAL_UNITS,
-    REBALANCE_REFUSED,
-    REBALANCE_SENT,
     SIDE_BUY,
     WHOLE_UNITS,
+    cartridge_reached,
+    cartridge_threshold_usd,
     fold_cap_remaining_usd,
     fold_decision,
     fold_spend_usd,
@@ -81,11 +78,8 @@ from .sizing import (
 from .snapshots import yes_no as _yes_no
 from .target_ramp import (
     RAMP_FIRE,
-    RAMP_MODES,
     RAMP_SEARCH,
     RAMP_TRACK,
-    next_ramp_mode,
-    retreat_line,
 )
 
 logger = logging.getLogger("acervator.scrumming")
@@ -150,6 +144,7 @@ class TickPhaseMixin:
     _asset_class: Callable[..., str]
     _bus: Any
     _cartridge_last_smart_pct: float
+    _cartridge_reached: bool
     _cb_last_candle_ts: float
     _check_detonation_trigger: Callable[..., Any]
     _combine_fold_tranches_within_distance: Callable[..., Any]
@@ -726,72 +721,27 @@ class TickPhaseMixin:
                 )
         return _cartridge_pct
 
-    @order_turn
-    async def _tick_cartridge_fire(
-        self,
-        ticker: Any,
-        _direction: str,
-        _cartridge_delta: float,
-        _cartridge_threshold: float,
-        _cartridge_pct: float,
-    ) -> str:
-        """Fire the max-cartridge rebalance and answer what
-        ``_execute_manual_rebalance`` answers, and where it raised, ``REBALANCE_REFUSED``
-        on ``order_stayed_home`` proof and ``REBALANCE_SENT`` without it."""
-        if _direction == "FOLD":
-            _verified_units, _refuse_msg = await self._verify_buy_safe_or_refuse(
-                path="cartridge_fold", price=ticker.last
+    def _note_cartridge_reach(self, current_value: float, cartridge_pct: float) -> None:
+        """Set ``_cartridge_reached`` from ``cartridge_reached`` and write one log line each time it turns."""
+        reached = cartridge_reached(current_value, self._target_balance, cartridge_pct)
+        if reached == self._cartridge_reached:
+            return
+        self._cartridge_reached = reached
+        threshold = cartridge_threshold_usd(self._target_balance, cartridge_pct)
+        delta = target_delta_usd(current_value, self._target_balance)
+        if reached:
+            message = (
+                f"MAX CARTRIDGE REACHED: Target Delta ${delta:+.2f} is at or past "
+                f"${threshold:.2f} ({cartridge_pct:.2f}% of target). The bot reads at "
+                f"the TRACK rate, and the gate chain still decides every trade."
             )
-            if _refuse_msg:
-                return REBALANCE_REFUSED
-
-        def announce_fire() -> None:
-            """Write the fire line and the ``SENT`` line for the order in hand."""
-            try:
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=(
-                        f"MAX CARTRIDGE FIRE ({_direction}): "
-                        f"|delta|=${abs(_cartridge_delta):.2f} "
-                        f"≥ threshold ${_cartridge_threshold:.2f} "
-                        f"({_cartridge_pct:.1f}% of target "
-                        f"${self._target_balance:.2f}). "
-                        f"Hysteresis clear. Firing aggressive "
-                        f"rebalance — bypasses BB Detection / "
-                        f"soft CB / higher-TF bias gates. "
-                        f"It does NOT bypass "
-                        f"opposing-direction hysteresis."
-                    ),
-                )
-                self._emit_trade_notification(
-                    f"CARTRIDGE_{_direction}",
-                    "SENT",
-                    f"|delta|=${abs(_cartridge_delta):.2f} ≥ "
-                    f"${_cartridge_threshold:.2f}",
-                )
-            except Exception as _sup:
-                logger.debug(
-                    "suppressed in %s: %s: %s",
-                    "tick",
-                    type(_sup).__name__,
-                    _sup,
-                )
-
-        try:
-            return await self._execute_manual_rebalance(
-                ticker, caller_intent="max_cartridge", on_order=announce_fire
+        else:
+            message = (
+                f"MAX CARTRIDGE CLEARED: Target Delta ${delta:+.2f} is under "
+                f"${threshold:.2f} ({cartridge_pct:.2f}% of target). The bot reads at "
+                f"the rate its ramp mode sets."
             )
-        except Exception as exc:
-            self._bus.emit(
-                "bot.log",
-                bot_id=self.bot_id,
-                message=(
-                    f"MAX CARTRIDGE: rebalance raised " f"{type(exc).__name__}: {exc}"
-                ),
-            )
-            logger.exception("Max cartridge rebalance failed")
-            return REBALANCE_REFUSED if order_stayed_home(exc) else REBALANCE_SENT
+        self._bus.emit("bot.log", bot_id=self.bot_id, message=message)
 
     async def _tick_detonation(self, ticker: Any) -> bool:
         """Return True when a detonation fired and the tick must stop.
@@ -1101,12 +1051,6 @@ class TickPhaseMixin:
             summary = self._voting_engine.compute_all(
                 parsed, self.config.ta_timeframe, symbol=self.config.symbol
             )
-            _init_bb = detect_bb_proximity(
-                parsed,
-                tolerance_pct=self.config.bb_tolerance_pct,
-                consolidation_threshold=CONSOLIDATION_THRESHOLD_PCT,
-                min_pattern_candles=self.config.bb_landing_strip_candles,
-            )
         except Exception as exc:
             return FirstBuyRead(
                 f"INITIAL ENTRY BLOCKED: candles could not be read "
@@ -1115,13 +1059,10 @@ class TickPhaseMixin:
                 standing=True,
             )
         self._last_summary = summary
+        from ..indicators.bb_proximity import band_zone, panel_band
 
-        if (
-            _init_bb is None
-            or _init_bb.upper <= 0
-            or _init_bb.lower <= 0
-            or _init_bb.upper <= _init_bb.lower
-        ):
+        _init_bb = panel_band(summary.signals)
+        if _init_bb is None or _init_bb.lower <= 0:
             return FirstBuyRead(
                 f"INITIAL ENTRY BLOCKED: BB data not yet "
                 f"computable — need proper band formation "
@@ -1142,25 +1083,15 @@ class TickPhaseMixin:
                 "initial-entry(band-position)",
             )
 
-        _detect_pct_frac = self.config.scrum_detect_pct / 100.0
-        _fire_pct_frac = self.config.scrum_fire_pct / 100.0
         _bb_mid_init = (_init_bb.upper + _init_bb.lower) / 2.0
         _lower_half = _bb_mid_init - _init_bb.lower
         _dist_down = (_bb_mid_init - _init_price) / max(_lower_half, 1e-12)
-        _near_lower = (
-            abs(_init_price - _init_bb.lower) / max(_init_bb.lower, 1e-12)
-            <= _fire_pct_frac
-        )
 
-        if not (
-            _near_lower
-            or (_bb_mid_init - _init_price)
-            >= _detect_pct_frac * max(_lower_half, 1e-12)
-        ):
+        _, _at_lower = band_zone(_init_bb, -1.0, float(self.config.bb_tolerance_pct))
+        if not _at_lower:
             return FirstBuyRead(
-                f"INITIAL ENTRY BLOCKED: distance-down "
-                f"{_dist_down:.0%} < {_detect_pct_frac:.0%} "
-                f"and not within {_fire_pct_frac:.2%} of "
+                f"INITIAL ENTRY BLOCKED: price is not within "
+                f"{float(self.config.bb_tolerance_pct):g}% of price of the "
                 f"lower band. Price=${_init_price:.8f} "
                 f"(lower=${_init_bb.lower:.8f}, "
                 f"mid=${_bb_mid_init:.8f})",
@@ -1590,148 +1521,62 @@ class TickPhaseMixin:
             opened_event_ids=self._take_opened_stack_events(),
         )
 
-    def _tick_target_ramp(
-        self,
-        bb_result: Any,
-        ticker: Any,
-        delta: float,
-        delta_pct: float,
-        _interval_usd: float,
-    ) -> bool:
-        """Advance the search/track/fire ramp and return whether it fires."""
-        detect_pct_frac = self.config.scrum_detect_pct / 100.0
-        fire_pct_frac = self.config.scrum_fire_pct / 100.0
+    def _tick_target_ramp(self, upper: bool, lower: bool) -> bool:
+        """Set ``_scrum_target_mode`` to ``zone_ramp_mode`` of the ``upper`` or ``lower`` zone; True when it reads ``RAMP_FIRE``."""
+        from .target_ramp import zone_ramp_mode
 
-        target_fires = True
-        if bb_result is not None and bb_result.upper > 0 and bb_result.lower > 0:
-            _bb_mid = bb_result.middle
-            _bb_upper = bb_result.upper
-            _bb_lower = bb_result.lower
-            _price = ticker.last
-            if _price > _bb_mid:
-                _side = "upper"
-                _band_range = _bb_upper - _bb_mid
-                _band_span = max(_band_range, 1e-12)
-                _dist_abs = _price - _bb_mid
-                _dist_to_band = _dist_abs / _band_span
-                _edge_gap = abs(_price - _bb_upper)
-                _fire_limit = fire_pct_frac * _bb_upper
-            else:
-                _side = "lower"
-                _band_range = _bb_mid - _bb_lower
-                _band_span = max(_band_range, 1e-12)
-                _dist_abs = _bb_mid - _price
-                _dist_to_band = _dist_abs / _band_span
-                _edge_gap = abs(_price - _bb_lower)
-                _fire_limit = fire_pct_frac * _bb_lower
+        mode = zone_ramp_mode(upper or lower, self._cartridge_reached)
+        if upper or lower:
+            self._scrum_target_side = "upper" if upper else "lower"
+        if mode != self._scrum_target_mode:
+            tolerance = f"{float(self.config.bb_tolerance_pct):g}% of price"
+            why = {
+                RAMP_FIRE: (
+                    f"price is within {tolerance} of the {self._scrum_target_side} "
+                    f"band, on the Target Delta's side"
+                ),
+                RAMP_TRACK: (
+                    f"the Target Delta is at or past Max Cartridge Size and price "
+                    f"is not within {tolerance} of its band"
+                ),
+                RAMP_SEARCH: (
+                    f"price is not within {tolerance} of the band on the Target "
+                    f"Delta's side, and the Target Delta is under Max Cartridge Size"
+                ),
+            }[mode]
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"TARGET: {self._scrum_target_mode.upper()}→{mode.upper()} — "
+                    f"{why}."
+                ),
+            )
+        self._scrum_target_mode = mode
+        return mode == RAMP_FIRE
 
-            _prev_side = self._scrum_target_side
-            _mode = self._scrum_target_mode
+    def _tick_bullseye_notices(self, band: Any, candles: list, ticker: Any) -> None:
+        """Log each ``band_touch`` on the panel's ``band``, which ``zone_side_boost`` reads as the band edge."""
+        from ..vote_boost import FOLD_SIDE, SCRUM_SIDE, band_touch
 
-            if _prev_side is not None and _prev_side != _side:
-                _mode = RAMP_SEARCH
-
-            _next = _mode
-            if _mode in RAMP_MODES:
-                _next = next_ramp_mode(
-                    _mode,
-                    _dist_abs,
-                    detect_pct_frac * _band_span,
-                    retreat_line(detect_pct_frac) * _band_span,
-                    _edge_gap,
-                    _fire_limit,
-                    abs(delta) >= _interval_usd * 0.5,
-                )
-
-            if _next != _mode:
-                if _mode == RAMP_SEARCH:
-                    self._scrum_target_side = _side
-                    _line = (
-                        f"TARGET: SEARCH→FIRE ({_side}) — fast move to band, "
-                        f"Δ {delta_pct:.1f}% ≥ {self.config.scrumming_interval_pct * 0.5:.1f}%"
-                        if _next == RAMP_FIRE
-                        else f"TARGET: SEARCH→TRACK ({_side}) — "
-                        f"BB dist {_dist_to_band:.0%} ≥ {detect_pct_frac:.0%}"
-                    )
-                elif _mode == RAMP_TRACK:
-                    _line = (
-                        f"TARGET: TRACK→FIRE ({_side}) — "
-                        f"within {fire_pct_frac:.2%} of BB band"
-                        if _next == RAMP_FIRE
-                        else f"TARGET: TRACK→SEARCH — retreated "
-                        f"(dist {_dist_to_band:.0%} < {detect_pct_frac * 0.5:.0%})"
-                    )
-                else:
-                    _line = (
-                        f"TARGET: FIRE→TRACK ({_side}) — off band, "
-                        f"still in detect zone (dist {_dist_to_band:.0%})"
-                        if _next == RAMP_TRACK
-                        else f"TARGET: FIRE→SEARCH — retreated "
-                        f"(dist {_dist_to_band:.0%} < {detect_pct_frac * 0.5:.0%})"
-                    )
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=_line,
-                )
-
-            self._scrum_target_mode = _next
-            target_fires = _next == RAMP_FIRE
-        return target_fires
-
-    def _tick_bullseye_notices(
-        self, bb_result: Any, candles: list, ticker: Any
-    ) -> None:
-        """Emit the band-touch notices for this tick's price."""
-        bullseye_upper = False
-        bullseye_upper_wick = False
-        bullseye_lower = False
-        bullseye_lower_wick = False
-        if (
-            self.config.bb_bullseye_check
-            and bb_result is not None
-            and bb_result.upper > 0
-            and bb_result.lower > 0
+        if not self.config.bb_bullseye_check or band is None or not candles:
+            return
+        for side, edge, name in (
+            (SCRUM_SIDE, band.upper, "UPPER"),
+            (FOLD_SIDE, band.lower, "LOWER"),
         ):
-            _bp = ticker.last
-            _touch_tol = 0.005
-            _wick_tol = 0.002
-            bullseye_upper = abs(_bp - bb_result.upper) / bb_result.upper < _touch_tol
-            bullseye_lower = abs(_bp - bb_result.lower) / bb_result.lower < _touch_tol
-            if candles and not bullseye_upper:
-                _last_high = candles[-1].high
-                bullseye_upper_wick = _last_high >= bb_result.upper * (1.0 - _wick_tol)
-            if candles and not bullseye_lower:
-                _last_low = candles[-1].low
-                bullseye_lower_wick = _last_low <= bb_result.lower * (1.0 + _wick_tol)
-
-        if bullseye_upper or bullseye_upper_wick:
-            _upper_touch = "wick" if bullseye_upper_wick else "close"
-            if self._refusal_is_new(
-                f"state_bullseye_upper_{_upper_touch}", ticker.last
+            touch = band_touch(band, side, candles[-1].high, candles[-1].low)
+            if touch and self._refusal_is_new(
+                f"state_bullseye_{name.lower()}_{touch}", ticker.last
             ):
-                _ramp = self._scrum_target_mode.upper()
-                _fire_gate = "passes" if _ramp == "FIRE" else "holds"
                 self._bus.emit(
                     "bot.log",
                     bot_id=self.bot_id,
-                    message=f"BULLSEYE UPPER ({_upper_touch}): "
-                    f"price ${ticker.last:.8f} at BB upper ${bb_result.upper:.8f}. "
-                    f"Ramp at {_ramp}, so the FIRE gate {_fire_gate}.",
-                )
-        if bullseye_lower or bullseye_lower_wick:
-            _lower_touch = "wick" if bullseye_lower_wick else "close"
-            if self._refusal_is_new(
-                f"state_bullseye_lower_{_lower_touch}", ticker.last
-            ):
-                _queued = len(self._fold_tranches or [])
-                self._bus.emit(
-                    "bot.log",
-                    bot_id=self.bot_id,
-                    message=f"BULLSEYE LOWER ({_lower_touch}): "
-                    f"price ${ticker.last:.8f} at BB lower ${bb_result.lower:.8f}. "
-                    f"{_queued} tranche(s) queued; a fold needs one whose "
-                    f"reference price the market has fallen past.",
+                    message=(
+                        f"BULLSEYE {name} ({touch}): close ${band.close:.8f} at BB "
+                        f"{name.lower()} ${edge:.8f}. BB Proximity reads it as the "
+                        f"band edge."
+                    ),
                 )
 
     async def _tick_execute_scrum(
@@ -2086,9 +1931,9 @@ class TickPhaseMixin:
                                 f"fold gate refused. "
                                 f"Blocked by {', '.join(_fold_blockers)}. "
                                 f"BB position {bb_pos:.1%}, TA bearish "
-                                f"{_yes_no(is_bearish)}, midline gate "
-                                f"{_yes_no(fold_ok_midline)}, below the "
-                                f"lower detect line "
+                                f"{_yes_no(is_bearish)}, phantom lock clear "
+                                f"{_yes_no(fold_ok_midline)}, inside the "
+                                f"lower BB Tolerance zone "
                                 f"{_yes_no(_bb_below_lower_dt)}. "
                                 f"Cycle cap used "
                                 f"${self._fold_cycle_cap_consumed:.4f}. "
@@ -2169,7 +2014,10 @@ class TickPhaseMixin:
         _fold_chain_result: Any,
     ) -> bool:
         """Rebuy the tranches ``_fold_eligible_tranches`` names at ``distance`` and
-        ``band``; True means the tick must stop."""
+        ``band``, or ``_tick_calibrating_fold`` with none queued; True means the tick must stop.
+        """
+        if not self._fold_tranches:
+            return await self._tick_calibrating_fold(ticker, summary, delta)
         _otd_factor = fold_rebuy_factor_from_pct(distance.distance_at_band(band))
         try:
             self._emit_trade_fire_snapshot(
@@ -2435,6 +2283,101 @@ class TickPhaseMixin:
                 f"price ${_min_ibp:.8f}.",
             )
         return False
+
+    async def _tick_calibrating_fold(
+        self, ticker: Any, summary: Any, delta: float
+    ) -> bool:
+        """Buy the whole Target Delta ``delta`` the fold chain cleared with no tranche queued; True means the tick must stop."""
+        from .sizing import CALIBRATING_BUY
+
+        buy_cost = abs(float(delta))
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"CALIBRATING FOLD: Target Delta ${delta:+.2f}, price is within "
+                f"{float(self.config.bb_tolerance_pct):g}% of price of the lower "
+                f"band and reads as slipping out, and no tranche is queued. Buying "
+                f"the Target Delta, ${buy_cost:.2f}, under every gate the fold "
+                f"chain keeps."
+            ),
+        )
+        buy_fill = await self._execute_buy(
+            buy_cost,
+            ticker.last,
+            summary,
+            trace_context={"path": "calibrating_fold", "delta": f"${delta:+.4f}"},
+            booker="_book_calibrating_fill",
+            booking={"buy_cost": float(buy_cost), "intended": float(ticker.last)},
+            decision=CALIBRATING_BUY,
+            watch=self.order_watch(ticker),
+        )
+        if buy_fill is not None and buy_fill > 0:
+            return False
+        if self._refusal_is_new("calibrating_fold_refused", ticker.last):
+            self._bus.emit(
+                "bot.log",
+                bot_id=self.bot_id,
+                message=(
+                    f"CALIBRATING FOLD ABORTED: the buy of ${buy_cost:.2f} failed at "
+                    f"${ticker.last:.8f}. No lot is booked, and the next tick tries "
+                    f"again while the gates still pass."
+                ),
+            )
+        return True
+
+    async def _book_calibrating_fill(
+        self,
+        units: float,
+        fill_price: float,
+        asked: float,
+        _first: bool,
+        *,
+        buy_cost: float,
+        intended: float,
+    ) -> None:
+        """Book one settled piece of a calibrating fold as a lot, and announce it as a ``FOLD`` fill."""
+        bought_units = float(units)
+        share = min(1.0, bought_units / asked) if asked > 0 else 1.0
+        spent_usd = float(buy_cost) * share
+        self._main_lots.append(
+            {
+                "units": bought_units,
+                "initial_buy_price": fill_price,
+                "read_price": intended,
+            }
+        )
+        position_usd = priced_usd(
+            self._current_holdings, fill_price, float(self._quote_to_usd or 1.0)
+        )
+        self._bus.emit(
+            "bot.log",
+            bot_id=self.bot_id,
+            message=(
+                f"CALIBRATING FOLD FILLED: {bought_units:.8f} "
+                f"{self.config.target_asset} @ ${fill_price:.8f} (intended "
+                f"${intended:.8f}). Position ${position_usd:.2f} against target "
+                f"${self._target_balance:.2f}."
+            ),
+        )
+        self._emit_voting_panel_snapshot_at_fire(side="BUY", trade_action="FOLD")
+        self._emit_gate_decision_at_fire(side="BUY", trade_action="FOLD")
+        self.stats.total_folded_usd += spent_usd
+        self._last_trade_side = "FOLD"
+        self._last_trade_price = fill_price
+        self._reset_opposing_hysteresis_after_fill()
+        self._announce_fill(
+            kind="FOLD",
+            side=FILL_BUY,
+            units=bought_units,
+            price=fill_price,
+            usd=spent_usd,
+            profit=0.0,
+            operator_initiated=False,
+            fee=self._fill_fee_fields(fill_price),
+            spent_event_ids=(),
+            opened_event_ids=self._take_opened_stack_events(),
+        )
 
     def _planned_fold_sources(self, plan: list, sources: Optional[list]) -> list:
         """The queued tranche each ``plan`` entry settles, None where it left

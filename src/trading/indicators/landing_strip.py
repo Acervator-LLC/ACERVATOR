@@ -36,34 +36,22 @@ class TighteningResult:
     raw_tightenings: int  # counted before the band filter
 
 
-def detect_landing_strip_v2(
-    candles: list[Candle],
-    min_consecutive: int = 3,
-    shrink_threshold: float = 0.90,
-    bb_tolerance_pct: float = 3.0,
-    use_ha: bool = True,
-    bb_period: int = 20,
-    bb_std: float = 2.0,
-) -> TighteningResult:
-    """Detect a run of shrinking candle bodies that reaches a Bollinger band.
+#: The longest run of tapering candles ``tapering_run`` counts.
+TAPER_RUN_CAP: int = 12
 
-    ``min_consecutive`` and ``shrink_threshold`` bound the run, ``bb_period``
-    and ``bb_std`` build the bands, and ``confidence_boost`` scales with
-    ``length`` and ``tightening_ratio``.
-    """
-    empty = TighteningResult(False, "", 0, 0.0, 0.5, 0.0, 0)
 
-    if len(candles) < 25:
-        return empty
-
+def _body_shares(candles: list[Candle], use_ha: bool) -> list[float]:
+    """Each candle's body as a percent of its close, Heikin Ashi bodies when ``use_ha``."""
     if use_ha:
         ha = compute_heikin_ashi(candles)
         bodies = [abs(h.close - h.open) for h in ha]
     else:
         bodies = [abs(c.close - c.open) for c in candles]
+    return [bodies[i] / max(candles[i].close, 1e-10) * 100 for i in range(len(bodies))]
 
-    norm = [bodies[i] / max(candles[i].close, 1e-10) * 100 for i in range(len(bodies))]
 
+def _tapering_count(norm: list[float], shrink_threshold: float) -> int:
+    """Candles from the newest back whose body share is under ``shrink_threshold`` of the one before, at most ``TAPER_RUN_CAP``."""
     # ``NO_SHRINK_RATIO`` is the ratio an unchanged body produces, so both
     # sides of the ``<`` below carry one unit.
     shrink_limit_ratio = shrink_threshold / NO_SHRINK_RATIO
@@ -77,8 +65,41 @@ def detect_landing_strip_v2(
                 break
         else:
             break
-        if shrink_count >= 12:
+        if shrink_count >= TAPER_RUN_CAP:
             break
+    return shrink_count
+
+
+def tapering_run(
+    candles: list[Candle], shrink_threshold: float = 0.90, use_ha: bool = True
+) -> int:
+    """The newest run of tapering candles ``detect_landing_strip_v2`` counts, read by ``side_boost``'s Landing Strip steps."""
+    return _tapering_count(_body_shares(candles, use_ha), shrink_threshold)
+
+
+def detect_landing_strip_v2(
+    candles: list[Candle],
+    min_consecutive: int = 3,
+    shrink_threshold: float = 0.90,
+    bb_tolerance_pct: float = 3.0,
+    use_ha: bool = True,
+    bb_period: int = 20,
+    bb_std: float = 2.0,
+) -> TighteningResult:
+    """Detect a run of shrinking candle bodies that reaches a Bollinger band.
+
+    ``min_consecutive`` and ``shrink_threshold`` bound the run, ``bb_period``
+    and ``bb_std`` build the bands, and ``confidence_boost`` scales with
+    ``length`` and ``tightening_ratio``. ``bb_tolerance_pct`` is a percent of
+    the band's width, not of price.
+    """
+    empty = TighteningResult(False, "", 0, 0.0, 0.5, 0.0, 0)
+
+    if len(candles) < 25:
+        return empty
+
+    norm = _body_shares(candles, use_ha)
+    shrink_count = _tapering_count(norm, shrink_threshold)
 
     if shrink_count < min_consecutive:
         return TighteningResult(False, "", 0, 0.0, 0.5, 0.0, shrink_count)
