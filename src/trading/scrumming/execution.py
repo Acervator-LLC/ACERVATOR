@@ -485,22 +485,18 @@ class ExecutionEngineMixin:
             self._last_fill_venue_fee if record.get("side") == "sell" else None
         )
 
-    async def _book_sale(
+    def _book_sale(
         self,
         units: float,
         fill_price: float,
         asked_units: float,
         intended: float,
-        label: str,
         confidence: float,
     ) -> float:
-        """Take one settled piece of a sale off ``_current_holdings``, and return its fill
-        price.
-
-        ``refresh_priced_figures_after_fill`` takes one venue reading for the row.
-        """
+        """Take one settled piece of a sale off ``_current_holdings`` and ``_audited_venue_units``, and return its fill price."""
         self._last_sell_filled_units = units
         self._current_holdings = max(0.0, self._current_holdings - units)
+        self._record_venue_units_after_fill(-units)
 
         if not fill_price or fill_price <= 0:
             fill_price = intended
@@ -530,19 +526,19 @@ class ExecutionEngineMixin:
             slippage_pct,
             confidence,
         )
-        # The fill moved _current_holdings above and not the audited venue
-        # count. One read puts both priced figures on this fill. Guarded
-        # here too, so no refresh can lose a sale the venue already made.
+        return fill_price
+
+    async def _read_venue_after_sale(self, label: str) -> None:
+        """Await ``refresh_priced_figures_after_fill`` once a sale's booking is done, and log what it raises."""
         try:
             await self.refresh_priced_figures_after_fill(reason=label.lower())
         except Exception as _sup:
             logger.debug(
                 "suppressed in %s: %s: %s",
-                "_book_sale",
+                "_read_venue_after_sale",
                 type(_sup).__name__,
                 _sup,
             )
-        return fill_price
 
     async def _book_sale_fill(
         self,
@@ -559,15 +555,15 @@ class ExecutionEngineMixin:
         path_context: Optional[dict] = None,
         sources: Optional[list] = None,
     ) -> float:
-        """Book one later piece of a held sale through ``_book_sale``, then through the
-        method ``path_booker`` names.
-        """
-        fill_price = await self._book_sale(
-            units, fill_price, asked_units, intended, label, confidence
+        """Book one later piece of a held sale through ``_book_sale`` and ``path_booker``, then
+        ``_read_venue_after_sale``."""
+        fill_price = self._book_sale(
+            units, fill_price, asked_units, intended, confidence
         )
         await self._run_booker(
             path_booker, units, fill_price, asked, first, path_context, sources
         )
+        await self._read_venue_after_sale(label)
         return fill_price
 
     async def _book_purchase(
@@ -3061,12 +3057,11 @@ class ExecutionEngineMixin:
                         _sup,
                     )
                 return None
-            actual_fill = await self._book_sale(
+            actual_fill = self._book_sale(
                 filled_units,
                 actual_fill,
                 amount,
                 price,
-                label,
                 summary.consensus_confidence,
             )
         except Exception as exc:
@@ -3083,6 +3078,7 @@ class ExecutionEngineMixin:
                 )
             return None
         await self._run_booker(booker, filled_units, actual_fill, asked, True, booking)
+        await self._read_venue_after_sale(label)
         return actual_fill
 
     async def _refuses_stacked_buy(
