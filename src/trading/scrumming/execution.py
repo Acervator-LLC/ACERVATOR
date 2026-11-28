@@ -261,12 +261,12 @@ class ExecutionEngineMixin:
     _emit_trade_notification: Callable[..., None]
     _emit_voting_panel_snapshot_at_fire: Callable[..., None]
     _fold_discharge_order: Callable[..., list[dict]]
-    _fold_piece_laddered: bool
     _fold_preview_unreadable_refs: int
     _fold_preview_unreadable_units: int
     _fold_queue_usd: float
     _fold_tranches: list[dict]
     _get_balance: Callable[..., Any]
+    _hold_fill_sends: Callable[..., Any]
     _hold_resting_order: Callable[..., Any]
     _hyst_armed_fold_side: bool
     _hyst_armed_scrum_side: bool
@@ -297,6 +297,8 @@ class ExecutionEngineMixin:
     _return_wire_credits_to_pool: Callable[..., float]
     _route_scrum_proceeds_via_wires: Callable[..., Any]
     _run_booker: Callable[..., Any]
+    _send_held_fills: Callable[..., None]
+    _settle_dist_set: Callable[..., None]
     _shadow_exit_plan: Callable[..., tuple]
     _shadow_held_units: Callable[..., float]
     _shadow_take: Callable[..., float]
@@ -325,7 +327,7 @@ class ExecutionEngineMixin:
     _last_fill_venue_fee: Optional["SettledFillFee"] = None
     # _pay_queue_by_units writes it and _report_fold_by_units reads it.
     _queue_payment: QueuePayment = NO_QUEUE_PAYMENT
-    # _book_purchase writes the stack event ids a piece opened; _take_opened_stack_events reads them.
+    # _spawn_stack_noting_events writes the stack event ids a piece opened; _take_opened_stack_events reads them.
     _opened_stack_events: tuple[str, ...] = ()
 
     # The highest venue_fee_pct any of this bot's fills reported; _note_venue_fee_pct writes it.
@@ -566,23 +568,19 @@ class ExecutionEngineMixin:
         await self._read_venue_after_sale(label)
         return fill_price
 
-    async def _book_purchase(
+    def _book_purchase_units(
         self,
         units: float,
         fill_price: float,
         asked_units: float,
         intended: float,
-        path: str,
         venue_before: Optional[float],
-        summary: Any,
-        shadow_units: float = 0.0,
     ) -> float:
         """Add one settled piece of a buy to ``_current_holdings``, and return its fill
         price.
 
         ``venue_before`` is the venue reading taken before the order, None for a later
-        piece, which moves ``_audited_venue_units`` by ``units``. A stack ladder offers
-        ``units`` less ``shadow_units``, the piece a Shadow Tranche takes.
+        piece, which moves ``_audited_venue_units`` by ``units``.
         """
         if not fill_price or fill_price <= 0:
             fill_price = intended
@@ -614,15 +612,19 @@ class ExecutionEngineMixin:
         self._emit_trade_notification(
             "FOLD", "FILLED", f"{units:.6f} @ ${fill_price:.8f}"
         )
-
-        await self._spawn_stack_noting_events(
-            fold_price=fill_price,
-            fold_size=units,
-            summary=summary,
-            path=path,
-            shadow_units=shadow_units,
-        )
         return fill_price
+
+    async def _book_then_ladder(self, book: Callable[[], Any], ladder: dict) -> None:
+        """Run ``book`` between ``_hold_fill_sends`` and ``_send_held_fills``, opening the ``ladder`` rungs after it."""
+        outer = self._hold_fill_sends()
+        try:
+            booked = book()
+            if asyncio.iscoroutine(booked):
+                await booked
+            await self._spawn_stack_noting_events(**ladder)
+        finally:
+            self._settle_dist_set()
+            self._send_held_fills(outer, self._take_opened_stack_events())
 
     async def _spawn_stack_noting_events(self, **spawn: Any) -> None:
         """Run ``_spawn_stack_from_fold`` with ``spawn``, and keep the stack event ids it
@@ -659,21 +661,25 @@ class ExecutionEngineMixin:
         path_context: Optional[dict] = None,
         sources: Optional[list] = None,
     ) -> float:
-        """Book one later piece of a held buy through ``_book_purchase``, then through
-        the method ``path_booker`` names.
+        """Book one later piece of a held buy through ``_book_purchase_units``, then
+        ``path_booker`` and the piece's ladder through ``_book_then_ladder``.
         """
-        fill_price = await self._book_purchase(
-            units,
-            fill_price,
-            asked_units,
-            intended,
-            path,
-            None,
-            VotingSummary(net_score=net_score, consensus_confidence=confidence),
-            self._shadow_take(units, asked, path_context),
+        fill_price = self._book_purchase_units(
+            units, fill_price, asked_units, intended, None
         )
-        await self._run_booker(
-            path_booker, units, fill_price, asked, first, path_context, sources
+        await self._book_then_ladder(
+            lambda: self._run_booker(
+                path_booker, units, fill_price, asked, first, path_context, sources
+            ),
+            {
+                "fold_price": fill_price,
+                "fold_size": units,
+                "summary": VotingSummary(
+                    net_score=net_score, consensus_confidence=confidence
+                ),
+                "path": path,
+                "shadow_units": self._shadow_take(units, asked, path_context),
+            },
         )
         return fill_price
 
@@ -2063,8 +2069,8 @@ class ExecutionEngineMixin:
         paid_events: Optional[list] = None,
     ) -> None:
         """Book one settled piece of a Manual Fire or cartridge buy against the
-        queued tranches, offer its ``units`` to ``_spawn_stack_from_fold`` under
-        ``label`` through ``_spawn_stack_noting_events``, and announce it.
+        queued tranches, then announce it and offer its ``units`` to
+        ``_spawn_stack_from_fold`` under ``label`` through ``_book_then_ladder``.
 
         ``venue_units`` is the venue reading taken before the order, None for a later
         piece, which moves ``_audited_venue_units`` by ``units``. With
@@ -2122,11 +2128,17 @@ class ExecutionEngineMixin:
         else:
             self._record_venue_units_after_fill(fill_amount)
         self._count_trade_volume(fill_amount, fill_price)
-        await self._spawn_stack_noting_events(
-            fold_price=fill_price, fold_size=fill_amount, path=label
-        )
-        self._report_fold_by_units(
-            fill_amount, fill_price, price, label, operator_initiated, _gain_usd, msg
+        await self._book_then_ladder(
+            lambda: self._report_fold_by_units(
+                fill_amount,
+                fill_price,
+                price,
+                label,
+                operator_initiated,
+                _gain_usd,
+                msg,
+            ),
+            {"fold_price": fill_price, "fold_size": fill_amount, "path": label},
         )
 
     async def _book_earlier_order(
@@ -2144,12 +2156,11 @@ class ExecutionEngineMixin:
     ) -> None:
         """Book one settled piece of the earlier order a repeated decision's send got
         back, which no plan sized: ``_pay_queue_by_units`` pays the queue and the rest
-        joins ``_main_lots``. ``_book_purchase`` already added its units.
+        joins ``_main_lots``. ``_book_purchase_units`` already added its units.
         """
         fill_amount = float(units)
         if fill_price <= 0:
             fill_price = price
-        self._fold_piece_laddered = False
         _gain_usd, _discharged = self._pay_queue_by_units(
             fill_amount,
             fill_price,
@@ -3624,16 +3635,16 @@ class ExecutionEngineMixin:
                         _sup,
                     )
                 return None
-            actual_fill = await self._book_purchase(
-                filled_units,
-                actual_fill,
-                amount,
-                price,
-                _path,
-                _fresh_units,
-                summary,
-                self._shadow_take(filled_units, asked, booking),
+            actual_fill = self._book_purchase_units(
+                filled_units, actual_fill, amount, price, _fresh_units
             )
+            _ladder = {
+                "fold_price": actual_fill,
+                "fold_size": filled_units,
+                "summary": summary,
+                "path": _path,
+                "shadow_units": self._shadow_take(filled_units, asked, booking),
+            }
         except Exception as exc:
             self._bus.emit("bot.log", bot_id=self.bot_id, message=f"BUY FAILED: {exc}")
             logger.error("Bot %s buy failed: %s", self.bot_id, exc)
@@ -3647,7 +3658,10 @@ class ExecutionEngineMixin:
                     _sup,
                 )
             return None
-        await self._run_booker(
-            booker, filled_units, actual_fill, asked, True, booking, sources
+        await self._book_then_ladder(
+            lambda: self._run_booker(
+                booker, filled_units, actual_fill, asked, True, booking, sources
+            ),
+            _ladder,
         )
         return actual_fill

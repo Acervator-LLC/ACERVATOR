@@ -206,6 +206,7 @@ class TickPhaseMixin:
     _fold_fee_pct: Callable[..., Optional[float]]
     _fold_gain_usd: Callable[..., float]
     _fold_piece_laddered: bool
+    _offered_dist_set: Optional[dict] = None
     _fold_queue_ref_price: float
     _fill_fee_fields: Callable[..., dict]
     _fold_queue_usd: float
@@ -2699,7 +2700,7 @@ class TickPhaseMixin:
         self._last_trade_price = buy_fill
         self._reset_opposing_hysteresis_after_fill()
 
-        self._open_dist_set(extra_asset, buy_fill)
+        self._offer_dist_set(extra_asset, buy_fill)
         self._announce_fill(
             kind="FOLD",
             side=FILL_BUY,
@@ -2714,12 +2715,14 @@ class TickPhaseMixin:
             growth=_growth_applied.record,
         )
 
-    def _open_dist_set(self, extra_units: float, fold_price: float) -> None:
-        """Queue ``extra_units`` bought at ``fold_price`` on ``_dist_sets`` unless
-        ``_fold_piece_laddered`` says the fold's ladder holds them."""
-        laddered = self._fold_piece_laddered
-        self._fold_piece_laddered = False
-        record = dist_set(extra_units, fold_price)
+    def _offer_dist_set(self, extra_units: float, fold_price: float) -> None:
+        """Hold the ``dist_set`` of ``extra_units`` at ``fold_price`` on ``_offered_dist_set`` for ``_settle_dist_set``."""
+        self._offered_dist_set = dist_set(extra_units, fold_price)
+
+    def _settle_dist_set(self) -> None:
+        """Queue ``_offered_dist_set`` on ``_dist_sets`` unless ``_fold_piece_laddered`` says the fold's ladder holds it."""
+        record, self._offered_dist_set = self._offered_dist_set, None
+        laddered, self._fold_piece_laddered = self._fold_piece_laddered, False
         if record is None:
             return
         if laddered:
