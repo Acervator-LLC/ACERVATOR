@@ -481,6 +481,13 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   both trees, in `dist` and in Releases (`src/_version.py, in utc_moment`).
   Commit 67c22c94 reads 20261128.0330 where it read 20261127.1930. A build made
   before the change keeps the number it was given.
+- **#1486, every figure a fill moves, at the fill. Row 11 is built.** When the
+  exchange confirms a fill, the units the Ammo cell reads move in the same step
+  as the bot's held units, on every fill path, a sale's included
+  (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_sale`). A
+  sale's one exchange read follows its booking
+  (`in ExecutionEngineMixin._read_venue_after_sale`). Every row of the body is
+  built.
 - The rest of the queue: read each body.
 
 ---
