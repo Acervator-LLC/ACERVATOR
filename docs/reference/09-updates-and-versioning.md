@@ -52,6 +52,7 @@ a branch and the history above HEAD change neither of them.
 ```python
 MOMENT_FORMAT = "%Y%m%d.%H%M"               # src/_version.py
 COMMIT_DIGITS = 12
+def utc_moment(seconds: str) -> str: ...
 def read_stamp(root: str | Path) -> str: ...
 def format_stamp(text: str) -> str: ...
 def resolve_version(root: str | Path | None = None) -> str: ...
@@ -62,7 +63,7 @@ __version__ = resolve_version()             # src/__init__.py
 Two git calls answer those facts, and both live in the gate wrapper.
 
 ```python
-def commit_stamp(root: str | Path, date_format: str) -> str: ...    # tools/gate.py
+def commit_stamp(root: str | Path) -> str: ...    # tools/gate.py
 def tree_is_dirty(root: str | Path | None = None) -> bool: ...
 ```
 
@@ -156,10 +157,27 @@ def format_stamp(text: str) -> str: ...         # src/_version.py
 0.2.0+unknown                              no git answer
 ```
 
-The date is rendered in the zone the commit itself records, so a machine in
-another zone reads the same text. The id is cut to a fixed width, because git's
+The date and time are the commit's committer time in UTC. git gives that time
+as seconds since 1970, and `utc_moment` turns the seconds into the text, so
+neither the zone the commit records nor the zone of the machine that reads it
+reaches the number. The number therefore sorts by committer time: commit
+3d9ab8c4, made at 22:05 +0000 on 27 November 2026, reads 20261127.2205, and
+commit 67c22c94, made later at 19:30 -0800 the same day, reads 20261128.0330.
+The folder name, the window title and the release name all carry that same
+text. The id is cut to a fixed width, because git's
 own abbreviation grows with a clone's object count and would otherwise give one
 commit two widths.
+
+```python
+def commit_stamp(root: str | Path) -> str:      # tools/gate.py
+    return _git("-C", str(root), "log", "-1", "--format=%ct %H")
+
+def utc_moment(seconds: str) -> str:            # src/_version.py
+    ...
+    moment = datetime.fromtimestamp(int(seconds), tz=timezone.utc)
+    ...
+    return moment.strftime(MOMENT_FORMAT)
+```
 
 ### The formatter check, overtaken
 

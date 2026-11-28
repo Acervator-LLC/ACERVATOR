@@ -60,20 +60,9 @@ def tree_is_dirty(root: str | Path | None = None) -> bool:
     return bool(_git(*where, "status", "--porcelain", "--untracked-files=no"))
 
 
-def commit_stamp(root: str | Path, date_format: str) -> str:
-    """Return HEAD's own date and full id at `root`, space separated, or ''.
-
-    `date_format` is rendered in the zone HEAD records, so every clone of one
-    commit answers the same text whatever its own timezone, depth or tags.
-    """
-    return _git(
-        "-C",
-        str(root),
-        "log",
-        "-1",
-        f"--date=format:{date_format}",
-        "--format=%cd %H",
-    )
+def commit_stamp(root: str | Path) -> str:
+    """Return HEAD's committer time in seconds since 1970 and its full id at `root`, or ''."""
+    return _git("-C", str(root), "log", "-1", "--format=%ct %H")
 
 
 def clear_stamp(reason: str) -> None:

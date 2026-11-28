@@ -11,6 +11,7 @@ date and its own id, as a PEP 440 local segment after a ``+``.
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 RELEASE = "0.2.0"
@@ -20,9 +21,7 @@ DIRTY_SUFFIX = ".dirty"
 UNRESOLVED_LOCAL = "unknown"
 UNKNOWN_VERSION = f"{RELEASE}+{UNRESOLVED_LOCAL}"
 
-# HEAD's committer date, rendered in the zone the commit itself records. It
-# orders two builds without counting commits; a distance from a tag is equal
-# for many commits and names none of them.
+# ``utc_moment`` renders HEAD's committer time in this format, in UTC.
 MOMENT_FORMAT = "%Y%m%d.%H%M"
 
 # Fixed width. Git's own abbreviation grows with a clone's object count, so
@@ -49,8 +48,19 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def utc_moment(seconds: str) -> str:
+    """Return ``seconds`` since 1970 as ``MOMENT_FORMAT`` in UTC, or '' for any other text."""
+    if not (seconds.isascii() and seconds.isdigit()):
+        return ""
+    try:
+        moment = datetime.fromtimestamp(int(seconds), tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return ""
+    return moment.strftime(MOMENT_FORMAT)
+
+
 def read_stamp(root: str | Path) -> str:
-    """Return HEAD's date and id at ``root``, with ``DIRTY_SUFFIX``, or ''.
+    """Return HEAD's ``utc_moment`` and id at ``root``, with ``DIRTY_SUFFIX``, or ''.
 
     ``tools.gate`` holds both git calls and is imported lazily for a frozen
     bundle that ships no ``tools`` package, and a tree with no ``.git``
@@ -63,9 +73,11 @@ def read_stamp(root: str | Path) -> str:
         from tools.gate import commit_stamp, tree_is_dirty
     except ImportError:
         return ""
-    stamp = commit_stamp(base, MOMENT_FORMAT)
-    if not stamp:
+    seconds, _, commit = commit_stamp(base).partition(" ")
+    moment = utc_moment(seconds)
+    if not (moment and commit):
         return ""
+    stamp = f"{moment} {commit}"
     return stamp + DIRTY_SUFFIX if tree_is_dirty(base) else stamp
 
 
