@@ -1812,6 +1812,8 @@ Now: on a bot with Stack Mode on, every filled buy opens a Stack ladder above it
 
 Now: a scrum read counts the units of every pending Stack rung, whichever sale or buy opened it, against its Target Delta and rests rungs only for the rest. A ladder that has not filled is booked as placed, with one SCRUM PLACED line, and a later read whose resting rungs already hold the Target Delta adds none and writes SCRUM RESTING (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_scrum`).
 
+Now: a filled Stack rung takes its units off the bot's lots in the booking that lowers its holdings. It takes them as a sale does, from the lot bought at the highest price first, so the lots and the holdings stay equal and the next buy is not refused for a gap between them (`src/trading/scrumming_bot.py, in ScrummingBot._take_filled_units_off_lots`).
+
 **Functional.** All four tranche kinds run. Fold Tranches spawn on a
 scrum and hold the price of the sale that made them. Stack Tranches spawn on a
 fold and are priced as a ladder above the buy. A three-unit scrum at 100 with a
