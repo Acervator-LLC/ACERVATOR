@@ -733,6 +733,8 @@ def released_bots(
 
 | Control | What it does and what it reads |
 | --- | --- |
+| Title | Reads TA-IVP at 11 pixels. The Bot selector is 120 to 160 pixels wide and each arrow 24 by 26 pixels, so the Timing row fits beside the title. `src/gui/main_tabs/indicator_panel_surface.py, in HEADER` |
+| Timing row | Shows what the selected bot's last read did in the BB Tolerance zone: outside the zone, waiting while the vote reads deeper, trade now, late turn, or held, with the gate that held it. The bar is the vote's confidence over the waiting bar, as a share of the room above that bar, and it is empty when the trade fires. The mouse-over gives the line, the boost and the bar as figures. After a switch of bot the row reads no reading yet until that bot's next refresh. Net and Comp stay the pure vote. `src/trading/vote_boost.py, in zone_state` and `src/gui/main_tabs/indicator_panel_surface.py, in timing_payload` |
 | Bot selector | Picks the bot whose votes draw. It lists every Scrumming bot, on every class. `src/gui/indicator_panel.py, in IndicatorVotingPanel.update_bot_list` |
 | Previous, next | Step the selector one bot, and stop at each end. `src/gui/indicator_panel.py, in IndicatorVotingPanel._step_bot` |
 | Staleness label | An amber line naming stored votes and their age, or the cause when no votes exist. `src/gui/indicator_panel.py, in IndicatorVotingPanel.show_no_data` |
