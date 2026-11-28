@@ -2327,6 +2327,19 @@ on a window where the ramp state moved. Nothing changed at four figures.
         rows where the ramp state moved       27
 ```
 
+**The ramp step quoted above is overtaken.** It is not edited and not removed.
+
+Now: the scan has no ramp step of its own. It reads the ramp the live tick
+reads. The ramp is FIRE while price sits inside BB Tolerance of the band on the
+chain's side, and SEARCH outside it. A scan holds no position, so its Target
+Delta never reaches Max Cartridge Size and its ramp never reads TRACK.
+
+`src/trading/ata_gate_scan.py, in side_zone`
+
+```python
+return zone, zone_ramp_mode(zone.upper or zone.lower, bool(cartridge_reached))
+```
+
 The same cut sat on every other indicator in the folder. Fifty-three calls
 across thirteen files cut a reading where it was computed rather than where it
 was shown, and all fifty-three are gone. None was kept.

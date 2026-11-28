@@ -1002,6 +1002,28 @@ return scan_gates(
 The six gates that read the position do not run at the phantom read. No timeframe
 above the phantom's is weighed there.
 
+Now: the phantom's gate reading judges the band by BB Tolerance alone, as the bot
+does. Its band gate, its FIRE gate and its zone timing read the bot's own zone,
+ramp and timing functions on the phantom's candles. Each chain reads its own side
+of the Target Delta, and the reading still decides no trade.
+
+`src/trading/ata_gate_scan.py, in side_zone`
+
+```python
+zone = read_zone(
+    getattr(summary, "signals", None) or [],
+    getattr(summary, "consensus_direction", None),
+    float(getattr(summary, "consensus_confidence", NO_WEIGHT)),
+    float(delta),
+    list(candles or []),
+    tolerance_pct=float(settings.bb_tolerance_pct),
+    taper_minimum=int(settings.bb_landing_strip_candles),
+    figures=boost_figures(settings),
+    cartridge=float(cartridge),
+    bullseye=bool(getattr(settings, "bb_bullseye_check", True)),
+)
+```
+
 ## 3 - The Landing Strip
 
 Perhaps the earliest assumption that hit me the most and really presented the catalyzing challenge to creating all of my alternate trading methods, is that you cannot predict what the market will do and after only a short while of actively trading I asked the questions: “But what if I don’t have to?” “What if I decide that I do not have to speculate at all?” I do not remember exactly when I first used the term but I think it was when I was trading A34 and A27 some years ago while participating in a Telegram group with some psytrance friends and associations called the Better Bitcoin Bureau. The name changed a few times but this is the one I recall.
@@ -1103,6 +1125,19 @@ Driven on a stand-in exchange at a lower strip, with the twelve published
 weights. Two agreeing indicators read 0.1966 and the fold waited. Three read
 0.2821 and the fold went through. The code before this change, taken from git,
 folded on both.
+
+Now: the four tightening constants left the Market Inspector scan with its strip
+favour. The scan's floor takes the favours the live tick's floor takes, and
+neither adds a strip favour. Neither hands a band to the vote, so a strip sets
+no side there. The Landing Strip reaches the vote as Landing Strip Boost, inside
+the zone.
+
+`src/trading/ata_gate_scan.py, in confidence_floor`
+
+```python
+skew = voter_favour(summary, position) + swing_favour(candles, position)
+return _skewed_confidence_floor(skew, getattr(summary, "signals", None) or [])
+```
 
 ## 4 - Bollinger Band Travel Detection
 

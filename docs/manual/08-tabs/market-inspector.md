@@ -2428,6 +2428,71 @@ is_bullish, is_bearish = vote_sides(
 )
 ```
 
+**The two chains on one context, the second strip detector, the scan's floor and
+its strip, as the passages above describe them, are overtaken.** None is edited
+and none is removed.
+
+Now: each chain gets its own context, read on its own side of the Target Delta.
+The scrum chain reads a surplus and the fold chain reads a deficit, which is the
+side the stood-down delta gate already assumes.
+
+`src/trading/ata_gate_scan.py, in scan_gates`
+
+```python
+for side, chain in (
+    (SIDE_SCRUM, build_scrumming_scrum_chain()),
+    (SIDE_FOLD, build_scrumming_fold_chain()),
+):
+    context = build_context(
+        symbol, timeframe, held, summary, band, rows, settings_held, side
+    )
+    readings.extend(read_chain(chain, context))
+```
+
+The zone, the ramp and the in-zone timing come from the bot's own functions, at
+the bot's own settings. BB Tolerance is the one test of "at the band", and no
+scan reads Detect Threshold, Fire Threshold or BB Midline Gate. A scan holds no
+position, so it reads no cartridge and no phantom lock, and the midline gates
+pass.
+
+`src/trading/ata_gate_scan.py, in side_zone`
+
+```python
+return zone, zone_ramp_mode(zone.upper or zone.lower, bool(cartridge_reached))
+```
+
+The floor takes the favours a bot's floor takes and no strip favour. No band
+reaches the vote, so a strip sets no side of the scan's vote.
+
+`src/trading/ata_gate_scan.py, in build_context`
+
+```python
+is_bullish, is_bearish = vote_sides(
+    direction, confidence, floor, None, getattr(summary, "signals", None) or []
+)
+```
+
+Read over 110 public price series, at every 100-candle window and on both
+chains, against the bot's own zone, ramp and timing functions on the same
+candles. The 15m and 30m series roll up whole 5m candles, and the 2h, 6h and 1d
+series roll up whole 1h candles. No public series holds 1m candles.
+
+```
+              reads    readings where the scan and the bot disagree
+                       before            after
+5m           72,021    65,508            0
+15m          17,581    12,801            0
+30m           6,938     3,853            0
+1h          126,985    64,673            0
+2h           60,867    24,080            0
+6h           17,798     5,702            0
+1d            2,604       930            0
+```
+
+One Market Inspector scan of one market at 5m: before, a refusal on the TA,
+midline and ADX gates. After, a hit, with the zone release passing the TA and
+ADX gates inside the zone.
+
 `src/trading/ta_engine.py` — the candle floor the engine sets
 
 ```python
@@ -4133,6 +4198,28 @@ lights equal to the bot's own chains           19 of 19 at 1h, 19 of 19 at 1d
 one gate input changed, lights that moved      1 at 1h, 1 at 1d
 Qt and React fields compared                   20 equal, 0 different
 orders placed, venue sockets opened            0, 0
+```
+
+Now: the phantom's lights judge the band by BB Tolerance alone. Its band, FIRE
+and zone timing lights read the bot's own zone, ramp and timing functions on the
+phantom's candles. MID no longer blocks at a phantom read, because a phantom
+holds no lock of its own. The reading still changes no trade: the bot reads a
+phantom through its summary and the lock list alone.
+
+`src/trading/phantom_balance.py, in TimeframeCoordinator.get_higher_tf_bias`
+
+```python
+higher = [p for p in registered if p.rank > base_rank and p.last_summary]
+```
+
+Read on real phantoms over the same public series, each at the first window
+whose vote the bias weighs:
+
+```
+phantoms read                                  187
+bias, before and after                         104 bullish, 83 bearish, the same
+lock list, before and after                    empty on both
+the phantom's own fire verdict, changed        54 of 187
 ```
 
 ## The asset logo library

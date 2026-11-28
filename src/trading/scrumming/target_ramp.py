@@ -1,10 +1,8 @@
-"""The ramp ``next_ramp_mode`` advances through ``RAMP_MODES``.
+"""The ramp ``zone_ramp_mode`` reads, one of ``RAMP_MODES``.
 
-``RAMP_SEARCH`` waits, ``RAMP_TRACK`` follows a price out towards a band and
+``RAMP_SEARCH`` waits, ``RAMP_TRACK`` reads fast past Max Cartridge Size and
 ``RAMP_FIRE`` is the only mode that lets a target scrum arm.
-``retreat_line`` answers the travel below which ``RAMP_SEARCH`` returns.
-The ATA-SPM scan calls ``next_ramp_mode`` for the transition and keeps its own
-reading of ``travel`` and ``edge_gap``. The live tick calls ``zone_ramp_mode``.
+The live tick and the ATA-SPM scan both call ``zone_ramp_mode``.
 """
 
 from __future__ import annotations
@@ -13,7 +11,6 @@ RAMP_SEARCH = "search"
 RAMP_TRACK = "track"
 RAMP_FIRE = "fire"
 RAMP_MODES = (RAMP_SEARCH, RAMP_TRACK, RAMP_FIRE)
-RETREAT_DIVISOR = 2.0
 
 
 def zone_ramp_mode(in_zone: bool, cartridge_reached: bool) -> str:
@@ -21,40 +18,3 @@ def zone_ramp_mode(in_zone: bool, cartridge_reached: bool) -> str:
     if in_zone:
         return RAMP_FIRE
     return RAMP_TRACK if cartridge_reached else RAMP_SEARCH
-
-
-def retreat_line(detect_limit: float) -> float:
-    """``detect_limit`` over ``RETREAT_DIVISOR``."""
-    return detect_limit / RETREAT_DIVISOR
-
-
-def next_ramp_mode(
-    mode: str,
-    travel: float,
-    detect_limit: float,
-    retreat_limit: float,
-    edge_gap: float,
-    fire_limit: float,
-    delta_clears: bool,
-) -> str:
-    """The mode one price reading moves ``mode`` to.
-
-    ``travel`` shares a unit with ``detect_limit`` and ``retreat_limit``,
-    ``edge_gap`` shares one with ``fire_limit``, ``delta_clears`` gates both
-    exits from ``RAMP_SEARCH``, and a ``mode`` outside ``RAMP_MODES`` is read
-    as ``RAMP_FIRE``.
-    """
-    near_band = edge_gap <= fire_limit
-    if mode == RAMP_SEARCH:
-        if near_band and delta_clears:
-            return RAMP_FIRE
-        if travel >= detect_limit and delta_clears:
-            return RAMP_TRACK
-        return RAMP_SEARCH
-    if mode == RAMP_TRACK:
-        if near_band:
-            return RAMP_FIRE
-        return RAMP_SEARCH if travel < retreat_limit else RAMP_TRACK
-    if not near_band and travel >= detect_limit:
-        return RAMP_TRACK
-    return RAMP_SEARCH if not near_band and travel < retreat_limit else RAMP_FIRE

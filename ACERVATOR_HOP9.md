@@ -473,14 +473,25 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   Landing Strip Boost raise the bar for waiting, each a Settings box
   (`src/gui/boost_box.py, in boost_box`). Read Rate offers the venue's sizes
   below the TA Timeframe (`src/exchange/timeframes.py, in read_timeframes`).
-  Row 11 is not this unit. Rows 2 to 6 stay readings over the retained gate
-  record.
+  Row 10's gate scan is built: every phantom's gates and the Market Inspector's
+  scan read the zone, the ramp and the in-zone timing through the bot's own
+  functions, each chain on its own side of the Target Delta
+  (`src/trading/ata_gate_scan.py, in side_zone`). No code reads Detect
+  Threshold, Fire Threshold or BB Midline Gate. Row 11 is not this unit. Rows 2
+  to 6 stay readings over the retained gate record.
 - **#1854, every build number reads in UTC. Rows 1 and 2 are built.** A build
   number's date and time are its commit's committer time in UTC, so one commit
   gives one number on every machine and a higher number is a newer build, in
   both trees, in `dist` and in Releases (`src/_version.py, in utc_moment`).
   Commit 67c22c94 reads 20261128.0330 where it read 20261127.1930. A build made
   before the change keeps the number it was given.
+- **#1486, every figure a fill moves, at the fill. Row 11 is built.** When the
+  exchange confirms a fill, the units the Ammo cell reads move in the same step
+  as the bot's held units, on every fill path, a sale's included
+  (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_sale`). A
+  sale's one exchange read follows its booking
+  (`in ExecutionEngineMixin._read_venue_after_sale`). Every row of the body is
+  built.
 - **#1861, a new bot's first buy. Rows 1, 2 and 4 are built.** Inside BB
   Tolerance of the lower band the first buy waits only while zone timing reads
   price going deeper, and buys its Target Delta otherwise, through the zone read
