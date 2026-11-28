@@ -681,26 +681,17 @@ def hypothetical_reading(context: GateContext, side: Any) -> str:
 
 
 def replaced_refusals(chain: Any, result: Any) -> dict:
-    """Each gate an override replaced, mapped to the chain's own entry for it.
+    """Each gate an override gate or a ``GateChain.releases`` rule replaced, mapped to the chain's own entry for it.
 
-    ``GateChain.evaluate`` writes one ``OVERRIDE_APPLIED_FORMAT`` entry per
-    replaced refusal and moves that gate into ``ChainResult.passed``. This
-    reads the entries back against each gate's covering overrides, so a
-    reading can name the override that acted instead of calling the gate
-    latched.
+    ``GateChain.evaluate`` writes one ``OVERRIDE_APPLIED_FORMAT`` entry per replaced refusal, naming the gate first.
     """
     entries = [str(one) for one in (getattr(result, "overrides_applied", None) or [])]
     found: dict = {}
-    if not entries:
-        return found
     for name in chain.gate_names():
-        for override in chain.covering_overrides(name):
-            prefix = OVERRIDE_APPLIED_FORMAT.format(
-                gate=name, override=override, refusal=""
-            )
-            for entry in entries:
-                if entry.startswith(prefix):
-                    found[name] = entry
+        prefix = OVERRIDE_APPLIED_FORMAT.partition("{override}")[0].format(gate=name)
+        for entry in entries:
+            if entry.startswith(prefix):
+                found[name] = entry
     return found
 
 
