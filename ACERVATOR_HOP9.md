@@ -468,6 +468,12 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   (`src/trading/ata_gate_scan.py, in side_zone`). No code reads Detect
   Threshold, Fire Threshold or BB Midline Gate. Row 11 is not this unit. Rows 2
   to 6 stay readings over the retained gate record.
+- **#1854, every build number reads in UTC. Rows 1 and 2 are built.** A build
+  number's date and time are its commit's committer time in UTC, so one commit
+  gives one number on every machine and a higher number is a newer build, in
+  both trees, in `dist` and in Releases (`src/_version.py, in utc_moment`).
+  Commit 67c22c94 reads 20261128.0330 where it read 20261127.1930. A build made
+  before the change keeps the number it was given.
 - The rest of the queue: read each body.
 
 ---
