@@ -1,10 +1,11 @@
 """ata_gate_scan.py -- the live trade gates run over scanned price data.
 
-``build_context`` fills a ``GateContext`` from one market's candles and its
-``VotingSummary``. ``scan_gates`` hands that context to the chains
-``build_scrumming_scrum_chain`` and ``build_scrumming_fold_chain`` build.
-It answers a ``GateScan`` of ``GateReading`` rows, each naming one gate's
-state, and ``GateScan.would_fire`` reads those rows as one verdict.
+``build_context`` fills one side's ``GateContext`` from one market's candles and
+its ``VotingSummary``, reading the zone, the ramp and the timing through
+``side_zone`` as ``ScrummingBot.tick`` reads them. ``scan_gates`` hands each
+side's context to the chain ``build_scrumming_scrum_chain`` or
+``build_scrumming_fold_chain`` builds, and answers a ``GateScan`` of
+``GateReading`` rows that ``GateScan.would_fire`` reads as one verdict.
 ``timeframe_gates`` runs both chains over one timeframe at a bot's own settings,
 which is how ``PhantomBot._tick`` reads its higher timeframe.
 """
@@ -23,18 +24,12 @@ from .gate_chain import (
     effective_gate_flags,
 )
 from .gate_vocabulary import FOLD_BANK, SCRUM_BANK, LightReading, light_reading
-from .indicators.bollinger import BollingerBands
-from .indicators.landing_strip import detect_landing_strip_v2
 from .indicators.types import SignalDirection
 from .otd_math import distance_settings, minimum_opposing_trade_distance_pct
 from .scrumming.circuit_breakers import breaker_figures, breaker_move
-from .scrumming.target_ramp import (
-    RAMP_FIRE,
-    RAMP_SEARCH,
-    next_ramp_mode,
-    retreat_line,
-)
+from .scrumming.target_ramp import RAMP_FIRE, zone_ramp_mode
 from .ta_engine import MIN_CANDLES_FOR_TA, vote_sides
+from .vote_boost import ZoneRead, boost_figures, read_zone
 
 #: The keys ``BollingerBands.compute`` publishes in ``Signal.details``.
 BAND_POSITION_KEY = "bb_position"
@@ -101,11 +96,23 @@ NO_CEILING_USD = 0.0
 NO_POSITION_USD = 0.0
 BELOW_INTERVAL = True
 
+#: The Target Delta sign each chain reads the zone on; ``band_zone`` reads the sign alone.
+SIDE_DELTA = {SIDE_SCRUM: 1.0, SIDE_FOLD: -1.0}
+
+#: A scan holds no position, so its cartridge scale is 0 and Max Cartridge Size is never reached.
+NO_CARTRIDGE = 0.0
+CARTRIDGE_NOT_REACHED = False
+
+#: ``MidlineGate`` holds on the phantom lock alone, and a scan holds no lock.
+PHANTOM_LOCKED = False
+
+#: The ``bb_upper_dt`` and ``bb_lower_dt`` ``ScrummingBot.tick`` passes where a band reading carries none.
+UPPER_BAND_POSITION = 1.0
+LOWER_BAND_POSITION = 0.0
+
 MIDLINE_POSITION = 0.5
 PERCENT_PER_RATIO_UNIT = 100.0
 NO_BAND_VALUE = 0.0
-DEFAULT_DETECT_PCT = 75.0
-DEFAULT_FIRE_PCT = 0.5
 
 #: The reading a scan publishes for the hard breaker, which no gate of either
 #: chain carries. ``NO_SIDE`` keeps it out of every chain verdict.
@@ -141,14 +148,6 @@ SWING_DOWNTREND_FAVOUR = 0.05
 SWING_WINDOW = 20
 SWING_CANDLES = SWING_WINDOW * 3
 
-#: The landing-strip favour ``ScrummingBot.tick`` sums into the same skew.
-LANDING_STRIP_FAVOUR = 0.15
-LANDING_STRIP_STRENGTH_FAVOUR = 0.20
-TIGHTENING_MIN_CANDLES = 25
-TIGHTENING_MIN_CONSECUTIVE = 3
-TIGHTENING_SHRINK_THRESHOLD = 0.90
-TIGHTENING_TOLERANCE_PCT = 3.0
-
 #: ``ScrummingBot.tick`` reads the trend from the last 20 candles.
 TREND_CANDLES = 20
 TREND_MIN_BULL_CANDLES = 13
@@ -157,8 +156,6 @@ TREND_MIN_BULL_SHARE = TREND_MIN_BULL_CANDLES / TREND_CANDLES
 #: The band-touch tolerances ``ScrummingBot.tick`` spells inline.
 BAND_TOUCH_TOLERANCE = 0.005
 BAND_WICK_TOLERANCE = 0.002
-
-BAND_SPAN_FLOOR = 1e-12
 
 HTF_MIN_CONFIDENCE = 0.30
 NO_WEIGHT = 0.0
@@ -276,38 +273,6 @@ def scan_settings(symbol: Any) -> BotConfig:
     )
 
 
-def detect_thresholds(settings: Any) -> tuple:
-    """The lower and upper detect thresholds in ``bb_pos`` terms.
-
-    ``scrum_detect_pct`` is the percent of the midline-to-band distance,
-    the reading ``CircuitBreakerMixin._bb_detect_thresholds`` takes.
-    """
-    raw = getattr(settings, "scrum_detect_pct", None)
-    try:
-        detect_pct = float(raw) if raw is not None else DEFAULT_DETECT_PCT
-    except (TypeError, ValueError):
-        detect_pct = DEFAULT_DETECT_PCT
-    half = max(0.0, min(1.0, detect_pct / PERCENT_PER_RATIO_UNIT)) * MIDLINE_POSITION
-    return (MIDLINE_POSITION - half, MIDLINE_POSITION + half)
-
-
-def band_of(candles: Any) -> Optional[dict]:
-    """``BollingerBands.compute`` upper, middle and lower over one window."""
-    held = list(candles or [])
-    if len(held) < TREND_CANDLES:
-        return None
-    details = getattr(BollingerBands().compute(held), "details", None) or {}
-    upper = float(details.get(BAND_UPPER_KEY, NO_BAND_VALUE))
-    lower = float(details.get(BAND_LOWER_KEY, NO_BAND_VALUE))
-    if upper <= NO_BAND_VALUE or lower <= NO_BAND_VALUE:
-        return None
-    return {
-        BAND_UPPER_KEY: upper,
-        BAND_MIDDLE_KEY: float(details.get(BAND_MIDDLE_KEY, NO_BAND_VALUE)),
-        BAND_LOWER_KEY: lower,
-    }
-
-
 def breaker_reading(candles: Any, settings: Any) -> tuple:
     """The newest candle read against ``settings`` breaker figures.
 
@@ -349,56 +314,28 @@ def hard_breaker_row(figures: Any, move: Any) -> GateReading:
     )
 
 
-def ramp_step(mode: Any, price: Any, band: dict, settings: Any) -> str:
-    """The ``RAMP_SEARCH``, ``RAMP_TRACK`` or ``RAMP_FIRE`` one candle moves to.
-
-    The distance from ``BAND_MIDDLE_KEY`` against the band span decides
-    it; the delta test ``_tick_target_ramp`` adds is dropped.
-    """
-    detect_frac = (
-        float(getattr(settings, "scrum_detect_pct", DEFAULT_DETECT_PCT))
-        / PERCENT_PER_RATIO_UNIT
+def side_zone(
+    summary: Any,
+    candles: Any,
+    settings: Any,
+    delta: float,
+    cartridge: float = NO_CARTRIDGE,
+    cartridge_reached: bool = CARTRIDGE_NOT_REACHED,
+) -> tuple[ZoneRead, str]:
+    """``read_zone`` and ``zone_ramp_mode`` for a Target Delta ``delta``, at the ``settings`` figures ``ScrummingBot.tick`` passes."""
+    zone = read_zone(
+        getattr(summary, "signals", None) or [],
+        getattr(summary, "consensus_direction", None),
+        float(getattr(summary, "consensus_confidence", NO_WEIGHT)),
+        float(delta),
+        list(candles or []),
+        tolerance_pct=float(settings.bb_tolerance_pct),
+        taper_minimum=int(settings.bb_landing_strip_candles),
+        figures=boost_figures(settings),
+        cartridge=float(cartridge),
+        bullseye=bool(getattr(settings, "bb_bullseye_check", True)),
     )
-    fire_frac = (
-        float(getattr(settings, "scrum_fire_pct", DEFAULT_FIRE_PCT))
-        / PERCENT_PER_RATIO_UNIT
-    )
-    middle = band[BAND_MIDDLE_KEY]
-    edge = band[BAND_UPPER_KEY] if price > middle else band[BAND_LOWER_KEY]
-    span = max(abs(edge - middle), BAND_SPAN_FLOOR)
-    travel_frac = abs(price - middle) / span
-    edge_gap_frac = abs(price - edge) / edge
-    return next_ramp_mode(
-        mode,
-        travel_frac,
-        detect_frac,
-        retreat_line(detect_frac),
-        edge_gap_frac,
-        fire_frac,
-        True,
-    )
-
-
-def ramp_mode(candles: Any, settings: Any) -> str:
-    """The ramp state a walk of ``ramp_step`` over the whole window ends in.
-
-    A scan carries no ramp from a previous tick, and the walk opens in
-    ``RAMP_SEARCH``.
-    """
-    held = list(candles or [])
-    mode = RAMP_SEARCH
-    side = ""
-    for at in range(TREND_CANDLES, len(held) + 1):
-        band = band_of(held[:at])
-        if band is None:
-            continue
-        price = float(held[at - 1].close)
-        now = BAND_UPPER_KEY if price > band[BAND_MIDDLE_KEY] else BAND_LOWER_KEY
-        if side and side != now:
-            mode = RAMP_SEARCH
-        side = now
-        mode = ramp_step(mode, price, band, settings)
-    return mode
+    return zone, zone_ramp_mode(zone.upper or zone.lower, bool(cartridge_reached))
 
 
 def band_touch(price: Any, band: Any, candles: Any) -> tuple:
@@ -510,45 +447,16 @@ def voter_favour(summary: Any, band_position: Any) -> float:
     return found
 
 
-def landing_strip_favour(band: Any, candles: Any) -> float:
-    """The landing-strip and tightening favour off the same two detectors.
-
-    ``detect_bb_proximity`` names the strip on ``band`` and
-    ``detect_landing_strip_v2`` names the tightening.
-    """
-    found = NO_WEIGHT
-    if band is not None and getattr(band, "landing_strip", False):
-        strength = float(getattr(band, "consolidation_strength", NO_WEIGHT))
-        found = LANDING_STRIP_FAVOUR + strength * LANDING_STRIP_STRENGTH_FAVOUR
-    held = list(candles or [])
-    if len(held) < TIGHTENING_MIN_CANDLES:
-        return found
-    tightening = detect_landing_strip_v2(
-        held,
-        min_consecutive=TIGHTENING_MIN_CONSECUTIVE,
-        shrink_threshold=TIGHTENING_SHRINK_THRESHOLD,
-        bb_tolerance_pct=TIGHTENING_TOLERANCE_PCT,
-    )
-    if tightening.detected:
-        found += float(tightening.confidence_boost)
-    return found
-
-
 def confidence_floor(summary: Any, band: Any, candles: Any) -> float:
     """The TA confidence floor a scan judges ``summary`` direction at.
 
-    ``voter_favour``, ``swing_favour`` and ``landing_strip_favour`` are
-    two of the four favours ``_skewed_confidence_floor`` divides by, and
-    ``summary`` signals hold the floor above what two indicators reach.
+    ``voter_favour`` and ``swing_favour`` are the ``position_boost``
+    ``ScrummingBot.tick`` hands ``_skewed_confidence_floor``; a scan holds no hunger.
     """
     from .scrumming_bot import _skewed_confidence_floor
 
     position = float(getattr(band, BAND_POSITION_KEY, MIDLINE_POSITION))
-    skew = (
-        voter_favour(summary, position)
-        + swing_favour(candles, position)
-        + landing_strip_favour(band, candles)
-    )
+    skew = voter_favour(summary, position) + swing_favour(candles, position)
     return _skewed_confidence_floor(skew, getattr(summary, "signals", None) or [])
 
 
@@ -657,23 +565,27 @@ def build_context(
     band: Any,
     rows: Any = None,
     settings: Any = None,
+    side: str = SIDE_SCRUM,
 ) -> GateContext:
-    """One market's ``GateContext``, filled from price data and settings.
+    """One market's ``GateContext`` for the ``side`` chain, filled from price data and settings.
 
-    Every position field carries what a scan holds, and ``read_chain``
-    stands the six ``POSITION_BOUND_GATES`` down.
+    ``side_zone`` reads the zone at ``SIDE_DELTA[side]``, every position field
+    carries what a scan holds, and ``read_chain`` stands the six
+    ``POSITION_BOUND_GATES`` down.
     """
     held = settings if settings is not None else scan_settings(symbol)
     distance_held = distance_settings(held)
     price = float(candles[-1].close) if candles else NO_BAND_VALUE
     bb_pos = float(getattr(band, BAND_POSITION_KEY, MIDLINE_POSITION))
-    lower_dt, upper_dt = detect_thresholds(held)
+    zone, ramp = side_zone(summary, candles, held, SIDE_DELTA[side])
+    scrum_side = side == SIDE_SCRUM
+    timing = zone.scrum if scrum_side else zone.fold
+    in_zone = zone.upper if scrum_side else zone.lower
     floor = confidence_floor(summary, band, candles)
     direction = getattr(summary, "consensus_direction", SignalDirection.NEUTRAL)
     confidence = float(getattr(summary, "consensus_confidence", NO_WEIGHT))
-    at_upper, at_lower = band_touch(price, band, candles)
     is_bullish, is_bearish = vote_sides(
-        direction, confidence, floor, band, getattr(summary, "signals", None) or []
+        direction, confidence, floor, None, getattr(summary, "signals", None) or []
     )
     trend_strength = bull_candle_count(candles) / TREND_CANDLES
     trend_hold = trend_strength > TREND_MIN_BULL_SHARE
@@ -683,7 +595,6 @@ def build_context(
     bias = htf_bias(rows, timeframe)
     htf_blocks_scrum = bias == SignalDirection.BULLISH
     htf_blocks_fold = bias == SignalDirection.BEARISH
-    midline_gate = bool(getattr(held, "bb_midline_gate", True))
     effective = effective_gate_flags(
         held,
         is_bullish=is_bullish,
@@ -696,8 +607,8 @@ def build_context(
         symbol=str(symbol),
         ticker_last=price,
         bb_pos=bb_pos,
-        bb_upper_dt=upper_dt,
-        bb_lower_dt=lower_dt,
+        bb_upper_dt=float(getattr(band, "upper_line", UPPER_BAND_POSITION)),
+        bb_lower_dt=float(getattr(band, "lower_line", LOWER_BAND_POSITION)),
         delta=NO_DELTA,
         delta_pct=NO_DELTA_PCT,
         below_interval=BELOW_INTERVAL,
@@ -716,11 +627,11 @@ def build_context(
         flag_defer_to_htf=bool(held.scrum_defer_to_htf),
         flag_fold_require_ta_bearish=bool(held.fold_require_ta_bearish),
         flag_fold_defer_to_htf=bool(held.fold_defer_to_htf),
-        bb_above_upper_dt=(bb_pos >= upper_dt) or at_upper,
-        bb_below_lower_dt=(bb_pos <= lower_dt) or at_lower,
-        scrum_ok=(bb_pos > MIDLINE_POSITION) if midline_gate else True,
-        fold_ok_midline=(bb_pos < MIDLINE_POSITION) if midline_gate else True,
-        target_fires=ramp_mode(candles, held) == RAMP_FIRE,
+        bb_above_upper_dt=zone.upper,
+        bb_below_lower_dt=zone.lower,
+        scrum_ok=not PHANTOM_LOCKED,
+        fold_ok_midline=not PHANTOM_LOCKED,
+        target_fires=ramp == RAMP_FIRE,
         cb_blocks_scrum=blocks_scrum,
         cb_blocks_fold=blocks_fold,
         hyst_ok_scrum_side=False,
@@ -742,6 +653,12 @@ def build_context(
         adx=signal_detail(summary, "adx", "adx"),
         efficiency_ratio=signal_detail(summary, "kaufman_er", "er"),
         z_score=signal_detail(summary, "zscore", "z"),
+        eff_confidence=confidence,
+        ta_conf_floor=zone.line if in_zone else floor,
+        bb_upper_zone=zone.upper,
+        bb_lower_zone=zone.lower,
+        zone_deeper=zone.scrum_deeper if scrum_side else zone.fold_deeper,
+        zone_bar=timing.bar,
     )
 
 
@@ -838,7 +755,7 @@ def scan_gates(
     rows: Any = None,
     settings: Any = None,
 ) -> GateScan:
-    """Both chains run over one scanned market, as one ``GateScan``.
+    """Both chains run over one scanned market, each on its own side's ``build_context``, as one ``GateScan``.
 
     A window under ``MIN_CANDLES_FOR_TA`` answers an empty ``GateScan``, and
     ``hard_breaker_row`` closes the readings with both stored figures.
@@ -847,10 +764,15 @@ def scan_gates(
     if len(held) < MIN_CANDLES_FOR_TA or summary is None or band is None:
         return GateScan(symbol=str(symbol), timeframe=str(timeframe))
     settings_held = settings if settings is not None else scan_settings(symbol)
-    context = build_context(symbol, timeframe, held, summary, band, rows, settings_held)
-    readings = read_chain(build_scrumming_scrum_chain(), context) + read_chain(
-        build_scrumming_fold_chain(), context
-    )
+    readings: list = []
+    for side, chain in (
+        (SIDE_SCRUM, build_scrumming_scrum_chain()),
+        (SIDE_FOLD, build_scrumming_fold_chain()),
+    ):
+        context = build_context(
+            symbol, timeframe, held, summary, band, rows, settings_held, side
+        )
+        readings.extend(read_chain(chain, context))
     figures, move = breaker_reading(held, settings_held)
     readings.append(hard_breaker_row(figures, move))
     return GateScan(
