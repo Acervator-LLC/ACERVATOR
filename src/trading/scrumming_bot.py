@@ -3703,31 +3703,14 @@ class ScrummingBot(
             ],
         )
 
-        from .scrumming.sizing import cartridge_threshold_usd
         from .vote_boost import (
             FOLD_SIDE,
             SCRUM_SIDE,
             ZONE_DEEPER,
-            boost_figures,
-            cartridge_scale,
-            read_zone,
             zone_visit,
         )
 
-        _zone = read_zone(
-            summary.signals,
-            eff_direction,
-            eff_confidence,
-            delta,
-            candles,
-            tolerance_pct=float(self.config.bb_tolerance_pct),
-            taper_minimum=int(self.config.bb_landing_strip_candles),
-            figures=boost_figures(self.config),
-            cartridge=cartridge_scale(
-                delta, cartridge_threshold_usd(self._target_balance, _cartridge_pct)
-            ),
-            bullseye=bool(getattr(self.config, "bb_bullseye_check", True)),
-        )
+        _zone = self._zone_read(summary, candles, delta, _cartridge_pct)
         _panel = _zone.band
         _bb_upper_zone, _bb_lower_zone = _zone.upper, _zone.lower
         _zone_floor = _zone.line
