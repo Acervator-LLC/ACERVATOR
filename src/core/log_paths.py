@@ -73,12 +73,27 @@ def resolve_state_root() -> Path:
 FLEET_FILE_NAME = "bot_state.json"
 """The fleet file name ``resolve_fleet_path`` joins under a state root."""
 
+PRESET_FILE_NAME = "bot_presets.json"
+"""The Preset store's file name ``resolve_preset_path`` joins under a state root."""
+
+
+def _state_file(name: str, state_root: Optional[Path]) -> Path:
+    """Return ``name`` under ``state_root``, else under ``resolve_state_root``,
+    creating nothing."""
+    root = Path(state_root) if state_root is not None else resolve_state_root()
+    return root / name
+
 
 def resolve_fleet_path(state_root: Optional[Path] = None) -> Path:
     """Return ``FLEET_FILE_NAME`` under ``state_root``, else under
     ``resolve_state_root``, creating nothing."""
-    root = Path(state_root) if state_root is not None else resolve_state_root()
-    return root / FLEET_FILE_NAME
+    return _state_file(FLEET_FILE_NAME, state_root)
+
+
+def resolve_preset_path(state_root: Optional[Path] = None) -> Path:
+    """Return ``PRESET_FILE_NAME`` under ``state_root``, else under
+    ``resolve_state_root``, creating nothing."""
+    return _state_file(PRESET_FILE_NAME, state_root)
 
 
 FLEET_BACKUP_SUFFIX = ".backup.json"

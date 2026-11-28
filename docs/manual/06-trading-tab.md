@@ -905,6 +905,35 @@ Each group shows only for a market that needs it.
 | Lead Days (0 to 36,500, 11) | Days before expiry, read in days mode only. 0 is off. Reads `expiry_lead_days`. `src/trading/container/config.py, in expiry_lead_resolved_days` |
 | Expiry Horizon (0 to 36,500 days, 365) | Treats a later contract as non-expiring. 0 turns the close off. Reads `expiry_horizon_days`. `src/trading/container/config.py, in expiry_close_decision` |
 
+### Presets
+
+A Preset is a named set of bot settings. It holds one value for every bot setting except the venue, the Base Currency, the target asset, Target Balance, Max Entry Price and Min Entry Price. It also names the market sector its bots trade in.
+
+Now: the store keeps each saved Preset by name in one file in the home folder, and a save under a name it already holds replaces that Preset (`src/trading/bot_presets.py, in PresetStore.save`). A value outside the span or list that a running bot's Settings tab offers, or a value of another kind, is refused, and the file is not written. A read of a name the file does not hold answers that no such Preset is saved. A file that is not a Preset file is never written over.
+
+Now: Ekthelius's Prototyping Baseline is never saved. Each read counts the settings of the bots the app has loaded, and each setting takes the value most of them hold (`src/trading/bot_presets.py, in baseline_preset`). On a tie, the app's own default wins when it is one of the tied values, and otherwise the value of the bot loaded first wins. A setting no bot holds a value for takes the app's own default. A change made on a running bot's Settings tab shows at the next read.
+
+Now: no screen reads a Preset yet. The + New Fleet button and its menu are not built.
+
+```python
+BASELINE_NAME = "Ekthelius's Prototyping Baseline"
+
+#: ``BotConfig`` fields the fleet menu sets on each bot: market and Target Balance.
+MENU_FIELDS = frozenset(
+    {"exchange_id", "base_currency", "target_asset", "symbol", "target_balance"}
+)
+
+#: ``BotConfig`` fields naming one market: unserved timeframes and entry prices.
+ONE_BOT_FIELDS = frozenset(
+    {
+        "ta_timeframe_unserved",
+        "scrum_read_timeframe_unserved",
+        "max_entry_price",
+        "min_entry_price",
+    }
+)
+```
+
 ## How to use a running bot
 
 The Detail button opens the bot settings window. A Scrumming bot's window carries Status, Settings, Fold Tranches, Stack Tranches, Bot Swarm, Market Inspector and Phantom Bots. An Extractor's carries Status, Settings and Positions Held (`src/gui/bot_live_settings.py, in BotLiveSettingsDialog._setup_ui`).
