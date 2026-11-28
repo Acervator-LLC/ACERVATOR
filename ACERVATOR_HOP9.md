@@ -462,8 +462,12 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   Landing Strip Boost raise the bar for waiting, each a Settings box
   (`src/gui/boost_box.py, in boost_box`). Read Rate offers the venue's sizes
   below the TA Timeframe (`src/exchange/timeframes.py, in read_timeframes`).
-  Row 11 is not this unit. Rows 2 to 6 stay readings over the retained gate
-  record.
+  Row 10's gate scan is built: every phantom's gates and the Market Inspector's
+  scan read the zone, the ramp and the in-zone timing through the bot's own
+  functions, each chain on its own side of the Target Delta
+  (`src/trading/ata_gate_scan.py, in side_zone`). No code reads Detect
+  Threshold, Fire Threshold or BB Midline Gate. Row 11 is not this unit. Rows 2
+  to 6 stay readings over the retained gate record.
 - The rest of the queue: read each body.
 
 ---
