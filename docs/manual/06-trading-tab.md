@@ -484,7 +484,7 @@ Every press on this page runs the same handler on both builds. The React page se
 | Exchange > Add Exchange | Opens Settings on the Exchanges tab, in both builds. A class with no venue logs a note instead. `src/gui/main_window.py, in MainWindow._add_exchange` |
 | Theme | Repaints the window in one of five themes and remembers it. Reads the `theme` and `accent_color` settings. `src/gui/main_window.py, in MainWindow._switch_theme` |
 | Help > About | Shows the version and a feature list. `src/gui/main_tabs/main_window_surface.py, in about_text` |
-| API load pill | Names the busiest exchange, its calls per minute, its busy share and any refused calls. Amber above 50% and red above 75% of the worse of busy share and 600 calls a minute. Reads the API log for the last 60 seconds. `src/exchange/api_load_monitor.py, in APILoadMonitor.sample` |
+| API load pill | Names the busiest exchange, its calls per minute, its busy share, its answer time and any refused calls. Amber above 50% and red above 75% of the worse of busy share and 600 calls a minute. Reads each call the exchange's worker ran in the last 60 seconds, a call still running included. The busy share is the time those calls held the worker, and the answer time is the slowest answer among them. A venue with no such worker is read from the API log. While the shared reads come less often than each 2.5 seconds, the pill adds "waits" and the seconds from one shared read to the next. `src/exchange/api_load_monitor.py, in APILoadMonitor.sample` |
 | AI state label | Shows AI: OFF, READY or NO PACKAGE, then AUTH or UNAUTH once feedback arrives. Reads the `ai_monitor` settings and `ai.feedback` events. `src/gui/main_window.py, in MainWindow._on_ai_feedback` |
 
 ### The header strip

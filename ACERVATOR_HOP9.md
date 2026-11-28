@@ -390,8 +390,11 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   is built: once the venue answers at its normal speed, the line drains, each good
   answer takes back one step of the shared reads' backoff, and every bot's stored
   price and balance are new at the next shared reads, with no restart
-  (`src/exchange/data_pool.py, in SharedReads.note_good`). The body's build order
-  names the rest: row 6.
+  (`src/exchange/data_pool.py, in SharedReads.note_good`). Row 6 is built: the API
+  load pill reads each call the venue's worker ran in the last 60 s, a call still
+  running included, names the answer time, and says "waits" while the shared reads
+  rest longer than 2.5 s (`src/exchange/ccxt_connector.py, in CCXTConnector.worker_runs`).
+  Every row of the body is built.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
 - **#1657, public text that breaks the writing rules.** Read the body before

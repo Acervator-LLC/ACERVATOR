@@ -233,8 +233,8 @@ PILL_STYLE_FORMAT = (
 API_PILL_IDLE_TEXT = "API: —"
 API_PILL_IDLE_COLOUR = ds.CARD_METRIC_LABEL
 API_PILL_TOOLTIP = (
-    "Load on the busiest exchange over the last minute: calls, worker busy share "
-    "and refused calls."
+    "Busiest exchange, last minute: worker calls, share held, slowest answer, "
+    "refused calls."
 )
 API_PILL_TOOLTIP_SAFETY_FORMAT = " Red above {safety_pct:.0f}%."
 
@@ -265,9 +265,13 @@ ERROR_LOG_RESET_TOOLTIP = (
 )
 ERROR_LOG_CLOSE_TOOLTIP = "Closes the Error Log. Nothing is cleared."
 API_PILL_TEXT_FORMAT = (
-    "API {exchange}: {calls_per_minute:.0f} CPM, worker {worker_busy_pct:.0f} %"
+    "API {exchange}: {calls_per_minute} CPM, worker {worker_busy_pct} %, "
+    "answer {answer}"
 )
+API_PILL_SECONDS_FORMAT = "{seconds} s"
+API_PILL_NO_FIGURE = "—"
 API_PILL_REFUSED_FORMAT = ", {queue_refusals} refused"
+API_PILL_WAITS_FORMAT = ", waits: reads every {pace_s} s"
 API_PILL_AMBER_ABOVE = 0.5
 API_PILL_RED_COLOUR = ds.ERROR
 API_PILL_AMBER_COLOUR = ds.FOLD_RATIO_AMBER
@@ -827,12 +831,23 @@ def history_refresh_due(last_fetched_ts: Any, in_flight: Any, now: Any) -> bool:
     return bool(is_stale and not in_flight)
 
 
+def pill_figure(value: Any, digits: int, scale: float = 1.0) -> str:
+    """``value`` times ``scale`` to ``digits`` places, or ``API_PILL_NO_FIGURE`` where
+    it is no finite number."""
+    try:
+        number = float(value) * scale
+    except (TypeError, ValueError):
+        return API_PILL_NO_FIGURE
+    return f"{number:.{digits}f}" if math.isfinite(number) else API_PILL_NO_FIGURE
+
+
 def api_pill(sample: Any, safety_pct: Any) -> dict:
     """The status-line pill for the busiest connected exchange.
 
-    The text names the call rate and the share of the window a connector worker
-    was busy, and appends the refused count when ``queue_refusals`` is above
-    zero.
+    The text names the call rate, the share of the window a connector worker was
+    busy and ``max_latency_ms`` in seconds, appends the refused count when
+    ``queue_refusals`` is above zero, and the pace while ``reads_pace_s`` passes
+    ``reads_interval_s``.
     """
     if sample.load_score > safety_pct:
         colour = API_PILL_RED_COLOUR
@@ -840,14 +855,26 @@ def api_pill(sample: Any, safety_pct: Any) -> dict:
         colour = API_PILL_AMBER_COLOUR
     else:
         colour = API_PILL_GREEN_COLOUR
+    seconds = API_PILL_NO_FIGURE
+    if getattr(sample, "call_count", 0):
+        seconds = pill_figure(getattr(sample, "max_latency_ms", 0.0), 1, 0.001)
     text = API_PILL_TEXT_FORMAT.format(
         exchange=sample.exchange,
-        calls_per_minute=sample.calls_per_minute,
-        worker_busy_pct=getattr(sample, "worker_busy_pct", 0.0),
+        calls_per_minute=pill_figure(sample.calls_per_minute, 0),
+        worker_busy_pct=pill_figure(getattr(sample, "worker_busy_pct", 0.0), 0),
+        answer=(
+            seconds
+            if seconds == API_PILL_NO_FIGURE
+            else API_PILL_SECONDS_FORMAT.format(seconds=seconds)
+        ),
     )
     refusals = int(getattr(sample, "queue_refusals", 0) or 0)
     if refusals > 0:
         text += API_PILL_REFUSED_FORMAT.format(queue_refusals=refusals)
+    pace_s = getattr(sample, "reads_pace_s", 0.0)
+    interval_s = getattr(sample, "reads_interval_s", 0.0)
+    if 0.0 < interval_s < pace_s:
+        text += API_PILL_WAITS_FORMAT.format(pace_s=pill_figure(pace_s, 1))
     return {"text": text, "style": PILL_STYLE_FORMAT.format(colour=colour)}
 
 
