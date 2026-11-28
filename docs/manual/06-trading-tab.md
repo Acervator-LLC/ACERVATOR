@@ -132,6 +132,8 @@ Now: a scrum sells through a rising ladder of Stack Tranches, and every filled b
 
 Now: a scrum rests rungs only for the units of its Target Delta that no pending Stack rung already holds, and the bot log names them in one SCRUM PLACED line. A read whose resting rungs already hold the Target Delta adds none and writes SCRUM RESTING, so no read rests a second ladder beside them (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_scrum`).
 
+Now: a filled Stack rung takes its units off the bot's lots in the same booking that lowers its holdings, in Order Book mode and in Internal mode, so the next buy's Layer 1 check reads the two in step (`src/trading/scrumming_bot.py, in ScrummingBot._reconcile_stack_tranches_visible`).
+
 Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
 
 Now: Split Distance sets the percent gap between Stack tranches while Stack Mode is on, and no Tranche Spread row exists (`src/trading/stack_math.py, in ladder_offsets_pct`).
