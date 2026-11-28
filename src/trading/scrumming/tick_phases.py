@@ -30,7 +30,7 @@ from ..otd_math import (
     DistanceSettingUnreadable,
     fold_rebuy_factor_from_pct,
 )
-from ..stack_math import LADDER_STOPPED, rung_is_pending
+from ..stack_math import LADDER_STOPPED, STACK_SIZE_KEY, rung_is_pending
 from ..target_bands import at_target_dust_band
 from ..ta_engine import (
     MIN_CANDLES_FOR_TA,
@@ -113,6 +113,39 @@ ENTRY_NO_FILL_EXIT = "initial-entry(no-fill)"
 
 #: The ``_first_buy_line_is_new`` key of a ``_first_buy_read`` that cleared.
 FIRST_BUY_CLEARED = "first-buy(cleared)"
+
+
+def resting_rungs(rungs: Any) -> list[dict]:
+    """The records of ``rungs`` that ``rung_is_pending`` admits."""
+    return [
+        rung for rung in rungs or () if isinstance(rung, dict) and rung_is_pending(rung)
+    ]
+
+
+def rung_units(rungs: list[dict]) -> float:
+    """Summed ``STACK_SIZE_KEY`` of ``rungs``; an unreadable or negative size counts as none."""
+    return math.fsum(
+        max(0.0, as_finite_float(rung.get(STACK_SIZE_KEY)) or 0.0) for rung in rungs
+    )
+
+
+def rung_floor_units(rules: Any, price: float) -> Optional[float]:
+    """``rules.smallest_amount`` raised to ``min_cost`` at ``price``, ceiled onto ``amount_increment``; None while ``smallest_amount`` is."""
+    from decimal import ROUND_CEILING, Decimal
+
+    smallest = rules.smallest_amount
+    cost = rules.min_cost
+    if smallest is None or cost is None or not math.isfinite(cost) or cost <= 0.0:
+        return smallest
+    if not math.isfinite(price) or price <= 0.0:
+        return smallest
+    cost_floor_units = Decimal(repr(float(cost))) / Decimal(repr(float(price)))
+    increment = rules.amount_increment
+    if increment is not None and math.isfinite(increment) and increment > 0.0:
+        step = Decimal(repr(float(increment)))
+        steps = (cost_floor_units / step).to_integral_value(rounding=ROUND_CEILING)
+        cost_floor_units = steps * step
+    return max(float(smallest), float(cost_floor_units))
 
 
 @dataclass(frozen=True)
@@ -1594,7 +1627,7 @@ class TickPhaseMixin:
         position_boost: float,
         _scrum_chain_result: Any,
     ) -> None:
-        """Sell the authorised Target Delta and queue the proceeds as tranches."""
+        """Sell or ladder the authorised Target Delta, less the units its ``resting_rungs`` already hold."""
         scrum_asset = scrum_units(delta, ticker.last, FRACTIONAL_UNITS)
         try:
             self._emit_trade_fire_snapshot(
@@ -1612,11 +1645,30 @@ class TickPhaseMixin:
         except Exception as _sup:
             logger.debug("suppressed in %s: %s: %s", "tick", type(_sup).__name__, _sup)
 
+        stacked = bool(getattr(self.config, "stack_mode", False))
+        standing = resting_rungs(self._stack_tranches) if stacked else []
+        resting = rung_units(standing)
+        unrested = scrum_asset - resting if stacked else scrum_asset
+        if standing and unrested <= 0.0:
+            if self._refusal_is_new("scrum_rungs_resting", ticker.last):
+                self._bus.emit(
+                    "bot.log",
+                    bot_id=self.bot_id,
+                    message=(
+                        f"SCRUM RESTING: {len(standing)} Stack rung(s) holding "
+                        f"{resting:.8f} units already rest against the Target "
+                        f"Delta's {scrum_asset:.8f} units at "
+                        f"${float(ticker.last):.8f}. No rung is added; a fill or "
+                        f"a cancel moves them."
+                    ),
+                )
+            return
+
         _scrum_skipped_below_min = False
         try:
             _qrate_for_cost = float(self._quote_to_usd or 1.0)
             _scrum_notional_usd = priced_usd(
-                scrum_asset, float(ticker.last), _qrate_for_cost
+                unrested, float(ticker.last), _qrate_for_cost
             )
             _rules_sc = await self._get_market_rules(self.config.symbol)
             _min_amt_sc = _rules_sc.min_amount
@@ -1627,7 +1679,11 @@ class TickPhaseMixin:
             _below_min_amt_sc = _min_amt_sc is not None and _scrum_notional_usd < (
                 _min_amt_sc * float(ticker.last)
             )
-            if _below_min_cost_sc or _below_min_amt_sc:
+            _rung_floor_sc = (
+                rung_floor_units(_rules_sc, float(ticker.last)) if standing else None
+            )
+            _below_rung_sc = _rung_floor_sc is not None and unrested < _rung_floor_sc
+            if _below_min_cost_sc or _below_min_amt_sc or _below_rung_sc:
                 _scrum_skipped_below_min = True
                 import time as _t_sc
 
@@ -1642,9 +1698,18 @@ class TickPhaseMixin:
                         )
                     if _below_min_amt_sc:
                         _reason_parts.append(
-                            f"amount {scrum_asset:.8f} < "
-                            f"min_amount {_min_amt_sc:.8f}"
+                            f"amount {unrested:.8f} < min_amount {_min_amt_sc:.8f}"
                         )
+                    if _below_rung_sc:
+                        _reason_parts.append(
+                            f"amount {unrested:.8f} < smallest rung {_rung_floor_sc:.8f}"
+                        )
+                    _rested_note = (
+                        f" {resting:.8f} of them already rest in Stack rungs, "
+                        f"so {unrested:.8f} remain to place."
+                        if resting > 0.0
+                        else ""
+                    )
                     self._bus.emit(
                         "bot.log",
                         bot_id=self.bot_id,
@@ -1652,7 +1717,7 @@ class TickPhaseMixin:
                             f"SCRUM HELD (below min trade size): "
                             f"Target Delta ${abs(delta):.4f} = "
                             f"{scrum_asset:.8f} units × "
-                            f"${float(ticker.last):.8f}. "
+                            f"${float(ticker.last):.8f}.{_rested_note} "
                             f"{self.config.symbol} blockers: "
                             f"{'; '.join(_reason_parts)}. "
                             f"Bot intentionally idle until "
@@ -1672,26 +1737,54 @@ class TickPhaseMixin:
         if _scrum_skipped_below_min:
             sell_fill = None
         else:
-            sell_fill = await self._execute_sell(
-                scrum_asset,
-                ticker.last,
-                summary,
-                label="SCRUM",
-                decision=EXCESS_SALE,
-                watch=self.order_watch(ticker),
-                booker="_book_scrum_fill",
-                booking={
-                    "scrum_asset": float(scrum_asset),
-                    "current_value": float(current_value),
-                    "delta_pct": float(delta_pct),
-                    "direction": str(eff_direction.name),
-                    "confidence": float(eff_confidence),
-                    "conf_floor": float(_eff_conf_floor),
-                    "position_boost": float(position_boost),
-                    "bb_pos": float(bb_pos),
-                    "bb_lower": float(getattr(bb_result, "lower", 0.0) or 0.0),
-                    "bb_upper": float(getattr(bb_result, "upper", 0.0) or 0.0),
-                },
+            watch = self.order_watch(ticker)
+            opened = 0
+            if stacked and unrested > 0 and ticker.last and ticker.last > 0:
+                opened = await self._open_stack_from_scrum(
+                    scrum_price=float(ticker.last),
+                    scrum_size=float(unrested),
+                    summary=summary,
+                    watch=watch,
+                )
+                placed = rung_units(resting_rungs(self._stack_tranches)) - resting
+                if placed > 0.0:
+                    self._bus.emit(
+                        "bot.log",
+                        bot_id=self.bot_id,
+                        message=(
+                            f"SCRUM PLACED: Stack rungs take {placed:.8f} units "
+                            f"from ${float(ticker.last):.8f}; with the "
+                            f"{resting:.8f} units already resting they hold "
+                            f"{resting + placed:.8f} of the Target Delta's "
+                            f"{scrum_asset:.8f} units. Nothing is sold yet, so no "
+                            f"fold tranche is queued."
+                        ),
+                    )
+                    return
+            sell_fill = (
+                None
+                if opened
+                else await self._execute_sell(
+                    unrested,
+                    ticker.last,
+                    summary,
+                    label="SCRUM",
+                    decision=EXCESS_SALE,
+                    watch=watch,
+                    booker="_book_scrum_fill",
+                    booking={
+                        "scrum_asset": float(unrested),
+                        "current_value": float(current_value),
+                        "delta_pct": float(delta_pct),
+                        "direction": str(eff_direction.name),
+                        "confidence": float(eff_confidence),
+                        "conf_floor": float(_eff_conf_floor),
+                        "position_boost": float(position_boost),
+                        "bb_pos": float(bb_pos),
+                        "bb_lower": float(getattr(bb_result, "lower", 0.0) or 0.0),
+                        "bb_upper": float(getattr(bb_result, "upper", 0.0) or 0.0),
+                    },
+                )
             )
         if sell_fill is None or sell_fill <= 0:
             if not _scrum_skipped_below_min and self._refusal_is_new(
@@ -1702,7 +1795,7 @@ class TickPhaseMixin:
                     bot_id=self.bot_id,
                     message=(
                         f"SCRUM ABORTED: sell failed for "
-                        f"{scrum_asset:.6f} units @ ${ticker.last:.8f}. "
+                        f"{unrested:.6f} units @ ${ticker.last:.8f}. "
                         f"No tranches queued; main_lots unchanged; "
                         f"no fold profit claimed. Retry next tick."
                     ),
@@ -2688,7 +2781,6 @@ class TickPhaseMixin:
                 dist_asset,
                 ticker.last,
                 summary,
-                bypass_stack=True,
                 label="DIST",
                 decision=DIST_SALE,
                 watch=watch,
