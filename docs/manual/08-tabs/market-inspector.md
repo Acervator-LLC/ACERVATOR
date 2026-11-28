@@ -2472,6 +2472,27 @@ is_bullish, is_bearish = vote_sides(
 )
 ```
 
+Read over 110 public price series, at every 100-candle window and on both
+chains, against the bot's own zone, ramp and timing functions on the same
+candles. The 15m and 30m series roll up whole 5m candles, and the 2h, 6h and 1d
+series roll up whole 1h candles. No public series holds 1m candles.
+
+```
+              reads    readings where the scan and the bot disagree
+                       before            after
+5m           72,021    65,508            0
+15m          17,581    12,801            0
+30m           6,938     3,853            0
+1h          126,985    64,673            0
+2h           60,867    24,080            0
+6h           17,798     5,702            0
+1d            2,604       930            0
+```
+
+One Market Inspector scan of one market at 5m: before, a refusal on the TA,
+midline and ADX gates. After, a hit, with the zone release passing the TA and
+ADX gates inside the zone.
+
 `src/trading/ta_engine.py` — the candle floor the engine sets
 
 ```python
@@ -4189,6 +4210,16 @@ phantom through its summary and the lock list alone.
 
 ```python
 higher = [p for p in registered if p.rank > base_rank and p.last_summary]
+```
+
+Read on real phantoms over the same public series, each at the first window
+whose vote the bias weighs:
+
+```
+phantoms read                                  187
+bias, before and after                         104 bullish, 83 bearish, the same
+lock list, before and after                    empty on both
+the phantom's own fire verdict, changed        54 of 187
 ```
 
 ## The asset logo library
