@@ -116,11 +116,9 @@ misses its turn is not sent.
 `src/exchange/ccxt_connector.py, in SyncCall.to_venue`
 
 ```python
-if reads and not in_order_turn():
-    return cls(name, run, reads, read_turn_left_sec(), missed=TurnMissed)
-return cls(
-    name, run, reads, ORDER_TURN_WAIT_SEC, goes_first=True, counted=False
-)
+if name.startswith(READ_CALL_PREFIX) and not in_order_turn():
+    return cls(name, run, read_turn_left_sec(), missed=TurnMissed)
+return cls(name, run, ORDER_TURN_WAIT_SEC, goes_first=True, counted=False)
 ```
 
 The limit of eight counts the second line alone. A read asked behind eight others
@@ -310,6 +308,21 @@ if label == VENUE_LOST:
 else:
     stated = min(stated_wait_seconds(exc), DEFAULT_MAX_COOLOFF_S)
     self.wait_until = max(self.wait_until, time.monotonic() + stated)
+```
+
+The API load pill on the
+[status bar](../06-trading-tab.md#the-menu-row-and-the-status-bar) says when the
+platform waits. While the time from one turn of the loop to the next is longer than
+2.5 seconds, the pill reads "waits: reads every" and that time. It is the time from the
+start of the last turn to the start of the next, or the time a turn on its way has run
+where that is longer. The words leave at the end of the first turn that rests to 2.5
+seconds again.
+
+`src/exchange/data_pool.py, in SharedReads.pace_s`
+
+```python
+running_s = time.monotonic() - self.turn_began if self.turn_reads else 0.0
+return max(self.last_period_s, running_s)
 ```
 
 ### What a bot does while a shared read is late

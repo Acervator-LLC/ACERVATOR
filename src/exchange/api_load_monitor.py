@@ -1,8 +1,9 @@
-"""Per-exchange API load telemetry, read from the APIInteractionLog.
+"""Per-exchange API load telemetry, read from a connector's worker runs or the APIInteractionLog.
 
 ``sample`` derives calls-per-minute over a trailing window, the P95 of the
 venue's own answer and of the wait for a connector worker, the share of the
-window that worker was busy, and the calls its queue refused.
+window that worker was busy, the calls its queue refused, and the pace of the
+exchange's shared reads.
 ``should_allow_new_phantom_set`` refuses a new phantom set whose projected CPM
 would breach ``DEFAULT_CEILING_CPM``, and no call here mutates the log or
 throttles the connector.
@@ -42,7 +43,7 @@ def _percentile(entries: list, field: str, share: float) -> float:
 
 @dataclass
 class LoadReading:
-    """Snapshot of one exchange's recent API load."""
+    """Snapshot of one exchange's recent API load, and the pace of its shared reads."""
 
     exchange: str
     window_seconds: float
@@ -54,6 +55,9 @@ class LoadReading:
     p95_queued_ms: float = 0.0
     worker_busy_pct: float = 0.0
     queue_refusals: int = 0
+    reads_pace_s: float = 0.0
+    reads_interval_s: float = 0.0
+    max_latency_ms: float = 0.0
 
 
 class APILoadMonitor:
@@ -96,18 +100,23 @@ class APILoadMonitor:
     def sample(self, exchange: str, connector=None) -> LoadReading:
         """Compute a snapshot reading for one exchange.
 
-        ``worker_busy_pct`` is the share of the window the venue's own answers
-        held a connector worker, and ``load_score`` is the worse of it and the
-        calls-per-minute score, because a refused call reaches no log and so
+        With a connector that answers ``worker_runs``, the figures read every call its
+        worker ran in the window, a call still running included, and
+        ``worker_busy_pct`` is the share of the window those calls held it. Without
+        one, the API log's entries stand in. ``load_score`` is the worse of that share
+        and the calls-per-minute score, because a refused call is in neither and so
         reads as idleness in the count alone.
         """
-        entries = self._window_entries(exchange)
+        runs = self._worker_runs(connector)
+        entries = self._window_entries(exchange) if runs is None else runs
+        held_field = "elapsed_ms" if runs is None else "held_ms"
         n = len(entries)
         # calls per minute — scale to a 60 s equivalent regardless of window
         cpm = (n * 60.0 / self._window_s) if self._window_s > 0 else 0.0
         p95 = _percentile(entries, "elapsed_ms", 0.95)
+        slowest = _percentile(entries, "elapsed_ms", 1.0)
         p95_queued = _percentile(entries, "queued_ms", 0.95)
-        served_s = sum(float(e.get("elapsed_ms", 0) or 0) for e in entries) / 1000.0
+        served_s = sum(float(e.get(held_field, 0) or 0) for e in entries) / 1000.0
         load = self._queue_load(connector)
         workers = max(1, int(load.get("workers", SERIAL_WORKERS_PER_CONNECTOR)))
         busy = (served_s / (self._window_s * workers)) if self._window_s > 0 else 0.0
@@ -117,6 +126,7 @@ class APILoadMonitor:
             else 0.0
         )
         score = max(cpm_score, min(1.0, max(0.0, busy)))
+        reads = self._shared_reads(exchange)
         return LoadReading(
             exchange=exchange,
             window_seconds=self._window_s,
@@ -128,7 +138,22 @@ class APILoadMonitor:
             p95_queued_ms=round(p95_queued, 1),
             worker_busy_pct=round(100.0 * busy, 1),
             queue_refusals=int(load.get("refusals", 0) or 0),
+            reads_pace_s=round(reads.pace_s(), 1),
+            reads_interval_s=reads.interval_s,
+            max_latency_ms=round(slowest, 1),
         )
+
+    def _worker_runs(self, connector) -> Optional[list]:
+        """``connector.worker_runs`` over this monitor's window, None without one."""
+        reader = getattr(connector, "worker_runs", None)
+        return None if reader is None else list(reader(self._window_s))
+
+    @staticmethod
+    def _shared_reads(exchange: str):
+        """The ``SharedReads`` of ``exchange`` in ``get_data_pool``'s pool."""
+        from .data_pool import get_data_pool
+
+        return get_data_pool().shared_reads(exchange)
 
     @staticmethod
     def _queue_load(connector) -> dict:
