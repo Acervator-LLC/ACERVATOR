@@ -908,20 +908,18 @@ actually holds. One workflow file declares all of them.
 
 changes      diffs the branch and publishes the list of changed files
 lint         black and flake8 over src, tests, tools and the root scripts
-contracts    the six Solidity tests under tests/contracts, run by forge
 archetypes   the owning archetype for each changed file
 ci-gate      one status saying whether any required lane failed
 ```
 
-### A fifth lane starts the Electron shell
+### A lane starts the Electron shell
 
 The two sentences above are overtaken. Quoted whole:
 
 > Four lanes run on every pull request, and each one judges something the tree
 > actually holds. One workflow file declares all of them.
 
-One workflow file still declares all of them, and there are five. The fifth is
-`shell`. It installs `desktop/` with `npm ci`, starts electron once under
+One workflow file still declares all of them, and one of them is `shell`. It installs `desktop/` with `npm ci`, starts electron once under
 `xvfb-run`, and reads the loaded page back out of the running window. It is
 declared in `.github/workflows/ci.yml, in shell`.
 
@@ -1057,13 +1055,12 @@ against the 180 second limit the gate gives one archetype run.
 
 ### What a green result means
 
-Green means every changed file passed the archetype that owns it, the Solidity
-tests passed, and the formatting and lint lanes passed. It does not mean a Python
-test suite ran. The tree holds no Python test.
+Green means every changed file passed the archetype that owns it, and the
+formatting and lint lanes passed. It does not mean a Python test suite ran. The
+tree holds no Python test.
 
 ```
-git ls-files tests/                   7 files
-git ls-files tests/contracts/*.sol    6 files
+git ls-files tests/                   1 file
 git ls-files tests/test_*.py          0 files
 ```
 
@@ -1074,11 +1071,10 @@ by side:
 
 ```
 before   Green means every changed file passed the archetype that owns it,
-         the Solidity tests passed, and the formatting and lint lanes passed.
+         and the formatting and lint lanes passed.
 
 after    Green means every changed file the lane judged passed the archetype
-         that owns it, the Solidity tests passed, and the formatting and lint
-         lanes passed. A changed markdown file is reported, not judged, so a
+         that owns it, and the formatting and lint lanes passed. A changed markdown file is reported, not judged, so a
          green lane says nothing about whether its prose verdict was clean.
 ```
 
@@ -1094,8 +1090,8 @@ scanned=2 judged=1 reported=1 unowned=0 exempt=0 failed=0
 
 The same first sentence is overtaken a second time. Quoted whole:
 
-> Green means every changed file passed the archetype that owns it, the Solidity
-> tests passed, and the formatting and lint lanes passed.
+> Green means every changed file passed the archetype that owns it, and the
+> formatting and lint lanes passed.
 
 Green now carries one more thing. When a change touches `desktop/`, green also
 means the shell was installed, started once, and its page loaded. When a change

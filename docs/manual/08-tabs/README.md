@@ -41,7 +41,7 @@ rule_id="DOC012"   # a dated update that runs backwards
 | [portfolio-panels.md](portfolio-panels.md) | The header strip: spendable columns, five counter cards, privacy dots | Live |
 | [simulator.md](simulator.md) | Live's tab forked over Stone Tablets: Validation, Back Test, Portfolio Battery, the gate-latch criterion, the replay layer | Live, rebuilt under issue #117 |
 | [paper-trader.md](paper-trader.md) | The live feed, the fake balance, the paper log | Live — issue #19 |
-| [proof-of-accumulation.md](proof-of-accumulation.md) | Identity, Merkle log, competitions, ACRV, the local chain | Skeleton tab, engine only — issue #147 |
+| [proof-of-accumulation.md](proof-of-accumulation.md) | The Proof of Accumulation design and the PoA and Quint tabs | Drawn on the bar, does not open; no code |
 | [market-inspector.md](market-inspector.md) | Higher-timeframe scanner, opposing pairs, topology proposals, adopt | Live |
 | [bot-swarm.md](bot-swarm.md) | Nodes, Smart Wires, wire credits, the fold-tranche book | Live |
 | [asset-charts.md](asset-charts.md) | One candlestick panel per traded symbol | Live |
@@ -54,8 +54,9 @@ rule_id="DOC012"   # a dated update that runs backwards
 
 ## The live tab set
 
-One list names the ten tabs the window builds, and each one is moved into that
-position after the builders run. Two of them are empty: Accumulation and Status.
+One list names the eleven tabs the bar draws, and each one is moved into that
+position after the builders run. Status is empty. PoA and Quint are drawn
+between Swarm and History, and no click, key or drag opens either one.
 
 `src/gui/main_tabs/main_window_surface.py` — `CANONICAL_TAB_ORDER`
 
@@ -67,7 +68,8 @@ CANONICAL_TAB_ORDER = (
     CHARTS_TAB,
     INSPECTOR_TAB,
     SWARM_TAB,
-    ACCUMULATION_TAB,
+    POA_TAB,
+    QUINT_TAB,
     HISTORY_TAB,
     STATUS_TAB,
     CONSOLE_TAB,
@@ -79,14 +81,13 @@ The Indicator Voting Panel has [07-indicators.md](../07-indicators.md).
 
 Every screen the window does not build gets a sentinel instead of a widget, so
 a legacy reader gets that sentinel rather than an error. The list covers the
-Competition and Local Testnet tabs, and the analytics, risk, journal, alerts and
-audio pages.
+analytics, risk, journal, alerts and audio pages.
 
 `src/gui/main_tabs/retired_tabs.py` — `RetiredTabsMixin._install_retired_tab_sentinels`
 
 ```python
 def _install_retired_tab_sentinels(self) -> None:
-    """Assign None to ``_competition_tab``, ``_testnet_tab`` and the rest.
+    """Assign None to ``_audio_suite``, ``_analytics_tab`` and the rest.
 
     ``main_window`` tests ``_risk_tab`` and ``_alerts_tab`` before
     refreshing them.

@@ -506,6 +506,11 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   by his #1440 ruling. Its wallet check counts the trading fee, and the holds
   that protect the venue or the data stay (`in TickPhaseMixin._tick_initial_entry`).
   Row 3, the hold named on the bot's row, is not built.
+- **#1865, the Live tab's tab bar and launch layout. Rows 1 to 3 are built.** No
+  Proof of Accumulation code is in the tree. The bar draws PoA and Quint between
+  Swarm and History, and no click, key or drag opens either one
+  (`src/gui/main_tabs/main_window_surface.py, in INACTIVE_TABS`). Next is row 4,
+  the launch layout. Do not work on PoA or the Quint Wallet beyond the two tabs.
 - The rest of the queue: read each body.
 
 ---

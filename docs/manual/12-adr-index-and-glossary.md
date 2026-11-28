@@ -160,10 +160,8 @@ def _score_outcome(...): ...
   in `src/paper/`. The shelved stock window still defaults to
   `paper_trader_available: bool = False`. See
   [08-tabs/paper-trader.md](08-tabs/paper-trader.md).
-- **Proof of Accumulation** — the competition package, `src/competition/`. It
-  holds the bot identity, the Merkle log, the challenge protocol, the token
-  ledger and the local chain. Its two screens are shelved by the operator's own
-  direction. See
+- **Proof of Accumulation** — a competition between bots, in design. No code
+  holds it, and the bar draws a PoA tab that does not open. See
   [08-tabs/proof-of-accumulation.md](08-tabs/proof-of-accumulation.md).
 The Simulator rebuild removed the fleet-replay files this glossary once named.
 
@@ -184,13 +182,7 @@ describes all three.
 
 - **Solve et coagula** — dissolve and reform, the sense the epigraph
   *Turbator aequilibrii dissolvendus reformandusque* carries on
-  [01-title.md](01-title.md). One function letters SOLVE · ET · COAGULA around
-  the outer arc of the harvest trophy, and that is the one place the phrase
-  appears in the code.
-
-```python
-def harvest_svg(d: TrophyData) -> str: ...      # src/competition/trophy_generator.py
-```
+  [01-title.md](01-title.md). No code in the tree holds the phrase.
 
 ## The operator's own words
 

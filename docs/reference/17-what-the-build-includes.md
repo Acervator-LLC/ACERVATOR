@@ -120,28 +120,28 @@ a screen the window never builds reaches.
 `tools/spec_common.py` — `report_unreachable`, both lists on this tree
 
 ```
-  [spec] 30 of 501 src modules unreached, left out:
+  [spec] 28 of 461 src modules unreached, left out:
   ...
-  [spec] 10 of 501 src modules reached only through a screen the window never builds, left out:
+  [spec] 7 of 461 src modules reached only through a screen the window never builds, left out:
   [spec]   src.gui.alerts_tab
   [spec]   src.gui.main_tabs.alerts_tab_surface
   ...
-  [spec]   src.gui.react_proof_of_accumulation_tab
+  [spec]   src.gui.react_alerts_tab
 ```
 
 ## Today's reading
 
-Measured on this tree: the source folder holds **498** modules, **469** of them
-reached and **29** not.
+Measured on this tree: the source folder holds **461** modules, **433** of them
+reached and **28** not.
 
-The 29, grouped by what they are:
+The 28, grouped by what they are:
 
 | what it is | modules |
 | --- | --- |
-| screens no window builds | `src.gui.analytics_tab`, `src.gui.competition_tab`, `src.gui.init_wizard`, `src.gui.launcher`, `src.gui.live_bot_window`, `src.gui.stock_main_window`, `src.gui.testnet_tab`, `src.gui.usb_auth_widget`, `src.gui.journal_tab` |
+| screens no window builds | `src.gui.analytics_tab`, `src.gui.init_wizard`, `src.gui.launcher`, `src.gui.live_bot_window`, `src.gui.stock_main_window`, `src.gui.usb_auth_widget`, `src.gui.journal_tab` |
 | React strips nothing draws | `src.gui.react_crypto_news_ticker`, `src.gui.react_simulator_tab`, `src.gui.react_status_log` |
 | the equities engine, not wired | `src.stocks.stock_accumulation_bot`, `src.stocks.stock_assets`, `src.stocks.stock_bot`, `src.stocks.tradingview_bridge` |
-| trading parts nothing calls | `src.trading.arbitrage`, `src.trading.logo_library`, `src.trading.mr_inspector` |
+| trading parts nothing calls | `src.trading.analytics_engine`, `src.trading.arbitrage`, `src.trading.logo_library`, `src.trading.mr_inspector` |
 | tablet record helpers | `src.trading.stone_tablets.addressing`, `src.trading.stone_tablets.parity_harness`, `src.trading.stone_tablets.ra_import` |
 | hardware and import helpers | `src.core.mini_display`, `src.core.system_load_oscillator`, `src.core.usb_auth`, `src.exchange.market_data`, `src.exchange.tablet_backend`, `src.exchange.ytd_csv_import` |
 | the manual builder's own chart module | `src.design_system` |
@@ -272,10 +272,10 @@ def excludes_for(project_root: str) -> list[str]: ...
 
 ### What a request for a left-out page gets
 
-The seven retired pages keep their place in the bridge's source.
+The five retired pages keep their place in the bridge's source.
 `src/gui/main_tabs/retired_surfaces.py, in on_demand_handlers` registers a page
 only when the running program can find its surface. A packaged build carries
-none of the seven, so its registry holds none of their methods. A request for
+none of the five, so its registry holds none of their methods. A request for
 one gets the bridge's refusal for a method that no surface serves, and no import
 runs.
 
@@ -330,21 +330,18 @@ A builder called only that way would read as never called.
 
 ### What leaves today
 
-Measured on this tree, the source folder holds 501 modules. 461 are reached
-through a screen the window builds, 30 are reached by nothing, and 10 are
+Measured on this tree, the source folder holds 461 modules. 426 are reached
+through a screen the window builds, 28 are reached by nothing, and 7 are
 reached only through a screen the window never builds.
 
 | the window's mark | the modules that leave |
 | --- | --- |
-| retired page | `src.gui.main_tabs.alerts_tab_surface`, `src.gui.main_tabs.analytics_tab_surface`, `src.gui.main_tabs.audio_suite_surface`, `src.gui.main_tabs.competition_tab_surface`, `src.gui.main_tabs.journal_tab_surface`, `src.gui.main_tabs.risk_tab_surface`, `src.gui.main_tabs.testnet_tab_surface` |
-| unbuilt tab, Accumulation | `src.gui.react_proof_of_accumulation_tab` |
+| retired page | `src.gui.main_tabs.alerts_tab_surface`, `src.gui.main_tabs.analytics_tab_surface`, `src.gui.main_tabs.audio_suite_surface`, `src.gui.main_tabs.journal_tab_surface`, `src.gui.main_tabs.risk_tab_surface` |
 | screen nothing asks for, Alerts | `src.gui.alerts_tab`, `src.gui.react_alerts_tab` |
 
 Each module's other imports are reached through a screen the window builds, so
-nothing else leaves with them. Two modules of those screens stay.
-`src.gui.audio_suite` stays because the Market Inspector imports its chime, and
-`src.gui.main_tabs.proof_of_accumulation_tab_surface` stays because the window's
-own model imports it for the tab's heading.
+nothing else leaves with them. One module of those screens stays:
+`src.gui.audio_suite`, because the Market Inspector imports its chime.
 
 Nothing here launches the packaged application. The launch is the operator's
 verification.
