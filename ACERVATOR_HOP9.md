@@ -399,6 +399,9 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   balance's lifetime, in every second turn of the shared reads
   (`src/exchange/data_pool.py, in SharedReads.account_due`). The call account is in
   `docs/manual/06-trading-tab.md`, in its section on the calls behind the API load pill.
+  A bot's fill walk runs each hour, and its open-order read keeps 300 s
+  (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.FILL_WALK_REFRESH_SEC`).
+  The kinds with no log line are counted in comment 7245544566.
   Every row of the body is built.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
