@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from .config import (
     STACK_MODE_DEFAULT,
+    BotConfig,
+    BotMode,
     BotState,
     bot_config_kwargs,
     make_bot_config,
@@ -14,6 +16,35 @@ from .config import (
 )
 
 logger = logging.getLogger("acervator.bot")
+
+
+def restored_mode(cfg: dict) -> Optional[BotMode]:
+    """The ``BotMode`` a saved ``cfg`` names, an absent or empty mode reading
+    ``SCRUMMING``; None for any other name."""
+    named = cfg.get("mode") or ""
+    if not isinstance(named, str):
+        return None
+    named = named.lower()
+    if named == BotMode.EXTRACTOR.value:
+        return BotMode.EXTRACTOR
+    if named in (BotMode.SCRUMMING.value, ""):
+        return BotMode.SCRUMMING
+    return None
+
+
+def restored_config(mode: BotMode, cfg: dict) -> BotConfig:
+    """The ``BotConfig`` ``restore_bots_from_state`` builds from a saved ``cfg``
+    in ``mode``, an absent ``stack_mode`` taking ``STACK_MODE_DEFAULT``.
+
+    Raises ``ValueError`` for a ``cfg`` naming no ``exchange_id``, and
+    ``ValueError`` or ``TypeError`` wherever ``make_bot_config`` raises them.
+    """
+    if not cfg.get("exchange_id"):
+        raise ValueError("persisted config has no exchange_id")
+    kwargs = bot_config_kwargs(mode, cfg, exchange_id=cfg["exchange_id"])
+    if "stack_mode" not in cfg:
+        kwargs["stack_mode"] = STACK_MODE_DEFAULT
+    return make_bot_config(mode, **kwargs)
 
 
 class StateRestoreMixin:
@@ -152,8 +183,6 @@ class StateRestoreMixin:
         a ``_restored`` flag and stays IDLE until the operator starts it, which
         is what triggers the exchange sync before any trading.
         """
-        from .config import BotMode
-
         bots_data = state.get("bots", {})
         restored = []
 
@@ -174,7 +203,9 @@ class StateRestoreMixin:
         self._restore_completed = False
 
         for bid, bot_data in bots_data.items():
-            cfg = bot_data.get("config", {})
+            cfg = bot_data.get("config") if isinstance(bot_data, dict) else None
+            if not isinstance(cfg, dict):
+                cfg = {}
             if not cfg.get("exchange_id"):
                 logger.error(
                     "Bot %s SKIPPED during restore: persisted config has "
@@ -186,14 +217,9 @@ class StateRestoreMixin:
                 self._ledger_skip(bid, "no exchange_id in persisted config")
                 continue
 
-            # An absent or empty mode is treated as SCRUMMING for pre-rename
-            # state files.
-            _mode_str = (cfg.get("mode") or "").lower()
-            if _mode_str == "extractor":
-                mode = BotMode.EXTRACTOR
-            elif _mode_str == "scrumming" or _mode_str == "":
-                mode = BotMode.SCRUMMING
-            else:
+            _mode_str = str(cfg.get("mode") or "").lower()
+            mode = restored_mode(cfg)
+            if mode is None:
                 logger.error(
                     "Bot %s has unrecognized mode %r in saved state "
                     "— skipping restoration. (Legacy 'grid' mode was "
@@ -206,17 +232,9 @@ class StateRestoreMixin:
                 )
                 self._ledger_skip(bid, "legacy grid mode (unrestorable)")
                 continue
-            # bot_config_kwargs derives the carried set from fields(BotConfig)
-            # minus the other mode, so creation and restore read one declaration.
             # Inside the try: a bad stored value skips this bot, not the fleet.
             try:
-                _kwargs = bot_config_kwargs(mode, cfg, exchange_id=cfg["exchange_id"])
-                # A saved record holds no bulk_trading, the key
-                # bot_config_kwargs reads, so an absent stack_mode takes
-                # STACK_MODE_DEFAULT.
-                if "stack_mode" not in cfg:
-                    _kwargs["stack_mode"] = STACK_MODE_DEFAULT
-                config = make_bot_config(mode, **_kwargs)
+                config = restored_config(mode, cfg)
             except (ValueError, TypeError) as _restore_err:
                 logger.error(
                     "Bot %s restoration FAILED — persisted config could "
