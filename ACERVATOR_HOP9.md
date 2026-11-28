@@ -423,7 +423,7 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   (`src/trading/container/aggregation.py, in exchange_cash`). He reads it against
   each exchange's own Cash screen after the next build.
 - **#1836, every buy opens its Stack ladder, and each tranche shows its
-  Projected Accumulation. Rows 1 to 5 are done.** On a Stack Mode bot every
+  Projected Accumulation. Rows 1 to 5 and row 9 are done.** On a Stack Mode bot every
   filled buy ladders the units it bought, the first buy, a hedge, a Manual Fire
   and a cartridge buy among them, and a buy that opens none writes one bot log
   line naming why
@@ -432,7 +432,12 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   Accumulation where Original cost stood, and each Stack Tranche row shows it
   after Age, in both builds of the Live, Paper and Simulator windows
   (`src/gui/main_tabs/fold_tranches_tab_surface.py, in fold_projected_accumulation`).
-  Next, rows 6 to 8 with the Settings control of row 8, as the body orders them.
+  A scrum rests rungs only for the units of its Target Delta that no pending
+  rung holds, writes SCRUM PLACED in place of SCRUM ABORTED, and a later read
+  rests no second ladder beside them
+  (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_scrum`).
+  Next, row 10, then rows 6 to 8 with the Settings control of row 8, as the body
+  orders them.
 - **#1837, the Trade Calculator. Rows 1 to 8 are built.** Each trade log line
   names its venue order and the event ids of the tranches the fill spent and
   opened, and a fold that ran the growth step carries its figures under

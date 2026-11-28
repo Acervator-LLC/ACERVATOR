@@ -2469,7 +2469,7 @@ flowchart TD
     ERD["kaufman_er signal detail 'er'"] --> CHAIN
     ZD["zscore signal detail 'z'"] --> CHAIN
     CHAIN --> RES{"ChainResult.should_fire"}
-    RES -->|true| FIRE["_tick_execute_scrum, then _execute_sell"]
+    RES -->|true| FIRE["_tick_execute_scrum, then _execute_sell, or _open_stack_from_scrum in Stack Mode"]
     RES -->|false| BLOCK["ChainResult.blocked, one message per gate"]
     FIRE --> ORDER[guarded_place_order]
 ```

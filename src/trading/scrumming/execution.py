@@ -282,7 +282,6 @@ class ExecutionEngineMixin:
     _manual_fire_pending: bool
     _mark_shadow_rows: Callable[..., int]
     _market_rules_cache: dict
-    _open_stack_from_scrum: Callable[..., Any]
     _order_asked_units: Callable[..., float]
     _preview_fold_growth: Callable[..., Any]
     _quote_to_usd: float
@@ -2711,7 +2710,6 @@ class ExecutionEngineMixin:
         amount: float,
         price: float,
         summary: VotingSummary,
-        bypass_stack: bool = False,
         label: str = "SCRUM",
         booker: str = "",
         booking: Optional[dict] = None,
@@ -2738,22 +2736,6 @@ class ExecutionEngineMixin:
         self._last_sell_filled_units = 0.0
         _watch = watch or self.order_watch()
 
-        if (
-            not bypass_stack
-            and getattr(self.config, "stack_mode", False)
-            and amount
-            and amount > 0
-            and price
-            and price > 0
-        ):
-            _n = await self._open_stack_from_scrum(
-                scrum_price=float(price),
-                scrum_size=float(amount),
-                summary=summary,
-                watch=_watch,
-            )
-            if _n:
-                return None
         if self.held_by_age(_watch, "SELL"):
             return None
 

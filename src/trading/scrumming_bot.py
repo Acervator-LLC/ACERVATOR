@@ -107,7 +107,7 @@ from .scrumming.shadow import REGIME_NONE, regime_of, shadow_units
 from .scrumming.sizing import SELF_DESTRUCT_SALE
 from .scrumming.snapshots import GATE_CHAIN_EXIT
 from .scrumming.snapshots import yes_no as _yes_no
-from .scrumming.tick_phases import ENTRY_NO_FILL_EXIT
+from .scrumming.tick_phases import ENTRY_NO_FILL_EXIT, rung_floor_units
 from .scrumming.fold_tranches import (
     _STRONG_TREND_CANDLES,
     _STRONG_TREND_MIN_BULL_CANDLES,
@@ -4926,7 +4926,7 @@ class ScrummingBot(
             return LADDER_STOPPED
         # Passed through unmasked: None is the venue publishing no size rule,
         # and split_scrum_into_tranches refuses an unknown floor.
-        min_order = _rules.smallest_amount
+        min_order = rung_floor_units(_rules, float(scrum_price))
 
         try:
             tranches = split_scrum_into_tranches(
@@ -5329,7 +5329,6 @@ class ScrummingBot(
                     amount=float(t["size"]),
                     price=float(current_price),
                     summary=_vote,
-                    bypass_stack=True,
                     label="STACK",
                     decision=stack_rung_decision(t),
                     watch=_watch,
