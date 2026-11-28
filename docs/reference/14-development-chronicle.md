@@ -543,11 +543,6 @@ ranks, named for the stages of the Great Work.
 | Grand Accumulator | Rubedo — the great work | 1,000 |
 | Ekthelius | Unio Mystica — return to the All | 21 ever |
 
-```
-src/competition/season_schedule.py    the five tiers and what earns each one
-src/competition/trophy_generator.py   the stage, the motto and the colour
-```
-
 Twenty-one ever, and it takes a perfect score across every metric in a season.
 Nobody has one. I would be surprised if anybody ever does, which is the point of
 putting a ceiling on it.

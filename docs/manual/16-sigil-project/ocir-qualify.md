@@ -154,7 +154,7 @@ commits in the history of `788e1401` were searched for the entry's own words.
 | C124 | no | an archetype run on several files, a shell command |
 | C125 | no | a brief, a habit of work |
 | C126 | no | an environment variable, a shell setting |
-| C127 | no | still in `src/competition` at `788e1401`, such as `DEFAULT_LEDGER_PATH`; no commit fixes it |
+| C127 | no | the twelve constants left the tree with their package; no commit fixed the binding itself |
 | C128 | no | never in a commit: `8bcf34e6` wrote the whole-locator check first |
 | C129 | no | a sample size, a measurement |
 | C130 | yes | `d20f5039`: a transfer held a repeating share as a decimal and debited more than the sender held |

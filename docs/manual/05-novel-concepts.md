@@ -3039,71 +3039,11 @@ The sentence above stands as written. This is the reading that replaced it.
 
 This is another one of the larger and more distinguishing features of the platform. At this point, it is a design proposal for a blockchain that provides certified trade performance between competitors without revealing their specific strategy tunings within Acervator or their identity. When this blockchain is initiated, ZERO tokens for it will exist in the world. I intend it to be, much like A15 to 1) have a fixed supply, 2) mean something through its generation and acquisition. Tokens are only created through the PoA tournaments and defeating Token Beasts or inflicting the most damage to them in a colosseum format. Additional functions would allow PoA tokens to be socketed into the platform to change its appearance and identify a user as a victor.
 
-**Functional.** The competition package is the Proof of Accumulation package,
-and its engine runs without a screen. The engine walks a competition through
-registration, active trading, submission and adjudication, and hashes each
-entrant's config so a strategy proves consistency without publishing itself. A
-Merkle log produces the root that stands in for the trade record.
+Now: no Proof of Accumulation code is in the tree. The bar draws a PoA tab and a
+Quint tab between Swarm and History, and neither one opens
+(`src/gui/main_tabs/main_window_surface.py, in INACTIVE_TABS`).
 
-The token ledger is append-only and hard-capped. Balances come from replaying
-the log, and no operation edits one. An award that would cross the cap raises
-rather than trimming, and an award id repeats at most once.
-
-`src/competition/token_ledger.py` — `TokenLedger.award`
-
-```python
-event_id = self._event_id(bot_id, competition_id, tier.name)
-if event_id in self._seen:
-    return None
-
-if self.total_minted() + tier.base_value > TOTAL_SUPPLY_CAP:
-    raise OverflowError(
-        f"Supply cap {TOTAL_SUPPLY_CAP:,} ACRV would be exceeded. "
-        f"Only {self.remaining_ever()} tokens remain mintable."
-    )
-```
-
-**Design intention.** The fixed supply is the whole point of the token, so the
-cap is a constant the ledger reads rather than a policy a caller can pass. It
-reads ten million.
-
-`src/competition/season_schedule.py` — `TOTAL_SUPPLY_CAP`
-
-```python
-TOTAL_SUPPLY_CAP = 10_000_000  # Hard cap — immutable
-```
-
-Nothing in the running platform starts a competition. Every module that would
-request one sits outside the running application, and the retired-tab sentinels
-assign nothing to the competition and testnet tabs. The canonical tab order now
-lists an Accumulation tab, and that tab is empty: it draws its
-name, one sentence saying it is not built, and issue #147, which covers the
-build-out.
-
-`src/competition/local_testnet.py` — the in-platform chain, built every session
-
-```python
-MAX_SUPPLY_WEI = TOTAL_SUPPLY_CAP * (10**TOKEN_DECIMALS)
-```
-
-Read on the current tree, no session builds the chain. The main window no
-longer installs the testnet bridge at launch, so the bridge and the eleven
-competition parts it installs stay unbuilt, and its 250 ms timer never starts.
-The competition package stays on disk while Proof of Accumulation is paused.
-
-`src/gui/main_window.py` — `MainWindow._setup_ui`, the first two build steps
-
-```python
-            main_layout = self._timed_build_step(
-                "header strip", self._build_header_strip
-            )
-
-            self._main_tabs = _main_tab_book_class()()
-```
-
-The trophy generator draws the trophy as vector art and letters SOLVE ET COAGULA
-around its rim. No module imports it. Token Beasts and the colosseum appear in
-no Python file at all.
+In development.
 
 ## 16 - Technical Analysis, Goodness of Fit, and the Confidence Index
 
@@ -3193,7 +3133,8 @@ CANONICAL_TAB_ORDER = (
     CHARTS_TAB,
     INSPECTOR_TAB,
     SWARM_TAB,
-    ACCUMULATION_TAB,
+    POA_TAB,
+    QUINT_TAB,
     HISTORY_TAB,
     STATUS_TAB,
     CONSOLE_TAB,

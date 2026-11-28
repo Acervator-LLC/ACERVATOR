@@ -331,9 +331,8 @@ Re-measured 2026-09-19 with the command above. The table before that date
 read 36, 15, 11 and 8 for #147, #128, #407 and #117.
 
 **Issue routing, learned the hard way twice.** Every Simulator finding folds
-into **#117**. Every TestNet, PoA or **Competition** finding folds into **#147**
-— `src/competition/` IS the PoA package, and that word is the trigger. Never
-open a new issue for either. A finding on an unbuilt screen gets one line folded
+into **#117**. Every TestNet, PoA or **Competition** finding folds into **#147**.
+Never open a new issue for either. A finding on an unbuilt screen gets one line folded
 into its owning item, never an issue of its own.
 
 ---
@@ -423,14 +422,6 @@ contracts before mainnet, and 20 waits on his art direction.
 **Every unit updates the manual page in the same unit it lands**, and runs the
 archetype that owns each file it touched. The page is
 `docs/manual/08-tabs/proof-of-accumulation.md`.
-
-**The Solidity side.** Four contracts sit in `contracts/`, built through npm:
-`package.json` carries `solhint`, `eslint`, `html-validate`, `stylelint` and the
-OpenZeppelin and Chainlink libraries. `foundry.toml`, `.solhint.json` and
-`.solhintignore` configure them. Two Foundry tests live at
-`tests/contracts/QuintessenceConservation.t.sol` and
-`tests/contracts/TrophyTierCaps.t.sol`. The audit record is
-`docs/audits/2026-09-10_contract_audit_ethtrust_levels.md`.
 
 ---
 
@@ -657,7 +648,6 @@ units.
 | debug evidence, one file per run | `tests/debug_reports/` |
 | engineering notes and audits | `docs/engineering-notes/`, `docs/audits/` |
 | calibration fixtures | `harness_fixtures/` |
-| the contracts | `contracts/`, with `foundry.toml` |
 | every decision verbatim | the session transcripts, grep-able JSONL |
 
 **Search the transcript rather than trusting a summary, including this one.**

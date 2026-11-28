@@ -213,6 +213,8 @@ class BotContainer:
 
     #: When the venue answered ``stats.current_price``, None before the first read.
     _price_read_at: Optional[ReadMoment] = None
+    #: The fills ``_announce_fill`` holds between ``_hold_fill_sends`` and ``_send_held_fills``.
+    _held_fills: Optional[list[SettledFill]] = None
 
     def __init__(
         self,
@@ -412,7 +414,8 @@ class BotContainer:
         ``_settled_order_id``.
 
         ``fee`` holds one of the two ``SettledFill`` fee fields, and a ``kind``
-        outside ``TRADE_TYPES`` is logged and still sent.
+        outside ``TRADE_TYPES`` is logged and still sent. While ``_held_fills`` is a
+        list the figures are written at once and the send waits for ``_send_held_fills``.
         """
         if kind not in TRADE_TYPES:
             logger.error(
@@ -447,7 +450,32 @@ class BotContainer:
                 kind,
                 fill.amount,
             )
+        if self._held_fills is not None:
+            self._held_fills.append(fill)
+            return
         self._bus.emit(FILL_TOPIC, **fill.payload())
+
+    def _hold_fill_sends(self) -> Optional[list[SettledFill]]:
+        """Start holding ``_announce_fill`` sends on ``_held_fills``, and return the holder ``_send_held_fills`` restores."""
+        outer, self._held_fills = self._held_fills, []
+        return outer
+
+    def _send_held_fills(
+        self, outer: Optional[list[SettledFill]], opened: tuple[str, ...]
+    ) -> None:
+        """Restore ``outer``, then send each held fill once with ``opened`` added to its ``opened_event_ids``."""
+        held, self._held_fills = self._held_fills or [], outer
+        for fill in held:
+            sent = replace(
+                fill,
+                opened_event_ids=tuple(
+                    dict.fromkeys((*fill.opened_event_ids, *opened))
+                ),
+            )
+            if outer is not None:
+                outer.append(sent)
+            else:
+                self._bus.emit(FILL_TOPIC, **sent.payload())
 
     def _write_fill_figures(self, fill: SettledFill) -> None:
         """Count ``fill`` into the trade tally once per order, stamp ``last_trade_time``, then
@@ -2073,6 +2101,25 @@ class BotContainer:
         return state
 
 
+def _listed_count(value: Any) -> int:
+    """The length of ``value`` when it is a list or a tuple, else 0."""
+    return len(value) if isinstance(value, (list, tuple)) else 0
+
+
+def saved_record_sizes(records: Any) -> tuple[int, int]:
+    """The main lots and fold tranches the saved ``records`` map carries, a record,
+    a ``scrumming_state`` or a list of another type counting as none."""
+    lots = 0
+    tranches = 0
+    for record in records.values() if isinstance(records, dict) else ():
+        saved = record.get("scrumming_state") if isinstance(record, dict) else None
+        if not isinstance(saved, dict):
+            continue
+        lots += _listed_count(saved.get("main_lots"))
+        tranches += _listed_count(saved.get("fold_tranches"))
+    return lots, tranches
+
+
 class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
     """Registry for every ``BotContainer``: register, start, stop, pause,
     aggregate fleet stats, and save or restore state."""
@@ -2181,12 +2228,7 @@ class BotManager(StateRestoreMixin, BotRegistryMixin, FleetAggregationMixin):
         restore segment states its own size.
         """
         records = state.get("bots", {}) if isinstance(state, dict) else {}
-        lots = 0
-        tranches = 0
-        for record in records.values():
-            saved = record.get("scrumming_state") or {}
-            lots += len(saved.get("main_lots") or ())
-            tranches += len(saved.get("fold_tranches") or ())
+        lots, tranches = saved_record_sizes(records)
         restored: list[str] = []
         started = time.perf_counter()
         try:

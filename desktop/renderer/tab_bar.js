@@ -10,7 +10,8 @@
 // bar to it: the order and every label come from the application, and each tab
 // is filled by the registered screen calling the bridge method the application
 // serves that tab from. A screen calling none of those methods draws under no
-// tab; `unclaimed` names an application tab no registered screen draws.
+// tab; `unclaimed` names an application tab no registered screen draws. A name
+// `build` or `apply` is given in `inactive` is drawn and never selected.
 //
 // The buttons are drawn by `acervatorMainWindow.renderTabBar`, the one React
 // bar both the shell and the Qt window use, so the two cannot drift.
@@ -33,6 +34,7 @@
   var ordered = null;
   var labels = {};
   var missing = [];
+  var inactive = [];
 
   function host() {
     return global.acervatorPanelHost || null;
@@ -69,9 +71,29 @@
     return null;
   }
 
+  function listOf(given) {
+    return Object.prototype.toString.call(given) === "[object Array]"
+      ? given.slice()
+      : [];
+  }
+
+  function isInactive(name) {
+    return inactive.indexOf(name) >= 0;
+  }
+
+  function firstOpen(found) {
+    for (var index = 0; index < found.length; index++) {
+      if (!isInactive(found[index])) {
+        return found[index];
+      }
+    }
+    return null;
+  }
+
   // The application's own tab book decides the order and every label. A tab
-  // no registered screen draws is left off the bar and named by `unclaimed`.
-  function apply(appTabs, appMethods) {
+  // no registered screen draws is left off the bar and named by `unclaimed`,
+  // unless `appInactive` names it: then it is drawn and never selected.
+  function apply(appTabs, appMethods, appInactive) {
     var listed = Object.prototype.toString.call(appTabs) === "[object Array]";
     if (host() === null || !listed || !appMethods) {
       return names();
@@ -79,7 +101,15 @@
     ordered = [];
     labels = {};
     missing = [];
+    inactive = [];
+    var asked = listOf(appInactive);
     for (var index = 0; index < appTabs.length; index++) {
+      if (asked.indexOf(appTabs[index]) >= 0) {
+        ordered.push(appTabs[index]);
+        labels[appTabs[index]] = appTabs[index];
+        inactive.push(appTabs[index]);
+        continue;
+      }
       var drawer = drawnBy(appMethods[appTabs[index]]);
       if (drawer === null) {
         missing.push(appTabs[index]);
@@ -93,8 +123,8 @@
         current = null;
       }
       draw();
-      if (current === null && ordered.length) {
-        select(ordered[0]);
+      if (current === null && firstOpen(ordered) !== null) {
+        select(firstOpen(ordered));
       }
     }
     return names();
@@ -159,6 +189,7 @@
     drawn.renderTabBar(bar, {
       names: found,
       labels: labels,
+      inactive: inactive.slice(),
       selected: current,
       onSelect: select,
       onMove: onMove
@@ -171,7 +202,12 @@
   }
 
   function select(name) {
-    if (host() === null || container === null || names().indexOf(name) < 0) {
+    if (
+      host() === null ||
+      container === null ||
+      names().indexOf(name) < 0 ||
+      isInactive(name)
+    ) {
       return Promise.resolve(false);
     }
     current = name;
@@ -184,17 +220,18 @@
     return opened[name];
   }
 
-  function build(barElement, panelContainer, moveHandler) {
+  function build(barElement, panelContainer, moveHandler, inactiveNames) {
     if (!barElement || !panelContainer || host() === null) {
       return [];
     }
     bar = barElement;
     container = panelContainer;
     onMove = typeof moveHandler === FUNCTION_KIND ? moveHandler : null;
+    inactive = listOf(inactiveNames);
     bar.setAttribute("role", "tablist");
     var found = draw();
-    if (found.length) {
-      select(found[0]);
+    if (firstOpen(found) !== null) {
+      select(firstOpen(found));
     }
     return found;
   }
@@ -216,6 +253,7 @@
     ordered = null;
     labels = {};
     missing = [];
+    inactive = [];
   }
 
   global.acervatorTabBar = {

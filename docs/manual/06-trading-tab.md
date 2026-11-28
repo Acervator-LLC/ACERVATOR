@@ -2,7 +2,7 @@
 
 Acervator features a semi-modular / layered design that nests a hyper-vigilant trading engine capable of operating in multiple investment domains simultaneously and all from one terminal. The Main Window contains all of the various subsections found in each subsystem tab. As it stands the existing and planned subsystem tabs are: Simulator, Paper Trading, Trading (Live), Market Inspector, Bot Swarm, Asset Charts, History, Console, Proof of Accumulation (PoA), and System Status. Most of these subsystems interact with each other to some degree with key isolations existing between the three trading tabs and their wiring to Market Inspector, Bot Swarm, and History.
 
-Now: the window builds nine tabs in this order: Sim, Paper, Live, Charts, Inspector, Swarm, History, Status and Console, and it builds no Proof of Accumulation tab (`src/gui/main_tabs/main_window_surface.py, in BAR_TAB_ORDER`).
+Now: the bar draws eleven tabs in this order: Sim, Paper, Live, Charts, Inspector, Swarm, PoA, Quint, History, Status and Console, and PoA and Quint open no screen (`src/gui/main_tabs/main_window_surface.py, in BAR_TAB_ORDER`).
 
 ## The mark
 
@@ -613,6 +613,8 @@ On the Scrumming table, a press on a row draws that bot on the Indicator Voting 
 | Round header dots | Hides that column behind asterisks. Filled shows and hollow hides. Target's three columns share one field, as do Position Value and Ammo. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel.on_privacy_toggled` |
 
 Now: when the exchange confirms a fill, the units the Ammo cell reads move in the same step as the units Current Position Value prices, on every fill path, so both cells show the fill in the same redraw (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_sale`). After a sale is booked, the bot reads the exchange once, and that reading stands (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.refresh_priced_figures_after_fill`).
+
+Now: when the exchange confirms a buy with Stack Mode on, the Trades count and the other figures the fill settles are written before the first rung of its ladder goes out, so Trades moves in the same redraw as Current Position Value. The fill is announced once, after the rungs, and names the rungs it opened (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_then_ladder`).
 
 | Extractor Bots column | What it shows and what it reads |
 | --- | --- |

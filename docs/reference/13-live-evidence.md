@@ -602,11 +602,8 @@ orders placed      20,000   all at the price the bot decided
 refusal lines           0
 ```
 
-Two of the three can only ever read zero. The Proof of Accumulation tab shows
-those two, under the names `fumble_adjusted` and `fumble_canceled` in
-`src/competition/rpg_metrics.py`, so both cells read zero for every bot.
-`verify_clean`, the one counter that moves, has no reader anywhere in the
-platform, so no screen displays it.
+Two of the three can only ever read zero. `verify_clean`, the one counter that
+moves, has no reader anywhere in the platform, so no screen displays it.
 
 The counters themselves work. Fed a five percent shortfall by hand instead of
 one the guard drew, the sell path cancelled 2,000 of 2,000 runs, placed no
@@ -682,8 +679,7 @@ An ordinary market refuses nothing. The same six arms were driven through the
 buy path and answered the same way.
 
 Three counters record what the guard did, and all three now move on a live bot.
-They were invisible before: two reach the Proof of Accumulation tab and read
-zero for every bot, and the third had no reader anywhere. All four figures now
+They were invisible before: no screen read any of the three. All four figures now
 go into the gate log, beside the other records a fired trade writes, under the
 name `slippage_guard`. Read back off disk after driving three clean sells and
 two refused ones:

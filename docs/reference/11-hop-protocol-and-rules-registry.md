@@ -857,15 +857,16 @@ reports   one high finding per credential, naming its shape and its line
 silent    a placeholder, a field name, a credentials file path, a short value
 ```
 
-Six shapes are read, and each one is the shape a credential takes in this
-application's own files.
+Six shapes are read. Five are the shapes a credential takes in this
+application's own files, and no file in the tree holds the sixth, a hex private
+key.
 
 ```
 a labelled secret         src/exchange/api_logger.py, _SENSITIVE_LABEL
 a bearer token            src/stocks/robinhood_broker.py, BEARER_PREFIX
 a private key block       src/core/encryption.py, EC_PEM_HEADER
 a Coinbase key name       src/exchange/ccxt_connector.py, in sync_connect
-a hex private key         contracts/deploy.py
+a hex private key
 a password in a URL       src/exchange/api_logger.py, in _redact
 ```
 
