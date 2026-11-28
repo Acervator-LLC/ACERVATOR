@@ -539,6 +539,7 @@ def votes_payload(bots: Any, reading: Any = None) -> dict:
     if "selected_bot_id" in read:
         surface.view_model({"action": "select_bot", "bot_id": selected})
     surface.view_model({"action": "set_masked", "masked": bool(read.get("masked"))})
+    surface.view_model({"action": "set_timing", "timing": read.get("timing")})
     if "rates" in read:
         surface.view_model({"action": "set_rates", "snapshot": read.get("rates")})
     stored = read.get("stored")

@@ -22,14 +22,28 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from dataclasses import asdict, is_dataclass
+
 from ...exchange.timeframes import ALL_TIMEFRAMES
+from ...trading import vote_boost as zone
+from ...trading.gate_chain import (
+    BBProximityGate,
+    CircuitBreakerGate,
+    DeltaPositiveGate,
+    HTFDeferGate,
+    HysteresisGate,
+    IntervalGate,
+    MidlineGate,
+    SmartCeilingGate,
+    TargetFiresGate,
+    TranchesQueuedGate,
+)
 
 from .. import design_system as ds
 from ..descriptions import INDICATOR_PANEL_DESCRIPTIONS, fitted
 from . import privacy_dot_surface
 from .native_chart_surface import (
     ARROW_GLYPH_FAMILY,
-    ARROW_GLYPH_PX,
     CONTROL_HEIGHT_PX,
 )
 
@@ -46,7 +60,9 @@ DOT_BASE_KIND = "QPushButton"
 TABLE_KIND = "QTableWidget"
 CELL_KIND = "QTableWidgetItem"
 
-TITLE_TEXT = "Indicator Voting Panel"
+TITLE_TEXT = "TA-IVP"
+TITLE_FONT_PX = 11
+TITLE_STYLE_SHEET = f"font-size: {TITLE_FONT_PX}px;"
 BARS_ACCESSIBLE_NAME = "Indicator Confidence Bar Graph"
 STALENESS_ACCESSIBLE_NAME = "TA Staleness Banner"
 RATE_STRIP_ACCESSIBLE_NAME = "Currency Rate Strip"
@@ -75,7 +91,9 @@ CONTAINER = {
 HEADER = {
     "margins_px": [4, 2, 4, 2],
     "bot_label_text": "Bot:",
-    "selector_minimum_width_px": 180,
+    "selector_minimum_width_px": 120,
+    "selector_maximum_width_px": 160,
+    "title_font_px": TITLE_FONT_PX,
     "selector_tooltip": INDICATOR_PANEL_DESCRIPTIONS["bot_selector"],
 }
 
@@ -83,14 +101,14 @@ TITLE_HEADING_PROPERTY = "heading"
 LOCKS_MUTED_PROPERTY = "muted"
 
 
-#: The glyphs, the size and the family the Charts tab's own arrows carry,
-#: imported rather than copied so the two control rows cannot drift.
+#: The family the Charts tab's own arrows carry, and a smaller glyph and width.
 PREV_BOT_TEXT = "◀"
 NEXT_BOT_TEXT = "▶"
 PREV_BOT_TOOLTIP = "Show the previous bot."
 NEXT_BOT_TOOLTIP = "Show the next bot."
-ARROW_WIDTH_PX = 34
+ARROW_WIDTH_PX = 24
 ARROW_HEIGHT_PX = CONTROL_HEIGHT_PX
+ARROW_GLYPH_PX = 12
 
 #: A press moves the dropdown this many places, and stops at either end.
 STEP_BACK = -1
@@ -128,6 +146,157 @@ def arrows_payload() -> dict:
         "glyph_px": ARROW_GLYPH_PX,
         "glyph_family": ARROW_GLYPH_FAMILY,
         "style_sheet": ARROW_STYLE_SHEET,
+    }
+
+
+TIMING_KIND = "ZoneTimingRow"
+TIMING_ACCESSIBLE_NAME = "TA-IVP Timing Row"
+TIMING_TITLE_TEXT = "Timing"
+TIMING_FORMAT = "{title}: {words}"
+TIMING_NO_READING_STATE = "no reading"
+TIMING_NO_READING_TEXT = "no reading yet"
+TIMING_FONT_PX = 10
+TIMING_SPACING_PX = 4
+TIMING_BAR_WIDTH_PX = 48
+TIMING_BAR_HEIGHT_PX = 8
+TIMING_SIDE_TEXT = {zone.SCRUM_SIDE: "Scrum", zone.FOLD_SIDE: "Fold"}
+TIMING_OUTSIDE_TEXT = {
+    zone.ZONE_OFF_SIDE: "outside the zone",
+    zone.ZONE_UNDER_INTERVAL: "outside the zone, the Target Delta is under the interval",
+    zone.ZONE_NOT_READ: "outside the zone, no zone test on the last read",
+}
+TIMING_STATE_FORMATS = {
+    zone.ZONE_WAITING: "{side} waiting, the vote reads deeper",
+    zone.ZONE_TRADE_NOW: "{side} trade now",
+    zone.ZONE_LATE_TURN: "{side} late turn",
+    zone.ZONE_HELD: "{side} held by {hold}",
+}
+TIMING_GAP_FORMAT = "gap {gap:+.1%}"
+TIMING_TOOLTIP_FORMAT = (
+    "Line {line:.4f} x{scale:.2f}, boost {boost:.4f}: bar {bar:.4f}. "
+    "Vote {direction} {confidence:.4f}, gap {gap:.4f}."
+)
+TIMING_HOLD_TOOLTIP_FORMAT = " Held by {words}."
+TIMING_NO_VOTE_TEXT = "NONE"
+TIMING_OUTSIDE_TOOLTIP = (
+    "No zone visit on this read; the row fills inside BB Tolerance "
+    "on the Target Delta's side."
+)
+TIMING_NO_READING_TOOLTIP = "No zone reading for this bot yet."
+
+#: The words ``timing_payload`` names each holding gate by.
+HOLD_WORDS = {
+    HysteresisGate("scrum").name: "Minimum Opposing Trade Distance",
+    HysteresisGate("fold").name: "Minimum Opposing Trade Distance",
+    CircuitBreakerGate("scrum").name: "Circuit Breaker",
+    CircuitBreakerGate("fold").name: "Circuit Breaker",
+    TranchesQueuedGate.name: "a queued tranche",
+    SmartCeilingGate.name: "Position Ceiling",
+    MidlineGate("scrum").name: "the phantom lock",
+    MidlineGate("fold").name: "the phantom lock",
+    HTFDeferGate("scrum").name: "the higher-timeframe defer",
+    HTFDeferGate("fold").name: "the higher-timeframe defer",
+    IntervalGate.name: "Scrumming Interval",
+    DeltaPositiveGate.name: "the Target Delta's side",
+    BBProximityGate("scrum").name: "BB Tolerance",
+    BBProximityGate("fold").name: "BB Tolerance",
+    TargetFiresGate.name: "the ramp",
+}
+
+
+def timing_reading(bot_id: Any, state: Any) -> Optional[dict]:
+    """``state``, a ``vote_boost.ZoneState`` or its fields, with ``bot_id``; None with no state."""
+    if is_dataclass(state) and not isinstance(state, type):
+        fields = asdict(state)
+    elif isinstance(state, dict):
+        fields = dict(state)
+    else:
+        return None
+    fields["bot_id"] = str(bot_id or EMPTY_TEXT)
+    return fields
+
+
+def timing_fraction(gap: Any, bar: Any) -> float:
+    """``gap`` as a share of the headroom over ``bar``, 0 to 1; 0.0 with no headroom."""
+    read_gap = as_finite_float(gap)
+    read_bar = as_finite_float(bar)
+    if read_gap is None or read_bar is None:
+        return REFUSED_READING
+    headroom = 1.0 - read_bar
+    if headroom <= 0.0:
+        return REFUSED_READING
+    return _clamped(read_gap / headroom)
+
+
+def timing_payload(reading: Any, selected_bot_id: Any) -> dict:
+    """The Timing row for ``reading`` while it belongs to ``selected_bot_id``, else the no-reading row."""
+    held = reading if isinstance(reading, dict) else {}
+    chosen = str(selected_bot_id or EMPTY_TEXT)
+    if not chosen or str(held.get("bot_id", EMPTY_TEXT)) != chosen:
+        held = {}
+    state = str(held.get("state", TIMING_NO_READING_STATE))
+    side = str(held.get("side", EMPTY_TEXT))
+    read = {
+        name: as_finite_float(held.get(name))
+        for name in ("confidence", "bar", "line", "boost", "gap")
+    }
+    figures = {
+        name: REFUSED_READING if value is None else value
+        for name, value in read.items()
+    }
+    hold = str(held.get("hold", EMPTY_TEXT))
+    hold_words = HOLD_WORDS.get(hold, hold)
+    if not held:
+        words = TIMING_NO_READING_TEXT
+        tooltip = TIMING_NO_READING_TOOLTIP
+        gap_text = EMPTY_TEXT
+    elif state in TIMING_STATE_FORMATS:
+        words = TIMING_STATE_FORMATS[state].format(
+            side=TIMING_SIDE_TEXT.get(side, side), hold=hold_words
+        )
+        tooltip = TIMING_TOOLTIP_FORMAT.format(
+            scale=1.0 + figures["boost"],
+            direction=str(held.get("direction") or TIMING_NO_VOTE_TEXT),
+            **figures,
+        )
+        if state == zone.ZONE_HELD:
+            tooltip = fitted(
+                tooltip, TIMING_HOLD_TOOLTIP_FORMAT.format(words=hold_words)
+            )
+        gap_text = TIMING_GAP_FORMAT.format(gap=figures["gap"])
+    else:
+        reason = str(held.get("reason", zone.ZONE_NOT_READ))
+        words = TIMING_OUTSIDE_TEXT.get(reason, reason)
+        tooltip = TIMING_OUTSIDE_TOOLTIP
+        gap_text = EMPTY_TEXT
+    fraction = timing_fraction(figures["gap"], figures["bar"]) if held else 0.0
+    color = {
+        zone.ZONE_WAITING: WARNING_TEXT_COLOR,
+        zone.ZONE_TRADE_NOW: BULLISH_TEXT_COLOR,
+        zone.ZONE_LATE_TURN: BULLISH_TEXT_COLOR,
+        zone.ZONE_HELD: BEARISH_TEXT_COLOR,
+    }.get(state, NEUTRAL_TEXT_COLOR)
+    return {
+        "kind": TIMING_KIND,
+        "accessible_name": TIMING_ACCESSIBLE_NAME,
+        "bot_id": str(held.get("bot_id", EMPTY_TEXT)),
+        "state": state,
+        "side": side,
+        "hold": hold,
+        "text": TIMING_FORMAT.format(title=TIMING_TITLE_TEXT, words=words),
+        "gap_text": gap_text,
+        "tooltip": tooltip,
+        "fraction": fraction,
+        "fill_px": int(round(fraction * TIMING_BAR_WIDTH_PX)),
+        "fill_percent": round(fraction * PERCENT_SCALE, 2),
+        "figures": figures,
+        "font_px": TIMING_FONT_PX,
+        "spacing_px": TIMING_SPACING_PX,
+        "bar_width_px": TIMING_BAR_WIDTH_PX,
+        "bar_height_px": TIMING_BAR_HEIGHT_PX,
+        "text_color": color,
+        "bar_color": color,
+        "track_color": _hex(BARS_BASELINE_RGB),
     }
 
 
@@ -1366,6 +1535,12 @@ class IndicatorPanelModel:
         self.no_data_cause = EMPTY_TEXT
         self.no_data_message = EMPTY_TEXT
         self.rate_line = RATE_STRIP_PENDING_TEXT
+        self.timing: Optional[dict] = None
+
+    def set_timing(self, reading: Any) -> Optional[dict]:
+        """Hold one ``timing_reading``; ``timing_payload`` draws it only for the bot it names."""
+        self.timing = dict(reading) if isinstance(reading, dict) else None
+        return self.timing
 
     def set_summary(self, multi_tf_summary: dict, symbol: str = EMPTY_TEXT) -> None:
         """Draw a live reading, clearing any staleness banner over it."""
@@ -1578,12 +1753,14 @@ def build_payload(model: IndicatorPanelModel) -> dict:
             "text": no_data_text(model.summary, model.no_data_message),
         },
         "showing_stored": model.showing_stored,
+        "timing": timing_payload(model.timing, model.selected_bot_id),
     }
 
 
 PANEL_MODEL = IndicatorPanelModel()
 
 ACTIONS = (
+    "set_timing",
     "set_summary",
     "show_no_data",
     "show_stored",
@@ -1597,7 +1774,9 @@ ACTIONS = (
 
 
 def _apply(model: IndicatorPanelModel, action: str, params: dict) -> None:
-    if action == "set_summary":
+    if action == "set_timing":
+        model.set_timing(params.get("timing"))
+    elif action == "set_summary":
         model.set_summary(params.get("summary") or {}, params.get("symbol", EMPTY_TEXT))
     elif action == "show_no_data":
         model.show_no_data(

@@ -994,6 +994,7 @@ class PaperTradingTab(QWidget):
         through ``show_no_data`` with its cause."""
         panel = self._indicator_panel
         chosen = str(bot_id or panel.selected_bot_id or "")
+        panel.show_timing(chosen, tab_surface.zone_state_for(self.run(), chosen))
         if not chosen:
             panel.show_no_data(cause=tab_surface.NO_SELECTION_CAUSE)
             return {"cause": tab_surface.NO_SELECTION_CAUSE}

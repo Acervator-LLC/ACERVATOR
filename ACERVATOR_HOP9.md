@@ -478,7 +478,13 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   functions, each chain on its own side of the Target Delta
   (`src/trading/ata_gate_scan.py, in side_zone`). No code reads Detect
   Threshold, Fire Threshold or BB Midline Gate. Row 11 is not this unit. Rows 2
-  to 6 stay readings over the retained gate record.
+  to 6 stay readings over the retained gate record. Row 14 is built: the panel's
+  title reads TA-IVP at 11 pixels, and a Timing row beside it shows the zone
+  state the bot's last read acted on (`src/trading/vote_boost.py, in zone_state`).
+  The Live tick, a new bot's first buy read, the Paper tick and the Simulator
+  walk each store that state, and
+  the panel draws it for the selected bot alone
+  (`src/gui/main_tabs/indicator_panel_surface.py, in timing_payload`).
 - **#1854, every build number reads in UTC. Rows 1 and 2 are built.** A build
   number's date and time are its commit's committer time in UTC, so one commit
   gives one number on every machine and a higher number is a newer build, in

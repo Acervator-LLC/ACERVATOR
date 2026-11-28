@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Optional
 
 from .indicators.bb_proximity import PanelBand
@@ -299,4 +299,83 @@ def read_zone(
         fold=timing(FOLD_SIDE),
         band=band,
         line=line,
+    )
+
+
+ZONE_OUTSIDE: str = "outside"
+ZONE_WAITING: str = "waiting"
+ZONE_TRADE_NOW: str = "trade now"
+ZONE_LATE_TURN: str = "late turn"
+ZONE_HELD: str = "held"
+
+ZONE_NOT_READ: str = "not read"
+ZONE_OFF_SIDE: str = "off the zone"
+ZONE_UNDER_INTERVAL: str = "under the interval"
+
+
+@dataclass(frozen=True)
+class ZoneState:
+    """``zone_state``'s answer: the state, its reason or side, the vote, the bar, the line, the boost, the gap and the holding gate."""
+
+    state: str = ZONE_OUTSIDE
+    reason: str = ZONE_NOT_READ
+    side: str = ""
+    direction: str = ""
+    confidence: float = 0.0
+    bar: float = 0.0
+    line: float = 0.0
+    boost: float = 0.0
+    gap: float = 0.0
+    hold: str = ""
+
+
+def zone_state(
+    zone: ZoneRead,
+    direction: Optional[SignalDirection],
+    confidence: float,
+    *,
+    past_interval: bool,
+    late_side: str,
+    scrum: tuple[bool, Sequence[str]],
+    fold: tuple[bool, Sequence[str]],
+) -> ZoneState:
+    """One read's ``ZoneState`` from ``zone``, the vote, ``late_side`` and each chain's ``(should_fire, blocked gate names)``."""
+    from .gate_chain import ZoneTimingGate
+
+    if late_side in DEEPER_WAY:
+        side = late_side
+    elif zone.upper:
+        side = SCRUM_SIDE
+    elif zone.lower:
+        side = FOLD_SIDE
+    else:
+        return ZoneState(reason=ZONE_OFF_SIDE, line=zone.line)
+    timing = zone.scrum if side == SCRUM_SIDE else zone.fold
+    read = ZoneState(
+        reason=ZONE_UNDER_INTERVAL,
+        side=side,
+        direction=direction.name if direction is not None else "",
+        confidence=float(confidence),
+        bar=timing.bar,
+        line=zone.line,
+        boost=timing.boost.share,
+    )
+    if not past_interval:
+        return read
+    fired, blocked = scrum if side == SCRUM_SIDE else fold
+    if fired:
+        state = ZONE_LATE_TURN if side == late_side else ZONE_TRADE_NOW
+        return replace(read, state=state, reason="")
+    deeper = zone.scrum_deeper if side == SCRUM_SIDE else zone.fold_deeper
+    gap = max(0.0, read.confidence - timing.bar) if deeper else 0.0
+    waiting_gate = {
+        SCRUM_SIDE: ZoneTimingGate("scrum").name,
+        FOLD_SIDE: ZoneTimingGate("fold").name,
+    }[side]
+    holds = [name for name in blocked if name != waiting_gate]
+    if deeper and not holds:
+        return replace(read, state=ZONE_WAITING, reason="", gap=gap)
+    named = holds or list(blocked)
+    return replace(
+        read, state=ZONE_HELD, reason="", gap=gap, hold=named[0] if named else ""
     )

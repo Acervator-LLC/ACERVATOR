@@ -764,6 +764,14 @@ COLD_START_CAUSE = "cold_start"
 TOO_FEW_CANDLES_CAUSE = "too_few_candles"
 
 
+def zone_state_for(run: Any, bot_id: Any) -> Any:
+    """The ``PaperRun.zone_states`` entry of ``bot_id``, the state its newest Paper tick acted on; None with no run or no tick."""
+    held = getattr(run, "zone_states", None)
+    if not isinstance(held, dict):
+        return None
+    return held.get(str(bot_id or ""))
+
+
 def ivp_feed(bot: Any) -> dict:
     """The voting panel's feed for ``bot`` with no feed read: ``no_selection``
     with no bot, ``not_running`` in ``NOT_RUNNING_STATES``, ``bot_error`` in

@@ -112,6 +112,7 @@ from . import paper_log
 from .fake_balance import FakeBalance, PaperLedger, opening_ledger
 from .fleet_source import PaperBot
 from .paper_wire import PaperWireManager
+from ..trading import vote_boost
 
 logger = logging.getLogger("acervator.paper.run")
 
@@ -204,7 +205,8 @@ class PaperTrade:
 @dataclass(frozen=True)
 class PaperTick:
     """One gate-chain evaluation of one bot against the newest bar, with the
-    ``bid``, ``ask`` and ``last`` of the ticker read that priced it."""
+    ``bid``, ``ask`` and ``last`` of the ticker read that priced it, and the
+    ``zone_state`` the evaluation acted on."""
 
     bot_id: str
     symbol: str
@@ -225,6 +227,7 @@ class PaperTick:
     bid: float = 0.0
     ask: float = 0.0
     last: float = 0.0
+    zone_state: vote_boost.ZoneState = field(default_factory=vote_boost.ZoneState)
 
 
 def read_tick_skip(read_timeframe: str, scrum_target_mode: Optional[str]) -> int:
@@ -269,6 +272,28 @@ def fold_taper(bot: PaperBot, balance: FakeBalance) -> float:
     return fold_size_taper(ratio_to_ceiling(value, ceiling))
 
 
+def paper_zone_read(
+    bot: PaperBot,
+    balance: FakeBalance,
+    window: Sequence[Any],
+    summary: Any,
+    ticker_last: float,
+) -> vote_boost.ZoneRead:
+    """``read_zone`` over ``window`` and ``summary``, with the Target Delta of the position priced at ``ticker_last``."""
+    last = float(ticker_last)
+    target_usd = float(getattr(balance, "target_usd", 0.0) or bot.target_usd or 0.0)
+    return vote_boost.read_zone(
+        summary.signals if summary is not None else [],
+        summary.consensus_direction if summary is not None else None,
+        float(summary.consensus_confidence) if summary is not None else 0.0,
+        target_delta_usd(balance.value_usd(last), target_usd),
+        window,
+        tolerance_pct=float(bot.bb_tolerance_pct),
+        taper_minimum=int(bot.bb_landing_strip_candles),
+        figures=vote_boost.boost_figures(bot),
+    )
+
+
 def paper_tape_context(
     bot: PaperBot,
     balance: FakeBalance,
@@ -277,6 +302,7 @@ def paper_tape_context(
     summary: Any,
     ticker_last: float,
     htf_bias_name: Optional[str] = None,
+    zone: Optional[vote_boost.ZoneRead] = None,
 ) -> GateContext:
     """A ``GateContext`` for the newest candle of ``window`` with the position
     priced at ``ticker_last``.
@@ -287,10 +313,9 @@ def paper_tape_context(
     indicators alone, so this fork takes ``ticker_last`` for ``ticker_last``,
     for the ``delta`` against the position's grown ``target_usd`` and for
     ``mem253_current_pos``, and leaves ``reading``, ``summary`` and ``window``
-    to drive ``bb_pos``, every indicator and ``trend_reading``.
+    to drive ``bb_pos``, every indicator and ``trend_reading``. ``zone`` is the
+    ``paper_zone_read`` the caller already holds, read here when None.
     """
-    from ..trading.vote_boost import boost_figures, read_zone
-
     last = float(ticker_last)
     bb_pos = float(reading.bb_position) if reading is not None else 0.0
     upper_dt = reading.upper_line if reading is not None else 1.0
@@ -298,16 +323,8 @@ def paper_tape_context(
     target_usd = float(getattr(balance, "target_usd", 0.0) or bot.target_usd or 0.0)
     position_usd = balance.value_usd(last)
     delta = target_delta_usd(position_usd, target_usd)
-    zone = read_zone(
-        summary.signals if summary is not None else [],
-        summary.consensus_direction if summary is not None else None,
-        float(summary.consensus_confidence) if summary is not None else 0.0,
-        delta,
-        window,
-        tolerance_pct=float(bot.bb_tolerance_pct),
-        taper_minimum=int(bot.bb_landing_strip_candles),
-        figures=boost_figures(bot),
-    )
+    if zone is None:
+        zone = paper_zone_read(bot, balance, window, summary, last)
     upper_zone, lower_zone = zone.upper, zone.lower
     htf_blocks_scrum = htf_bias_name == BULLISH
     htf_blocks_fold = htf_bias_name == BEARISH
@@ -847,8 +864,20 @@ def tick(
     stamp = int(window[-1].timestamp)
     last = last or close
     reset_growth_cycle(balance, reading)
-    context = paper_tape_context(bot, balance, window, reading, summary, last)
+    zone = paper_zone_read(bot, balance, window, summary, last)
+    context = paper_tape_context(
+        bot, balance, window, reading, summary, last, zone=zone
+    )
     armed = latch(context)
+    state = vote_boost.zone_state(
+        zone,
+        summary.consensus_direction,
+        float(summary.consensus_confidence),
+        past_interval=not context.below_interval,
+        late_side="",
+        scrum=(bool(armed["scrum_armed"]), armed["scrum_held_by"]),
+        fold=(bool(armed["fold_armed"]), armed["fold_held_by"]),
+    )
     filled = None
     refused: list[str] = []
     if armed["scrum_armed"]:
@@ -895,6 +924,7 @@ def tick(
         bid=bid,
         ask=ask,
         last=last,
+        zone_state=state,
     )
 
 
@@ -916,6 +946,8 @@ class PaperRun:
     trades: list[PaperTrade] = field(default_factory=list)
     ticks: list[PaperTick] = field(default_factory=list)
     refusals: dict[str, str] = field(default_factory=dict)
+    #: The newest ``PaperTick.zone_state`` for each bot, by ``bot_id``.
+    zone_states: dict[str, vote_boost.ZoneState] = field(default_factory=dict)
     ticks_made: int = 0
     #: The ``MarketRules`` recorded for each bot's market, by ``bot_id``, read
     #: once at ``start`` and handed to every ``tick``.
@@ -1004,6 +1036,7 @@ def start(bots: Sequence[PaperBot], rule: str) -> PaperRun:
 def record(run: PaperRun, bot: PaperBot, seen: PaperTick) -> None:
     """File ``seen`` on ``run`` and append its row to the paper log."""
     run.ticks.append(seen)
+    run.zone_states[bot.bot_id] = seen.zone_state
     price = seen.last or seen.price
     if price > 0.0:
         run.last_price[bot.bot_id] = price
@@ -1272,6 +1305,7 @@ __all__ = [
     "STOPPED_STATE",
     "BotStatsSnapshot",
     "paper_tape_context",
+    "paper_zone_read",
     "NO_UNIT_RULE_FORMAT",
     "RUN_STATES",
     "RUN_THREAD_NAME",

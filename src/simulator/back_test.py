@@ -648,6 +648,8 @@ class BotResult:
     evaluations_expected: int = 0
     #: The seconds ``walk`` alone took.
     walk_seconds: float = 0.0
+    #: The ``vote_boost.ZoneState`` the walk's last step acted on, None before a step.
+    zone_state: Any = None
 
     @property
     def seconds_per_thousand(self) -> float:
@@ -1051,6 +1053,26 @@ def ta_direction(
     )
 
 
+def tape_zone_read(
+    bot: SimBot, position: Any, window: Sequence[Any], summary: Any
+) -> Any:
+    """``vote_boost.read_zone`` over ``window`` and ``summary``, with the Target Delta of ``position`` at the last close."""
+    from ..trading.vote_boost import boost_figures, read_zone
+
+    close = float(window[-1].close)
+    target_usd = float(getattr(position, "target_usd", 0.0) or bot.target_usd or 0.0)
+    return read_zone(
+        summary.signals if summary is not None else [],
+        summary.consensus_direction if summary is not None else None,
+        float(summary.consensus_confidence) if summary is not None else 0.0,
+        target_delta_usd(position.value_usd(close), target_usd),
+        window,
+        tolerance_pct=float(bot.bb_tolerance_pct),
+        taper_minimum=int(bot.bb_landing_strip_candles),
+        figures=boost_figures(bot),
+    )
+
+
 def tape_context(
     bot: SimBot,
     position: Any,
@@ -1058,6 +1080,7 @@ def tape_context(
     reading: Any,
     summary: Any,
     htf_bias_name: Optional[str] = None,
+    zone: Any = None,
 ) -> GateContext:
     """A ``GateContext`` for the last candle of ``window`` and the ``position``
     holding it.
@@ -1068,26 +1091,17 @@ def tape_context(
     the higher-timeframe fields as ``ScrummingBot.tick`` sets them off the
     coordinator's bias, blocking a scrum on ``BULLISH`` and a fold on
     ``BEARISH`` under the two defer flags; the circuit breaker and hysteresis
-    fields read as not populated.
+    fields read as not populated. ``zone`` is the ``tape_zone_read`` the
+    caller already holds, read here when None.
     """
-    from ..trading.vote_boost import boost_figures, read_zone
-
     close = float(window[-1].close)
     bb_pos = float(reading.bb_position) if reading is not None else 0.0
     upper_dt = reading.upper_line if reading is not None else 1.0
     lower_dt = reading.lower_line if reading is not None else 0.0
     target_usd = float(getattr(position, "target_usd", 0.0) or bot.target_usd or 0.0)
     delta = target_delta_usd(position.value_usd(close), target_usd)
-    zone = read_zone(
-        summary.signals if summary is not None else [],
-        summary.consensus_direction if summary is not None else None,
-        float(summary.consensus_confidence) if summary is not None else 0.0,
-        delta,
-        window,
-        tolerance_pct=float(bot.bb_tolerance_pct),
-        taper_minimum=int(bot.bb_landing_strip_candles),
-        figures=boost_figures(bot),
-    )
+    if zone is None:
+        zone = tape_zone_read(bot, position, window, summary)
     upper_zone, lower_zone = zone.upper, zone.lower
     htf_blocks_scrum = htf_bias_name == BULLISH
     htf_blocks_fold = htf_bias_name == BEARISH
@@ -1706,6 +1720,7 @@ def walk(
     ``weights_in_force`` when it is None, so the rerun votes at the figures a
     live bot votes at."""
     from ..trading.ta_engine import VotingEngine, weights_in_force
+    from ..trading.vote_boost import zone_state
 
     if len(candles) < MIN_CANDLES:
         if emitter is not None:
@@ -1747,6 +1762,7 @@ def walk(
     fees = 0.0
     halted = False
     last_index = MIN_CANDLES - 1
+    last_state = None
     opening = stats_snapshot(
         bot,
         position,
@@ -1769,8 +1785,20 @@ def walk(
         htf_name, htf_detail = higher_tf_bias(tapes, index, phantom_engine)
         bias_counts[str(htf_name)] = bias_counts.get(str(htf_name), 0) + 1
         reset_growth_cycle(position, reading)
-        context = tape_context(bot, position, window, reading, summary, htf_name)
+        zone = tape_zone_read(bot, position, window, summary)
+        context = tape_context(
+            bot, position, window, reading, summary, htf_name, zone=zone
+        )
         armed = latch(context)
+        last_state = zone_state(
+            zone,
+            summary.consensus_direction,
+            float(summary.consensus_confidence),
+            past_interval=not context.below_interval,
+            late_side="",
+            scrum=(bool(armed["scrum_armed"]), armed["scrum_held_by"]),
+            fold=(bool(armed["fold_armed"]), armed["fold_held_by"]),
+        )
         ticks += 1
         price = float(window[-1].close)
         stamp = int(window[-1].timestamp)
@@ -1894,6 +1922,7 @@ def walk(
             "refused": dict(refused),
             "bias_counts": bias_counts,
         },
+        zone_state=last_state,
     )
 
 

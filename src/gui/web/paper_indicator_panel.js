@@ -83,6 +83,7 @@
   var STYLE_SHEET = "style_sheet";
   var TEXT_COLOR = "text_color";
   var TIMEFRAME = "timeframe";
+  var TIMING = "timing";
   var TITLES = "titles";
   var TITLE_TEXT = "title_text";
   var TOOLTIP = "tooltip";
@@ -94,6 +95,7 @@
   var DECLARED_FIELDS = [
     ALPHA_UNIT,
     "alpha_scale",
+    "arrows",
     BARS,
     "base_kind",
     "bot_timeframes",
@@ -113,6 +115,7 @@
     PERCENT_SCALE,
     PILLARS,
     PRIVACY,
+    "privacy_dot",
     RATE_STRIP,
     "raw_value_indicators",
     "row_a_cols",
@@ -126,6 +129,7 @@
     STALENESS,
     TABLES,
     "timeframe_order",
+    TIMING,
     "title_heading_property",
     TITLE_TEXT
   ];
@@ -414,9 +418,82 @@
   // Measured off both renders: the QLabel draws title_text at the panel's
   // own weight, so a bold span would draw a wider title than Qt does.
   function Title(props) {
-    var titleProps = { style: { fontWeight: NORMAL } };
+    var head = objectField(props.model, HEADER);
+    var titleProps = {
+      style: { fontWeight: NORMAL, fontSize: length(head.title_font_px) }
+    };
     titleProps[PART_ATTR] = TITLE_PART;
     return element(SPAN_TAG, titleProps, text(props.model[TITLE_TEXT]));
+  }
+
+  var TIMING_PART = "indicator-timing";
+  var TIMING_TEXT_PART = "indicator-timing-text";
+  var TIMING_TRACK_PART = "indicator-timing-track";
+  var TIMING_FILL_PART = "indicator-timing-fill";
+  var TIMING_GAP_PART = "indicator-timing-gap";
+  var NO_SHRINK = 0;
+  var NO_WRAP = "nowrap";
+  var ELLIPSIS = "ellipsis";
+  var FULL_HEIGHT = "100%";
+
+  // The Timing row: timing_payload's words, its gap bar and its gap figure,
+  // under one tooltip, in the colour its state draws in.
+  function TimingRow(props) {
+    var row = objectField(props.model, TIMING);
+    var rowProps = {
+      style: {
+        display: FLEX,
+        alignItems: CENTER,
+        gap: length(row.spacing_px),
+        minWidth: ZERO,
+        flexShrink: FULL,
+        fontSize: length(row.font_px),
+        color: text(row.text_color)
+      }
+    };
+    rowProps[PART_ATTR] = TIMING_PART;
+    rowProps[SLOT_ATTR] = TIMING_PART;
+    rowProps[STATE_ATTR] = text(row[STATE]);
+    rowProps[TITLE_ATTR] = label(row[TOOLTIP]);
+    rowProps[ARIA_LABEL] = label(row.accessible_name);
+    var wordsProps = {
+      key: TIMING_TEXT_PART,
+      style: {
+        minWidth: ZERO,
+        overflow: HIDDEN,
+        whiteSpace: NO_WRAP,
+        textOverflow: ELLIPSIS
+      }
+    };
+    wordsProps[PART_ATTR] = TIMING_TEXT_PART;
+    var trackProps = {
+      key: TIMING_TRACK_PART,
+      style: {
+        width: length(row.bar_width_px),
+        height: length(row.bar_height_px),
+        flexShrink: NO_SHRINK,
+        backgroundColor: text(row.track_color)
+      }
+    };
+    trackProps[PART_ATTR] = TIMING_TRACK_PART;
+    var fillProps = {
+      style: {
+        width: text(row.fill_percent) + PERCENT,
+        height: FULL_HEIGHT,
+        backgroundColor: text(row.bar_color)
+      }
+    };
+    fillProps[PART_ATTR] = TIMING_FILL_PART;
+    var gapProps = {
+      key: TIMING_GAP_PART,
+      style: { flexShrink: NO_SHRINK, whiteSpace: NO_WRAP }
+    };
+    gapProps[PART_ATTR] = TIMING_GAP_PART;
+    return element(DIV_TAG, rowProps, [
+      element(SPAN_TAG, wordsProps, text(row[TEXT])),
+      element(DIV_TAG, trackProps, element(DIV_TAG, fillProps, null)),
+      element(SPAN_TAG, gapProps, text(row.gap_text))
+    ]);
   }
 
   // The ask that selects a bot on the panel; the tab's host answers it with a
@@ -467,7 +544,10 @@
     var selectProps = {
       value: text(model[SELECTED_BOT_ID]),
       onChange: props.onSelect,
-      style: { minWidth: length(objectField(model, HEADER).selector_minimum_width_px) }
+      style: {
+        minWidth: length(objectField(model, HEADER).selector_minimum_width_px),
+        maxWidth: length(objectField(model, HEADER).selector_maximum_width_px)
+      }
     };
     selectProps[PART_ATTR] = SELECTOR_PART;
     selectProps[SLOT_ATTR] = SELECTOR_PART;
@@ -475,7 +555,7 @@
     return element(SELECT_TAG, selectProps, drawn);
   }
 
-  // Title, then a spacer, then BotSelector and PrivacyDot in the right corner.
+  // Title, TimingRow, a spacer, then BotSelector and PrivacyDot in the right corner.
   function HeaderRow(props) {
     var model = props.model;
     var head = objectField(model, HEADER);
@@ -490,6 +570,7 @@
     var spacer = element(DIV_TAG, { key: PANEL_PART, style: { flex: FULL } }, null);
     return element(DIV_TAG, headProps, [
       element(Title, { key: TITLE_PART, model: model }),
+      element(TimingRow, { key: TIMING_PART, model: model }),
       spacer,
       element(SPAN_TAG, { key: HEADER_PART }, text(head.bot_label_text)),
       element(BotSelector, {
@@ -1470,6 +1551,7 @@
     method: METHOD,
     Panel: Panel,
     HeaderRow: HeaderRow,
+    TimingRow: TimingRow,
     askSelect: askSelect,
     BotSelector: BotSelector,
     PrivacyDot: PrivacyDot,

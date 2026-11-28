@@ -1656,6 +1656,16 @@ def _empty_feed(bot: Any, cause: str, detail: dict, reason: str = "") -> dict:
     }
 
 
+def walk_zone_states(outcome: Any) -> dict:
+    """Each ``BotResult.zone_state`` of ``outcome.results`` by ``bot_id``: the state each walk's last step acted on."""
+    held: dict = {}
+    for result in getattr(outcome, "results", None) or ():
+        state = getattr(result, "zone_state", None)
+        if state is not None:
+            held[str(getattr(result, "bot_id", ""))] = state
+    return held
+
+
 def ivp_feed(source: Any, bot: Any, now: Optional[float] = None) -> dict:
     """The voting panel's reading for ``bot`` over the tablet ``tablet_for``
     finds, with each phantom timeframe merged and ``composite_net`` over the
