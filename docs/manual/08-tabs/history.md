@@ -271,7 +271,7 @@ self._quote_rate_read_at = usd_ticker.read_at
 ### The pace of the shared reads
 
 Each exchange the fleet uses has its own loop. The loop reads the prices, then the
-account, and then rests. A slow exchange does not slow another. While the two answers
+account where its read is due, and then rests. A slow exchange does not slow another. While the two answers
 take 1.67 seconds or less together, the loop starts again each 2.5 seconds. Longer
 answers make the rest longer. The rest is at least half the time the two reads held
 the worker, so the shared reads hold it for two thirds of the time at most.
@@ -281,6 +281,21 @@ the worker, so the shared reads hold it for two thirds of the time at most.
 ```python
 own = max(self.interval_s, self.held_s * TURN_PER_HELD_SECOND)
 return max(own, min(own * BACKOFF_FACTOR**self.steps, longest_period_s()))
+```
+
+A balance lives 10 seconds in the store, and a price lives 5. So the account read is
+due in a turn only where no account answer came in the whole turns that fit in 5
+seconds. While a turn lasts 2.5 seconds, the loop reads the account in every second
+turn, and a stored balance is about 5 seconds old at most. Once a turn lasts longer
+than 2.5 seconds, the loop reads the account in each turn. A balance with no answer
+yet makes the read due at once. A fill still ends its balance, and the bot reads it
+alone.
+
+`src/exchange/data_pool.py, in SharedReads.account_due`
+
+```python
+held = int(self.serves_s(ACCOUNT_CALL) // period) if period > 0.0 else 1
+return self.turns - answered >= max(1, held)
 ```
 
 That time is counted on the worker. A pause of the program does not add to it, and
@@ -344,14 +359,14 @@ return now < ends_at and (bool(self.reading) or soon)
 ```
 
 A figure inside its lifetime waits for the next shared read too, outside an order's
-step, once it is older than 2.5 seconds and older than the two newest answers
-together.
+step, once it is older than 2.5 seconds (a balance 5 seconds) and older than the two
+newest answers together.
 
 `src/exchange/data_pool.py, in SharedReads.replaces`
 
 ```python
 answers_s = sum(self.answer_s.values())
-return age_s > max(self.interval_s, answers_s + self.min_rest_s)
+return age_s > max(self.serves_s(kind), answers_s + self.min_rest_s)
 ```
 
 A bot asks the venue alone where no shared read serves it:

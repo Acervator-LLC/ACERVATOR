@@ -491,6 +491,42 @@ Every press on this page runs the same handler on both builds. The React page se
 | API load pill | Names the busiest exchange, its calls per minute, its busy share, its answer time and any refused calls. Amber above 50% and red above 75% of the worse of busy share and 600 calls a minute. Reads each call the exchange's worker ran in the last 60 seconds, a call still running included. The busy share is the time those calls held the worker, and the answer time is the slowest answer among them. A venue with no such worker is read from the API log. While the shared reads come less often than each 2.5 seconds, the pill adds "waits" and the seconds from one shared read to the next. `src/exchange/api_load_monitor.py, in APILoadMonitor.sample` |
 | AI state label | Shows AI: OFF, READY or NO PACKAGE, then AUTH or UNAUTH once feedback arrives. Reads the `ai_monitor` settings and `ai.feedback` events. `src/gui/main_window.py, in MainWindow._on_ai_feedback` |
 
+### The calls behind the API load pill
+
+Each call the pill counts feeds one figure or one decision. A call runs only as often
+as the figure it feeds needs. The table names each kind of call, what it feeds, how
+often it runs and what sets that rate.
+
+| Call | What it feeds | How often it runs | What sets the rate |
+| --- | --- | --- | --- |
+| The shared price read | Each bot's stored price, its decisions and the Current Position Value cell | Each 2.5 seconds | Half of a price's 5 seconds in the store. `src/trading/bot_container.py, in TICKER_REFRESH_INTERVAL_S` |
+| The shared account read | Each bot's stored balance, its holdings audit and the Ammo cell | Each 5 seconds, in every second turn of the shared reads | Half of a balance's 10 seconds in the store. `src/exchange/data_pool.py, in ACCOUNT_READ_PERIOD_S` |
+| A balance read at a buy | The position check before a buy | Once for each buy attempt | `src/trading/buy_safety.py, in verify_buy_safe_or_refuse` |
+| Open orders before a buy | The refusal of a second buy while one is open | Once for each buy attempt | `src/trading/scrumming/execution.py, in ExecutionEngineMixin._refuses_stacked_buy` |
+| A bot's candles | The TA vote and the band of each bot | Once for each candle of the bot's timeframe | `src/exchange/data_pool.py, in TF_SECONDS` |
+| The chart's candles | The candles of the market the Charts tab shows | Each 30 seconds | `src/gui/main_tabs/trade_charts_tab_surface.py, in FETCH_THROTTLE_S` |
+| The rate strip | The two rates of the strip and the Target-denom cells | Each 60 seconds at most | `src/exchange/currency_rate_monitor.py, in DEFAULT_REFRESH_SECONDS` |
+| A bot's position read | Realised P/L, fees, average entry, the YTD trade count and the counts of open orders | Each 300 seconds for each bot. The YTD walk starts at the year's anchor once an hour, else 7 days back | `src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.EXCHANGE_HEALTH_REFRESH_COOLDOWN_SEC` |
+| The spot positions | Unrealised P/L and the venue's basis | Each 60 seconds at most | `src/exchange/ccxt_connector.py, in SPOT_POSITIONS_CACHE_SEC` |
+| Held orders and Stack rungs | The booking of their fills | Each tick of 5 seconds, while a bot holds one | `src/trading/scrumming_bot.py, in ScrummingBot.tick_interval` |
+| An order and its settled reads | The order, then its filled count and average price | Once for each order, and up to 3 settled reads | `src/trading/bot_container.py, in SETTLE_REREADS` |
+| The pairs scout | The two Target columns and the Target rows of the Detail window | After a rest of 10 seconds, or of twice the time its answers took | `src/exchange/market_pairs_scout.py, in MarketPairsScout._read` |
+| The Market Inspector | The 24 hour volumes, and a scan | Each 15 minutes, and a scan on a press | `src/exchange/market_inspector_fetcher.py, in DEFAULT_MIN_REFRESH_S` |
+| The market list | The market rules | Once for each start | `src/exchange/ccxt_connector.py, in CCXTConnector.sync_connect` |
+| The trade history scan | The history analysis of each bot | Once for each bot after a connect. It runs off the worker, so the pill does not count it | `src/core/trade_historian.py, in TradeHistorian._fetch_sync` |
+
+The shared account read runs each 5 seconds, in every second turn of the shared reads.
+A balance lives 10 seconds in the store, so each balance stays at half its lifetime, as
+each price does. A balance with no answer yet is read in the next turn. A fill still
+ends its balance, and the bot reads it alone.
+
+`src/exchange/data_pool.py, in MarketDataPool.refresh_all_balances`
+
+```python
+if not reads.account_due() and not self._balance_unread(exchange_id):
+    return 0
+```
+
 ### The header strip
 
 Every figure repaints each 2 seconds (`src/gui/main_window.py, in MainWindow._refresh_header_strip`). With Sim or Paper in front, the strip reads that tab's own fleet. Otherwise figures cover the whole fleet, except AMMO, which reads the active class, and EXCH, which reads the active layer.
