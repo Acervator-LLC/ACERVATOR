@@ -201,14 +201,21 @@ class TurnMissed(asyncio.TimeoutError):
 class SyncCallTiming:
     """How long one sync call waited for the worker, and how long the venue took.
 
-    ``_call_sync_timed`` fills it, and every caller writing an API log entry
-    reports ``served_ms`` as the venue's answer with ``queued_ms`` beside it.
+    ``SyncWorker._serve`` fills it on the worker thread, and every caller writing an
+    API log entry reports ``served_ms`` as the venue's answer with ``queued_ms`` beside
+    it. ``released_at`` is when ``CCXTConnector._replace_stuck_worker`` took the worker.
     """
 
     started_at: float = 0.0
     finished_at: float = 0.0
     queued_ms: float = 0.0
     served_ms: float = 0.0
+    released_at: float = 0.0
+
+    def held_until(self, now: float) -> float:
+        """The first of ``finished_at`` and ``released_at`` that is set, else ``now``."""
+        ends = [at for at in (self.finished_at, self.released_at) if at > 0.0]
+        return min(ends) if ends else now
 
     def resolve(self, submitted_at: float) -> None:
         """Set ``queued_ms`` and ``served_ms`` from the worker's own timestamps."""
@@ -232,6 +239,50 @@ class SyncCallTiming:
         the next caller.
         """
         return self.started_at > 0.0 and self.finished_at <= 0.0
+
+
+class WorkerRuns:
+    """The ``SyncCallTiming`` of each call one connector's workers start, kept while it
+    held a worker inside the longest window ``in_window`` was asked for."""
+
+    def __init__(self) -> None:
+        self._guard = threading.Lock()
+        self._kept_s = DEFAULT_WINDOW_SECONDS
+        self._timings: list[SyncCallTiming] = []
+
+    def note(self, timing: SyncCallTiming) -> None:
+        """Keep ``timing`` of a call a worker has started."""
+        now = time.monotonic()
+        with self._guard:
+            self._timings = [
+                kept
+                for kept in self._timings
+                if kept.held_until(now) > now - self._kept_s
+            ]
+            self._timings.append(timing)
+
+    def in_window(self, window_s: float) -> list[dict[str, float]]:
+        """``elapsed_ms``, ``queued_ms`` and ``held_ms`` of each call that held a worker
+        in the last ``window_s``, a call still running counted to now."""
+        now = time.monotonic()
+        since = now - window_s
+        with self._guard:
+            self._kept_s = max(self._kept_s, window_s)
+            timings = list(self._timings)
+        runs = []
+        for timing in timings:
+            held_until = timing.held_until(now)
+            if held_until <= since:
+                continue
+            answered = timing.finished_at or now
+            runs.append(
+                {
+                    "elapsed_ms": (answered - timing.started_at) * 1000.0,
+                    "queued_ms": timing.queued_ms,
+                    "held_ms": (held_until - max(timing.started_at, since)) * 1000.0,
+                }
+            )
+        return runs
 
 
 @dataclass(eq=False)
@@ -280,11 +331,12 @@ class SyncCall:
 
 
 class SyncWorker:
-    """One connector's single call thread, the calls that wait for it, and the
-    ``SyncCall`` it is inside."""
+    """One connector's single call thread, the calls that wait for it, the ``SyncCall``
+    it is inside, and the connector's ``WorkerRuns`` each start is noted in."""
 
-    def __init__(self, exchange_id: str) -> None:
+    def __init__(self, exchange_id: str, runs: WorkerRuns) -> None:
         self._exchange_id = exchange_id
+        self._runs = runs
         self.pool = ThreadPoolExecutor(
             max_workers=SYNC_CALL_CONCURRENCY,
             thread_name_prefix=f"ccxt-{exchange_id}",
@@ -316,15 +368,19 @@ class SyncWorker:
             job.set_result(answer)
 
     def _serve(self, call: SyncCall) -> Any:
-        """Run ``call`` on the worker thread, or raise its ``missed_turn`` unrun."""
+        """Run ``call`` on the worker thread with its timing noted in ``WorkerRuns``, or
+        raise its ``missed_turn`` unrun."""
         if call.turn_left_sec() <= 0.0:
             raise call.missed_turn(self._exchange_id)
         call.timing.started_at = time.monotonic()
+        call.timing.resolve(call.submitted_at)
         self.running = call
+        self._runs.note(call.timing)
         try:
             return call.run()
         finally:
             call.timing.finished_at = time.monotonic()
+            call.timing.resolve(call.submitted_at)
             self.running = None
 
     def stuck_call(self) -> Optional[SyncCall]:
@@ -2079,7 +2135,10 @@ class CCXTConnector(ExchangeInterface):
         self._on_history_ready: Optional[HistoryCallback] = None
 
         # One worker serialises every sync CCXT call on this connector.
-        self._sync_worker: Optional[SyncWorker] = SyncWorker(exchange_id)
+        self._worker_runs = WorkerRuns()
+        self._sync_worker: Optional[SyncWorker] = SyncWorker(
+            exchange_id, self._worker_runs
+        )
         # Every call whose caller still waits, in the order it was queued.
         self._sync_calls: list[SyncCall] = []
         self._leaked_worker_fault = ThrottledFault(
@@ -2433,6 +2492,11 @@ class CCXTConnector(ExchangeInterface):
             "refusals_by_call": dict(self._sync_queue_refusals_by_call),
         }
 
+    def worker_runs(self, window_s: float) -> list[dict[str, float]]:
+        """Each call this connector's workers ran inside the last ``window_s``, as
+        ``WorkerRuns.in_window`` answers it; ``APILoadMonitor.sample`` reads it."""
+        return self._worker_runs.in_window(window_s)
+
     def latest_run(self, label: str) -> tuple[float, float]:
         """When the newest ended run inside ``run_timed_as`` of ``label`` began on the
         worker, and its seconds."""
@@ -2470,9 +2534,13 @@ class CCXTConnector(ExchangeInterface):
             stuck = worker.stuck_call() if worker is not None else None
             if worker is None or stuck is None:
                 return
+            if stuck.timing.released_at <= 0.0:
+                stuck.timing.released_at = time.monotonic()
             fresh = None
             if worker is self._sync_worker:
-                fresh = self._sync_worker = SyncWorker(self._exchange_id)
+                fresh = self._sync_worker = SyncWorker(
+                    self._exchange_id, self._worker_runs
+                )
             for call in sorted(self._sync_calls, key=lambda held: not held.goes_first):
                 if call.worker is not worker or not call.job.cancel():
                     continue
@@ -2628,7 +2696,6 @@ class CCXTConnector(ExchangeInterface):
         )
         try:
             result = await self._sync_call_answer(call)
-            call.timing.resolve(call.submitted_at)
             return result, call.timing
         except Exception as refused:
             if not call.dropped:

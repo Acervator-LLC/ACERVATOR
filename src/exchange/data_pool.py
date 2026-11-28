@@ -245,6 +245,7 @@ class SharedReads:
     unanswered: bool = False
     wait_until: float = 0.0
     answered_at: float = 0.0
+    last_period_s: float = 0.0
     answer_s: dict[str, float] = field(
         default_factory=lambda: {PRICES_CALL: 0.0, ACCOUNT_CALL: 0.0}
     )
@@ -263,6 +264,7 @@ class SharedReads:
         self.turn_reads = 0
         self.held_s = 0.0
         self.unanswered = False
+        self.last_period_s = 0.0
         self.due_at = time.monotonic()
         self.attendant = object()
         return self.attendant
@@ -328,10 +330,11 @@ class SharedReads:
 
     def rest_s(self) -> float:
         """Seconds to rest after a read; ``READS_PER_TURN`` of them end a turn, as one
-        ``unanswered`` does."""
+        ``unanswered`` does; ``last_period_s`` keeps its start to the next turn's."""
         now = time.monotonic()
         rest = max(0.0, self.wait_until - now)
-        if self.unanswered or self.turn_reads >= READS_PER_TURN:
+        ends_turn = self.unanswered or self.turn_reads >= READS_PER_TURN
+        if ends_turn:
             paced = max(self.min_rest_s, self.turn_began + self.period_s() - now)
             if self.unanswered:
                 paced = min(paced, longest_period_s())
@@ -340,7 +343,17 @@ class SharedReads:
             self.turn_reads = 0
             self.unanswered = False
         self.due_at = now + rest
+        if ends_turn:
+            self.last_period_s = self.due_at - self.turn_began
         return rest
+
+    def pace_s(self) -> float:
+        """Seconds from one turn's start to the next: ``last_period_s``, or the turn on
+        its way where it has run longer; 0.0 while no refresher attends."""
+        if self.attendant is None:
+            return 0.0
+        running_s = time.monotonic() - self.turn_began if self.turn_reads else 0.0
+        return max(self.last_period_s, running_s)
 
     def slowed(self) -> bool:
         """True while ``steps`` or a stated wait lengthens the period of an attended
