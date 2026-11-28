@@ -5090,7 +5090,9 @@ class ScrummingBot(
         Cross-references:
             ``_stack_tranches`` order_ids against the exchange's open orders,
             fetching the terminal state of any that no longer appear, then
-            updating status and fill price and announcing a ``STACK_RUNG`` fill.
+            updating status and fill price, taking the filled units off
+            ``_main_lots`` and ``_current_holdings``, and announcing a
+            ``STACK_RUNG`` fill.
 
         Returns:
             0 when not visible mode, when there are no pending tranches, when
@@ -5152,6 +5154,7 @@ class ScrummingBot(
                 t["fill_price"] = float(_avg or t["price"])
                 t["filled_amount"] = _filled
                 settled += 1
+                self._take_filled_units_off_lots(_filled)
                 self._current_holdings = max(0.0, self._current_holdings - _filled)
                 self._record_venue_units_after_fill(-_filled)
                 self._count_trade_volume(_filled, t["fill_price"])
@@ -5381,12 +5384,14 @@ class ScrummingBot(
         rung_index: Any,
         rung_opened_ts: Any,
     ) -> None:
-        """Mark the stack rung named by ``rung_index`` and ``rung_opened_ts`` filled at
-        its order's first settled piece, and announce each piece as a ``STACK_SPEND``
-        naming that rung's event ids.
+        """Take each settled piece's ``units`` off ``_main_lots``, mark the stack rung
+        named by ``rung_index`` and ``rung_opened_ts`` filled at its order's first
+        settled piece, and announce each piece as a ``STACK_SPEND`` naming that
+        rung's event ids.
         """
         from .scrumming.sizing import record_event_ids
 
+        self._take_filled_units_off_lots(units)
         rung = next(
             (
                 t
