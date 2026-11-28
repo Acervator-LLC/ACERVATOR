@@ -3789,7 +3789,7 @@ class ScrummingBot(
                         f"vote {eff_direction.name if eff_direction else 'NONE'} "
                         f"{eff_confidence:.4f} against {_timing.bar:.4f}, the line "
                         f"{_zone_floor:.4f} x{1.0 + _timing.boost.share:.2f}; "
-                        f"cartridge {_scales.cartridge:.2f} past, proximity "
+                        f"cartridge {_scales.cartridge:.2f} of full, proximity "
                         f"{_scales.proximity:.2f}, {_scales.taper_steps} tapering "
                         f"candles; {_next}."
                     ),

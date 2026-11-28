@@ -322,13 +322,13 @@ Now: each piece another bot's resting sale has sold holds its dollars from the m
 
 **The first Max Cartridge Size Now line above is overtaken.** It is not edited and not removed.
 
-Now: at this share of Target Balance the bot reads ten times as often and Cartridge Boost starts; the gate chain decides every trade, and no order goes out on a cartridge path (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._note_cartridge_reach`).
+Now: at this share of Target Balance the bot reads ten times as often and Cartridge Boost is full; the gate chain decides every trade, and no order goes out on a cartridge path (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._note_cartridge_reach`).
 
 Now: inside BB Tolerance of the lower band with no tranche queued, the fold chain passes its tranche gate, and a slipping read buys the whole Target Delta as one FOLD under every hold the zone keeps (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_calibrating_fold`). Inside the upper zone a scrum sells the whole Target Delta, as every scrum does.
 
-Cartridge Boost - Raises the bar for waiting inside the zone once the Target Delta passes Max Cartridge Size.
+Cartridge Boost - Raises the bar for waiting inside the zone as the Target Delta grows toward Max Cartridge Size, in full from there.
 
-Now: this figure adds its percent for each Max Cartridge Size the Target Delta sits past the threshold, so a Target Delta at twice the threshold adds it once, and the box opens at 0.39% (`src/trading/vote_boost.py, in cartridge_scale`).
+Now: this figure adds its percent times the Target Delta's share of Max Cartridge Size, held at the whole percent from Max Cartridge Size on, and the box opens at 0% (`src/trading/vote_boost.py, in cartridge_scale`).
 
 Smart Cartridge - This allows the Max Cartridge Size to organically resize in response to current price range as defined by the current-candle Bollinger Band reading.
 
@@ -832,8 +832,8 @@ The first column gives each row's range and factory opening value. Order Visibil
 | Soft CB Threshold (0 to 100%, 25%, 0 off) | Shuts one side when a candle's range reaches this share of its open at the one read of that candle. Reads `circuit_breaker_soft_pct`. `src/trading/scrumming/circuit_breakers.py, in breaker_move` |
 | Hard CB Threshold (0 to 100%, 35%, 0 off) | Trips the hard breaker at this range, and every order stops until a reset. The bot reads HELD and sends one alert. Each candle is read once, when the shared candles first show it, so a move after that does not count. Reads `circuit_breaker_hard_pct`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._check_circuit_breakers` |
 | Soft CB Cooldown (1 to 100, 3) | Sets how many new candles the shared candles must show before the shut side opens again. Reopening the app reads the newest candle as new, so it spends one. Reads `circuit_breaker_cooldown_candles`. `src/trading/scrumming/circuit_breakers.py, in CircuitBreakerMixin._read_breaker_candle` |
-| Max Cartridge Size (0 to 200%, 10%, 0 off) | At this share of target the bot reads ten times as often and Cartridge Boost starts. A bot that has made no first buy holds a fold until the band and its own vote clear: `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_clears`. Reads `max_cartridge_size_pct`. `src/trading/scrumming/sizing.py, in cartridge_reached` |
-| Cartridge Boost (0 to 500%, 0.39%) | Inside the zone, raises the bar for waiting by this share per Max Cartridge Size the Target Delta sits past the threshold. Reads `cartridge_boost_pct`. `src/trading/vote_boost.py, in cartridge_scale` |
+| Max Cartridge Size (0 to 200%, 10%, 0 off) | At this share of target the bot reads ten times as often and Cartridge Boost is full. A bot that has made no first buy holds a fold until the band and its own vote clear: `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._first_buy_clears`. Reads `max_cartridge_size_pct`. `src/trading/scrumming/sizing.py, in cartridge_reached` |
+| Cartridge Boost (0 to 500%, 0%) | Inside the zone, raises the bar for waiting by up to this share as the Target Delta grows toward Max Cartridge Size, the whole share from there. Reads `cartridge_boost_pct`. `src/trading/vote_boost.py, in cartridge_scale` |
 | Smart Cartridge (off) | Replaces that percent with the Bollinger range, floored at the interval. Reads `max_cartridge_smart`. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_smart_cartridge_pct` |
 | Smart Ceiling (1 to 100%, 30%) | Caps the Smart Cartridge figure. Reads `max_cartridge_smart_ceiling_pct`. `src/trading/container/config.py, in smart_cartridge_ceiling_pct` |
 

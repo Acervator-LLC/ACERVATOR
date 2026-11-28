@@ -40,7 +40,7 @@ TOUCH_WICK: str = "wick"
 
 @dataclass(frozen=True)
 class BoostFigures:
-    """The three Settings figures, each a percent: per Max Cartridge Size past, at the band edge, per tapering candle."""
+    """The three Settings figures, each a percent: at a full cartridge, at the band edge, per tapering candle."""
 
     cartridge_pct: float = 0.0
     proximity_pct: float = 0.0
@@ -49,7 +49,7 @@ class BoostFigures:
 
 @dataclass(frozen=True)
 class BoostScales:
-    """One side's scales: Max Cartridge Sizes past the threshold, band closeness 0 to 1, tapering candles."""
+    """One side's scales: the Target Delta's share of Max Cartridge Size up to 1, band closeness 0 to 1, tapering candles."""
 
     cartridge: float = 0.0
     proximity: float = 0.0
@@ -104,12 +104,12 @@ def voters_the_deeper_way(signals: Sequence[Signal], side: str) -> int:
 
 
 def cartridge_scale(delta: float, threshold_usd: float) -> float:
-    """Max Cartridge Sizes the Target Delta ``delta`` sits past ``threshold_usd``; 0.0 under it or with no threshold."""
+    """The Target Delta ``delta`` as a share of ``threshold_usd``, held at 1.0 from there; 0.0 with no threshold."""
     if not (math.isfinite(delta) and math.isfinite(threshold_usd)):
         return 0.0
     if threshold_usd <= 0.0:
         return 0.0
-    return max(0.0, abs(delta) / threshold_usd - 1.0)
+    return min(1.0, abs(delta) / threshold_usd)
 
 
 def band_touch(band: PanelBand | None, side: str, high: float, low: float) -> str:

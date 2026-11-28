@@ -53,8 +53,8 @@ class BotMode(str, Enum):
 #: Default for ``BotConfig.stack_mode`` and the wizard's checkbox.
 STACK_MODE_DEFAULT: bool = True
 
-#: Default ``BotConfig.cartridge_boost_pct``: % the bar for waiting rises per Max Cartridge Size past it.
-CARTRIDGE_BOOST_PCT_DEFAULT: float = 0.39
+#: Default ``BotConfig.cartridge_boost_pct``: % the bar for waiting rises with the Target Delta at Max Cartridge Size.
+CARTRIDGE_BOOST_PCT_DEFAULT: float = 0.0
 
 #: Default ``BotConfig.proximity_boost_pct``: % the bar for waiting rises with price at the band edge.
 PROXIMITY_BOOST_PCT_DEFAULT: float = 0.0
