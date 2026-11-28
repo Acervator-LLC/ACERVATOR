@@ -605,7 +605,7 @@
     return element(SELECT_TAG, selectProps, drawn);
   }
 
-  // Title, then a spacer, then BotSelector and PrivacyDot in the right corner.
+  // Title, TimingRow, a spacer, then BotSelector and PrivacyDot in the right corner.
   function HeaderRow(props) {
     var model = props.model;
     var head = objectField(model, HEADER);

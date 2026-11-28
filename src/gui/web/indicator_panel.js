@@ -598,8 +598,8 @@
     return place.at < 0 ? undefined : label(text(entries[place.at][TEXT]));
   }
 
-  // Title, a spacer, the left arrow, the dropdown, the right arrow, the
-  // dot, a spacer. The arrows stop at each end rather than wrapping.
+  // Title, Timing row, a spacer, the left arrow, the dropdown, the right
+  // arrow, the dot, a spacer. The arrows stop at each end rather than wrapping.
   function HeaderRow(props) {
     var model = props.model;
     var head = objectField(model, HEADER);
