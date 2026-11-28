@@ -423,7 +423,7 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   (`src/trading/container/aggregation.py, in exchange_cash`). He reads it against
   each exchange's own Cash screen after the next build.
 - **#1836, every buy opens its Stack ladder, and each tranche shows its
-  Projected Accumulation. Rows 1 to 5 and row 9 are done.** On a Stack Mode bot every
+  Projected Accumulation. Rows 1 to 5, 9 and 10 are done.** On a Stack Mode bot every
   filled buy ladders the units it bought, the first buy, a hedge, a Manual Fire
   and a cartridge buy among them, and a buy that opens none writes one bot log
   line naming why
@@ -436,8 +436,14 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   rung holds, writes SCRUM PLACED in place of SCRUM ABORTED, and a later read
   rests no second ladder beside them
   (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_scrum`).
-  Next, row 10, then rows 6 to 8 with the Settings control of row 8, as the body
-  orders them.
+  A filled rung takes its units off the lots in the booking that lowers the
+  holdings, highest buy price first, so no buy is refused for a gap between them
+  (`src/trading/scrumming_bot.py, in ScrummingBot._take_filled_units_off_lots`).
+  Row 11 is open: a Stack rung's record holds what the venue rests and settles,
+  the size the venue rests, and each piece booked once as it settles. On row 10's
+  table a part fill booked twice leaves the book 9.26 units under the venue until
+  the next drift check.
+  Next, rows 6 to 8 with the Settings control of row 8, as the body orders them.
 - **#1837, the Trade Calculator. Rows 1 to 8 are built.** Each trade log line
   names its venue order and the event ids of the tranches the fill spent and
   opened, and a fold that ran the growth step carries its figures under
@@ -479,6 +485,13 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   both trees, in `dist` and in Releases (`src/_version.py, in utc_moment`).
   Commit 67c22c94 reads 20261128.0330 where it read 20261127.1930. A build made
   before the change keeps the number it was given.
+- **#1486, every figure a fill moves, at the fill. Row 11 is built.** When the
+  exchange confirms a fill, the units the Ammo cell reads move in the same step
+  as the bot's held units, on every fill path, a sale's included
+  (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_sale`). A
+  sale's one exchange read follows its booking
+  (`in ExecutionEngineMixin._read_venue_after_sale`). Every row of the body is
+  built.
 - The rest of the queue: read each body.
 
 ---

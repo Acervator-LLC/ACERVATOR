@@ -132,6 +132,8 @@ Now: a scrum sells through a rising ladder of Stack Tranches, and every filled b
 
 Now: a scrum rests rungs only for the units of its Target Delta that no pending Stack rung already holds, and the bot log names them in one SCRUM PLACED line. A read whose resting rungs already hold the Target Delta adds none and writes SCRUM RESTING, so no read rests a second ladder beside them (`src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_execute_scrum`).
 
+Now: a filled Stack rung takes its units off the bot's lots in the same booking that lowers its holdings, in Order Book mode and in Internal mode, so the next buy's Layer 1 check reads the two in step (`src/trading/scrumming_bot.py, in ScrummingBot._reconcile_stack_tranches_visible`).
+
 Split Distance - This setting determines the spacing between tranches if Tranche Spread (not available yet) is being used.
 
 Now: Split Distance sets the percent gap between Stack tranches while Stack Mode is on, and no Tranche Spread row exists (`src/trading/stack_math.py, in ladder_offsets_pct`).
@@ -558,6 +560,8 @@ On the Scrumming table, a press on a row draws that bot on the Indicator Voting 
 | Fire | One press on one bot. The next section covers it. While the hard breaker holds, a press is refused and keeps nothing, so press it again after Reset All Breakers. On a bot no tick runs, it is refused the same way, so press it again after Start. `src/trading/bot_container.py, in BotManager.force_fire`. On a price past its age limit the tick drops the press, so press it again once a fresh price is in. `src/trading/scrumming/tick_phases.py, in TickPhaseMixin._tick_waits_for_price` |
 | Detail button | Opens the bot settings window and selects the row. `src/gui/main_window.py, in MainWindow._on_bot_clicked` |
 | Round header dots | Hides that column behind asterisks. Filled shows and hollow hides. Target's three columns share one field, as do Position Value and Ammo. `src/gui/main_tabs/bot_status_table_surface.py, in BotStatusTableModel.on_privacy_toggled` |
+
+Now: when the exchange confirms a fill, the units the Ammo cell reads move in the same step as the units Current Position Value prices, on every fill path, so both cells show the fill in the same redraw (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_sale`). After a sale is booked, the bot reads the exchange once, and that reading stands (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.refresh_priced_figures_after_fill`).
 
 | Extractor Bots column | What it shows and what it reads |
 | --- | --- |
