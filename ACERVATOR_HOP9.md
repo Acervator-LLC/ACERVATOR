@@ -439,9 +439,10 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   A filled rung takes its units off the lots in the booking that lowers the
   holdings, highest buy price first, so no buy is refused for a gap between them
   (`src/trading/scrumming_bot.py, in ScrummingBot._take_filled_units_off_lots`).
-  Open: a resting rung's part fill is counted twice when a drift check runs while
-  it rests, because the check adopts the part and the close books the whole fill;
-  on row 10's table the book ends 9.26 units under the venue until the next check.
+  Row 11 is open: a Stack rung's record holds what the venue rests and settles,
+  the size the venue rests, and each piece booked once as it settles. On row 10's
+  table a part fill booked twice leaves the book 9.26 units under the venue until
+  the next drift check.
   Next, rows 6 to 8 with the Settings control of row 8, as the body orders them.
 - **#1837, the Trade Calculator. Rows 1 to 8 are built.** Each trade log line
   names its venue order and the event ids of the tranches the fill spent and
