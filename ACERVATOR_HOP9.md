@@ -394,6 +394,11 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   load pill reads each call the venue's worker ran in the last 60 s, a call still
   running included, names the answer time, and says "waits" while the shared reads
   rest longer than 2.5 s (`src/exchange/ccxt_connector.py, in CCXTConnector.worker_runs`).
+  Row 12 is built: every venue call kind has its six answers and its need in the
+  ledger comment 7244711836, and the shared account read runs each 5 s, half a
+  balance's lifetime, in every second turn of the shared reads
+  (`src/exchange/data_pool.py, in SharedReads.account_due`). The call account is in
+  `docs/manual/06-trading-tab.md`, in its section on the calls behind the API load pill.
   Every row of the body is built.
   His rule for every row is in comment 7141240463. How the fleet behaves on his
   link waits on his next run.
