@@ -599,6 +599,8 @@ On the Scrumming table, a press on a row draws that bot on the Indicator Voting 
 
 Now: when the exchange confirms a fill, the units the Ammo cell reads move in the same step as the units Current Position Value prices, on every fill path, so both cells show the fill in the same redraw (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_sale`). After a sale is booked, the bot reads the exchange once, and that reading stands (`src/trading/scrumming/reconciliation.py, in ReconciliationEngineMixin.refresh_priced_figures_after_fill`).
 
+Now: when the exchange confirms a buy with Stack Mode on, the Trades count and the other figures the fill settles are written before the first rung of its ladder goes out, so Trades moves in the same redraw as Current Position Value. The fill is announced once, after the rungs, and names the rungs it opened (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_then_ladder`).
+
 | Extractor Bots column | What it shows and what it reads |
 | --- | --- |
 | Bot ID | The bot's id. `src/gui/main_tabs/extractor_bot_table_surface.py, in row_values` |

@@ -496,13 +496,15 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   both trees, in `dist` and in Releases (`src/_version.py, in utc_moment`).
   Commit 67c22c94 reads 20261128.0330 where it read 20261127.1930. A build made
   before the change keeps the number it was given.
-- **#1486, every figure a fill moves, at the fill. Row 11 is built.** When the
-  exchange confirms a fill, the units the Ammo cell reads move in the same step
-  as the bot's held units, on every fill path, a sale's included
+- **#1486, every figure a fill moves, at the fill. Rows 11 and 12 are built.**
+  When the exchange confirms a fill, the units the Ammo cell reads move in the
+  same step as the bot's held units, on every fill path, a sale's included
   (`src/trading/scrumming/execution.py, in ExecutionEngineMixin._book_sale`). A
   sale's one exchange read follows its booking
-  (`in ExecutionEngineMixin._read_venue_after_sale`). Every row of the body is
-  built.
+  (`in ExecutionEngineMixin._read_venue_after_sale`). A Stack Mode buy writes
+  Trades and its other figures before its rungs go out, and is announced once
+  after them (`in ExecutionEngineMixin._book_then_ladder`). Every row of the
+  body is built.
 - **#1861, a new bot's first buy. Rows 1, 2 and 4 are built.** Inside BB
   Tolerance of the lower band the first buy waits only while zone timing reads
   price going deeper, and buys its Target Delta otherwise, through the zone read
