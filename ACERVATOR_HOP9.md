@@ -520,8 +520,10 @@ row 29, the outflow cap     with no cap inputs, Paper and the Simulator cap each
   Baseline is counted again from the loaded bots at each read, each setting at
   the value most of them hold. A saved bot whose config
   or mode has the wrong type now skips that bot alone at restore. A record that
-  is not a mapping still stops the restore in
-  `src/trading/bot_container.py, in BotManager.restore_bots_from_state`.
+  is not a mapping skips that bot alone too, and the restore's count reads its
+  lots and tranches as none
+  (`src/trading/bot_container.py, in saved_record_sizes`). While such a record
+  stays in the fleet file, the sibling dollar sum reads none.
   Nothing on screen reads a Preset yet; rows 1 and 4 to 7 are not built.
 - **#1865, the Live tab's tab bar and launch layout. Rows 1 to 3 are built.** No
   Proof of Accumulation code is in the tree. The bar draws PoA and Quint between
